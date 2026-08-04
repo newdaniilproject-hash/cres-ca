@@ -41,9 +41,15 @@ export function PublicFooter() {
     <footer className="divider mt-20">
       <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-10 t-sm sm:flex-row sm:items-center sm:justify-between sm:px-6 prose-muted">
         <p>© {new Date().getFullYear()} · Платформа для українських підприємців</p>
-        <div className="flex gap-5">
+        {/* Ссылки на политику и удаление данных обязаны быть видны с любой
+            страницы: этого требуют и Meta при верификации бизнеса, и обе
+            магазинные проверки. Прятать их в подвале второго уровня —
+            повод для отказа. */}
+        <div className="flex flex-wrap gap-x-5 gap-y-2">
           <Link href="/register/seller" className="hover:underline">Відкрити бізнес</Link>
           <Link href="/login" className="hover:underline">Вхід</Link>
+          <Link href="/privacy" className="hover:underline">Конфіденційність</Link>
+          <Link href="/privacy/delete" className="hover:underline">Видалення даних</Link>
         </div>
       </div>
     </footer>

@@ -1,6 +1,10 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import { themeBootScript } from '@/components/theme'
+import { ToastProvider } from '@/components/toast'
+import { OfflineBar } from '@/components/offline'
+import { PwaProvider } from '@/components/pwa'
+import { NativeProvider } from '@/components/native'
 import './globals.css'
 
 // Один шрифт на весь интерфейс: заголовки теперь гротеском
@@ -40,7 +44,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             иначе виден кадр с чужим фоном. */}
         <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
       </head>
-      <body>{children}</body>
+      <body>
+        {/* Уведомления, состояние связи и предложение установки живут
+            в одном нижнем стеке и доступны с любого экрана. Правило,
+            ради которого это здесь: у любого действия виден исход,
+            непонятных состояний быть не должно. */}
+        <ToastProvider overlay={<><NativeProvider /><PwaProvider /><OfflineBar /></>}>
+          {children}
+        </ToastProvider>
+      </body>
     </html>
   )
 }

@@ -1,0 +1,199 @@
+#!/usr/bin/env bash
+# Патч нативного Android-проекта ПЕРЕД сборкой. Папка android/ пересоздаётся
+# Capacitor'ом, поэтому правки вносим в пайплайне, а не в репозитории.
+#
+# Перенесено с DaKi (там обкатано на живых сборках) и адаптировано:
+#   1. Разрешения CAMERA + POST_NOTIFICATIONS в манифест.
+#   2. MainActivity: запрос разрешений при старте, нативный OneSignal
+#      (на Android JS-мост в удалённый server.url не инжектится — веб-init
+#      не сработает никогда), мосты JS→натив для пушей и биометрии,
+#      кнопка «назад» = назад по истории WebView, а не выход из приложения.
+#   3. androidx.biometric в зависимости — отпечаток/лицо для замка входа.
+set -e
+
+# App ID OneSignal публичный (не секрет). Берём из env Codemagic, чтобы
+# не хардкодить до создания приложения в их панели.
+OS_APP_ID="${ONESIGNAL_APP_ID:-ONESIGNAL_APP_ID_NOT_SET}"
+
+MANIFEST="android/app/src/main/AndroidManifest.xml"
+if [ -f "$MANIFEST" ]; then
+  # macOS BSD sed ломается на \n — perl ведёт себя одинаково везде (урок DaKi).
+  for PERM in CAMERA POST_NOTIFICATIONS USE_BIOMETRIC; do
+    if ! grep -q "android.permission.$PERM" "$MANIFEST"; then
+      perl -0pi -e "s{<application}{<uses-permission android:name=\"android.permission.$PERM\" />\n    <application}" "$MANIFEST"
+    fi
+  done
+  echo "OK: AndroidManifest — камера/уведомления/биометрия"
+else
+  echo "ERROR: AndroidManifest.xml не найден"; exit 1
+fi
+
+# androidx.biometric для BiometricPrompt.
+GRADLE="android/app/build.gradle"
+if ! grep -q 'androidx.biometric' "$GRADLE"; then
+  perl -0pi -e "s{dependencies \{}{dependencies {\n    implementation \"androidx.biometric:biometric:1.1.0\"}" "$GRADLE"
+  echo "OK: androidx.biometric добавлен"
+fi
+
+MA=$(find android/app/src/main/java -name MainActivity.java | head -1)
+if [ -z "$MA" ]; then echo "ERROR: MainActivity.java не найден"; exit 1; fi
+PKG=$(grep -m1 '^package ' "$MA" | sed 's/package //; s/;//; s/[[:space:]]//g')
+
+cat > "$MA" <<EOF
+package ${PKG};
+
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.os.Build;
+import android.os.Bundle;
+import android.webkit.JavascriptInterface;
+import android.webkit.PermissionRequest;
+import androidx.annotation.NonNull;
+import androidx.biometric.BiometricManager;
+import androidx.biometric.BiometricPrompt;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
+import androidx.fragment.app.FragmentActivity;
+import com.getcapacitor.BridgeActivity;
+import com.getcapacitor.BridgeWebChromeClient;
+import com.onesignal.OneSignal;
+import com.onesignal.Continue;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.Executor;
+
+public class MainActivity extends BridgeActivity {
+  private static final String ONESIGNAL_APP_ID = "${OS_APP_ID}";
+
+  @Override
+  public void onCreate(Bundle savedInstanceState) {
+    super.onCreate(savedInstanceState);
+
+    // Разрешения — сразу при старте, одним диалогом, без похода в настройки.
+    List<String> perms = new ArrayList<>();
+    perms.add(Manifest.permission.CAMERA);
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+      perms.add(Manifest.permission.POST_NOTIFICATIONS);
+    }
+    List<String> need = new ArrayList<>();
+    for (String p : perms) {
+      if (ContextCompat.checkSelfPermission(this, p) != PackageManager.PERMISSION_GRANTED) need.add(p);
+    }
+    if (!need.isEmpty()) ActivityCompat.requestPermissions(this, need.toArray(new String[0]), 1001);
+
+    // OneSignal нативно: JS-моста в удалённый server.url на Android нет.
+    try {
+      if (!ONESIGNAL_APP_ID.contains("NOT_SET")) {
+        OneSignal.initWithContext(getApplicationContext(), ONESIGNAL_APP_ID);
+        OneSignal.getNotifications().requestPermission(true, Continue.none());
+      }
+    } catch (Throwable ignored) { /* пуш не должен ронять приложение */ }
+
+    // Мосты для веба.
+    try {
+      this.getBridge().getWebView().addJavascriptInterface(new OneSignalJsBridge(), "AndroidOneSignal");
+      this.getBridge().getWebView().addJavascriptInterface(new BiometricJsBridge(), "AndroidBiometric");
+    } catch (Throwable ignored) {}
+
+    applyWebViewPermissionGrant();
+  }
+
+  @Override public void onStart()  { super.onStart();  applyWebViewPermissionGrant(); }
+  @Override public void onResume() { super.onResume(); applyWebViewPermissionGrant(); }
+
+  // «Назад» листает историю WebView, а не убивает приложение —
+  // иначе первый же случайный свайп выбрасывает мастера со склада.
+  @Override
+  public void onBackPressed() {
+    try {
+      android.webkit.WebView wv = this.getBridge().getWebView();
+      if (wv != null && wv.canGoBack()) { wv.goBack(); return; }
+    } catch (Throwable ignored) {}
+    super.onBackPressed();
+  }
+
+  // Камера в WebView: getUserMedia дергает onPermissionRequest —
+  // грантим, приложение уже держит CAMERA (приём DaKi, там WebChromeClient
+  // Capacitor перетирал грант, поэтому переустанавливаем в onStart/onResume).
+  private void applyWebViewPermissionGrant() {
+    try {
+      final com.getcapacitor.Bridge bridge = this.getBridge();
+      if (bridge == null) return;
+      final android.webkit.WebView wv = bridge.getWebView();
+      if (wv == null) return;
+      wv.setWebChromeClient(new BridgeWebChromeClient(bridge) {
+        @Override
+        public void onPermissionRequest(final PermissionRequest request) {
+          runOnUiThread(new Runnable() {
+            @Override public void run() {
+              try { request.grant(request.getResources()); } catch (Throwable ignored) {}
+            }
+          });
+        }
+      });
+    } catch (Throwable ignored) {}
+  }
+
+  public static class OneSignalJsBridge {
+    @JavascriptInterface
+    public void setUser(String userId, String tag) {
+      try {
+        if (userId != null && !userId.isEmpty()) OneSignal.login(userId);
+        if (tag != null && !tag.isEmpty()) OneSignal.getUser().addTag("tenant", tag);
+      } catch (Throwable ignored) {}
+    }
+    @JavascriptInterface
+    public void logout() {
+      try { OneSignal.logout(); } catch (Throwable ignored) {}
+    }
+  }
+
+  // Биометрия: веб зовёт window.AndroidBiometric.request(), результат
+  // прилетает событием window 'cres:bio' с detail 'ok' | 'fail' | 'none'.
+  public class BiometricJsBridge {
+    @JavascriptInterface
+    public boolean available() {
+      try {
+        return BiometricManager.from(MainActivity.this)
+          .canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK)
+          == BiometricManager.BIOMETRIC_SUCCESS;
+      } catch (Throwable e) { return false; }
+    }
+
+    @JavascriptInterface
+    public void request() {
+      runOnUiThread(new Runnable() {
+        @Override public void run() {
+          try {
+            Executor executor = ContextCompat.getMainExecutor(MainActivity.this);
+            BiometricPrompt prompt = new BiometricPrompt((FragmentActivity) MainActivity.this, executor,
+              new BiometricPrompt.AuthenticationCallback() {
+                @Override public void onAuthenticationSucceeded(@NonNull BiometricPrompt.AuthenticationResult r) { emit("ok"); }
+                @Override public void onAuthenticationError(int code, @NonNull CharSequence err) { emit("fail"); }
+              });
+            BiometricPrompt.PromptInfo info = new BiometricPrompt.PromptInfo.Builder()
+              .setTitle("Вхід у Маркет")
+              .setSubtitle("Підтвердіть, що це ви")
+              .setNegativeButtonText("Скасувати")
+              .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_WEAK)
+              .build();
+            prompt.authenticate(info);
+          } catch (Throwable e) { emit("none"); }
+        }
+      });
+    }
+
+    private void emit(final String result) {
+      runOnUiThread(new Runnable() {
+        @Override public void run() {
+          try {
+            getBridge().getWebView().evaluateJavascript(
+              "window.dispatchEvent(new CustomEvent('cres:bio',{detail:'" + result + "'}))", null);
+          } catch (Throwable ignored) {}
+        }
+      });
+    }
+  }
+}
+EOF
+echo "OK: MainActivity — разрешения, OneSignal, биометрия, назад"

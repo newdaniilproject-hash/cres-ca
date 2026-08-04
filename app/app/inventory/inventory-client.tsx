@@ -4,6 +4,8 @@ import { useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useOnline, useToast } from '@/components/toast'
+import { enqueue } from '@/lib/offline/queue'
 import { MaterialForm, type RefItem } from './material-form'
 import { ContainerForm, type BatchOption } from './container-form'
 import { RefsForm } from './refs-form'
@@ -49,6 +51,8 @@ export function InventoryClient({
 }) {
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
+  const toast = useToast()
+  const online = useOnline()
   const [tab, setTab] = useState<'containers' | 'materials' | 'goods'>('containers')
   // Формы раскрываются прямо на странице, а не модалкой: на телефоне
   // модальное окно перекрывается клавиатурой и поля уезжают из вида.
@@ -63,6 +67,13 @@ export function InventoryClient({
     if (!q) return
     setCode('')
     inputRef.current?.focus()
+    // Поиск требует ответа сервера прямо сейчас — отложить его нельзя.
+    // Честно сказать «немає мережі» лучше, чем показать пустой результат
+    // и оставить мастера гадать, нет кода в базе или нет связи.
+    if (!online) {
+      toast.warn('Немає мережі', 'Пошук за кодом працює тільки зі звʼязком. Дії зі списання й відкриття банки — працюють.')
+      return
+    }
     const [{ data: cont }, { data: items }] = await Promise.all([
       supabase.rpc('scan_container', { p_tenant_id: tenantId, p_code: q }),
       supabase.rpc('scan_lookup', { p_tenant_id: tenantId, p_code: q }),
@@ -77,7 +88,8 @@ export function InventoryClient({
     type BD = { detect(source: ImageBitmap): Promise<{ rawValue: string }[]> }
     const W = window as unknown as { BarcodeDetector?: new (o?: object) => BD }
     if (!W.BarcodeDetector) {
-      alert('Камера-сканер працює у Chrome на Android. Введіть код вручну.')
+      toast.warn('Камера тут недоступна',
+        'Сканер камерою працює у Chrome на Android. Введіть код наліпки вручну — поле вище.')
       return
     }
     try {
@@ -100,28 +112,59 @@ export function InventoryClient({
       track.stop()
       if (found) await lookup(found)
     } catch {
-      alert('Не вдалося відкрити камеру — введіть код вручну.')
+      toast.error('Не вдалося відкрити камеру',
+        'Перевірте дозвіл на камеру в налаштуваннях браузера. Код можна ввести вручну.')
     }
   }
 
-  async function openContainer(id: string) {
-    setBusy(id)
-    const { error } = await supabase.from('material_containers')
-      .update({ status: 'opened' }).eq('id', id)
-    setBusy(null)
-    if (error) { alert(error.message); return }
-    router.refresh()
-    if (scan?.container?.id === id) void lookup(scan.container.code)
-  }
+  // Три действия с банкой идут одним путём: если сети нет — в очередь
+  // на телефоне, если есть — сразу в базу. Мастер в обоих случаях видит,
+  // что именно произошло, и никогда не остаётся с молчащим экраном.
+  async function setContainerStatus(
+    id: string, code: string, material: string,
+    status: 'opened' | 'finished' | 'disposed',
+  ) {
+    const words: Record<typeof status, string> = {
+      opened: 'Банку відкрито',
+      finished: 'Банку позначено як порожню',
+      disposed: 'Банку списано',
+    }
+    const label = `${words[status]}: ${material} · ${code}`
 
-  async function finishContainer(id: string, disposed = false) {
+    if (!online) {
+      await enqueue(label, { kind: 'container.status', containerId: id, status })
+      setScan(null)
+      toast.success(words[status], 'Записали на телефоні — піде в базу, щойно зʼявиться звʼязок.')
+      return
+    }
+
     setBusy(id)
     const { error } = await supabase.from('material_containers')
-      .update({ status: disposed ? 'disposed' : 'finished' }).eq('id', id)
+      .update({ status }).eq('id', id)
     setBusy(null)
-    if (error) { alert(error.message); return }
-    setScan(null)
-    router.refresh()
+
+    if (error) {
+      // Ошибка правила базы (например, «дата вскрытия не редактируется») —
+      // это не сбой связи, откладывать её бессмысленно. Показываем причину.
+      toast.push({
+        kind: 'error',
+        text: 'Не вдалося зберегти',
+        detail: error.message,
+        action: { label: 'Спробувати ще раз', run: () => void setContainerStatus(id, code, material, status) },
+      })
+      return
+    }
+
+    toast.success(words[status], status === 'opened'
+      ? 'Термін придатності порахувався від сьогодні.'
+      : 'Залишок і журнал оновлено.')
+    if (status === 'opened') {
+      router.refresh()
+      if (scan?.container?.id === id) void lookup(code)
+    } else {
+      setScan(null)
+      router.refresh()
+    }
   }
 
   const fmtDate = (d: string | null) =>
@@ -174,18 +217,21 @@ export function InventoryClient({
             <div className="flex gap-2">
               {scan.container.status === 'sealed' && (
                 <button className="btn-primary h-10" disabled={busy === scan.container.id}
-                        onClick={() => void openContainer(scan.container!.id)}>
-                  Відкрити банку
+                        onClick={() => void setContainerStatus(
+                          scan.container!.id, scan.container!.code, scan.container!.material, 'opened')}>
+                  {busy === scan.container.id ? 'Зберігаємо…' : 'Відкрити банку'}
                 </button>
               )}
               {scan.container.status === 'opened' && (
                 <>
                   <button className="btn-secondary h-10" disabled={busy === scan.container.id}
-                          onClick={() => void finishContainer(scan.container!.id)}>
+                          onClick={() => void setContainerStatus(
+                            scan.container!.id, scan.container!.code, scan.container!.material, 'finished')}>
                     Закінчилась
                   </button>
                   <button className="btn-danger h-10" disabled={busy === scan.container.id}
-                          onClick={() => void finishContainer(scan.container!.id, true)}>
+                          onClick={() => void setContainerStatus(
+                            scan.container!.id, scan.container!.code, scan.container!.material, 'disposed')}>
                     Списати
                   </button>
                 </>
@@ -338,7 +384,7 @@ export function InventoryClient({
                   )}
                   {c.status === 'sealed' && (
                     <button className="btn-secondary h-9 t-sm" disabled={busy === c.id}
-                            onClick={() => void openContainer(c.id)}>
+                            onClick={() => void setContainerStatus(c.id, c.code, c.material, 'opened')}>
                       Відкрити
                     </button>
                   )}
