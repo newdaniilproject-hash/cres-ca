@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { MaterialForm, type RefItem } from './material-form'
@@ -160,9 +161,9 @@ export function InventoryClient({
         {scan?.container && (
           <div className="card-flat mt-3 flex flex-wrap items-center justify-between gap-3 rise">
             <div>
-              <p className="font-medium">{scan.container.material}
+              <p className="t-md">{scan.container.material}
                 <span className="prose-muted"> · {scan.container.code}</span></p>
-              <p className="mt-0.5 text-sm">
+              <p className="tabular t-md mt-0.5">
                 {scan.container.expired
                   ? <span style={{ color: 'var(--color-danger)' }}>Термін сплив {fmtDate(scan.container.use_by)} — не використовувати</span>
                   : scan.container.use_by
@@ -194,9 +195,9 @@ export function InventoryClient({
         )}
         {scan?.item && (
           <div className="card-flat mt-3 rise">
-            <p className="font-medium">{scan.item.title}
+            <p className="t-md">{scan.item.title}
               {scan.item.subtitle ? <span className="prose-muted"> · {scan.item.subtitle}</span> : null}</p>
-            <p className="mt-0.5 text-sm prose-muted">
+            <p className="tabular t-md mt-0.5 prose-muted">
               Залишок: {Number(scan.item.stock_qty)}
               {scan.item.location ? ` · ${scan.item.location}` : ''}
               {scan.item.low_stock ? ' · мало!' : ''}
@@ -207,6 +208,30 @@ export function InventoryClient({
           <p className="field-error mt-3">Код «{scan.miss}» не знайдено</p>
         )}
       </section>
+
+      {/* Приход и журнал — отдельные документы, а не вкладки: остаток
+          меняется только ими, и путь к ним должен быть виден с любой
+          вкладки, а не прятаться под текущей. */}
+      <div className="rise-2 flex flex-wrap gap-2">
+        <Link href="/app/inventory/receipts" className="btn-primary h-9 t-sm">
+          Прийняти товар
+        </Link>
+        <Link href="/app/inventory/counts" className="btn-secondary h-9 t-sm">
+          Інвентаризація
+        </Link>
+        <Link href="/app/inventory/reorder" className="btn-secondary h-9 t-sm">
+          Пора замовити
+        </Link>
+        <Link href="/app/inventory/recipes" className="btn-secondary h-9 t-sm">
+          Рецептура
+        </Link>
+        <Link href="/app/inventory/barcodes" className="btn-secondary h-9 t-sm">
+          Штрихкоди
+        </Link>
+        <Link href="/app/inventory/movements" className="btn-secondary h-9 t-sm">
+          Журнал руху
+        </Link>
+      </div>
 
       {/* Вкладки */}
       <div className="rise-2 flex flex-wrap items-center gap-2">
@@ -228,11 +253,11 @@ export function InventoryClient({
             <>
               {containers.length > 0 && (
                 <a href="/app/inventory/labels" target="_blank" rel="noreferrer"
-                   className="btn-secondary h-9 text-xs">
+                   className="btn-secondary h-9 t-sm">
                   Друк QR-наліпок
                 </a>
               )}
-              <button type="button" className="btn-primary h-9 text-xs"
+              <button type="button" className="btn-primary h-9 t-sm"
                       onClick={() => setAdding(adding === 'container' ? null : 'container')}>
                 + Додати
               </button>
@@ -240,11 +265,11 @@ export function InventoryClient({
           )}
           {tab === 'materials' && (
             <>
-              <button type="button" className="btn-secondary h-9 text-xs"
+              <button type="button" className="btn-secondary h-9 t-sm"
                       onClick={() => setAdding(adding === 'refs' ? null : 'refs')}>
                 Довідники
               </button>
-              <button type="button" className="btn-primary h-9 text-xs"
+              <button type="button" className="btn-primary h-9 t-sm"
                       onClick={() => setAdding(adding === 'material' ? null : 'material')}>
                 + Додати
               </button>
@@ -253,7 +278,7 @@ export function InventoryClient({
           {/* Товар заводится в каталоге вместе с ценой и фото — второй
               формы для того же самого на складе быть не должно. */}
           {tab === 'goods' && (
-            <a href="/app/catalog" className="btn-secondary h-9 text-xs">
+            <a href="/app/catalog" className="btn-secondary h-9 t-sm">
               Додати в каталозі
             </a>
           )}
@@ -297,9 +322,9 @@ export function InventoryClient({
             return (
               <div key={c.id} className="row px-5">
                 <div className="min-w-0">
-                  <p className="truncate font-medium">{c.material}
+                  <p className="t-md truncate">{c.material}
                     <span className="prose-muted"> · {c.code}</span></p>
-                  <p className="mt-0.5 text-xs prose-muted">
+                  <p className="tabular t-xs mt-0.5 prose-muted">
                     {c.status === 'sealed' ? 'запечатана'
                       : `відкрита ${fmtDate(c.openedAt)}`}
                     {c.volume ? ` · ${c.volume} ${c.unit ?? ''}` : ''}
@@ -307,12 +332,12 @@ export function InventoryClient({
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   {c.useBy && (
-                    <span className={expired ? 'badge-danger' : soon ? 'badge-warn' : 'badge'}>
+                    <span className={`tabular ${expired ? 'badge-danger' : soon ? 'badge-warn' : 'badge'}`}>
                       до {fmtDate(c.useBy)}
                     </span>
                   )}
                   {c.status === 'sealed' && (
-                    <button className="btn-secondary h-9 text-xs" disabled={busy === c.id}
+                    <button className="btn-secondary h-9 t-sm" disabled={busy === c.id}
                             onClick={() => void openContainer(c.id)}>
                       Відкрити
                     </button>
@@ -337,13 +362,13 @@ export function InventoryClient({
           ) : materials.map((mt) => (
             <div key={mt.id} className="row px-5">
               <div className="min-w-0">
-                <p className="truncate font-medium">{mt.name}</p>
-                <p className="mt-0.5 text-xs prose-muted">
+                <p className="t-md truncate">{mt.name}</p>
+                <p className="t-xs mt-0.5 prose-muted">
                   {mt.brand ? `${mt.brand} · ` : ''}
                   {mt.cosmetic ? `косметика · PAO ${mt.pao ?? '—'} міс` : 'матеріал'}
                 </p>
               </div>
-              <span className={mt.threshold > 0 && mt.stock <= mt.threshold ? 'badge-warn' : 'badge'}>
+              <span className={`tabular ${mt.threshold > 0 && mt.stock <= mt.threshold ? 'badge-warn' : 'badge'}`}>
                 {mt.stock} {mt.unit}
               </span>
             </div>
@@ -361,8 +386,8 @@ export function InventoryClient({
                 ['У продажу', `${totals.retail.toLocaleString('uk-UA')} ₴`],
               ].map(([label, val]) => (
                 <div key={label} className="card-flat !p-4 text-center">
-                  <p className="display text-lg font-semibold">{val}</p>
-                  <p className="mt-0.5 text-xs prose-muted">{label}</p>
+                  <p className="tabular t-xl">{val}</p>
+                  <p className="t-xs mt-0.5 prose-muted">{label}</p>
                 </div>
               ))}
             </div>
@@ -373,14 +398,14 @@ export function InventoryClient({
             ) : variants.map((v) => (
               <div key={v.id} className="row px-5">
                 <div className="min-w-0">
-                  <p className="truncate font-medium">{v.title}
+                  <p className="t-md truncate">{v.title}
                     <span className="prose-muted"> · {v.name}</span></p>
                   {v.reserved > 0 && (
-                    <p className="mt-0.5 text-xs prose-muted">у резерві: {v.reserved}</p>
+                    <p className="tabular t-xs mt-0.5 prose-muted">у резерві: {v.reserved}</p>
                   )}
                 </div>
                 {v.tracked ? (
-                  <span className={v.threshold > 0 && v.stock <= v.threshold ? 'badge-warn' : 'badge'}>
+                  <span className={`tabular ${v.threshold > 0 && v.stock <= v.threshold ? 'badge-warn' : 'badge'}`}>
                     {v.stock} {v.unit}
                   </span>
                 ) : (

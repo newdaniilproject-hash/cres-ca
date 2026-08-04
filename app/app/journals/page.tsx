@@ -30,7 +30,7 @@ export default async function JournalsPage() {
     ])
 
   return (
-    <AppShell active="/app/journals" title="Санітарні журнали">
+    <AppShell modules={m.modules} active="/app/journals" title="Санітарні журнали">
       <JournalsClient
         tenantId={m.tenantId}
         userId={user!.id}

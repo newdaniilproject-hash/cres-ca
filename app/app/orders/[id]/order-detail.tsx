@@ -118,7 +118,7 @@ export function OrderDetail({
       <div className="rise flex flex-wrap items-center justify-between gap-3">
         <Link href="/app/orders" className="btn-ghost">← Усі замовлення</Link>
         <div className="flex items-center gap-2">
-          <span className="text-xs prose-muted">
+          <span className="tabular t-xs prose-muted">
             {fmt(order.createdAt)} · {SOURCE_LABEL[order.source] ?? order.source}
           </span>
           {order.guest && <span className="badge">гостьове</span>}
@@ -134,9 +134,9 @@ export function OrderDetail({
       {/* Смена статуса */}
       {canWrite && (
         <section className="card rise-1">
-          <h2 className="mb-3 font-medium">Що робимо далі</h2>
+          <h2 className="t-lg mb-3">Що робимо далі</h2>
           {forward.length === 0 && undoing.length === 0 ? (
-            <p className="text-sm prose-muted">
+            <p className="t-md prose-muted">
               Це кінцевий стан — переходів із нього немає.
             </p>
           ) : (
@@ -144,14 +144,14 @@ export function OrderDetail({
               <div className="flex flex-wrap gap-2">
                 {forward.map((s, i) => (
                   <button key={s} disabled={busy !== null}
-                          className={i === 0 ? 'btn-primary h-10 text-sm' : 'btn-secondary h-10 text-sm'}
+                          className={i === 0 ? 'btn-primary h-10 t-md' : 'btn-secondary h-10 t-md'}
                           onClick={() => void move(s)}>
                     {ACTION[s] ?? ORDER_LABEL[s]}
                   </button>
                 ))}
                 {undoing.map((s) => (
                   <button key={s} disabled={busy !== null}
-                          className="btn-danger h-10 text-sm"
+                          className="btn-danger h-10 t-md"
                           onClick={() => void move(s)}>
                     {ACTION[s] ?? ORDER_LABEL[s]}
                   </button>
@@ -176,30 +176,30 @@ export function OrderDetail({
       <div className="grid gap-4 lg:grid-cols-2">
         {/* Позиции */}
         <section className="card rise-2 lg:col-span-2 !p-0">
-          <h2 className="px-5 pt-5 font-medium">Позиції</h2>
+          <h2 className="t-lg px-5 pt-5">Позиції</h2>
           <div className="px-5">
             {items.length === 0 ? (
               <div className="empty">У замовленні немає жодної позиції</div>
             ) : items.map((it) => (
               <div key={it.id} className="row">
                 <div className="min-w-0">
-                  <p className="truncate font-medium">{it.title}</p>
-                  <p className="mt-0.5 text-xs prose-muted">
+                  <p className="t-md truncate">{it.title}</p>
+                  <p className="tabular t-xs mt-0.5 prose-muted">
                     {it.variant} · {money(it.price)} × {it.qty}
                   </p>
                 </div>
-                <span className="shrink-0 text-sm font-medium">
+                <span className="tabular t-md shrink-0">
                   {money(it.price * it.qty)}
                 </span>
               </div>
             ))}
           </div>
-          <div className="flex flex-col items-end gap-1 px-5 pb-5 pt-4 text-sm">
+          <div className="tabular t-md flex flex-col items-end gap-1 px-5 pb-5 pt-4">
             <p className="prose-muted">Позиції: {money(order.subtotal)}</p>
             {order.discount > 0 && (
               <p className="prose-muted">Знижка: −{money(order.discount)}</p>
             )}
-            <p className="display text-xl font-semibold">{money(order.total)}</p>
+            <p className="t-2xl">{money(order.total)}</p>
             {order.paid > 0 && (
               <p className="prose-muted">Сплачено: {money(order.paid)}</p>
             )}
@@ -208,9 +208,9 @@ export function OrderDetail({
 
         {/* Контакты и доставка */}
         <section className="card rise-3">
-          <h2 className="mb-3 font-medium">Покупець</h2>
-          <div className="flex flex-col gap-1 text-sm">
-            <p className="font-medium">{order.name}</p>
+          <h2 className="t-lg mb-3">Покупець</h2>
+          <div className="t-md flex flex-col gap-1">
+            <p className="t-md">{order.name}</p>
             {order.phone
               ? <a href={`tel:${order.phone}`} className="prose-muted">{order.phone}</a>
               : <p className="prose-muted">телефон не вказано</p>}
@@ -227,8 +227,8 @@ export function OrderDetail({
 
           <div className="divider my-4" />
 
-          <h2 className="mb-3 font-medium">Доставка</h2>
-          <div className="flex flex-col gap-1 text-sm">
+          <h2 className="t-lg mb-3">Доставка</h2>
+          <div className="t-md flex flex-col gap-1">
             <p className={delivery ? '' : 'prose-muted'}>
               {delivery || 'спосіб доставки не вказано'}
             </p>
@@ -241,12 +241,12 @@ export function OrderDetail({
             <>
               <div className="divider my-4" />
               {order.comment && (
-                <p className="text-sm">
+                <p className="t-md">
                   <span className="prose-muted">Коментар покупця: </span>{order.comment}
                 </p>
               )}
               {order.cancelReason && (
-                <p className="mt-1 text-sm">
+                <p className="t-md mt-1">
                   <span className="prose-muted">Причина скасування: </span>{order.cancelReason}
                 </p>
               )}
@@ -256,7 +256,7 @@ export function OrderDetail({
 
         {/* История */}
         <section className="card rise-4">
-          <h2 className="mb-3 font-medium">Історія</h2>
+          <h2 className="t-lg mb-3">Історія</h2>
           {events.length === 0 ? (
             <div className="empty !py-8">Подій ще немає</div>
           ) : (
@@ -267,12 +267,12 @@ export function OrderDetail({
                         className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
                         style={{ background: 'var(--color-accent)' }} />
                   <div className="min-w-0">
-                    <p className="text-sm">
+                    <p className="t-md">
                       {e.from ? `${ORDER_LABEL[e.from] ?? e.from} → ` : ''}
                       <span className="font-medium">{ORDER_LABEL[e.to] ?? e.to}</span>
                     </p>
-                    <p className="text-xs prose-muted">{fmt(e.at)} · {actorLabel(e)}</p>
-                    {e.note && <p className="mt-0.5 text-sm">{e.note}</p>}
+                    <p className="tabular t-xs prose-muted">{fmt(e.at)} · {actorLabel(e)}</p>
+                    {e.note && <p className="t-md mt-0.5">{e.note}</p>}
                   </div>
                 </li>
               ))}

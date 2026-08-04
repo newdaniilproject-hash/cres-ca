@@ -39,15 +39,17 @@ export function MapView({ points }: { points: Point[] }) {
         maxZoom: 19,
       }).addTo(map)
 
+      // Цвета берутся переменными системы: разметка вставляется в документ,
+      // поэтому var() здесь разрешается так же, как в обычном компоненте.
       const icon = L.divIcon({
         className: '',
         html: `<div style="
           width:34px;height:34px;border-radius:50% 50% 50% 4px;
           transform:rotate(-45deg);
-          background:#22443a;border:2.5px solid #faf8f5;
-          box-shadow:0 4px 12px rgb(28 26 23 / .35);
+          background:var(--color-accent);border:2.5px solid var(--color-bg);
+          box-shadow:var(--shadow-card);
           display:flex;align-items:center;justify-content:center;">
-          <span style="transform:rotate(45deg);color:#f6f4ef;font-size:13px">●</span>
+          <span style="transform:rotate(45deg);color:var(--color-accent-text);font-size:13px">●</span>
         </div>`,
         iconSize: [34, 34],
         iconAnchor: [17, 30],
@@ -57,14 +59,19 @@ export function MapView({ points }: { points: Point[] }) {
         L.marker([p.lat, p.lng], { icon })
           .addTo(map!)
           .bindPopup(
+            // Внутри всплывающего окна leaflet рисует свой фон, поэтому
+            // текст берёт его цвет, а приглушение даётся прозрачностью,
+            // а не цветовой переменной интерфейса — она рассчитана на
+            // наши поверхности и на чужой оказалась бы нечитаемой.
             `<div style="font-family:inherit;min-width:180px">
                <strong style="font-size:14px">${p.name}</strong><br/>
-               <span style="color:#766f64;font-size:12px">
+               <span style="opacity:.68;font-size:12px">
                  ${p.tagline ?? ''}${p.address ? `<br/>${p.address}` : ''}
                </span><br/>
                <a href="/t/${p.slug}" style="
-                 display:inline-block;margin-top:8px;padding:6px 12px;
-                 background:#22443a;color:#f6f4ef;border-radius:8px;
+                 display:inline-block;margin-top:8px;padding:8px 12px;
+                 background:var(--color-accent);color:var(--color-accent-text);
+                 border-radius:var(--radius-control);
                  font-size:12px;text-decoration:none">Відкрити сторінку</a>
              </div>`,
           )
@@ -79,7 +86,7 @@ export function MapView({ points }: { points: Point[] }) {
       <div ref={ref} className="h-full w-full" />
       {points.length === 0 && (
         <div className="pointer-events-none absolute inset-x-0 top-6 z-[500] mx-auto max-w-sm px-4">
-          <div className="card text-center text-sm rise">
+          <div className="card t-md text-center rise">
             Заклади з адресою з’являться тут — платформа щойно відкривається.
           </div>
         </div>

@@ -63,7 +63,7 @@ function LoginInner() {
   if (state === 'sent') {
     return (
       <AuthShell title="Перевірте пошту" subtitle={`Надіслали посилання для входу на ${email}`}>
-        <p className="text-sm prose-muted">
+        <p className="t-md prose-muted">
           Лист не прийшов? Перевірте «Спам» або{' '}
           <button className="underline underline-offset-2" onClick={() => setState('idle')}>
             спробуйте ще раз
@@ -93,7 +93,7 @@ function LoginInner() {
           <div>
             <div className="flex items-baseline justify-between">
               <label className="field-label" htmlFor="pass">Пароль</label>
-              <Link href="/forgot" className="text-xs underline underline-offset-2 prose-muted">
+              <Link href="/forgot" className="t-xs underline underline-offset-2 prose-muted">
                 Забули?
               </Link>
             </div>
@@ -111,7 +111,7 @@ function LoginInner() {
 
       <GoogleButton next={next} />
 
-      <p className="mt-6 text-sm prose-muted">
+      <p className="t-md mt-6 prose-muted">
         Немає акаунта?{' '}
         <Link href="/register" className="underline underline-offset-2">Зареєструватися</Link>
         {' · '}

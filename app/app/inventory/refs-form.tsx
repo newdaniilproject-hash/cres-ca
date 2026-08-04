@@ -66,7 +66,7 @@ export function RefsForm({
   return (
     <div className="card rise flex flex-col gap-4">
       <div className="flex items-center gap-2">
-        <p className="display text-base font-semibold">Довідники</p>
+        <p className="display t-lg">Довідники</p>
         <button type="button" className="btn-ghost ml-auto" onClick={onDone}>Закрити</button>
       </div>
 
@@ -74,13 +74,13 @@ export function RefsForm({
 
       <div className="grid gap-5 sm:grid-cols-2">
         <div className="flex flex-col gap-3">
-          <p className="text-sm font-medium">Постачальники</p>
+          <p className="t-md">Постачальники</p>
           {suppliers.length > 0 ? (
             <div className="flex flex-wrap gap-1.5">
               {suppliers.map((s) => <span key={s.id} className="badge">{s.name}</span>)}
             </div>
           ) : (
-            <p className="text-xs prose-muted">Поки жодного</p>
+            <p className="t-xs prose-muted">Поки жодного</p>
           )}
           <form onSubmit={addSupplier} className="grid gap-2">
             <input required className="input" placeholder="Назва постачальника"
@@ -96,13 +96,13 @@ export function RefsForm({
         </div>
 
         <div className="flex flex-col gap-3">
-          <p className="text-sm font-medium">Місця зберігання</p>
+          <p className="t-md">Місця зберігання</p>
           {locations.length > 0 ? (
             <div className="flex flex-wrap gap-1.5">
               {locations.map((l) => <span key={l.id} className="badge">{l.name}</span>)}
             </div>
           ) : (
-            <p className="text-xs prose-muted">Поки жодного</p>
+            <p className="t-xs prose-muted">Поки жодного</p>
           )}
           <form onSubmit={addLocation} className="grid gap-2">
             <input required className="input" placeholder="Шафа біля дзеркала"

@@ -57,7 +57,7 @@ export default async function SearchPage({
 
       <main className="mx-auto max-w-4xl px-4 pt-10 sm:px-6">
         <form action="/search" className="relative rise">
-          <span aria-hidden className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 text-lg"
+          <span aria-hidden className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 t-xl"
                 style={{ color: 'var(--color-faint)' }}>⌕</span>
           <input name="q" defaultValue={q} className="search-hero" autoFocus
                  placeholder="Що шукаєте?" autoComplete="off" />
@@ -82,7 +82,7 @@ export default async function SearchPage({
             <div className="empty">Введіть щонайменше дві літери</div>
           ) : results.length === 0 ? (
             <div className="empty card">
-              <p className="display text-lg" style={{ color: 'var(--color-text)' }}>
+              <p className="display t-lg" style={{ color: 'var(--color-text)' }}>
                 Нічого не знайшли за «{q}»
               </p>
               <p>Спробуйте коротше слово або перевірте розкладку.</p>
@@ -97,20 +97,20 @@ export default async function SearchPage({
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <p className="truncate font-medium">{r.title}</p>
+                      <p className="t-lg truncate">{r.title}</p>
                       <span className={r.result_type === 'shop' ? 'badge-accent' : 'badge'}>
                         {r.result_type === 'shop' ? 'заклад'
                           : r.kind === 'service' ? 'послуга' : 'товар'}
                       </span>
                     </div>
-                    <p className="mt-0.5 truncate text-sm prose-muted">
+                    <p className="t-sm mt-0.5 truncate prose-muted">
                       {r.result_type === 'shop'
                         ? (r.subtitle ?? r.city ?? '')
                         : `${r.shop_name}${r.city ? ` · ${r.city}` : ''}`}
                     </p>
                   </div>
                   {r.price != null && (
-                    <p className="shrink-0 font-medium">
+                    <p className="tabular t-md shrink-0">
                       {Number(r.price).toLocaleString('uk-UA')} ₴
                     </p>
                   )}

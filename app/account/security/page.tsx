@@ -44,10 +44,10 @@ export default function SecurityPage() {
   return (
     <main className="mx-auto max-w-sm px-5 py-12">
       <Link href="/account" className="btn-ghost rise -ml-3 mb-6">← Кабінет</Link>
-      <h1 className="display rise text-2xl font-semibold tracking-tight">Безпека</h1>
+      <h1 className="display rise t-2xl">Безпека</h1>
 
       {msg && (
-        <p className={`rise mt-4 text-sm ${msg.kind === 'err' ? 'field-error !mt-4' : ''}`}
+        <p className={`rise t-md mt-4 ${msg.kind === 'err' ? 'field-error !mt-4' : ''}`}
            style={msg.kind === 'ok' ? { color: 'var(--color-success)' } : undefined}>
           {msg.text}
         </p>

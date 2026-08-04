@@ -54,7 +54,7 @@ export function GoogleButton({ next }: { next: string }) {
 
   return (
     <>
-      <div className="my-5 flex items-center gap-3 text-xs prose-muted">
+      <div className="t-xs my-5 flex items-center gap-3 prose-muted">
         <span aria-hidden className="divider flex-1" />
         або
         <span aria-hidden className="divider flex-1" />

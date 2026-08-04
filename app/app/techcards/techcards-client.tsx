@@ -166,7 +166,7 @@ export function TechCardsClient({
   return (
     <div className="flex flex-col gap-5">
       <div className="rise flex flex-wrap items-center gap-2">
-        <button className="btn-primary h-9 text-xs" onClick={startNew} disabled={draft !== null}>
+        <button className="btn-primary h-9 t-sm" onClick={startNew} disabled={draft !== null}>
           Нова техкарта
         </button>
         <Link href="/app/journals" className="btn-ghost">← Санітарні журнали</Link>
@@ -179,10 +179,10 @@ export function TechCardsClient({
       {draft && (
         <form onSubmit={save} className="card rise-1 flex flex-col gap-4">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="display text-lg">
+            <h2 className="display t-lg">
               {draft.lockTitle ? `Нова версія: ${draft.title}` : 'Нова техкарта'}
             </h2>
-            <span className="badge-accent">версія {draft.version}</span>
+            <span className="badge-accent tabular">версія {draft.version}</span>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
@@ -216,13 +216,13 @@ export function TechCardsClient({
             {draft.steps.map((step, i) => (
               <div key={i} className="card-flat grid gap-3 sm:grid-cols-[1fr_1fr_7rem]">
                 <div className="sm:col-span-3 flex items-center justify-between gap-2">
-                  <span className="badge">крок {i + 1}</span>
+                  <span className="badge tabular">крок {i + 1}</span>
                   <span className="flex gap-1">
-                    <button type="button" className="btn-ghost" aria-label="Вище"
+                    <button type="button" className="btn-icon" aria-label="Вище"
                             disabled={i === 0} onClick={() => moveStep(i, -1)}>↑</button>
-                    <button type="button" className="btn-ghost" aria-label="Нижче"
+                    <button type="button" className="btn-icon" aria-label="Нижче"
                             disabled={i === draft.steps.length - 1} onClick={() => moveStep(i, 1)}>↓</button>
-                    <button type="button" className="btn-ghost" aria-label="Видалити"
+                    <button type="button" className="btn-icon" aria-label="Видалити"
                             onClick={() => removeStep(i)}>✕</button>
                   </span>
                 </div>
@@ -285,12 +285,12 @@ export function TechCardsClient({
             <section key={g.title} className="card rise-2 flex flex-col gap-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h2 className="display text-lg">{g.title}</h2>
-                  <p className="text-xs prose-muted">
+                  <h2 className="display t-lg">{g.title}</h2>
+                  <p className="tabular t-xs prose-muted">
                     {g.latest.offeringTitle ?? 'Загальна для салону'} · версій: {g.versions.length}
                   </p>
                 </div>
-                <button className="btn-secondary h-9 text-xs" disabled={draft !== null}
+                <button className="btn-secondary h-9 t-sm" disabled={draft !== null}
                         onClick={() => startNextVersion(g)}>
                   Створити нову версію
                 </button>
@@ -303,7 +303,7 @@ export function TechCardsClient({
                   return (
                     <div key={v.id}>
                       <div className="row">
-                        <button className="btn-ghost !px-0"
+                        <button className="btn-ghost tabular !px-0"
                                 onClick={() => setOpenVersion(open ? null : v.id)}>
                           <span aria-hidden>{open ? '▾' : '▸'}</span>
                           Версія {v.version} · {fmt(v.createdAt)} · кроків: {steps.length}
@@ -313,13 +313,13 @@ export function TechCardsClient({
                         </span>
                       </div>
                       {open && (
-                        <ol className="flex flex-col gap-2 pb-3 pl-5 text-sm">
+                        <ol className="t-md flex flex-col gap-2 pb-3 pl-5">
                           {steps.length === 0 && <li className="prose-muted">Кроків не записано</li>}
                           {steps.map((s, i) => (
                             <li key={i}>
                               <span className="font-medium">{i + 1}. {s.title}</span>
                               {s.minutes && <span className="prose-muted"> · {s.minutes} хв</span>}
-                              {s.detail && <p className="text-xs prose-muted">{s.detail}</p>}
+                              {s.detail && <p className="t-xs prose-muted">{s.detail}</p>}
                             </li>
                           ))}
                         </ol>

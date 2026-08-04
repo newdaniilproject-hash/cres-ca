@@ -91,7 +91,7 @@ export default function SellerRegisterPage() {
         {/* Только шаг 1: на шаге заведения человек уже вошёл */}
         <GoogleButton next="/register/seller" />
 
-        <p className="mt-6 text-sm prose-muted">
+        <p className="t-md mt-6 prose-muted">
           Вже є акаунт? <Link href="/login?next=/register/seller" className="underline underline-offset-2">Увійти</Link>
         </p>
         </>

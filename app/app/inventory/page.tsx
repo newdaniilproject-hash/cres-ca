@@ -55,7 +55,7 @@ export default async function InventoryPage() {
     ])
 
   return (
-    <AppShell active="/app/inventory" title="Склад">
+    <AppShell modules={m.modules} active="/app/inventory" title="Склад">
       <InventoryClient
         tenantId={m.tenantId}
         userId={user!.id}

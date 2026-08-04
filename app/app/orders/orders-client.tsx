@@ -115,22 +115,22 @@ export function OrdersClient({
         ) : orders.map((o) => (
           <Link key={o.id} href={`/app/orders/${o.id}`} className="row px-5">
             <div className="min-w-0">
-              <p className="flex flex-wrap items-center gap-2 font-medium">
-                <span>№{o.number}</span>
+              <p className="t-md flex flex-wrap items-center gap-2">
+                <span className="tabular">№{o.number}</span>
                 <span className="truncate">{o.name}</span>
                 {/* Гостевой заказ: аккаунта нет, связи с ним тоже — только
                     имя и телефон из формы. Помечаем, чтобы продавец не искал
                     несуществующую историю покупок. */}
                 {o.guest && <span className="badge">гість</span>}
               </p>
-              <p className="mt-0.5 text-xs prose-muted">
+              <p className="tabular t-xs mt-0.5 prose-muted">
                 {fmt(o.createdAt)}
                 {o.phone ? ` · ${o.phone}` : ''}
                 {SOURCE_LABEL[o.source] ? ` · ${SOURCE_LABEL[o.source]}` : ''}
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-3">
-              <span className="text-sm font-medium">{o.total.toLocaleString('uk-UA')} ₴</span>
+              <span className="tabular t-md">{o.total.toLocaleString('uk-UA')} ₴</span>
               <span className={orderBadge(o.status)}>{ORDER_LABEL[o.status] ?? o.status}</span>
             </div>
           </Link>

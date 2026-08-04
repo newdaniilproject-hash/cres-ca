@@ -74,14 +74,14 @@ export default async function ShopPage({
         <section className="rise pt-12 pb-8 text-center">
           <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center"
                style={{ borderRadius: '50%', background: 'var(--color-accent-soft)' }}>
-            <span className="display text-3xl" style={{ color: 'var(--color-accent)' }}>
+            <span className="display t-3xl" style={{ color: 'var(--color-accent)' }}>
               {shop.name.slice(0, 1)}
             </span>
           </div>
-          <h1 className="display text-3xl font-semibold tracking-tight sm:text-4xl">{shop.name}</h1>
-          {shop.tagline && <p className="mt-2 text-base prose-muted">{shop.tagline}</p>}
+          <h1 className="display t-3xl sm:t-4xl">{shop.name}</h1>
+          {shop.tagline && <p className="t-md mt-2 prose-muted">{shop.tagline}</p>}
           {(shop.city || shop.address) && (
-            <p className="mt-3 text-sm prose-muted">
+            <p className="t-sm mt-3 prose-muted">
               {[shop.address, shop.city].filter(Boolean).join(', ')}
               {' · '}
               <Link href="/map" className="underline underline-offset-2">на мапі</Link>
@@ -92,17 +92,17 @@ export default async function ShopPage({
         {/* Услуги: главный сценарий — записаться */}
         {services.length > 0 && (
           <section className="rise-1 pb-8">
-            <h2 className="display mb-4 text-xl font-semibold">Послуги</h2>
+            <h2 className="display mb-4 t-xl">Послуги</h2>
             <div className="card !p-0">
               {services.map((o) => (
                 <div key={o.id} id={o.slug} className="row px-5">
                   <div className="min-w-0">
-                    <p className="font-medium">{o.title}</p>
-                    {o.subtitle && <p className="mt-0.5 text-sm prose-muted">{o.subtitle}</p>}
+                    <p className="t-lg">{o.title}</p>
+                    {o.subtitle && <p className="t-sm mt-0.5 prose-muted">{o.subtitle}</p>}
                   </div>
                   <div className="flex shrink-0 items-center gap-4">
                     {o.price != null && (
-                      <p className="font-medium">{Number(o.price).toLocaleString('uk-UA')} ₴</p>
+                      <p className="tabular t-md">{Number(o.price).toLocaleString('uk-UA')} ₴</p>
                     )}
                     <Link href={`/t/${slug}/book/${o.id}`} className="btn-primary h-10">
                       Записатися
@@ -112,7 +112,7 @@ export default async function ShopPage({
               ))}
             </div>
             {staff.length > 0 && (
-              <div className="mt-4 flex flex-wrap items-center gap-2 text-sm prose-muted">
+              <div className="t-sm mt-4 flex flex-wrap items-center gap-2 prose-muted">
                 <span>Майстри:</span>
                 {staff.map((s) => (
                   <span key={s.id} className="badge">{s.name}{s.title ? ` · ${s.title}` : ''}</span>
@@ -125,27 +125,27 @@ export default async function ShopPage({
         {/* Товары */}
         {products.length > 0 && (
           <section className="rise-2 pb-8">
-            <h2 className="display mb-4 text-xl font-semibold">Товари</h2>
+            <h2 className="display mb-4 t-xl">Товари</h2>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {products.map((o) => (
                 <div key={o.id} id={o.slug} className="card-link">
                   <div className="mb-3 flex h-32 items-center justify-center"
                        style={{ borderRadius: 'var(--radius-control)', background: 'var(--color-surface-2)' }}>
-                    <span className="display text-2xl" style={{ color: 'var(--color-faint)' }}>
+                    <span className="display t-2xl" style={{ color: 'var(--color-faint)' }}>
                       {o.title.slice(0, 1)}
                     </span>
                   </div>
-                  <p className="truncate font-medium">{o.title}</p>
+                  <p className="t-lg truncate">{o.title}</p>
                   <div className="mt-1 flex items-center justify-between">
-                    <p className="text-sm prose-muted">{o.subtitle ?? ''}</p>
+                    <p className="t-sm prose-muted">{o.subtitle ?? ''}</p>
                     {o.price != null && (
-                      <p className="font-medium">{Number(o.price).toLocaleString('uk-UA')} ₴</p>
+                      <p className="tabular t-md">{Number(o.price).toLocaleString('uk-UA')} ₴</p>
                     )}
                   </div>
                 </div>
               ))}
             </div>
-            <p className="mt-4 text-xs prose-muted">
+            <p className="t-xs mt-4 prose-muted">
               Замовлення товарів — за телефоном або в повідомленнях закладу;
               онлайн-кошик відкриється разом із доставкою.
             </p>
@@ -154,7 +154,7 @@ export default async function ShopPage({
 
         {offerings.length === 0 && (
           <div className="empty card rise-1">
-            <p className="display text-lg" style={{ color: 'var(--color-text)' }}>
+            <p className="display t-lg" style={{ color: 'var(--color-text)' }}>
               Каталог наповнюється
             </p>
             <p>Заклад щойно приєднався — послуги та товари з’являться найближчим часом.</p>
@@ -163,8 +163,8 @@ export default async function ShopPage({
 
         {shop.description && (
           <section className="rise-3 pb-8">
-            <h2 className="display mb-3 text-xl font-semibold">Про заклад</h2>
-            <p className="max-w-2xl text-sm leading-relaxed prose-muted">{shop.description}</p>
+            <h2 className="display mb-3 t-xl">Про заклад</h2>
+            <p className="t-md max-w-2xl leading-relaxed prose-muted">{shop.description}</p>
           </section>
         )}
       </main>

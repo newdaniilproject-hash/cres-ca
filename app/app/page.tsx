@@ -44,13 +44,13 @@ export default async function AppHome() {
   })
 
   return (
-    <AppShell active="/app" title={shop?.name ?? 'Кабінет'}>
+    <AppShell modules={m.modules} active="/app" title={shop?.name ?? 'Кабінет'}>
       {shop && shop.status === 'draft' && (
         <div className="card-flat rise mb-6 flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm">
+          <p className="t-md">
             Заклад у чернетці: облік уже працює, публічна сторінка вимкнена.
           </p>
-          <Link href="/app/settings" className="btn-secondary h-9 text-xs">До публікації</Link>
+          <Link href="/app/settings" className="btn-secondary h-9 t-sm">До публікації</Link>
         </div>
       )}
 
@@ -58,8 +58,8 @@ export default async function AppHome() {
         {/* Записи сегодня */}
         <section className="card rise-1">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="font-medium">Записи сьогодні</h2>
-            <Link href="/app/bookings" className="btn-ghost h-8 text-xs">Усі</Link>
+            <h2 className="t-lg">Записи сьогодні</h2>
+            <Link href="/app/bookings" className="btn-ghost h-8 t-sm">Усі</Link>
           </div>
           {todays.length === 0 ? (
             <div className="empty !py-8">Сьогодні записів немає</div>
@@ -69,12 +69,12 @@ export default async function AppHome() {
               return (
                 <div key={b.id} className="row">
                   <div className="flex items-center gap-3">
-                    <span className="display text-lg font-semibold" style={{ color: 'var(--color-accent)' }}>
+                    <span className="tabular t-xl" style={{ color: 'var(--color-accent)' }}>
                       {t.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })}
                     </span>
                     <div>
-                      <p className="text-sm font-medium">{b.contact_name}</p>
-                      <p className="text-xs prose-muted">{b.title} · {b.variant_name}</p>
+                      <p className="t-md">{b.contact_name}</p>
+                      <p className="t-xs prose-muted">{b.title} · {b.variant_name}</p>
                     </div>
                   </div>
                   <span className={b.status === 'confirmed' ? 'badge-success' : 'badge'}>
@@ -89,8 +89,8 @@ export default async function AppHome() {
         {/* Сроки годности */}
         <section className="card rise-2">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="font-medium">Спливає термін</h2>
-            <Link href="/app/inventory" className="btn-ghost h-8 text-xs">Склад</Link>
+            <h2 className="t-lg">Спливає термін</h2>
+            <Link href="/app/inventory" className="btn-ghost h-8 t-sm">Склад</Link>
           </div>
           {(expiring ?? []).length === 0 ? (
             <div className="empty !py-8">Найближчі два тижні — усе в межах терміну</div>
@@ -98,12 +98,12 @@ export default async function AppHome() {
             (expiring ?? []).map((c) => (
               <div key={c.code} className="row">
                 <div>
-                  <p className="text-sm font-medium">
+                  <p className="t-md">
                     {(c.materials as unknown as { name: string })?.name}
                   </p>
-                  <p className="text-xs prose-muted">Ємність {c.code}</p>
+                  <p className="t-xs prose-muted">Ємність {c.code}</p>
                 </div>
-                <span className="badge-warn">до {new Date(c.use_by!).toLocaleDateString('uk-UA')}</span>
+                <span className="badge-warn tabular">до {new Date(c.use_by!).toLocaleDateString('uk-UA')}</span>
               </div>
             ))
           )}
@@ -112,15 +112,15 @@ export default async function AppHome() {
         {/* Что закупить */}
         <section className="card rise-3 lg:col-span-2">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="font-medium">Що закуповувати</h2>
-            <Link href="/app/inventory" className="btn-ghost h-8 text-xs">Залишки</Link>
+            <h2 className="t-lg">Що закуповувати</h2>
+            <Link href="/app/inventory" className="btn-ghost h-8 t-sm">Залишки</Link>
           </div>
           {(low ?? []).length === 0 ? (
             <div className="empty !py-8">Запасів достатньо</div>
           ) : (
             <div className="flex flex-wrap gap-2">
               {(low ?? []).map((r, i) => (
-                <span key={i} className="badge-warn">
+                <span key={i} className="badge-warn tabular">
                   {r.title} · докупити {Number(r.to_order)}
                 </span>
               ))}

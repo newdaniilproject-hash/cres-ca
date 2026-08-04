@@ -38,13 +38,13 @@ export default async function Home() {
       <main className="mx-auto max-w-6xl px-4 sm:px-6">
         {/* Поиск — первый экран */}
         <section className="pt-14 pb-10 sm:pt-20">
-          <h1 className="display rise max-w-2xl text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">
+          <h1 className="display rise max-w-2xl t-4xl sm:t-5xl">
             Знайдіть майстра або товар&nbsp;—
             <span className="prose-muted"> поруч із вами</span>
           </h1>
 
           <form action="/search" className="rise-1 relative mt-8 max-w-2xl">
-            <span aria-hidden className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 text-lg"
+            <span aria-hidden className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 t-xl"
                   style={{ color: 'var(--color-faint)' }}>⌕</span>
             <input
               name="q"
@@ -69,7 +69,7 @@ export default async function Home() {
         {/* Заведения */}
         <section className="py-10">
           <div className="mb-5 flex items-end justify-between">
-            <h2 className="display text-2xl font-semibold">Заклади</h2>
+            <h2 className="display t-2xl">Заклади</h2>
             <Link href="/map" className="btn-ghost">Показати на мапі</Link>
           </div>
 
@@ -80,14 +80,14 @@ export default async function Home() {
                       className={`card-link rise-${Math.min(i % 3 + 1, 4)}`}>
                   <div className="mb-3 flex h-28 items-center justify-center overflow-hidden"
                        style={{ borderRadius: 'var(--radius-control)', background: 'var(--color-surface-2)' }}>
-                    <span className="display text-3xl" style={{ color: 'var(--color-faint)' }}>
+                    <span className="display t-3xl" style={{ color: 'var(--color-faint)' }}>
                       {s.name.slice(0, 1)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="truncate font-medium">{s.name}</p>
-                      <p className="mt-0.5 truncate text-sm prose-muted">
+                      <p className="t-lg truncate">{s.name}</p>
+                      <p className="t-sm mt-0.5 truncate prose-muted">
                         {s.tagline ?? (s.kind === 'services' ? 'Послуги' : 'Товари')}
                         {s.city ? ` · ${s.city}` : ''}
                       </p>
@@ -101,7 +101,7 @@ export default async function Home() {
             </div>
           ) : (
             <div className="empty card">
-              <p className="display text-lg" style={{ color: 'var(--color-text)' }}>
+              <p className="display t-lg" style={{ color: 'var(--color-text)' }}>
                 Перші заклади вже готуються до відкриття
               </p>
               <p>Ми відкриваємо платформу поступово — спочатку майстри та салони.</p>
@@ -114,8 +114,8 @@ export default async function Home() {
           <div className="grid items-center gap-6 p-8 sm:grid-cols-[1fr_auto] sm:p-10"
                style={{ background: 'linear-gradient(120deg, var(--color-accent-soft), transparent 60%)' }}>
             <div>
-              <h2 className="display text-2xl font-semibold">Ведете бізнес?</h2>
-              <p className="mt-2 max-w-lg text-sm leading-relaxed prose-muted">
+              <h2 className="display t-2xl">Ведете бізнес?</h2>
+              <p className="t-md mt-2 max-w-lg leading-relaxed prose-muted">
                 Склад із термінами придатності, запис клієнтів, санітарні журнали
                 для перевірок і власна сторінка із посиланням для Instagram.
                 Клієнтська база — ваша, з вивантаженням у будь-який момент.

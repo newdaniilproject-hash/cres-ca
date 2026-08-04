@@ -23,7 +23,7 @@ export default function ForgotPage() {
   if (state === 'sent') {
     return (
       <AuthShell title="Лист надіслано" subtitle={`Посилання для зміни пароля — на ${email}`}>
-        <p className="text-sm prose-muted">Не прийшов? Перевірте «Спам».</p>
+        <p className="t-md prose-muted">Не прийшов? Перевірте «Спам».</p>
       </AuthShell>
     )
   }

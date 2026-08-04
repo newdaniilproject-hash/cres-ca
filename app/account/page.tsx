@@ -43,8 +43,8 @@ export default async function AccountPage() {
       <main className="mx-auto max-w-3xl px-4 pt-10 sm:px-6">
         <div className="rise flex items-center justify-between gap-4">
           <div>
-            <h1 className="display text-2xl font-semibold tracking-tight">{name}</h1>
-            <p className="mt-0.5 text-sm prose-muted">{user.email}</p>
+            <h1 className="display t-2xl">{name}</h1>
+            <p className="t-sm mt-0.5 prose-muted">{user.email}</p>
           </div>
           <Link href="/account/security" className="btn-secondary h-10">Безпека</Link>
         </div>
@@ -52,22 +52,22 @@ export default async function AccountPage() {
         {memberships.length > 0 && (
           <Link href="/app" className="card-link rise-1 mt-6 flex items-center justify-between">
             <div>
-              <p className="font-medium">Кабінет підприємця</p>
-              <p className="mt-0.5 text-sm prose-muted">Склад, записи, клієнти</p>
+              <p className="t-lg">Кабінет підприємця</p>
+              <p className="t-sm mt-0.5 prose-muted">Склад, записи, клієнти</p>
             </div>
             <span className="btn-primary h-10">Відкрити</span>
           </Link>
         )}
 
         <section className="rise-2 mt-8">
-          <h2 className="display mb-3 text-xl font-semibold">Мої записи</h2>
+          <h2 className="display mb-3 t-xl">Мої записи</h2>
           {bookings && bookings.length > 0 ? (
             <div className="card !p-0">
               {bookings.map((b) => (
                 <div key={`${b.tenant_id}-${b.number}`} className="row px-5">
                   <div className="min-w-0">
-                    <p className="truncate font-medium">{b.title} · {b.variant_name}</p>
-                    <p className="mt-0.5 text-sm prose-muted">
+                    <p className="t-md truncate">{b.title} · {b.variant_name}</p>
+                    <p className="tabular t-sm mt-0.5 prose-muted">
                       {new Date(String(b.period).slice(2, 27)).toLocaleString('uk-UA', {
                         day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit',
                       })}
@@ -85,20 +85,20 @@ export default async function AccountPage() {
         </section>
 
         <section className="rise-3 mt-8 pb-8">
-          <h2 className="display mb-3 text-xl font-semibold">Мої замовлення</h2>
+          <h2 className="display mb-3 t-xl">Мої замовлення</h2>
           {orders && orders.length > 0 ? (
             <div className="card !p-0">
               {orders.map((o) => (
                 <div key={`${o.tenant_id}-${o.number}`} className="row px-5">
                   <div>
-                    <p className="font-medium">Замовлення №{o.number}</p>
-                    <p className="mt-0.5 text-sm prose-muted">
+                    <p className="tabular t-md">Замовлення №{o.number}</p>
+                    <p className="tabular t-sm mt-0.5 prose-muted">
                       {new Date(o.created_at).toLocaleDateString('uk-UA')}
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="badge">{ORDER_LABELS[o.status] ?? o.status}</span>
-                    <p className="font-medium">{Number(o.total).toLocaleString('uk-UA')} ₴</p>
+                    <p className="tabular t-md">{Number(o.total).toLocaleString('uk-UA')} ₴</p>
                   </div>
                 </div>
               ))}

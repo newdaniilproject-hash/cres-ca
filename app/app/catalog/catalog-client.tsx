@@ -71,7 +71,7 @@ export function CatalogClient({ items, error }: { items: CatalogItem[]; error: s
                 className={filter === 'draft' ? 'chip-active' : 'chip'}>
           Чернетки {counts.draft > 0 && `· ${counts.draft}`}
         </button>
-        <Link href="/app/catalog/new" className="btn-primary ml-auto h-9 text-xs">
+        <Link href="/app/catalog/new" className="btn-primary ml-auto h-9 t-sm">
           Додати
         </Link>
       </div>
@@ -106,16 +106,17 @@ export function CatalogClient({ items, error }: { items: CatalogItem[]; error: s
                   // next/image здесь не нужен: это миниатюра 64×64 с CDN,
                   // размеры оригинала мы не храним.
                   <img src={cover(i.cover)} alt=""
-                       className="h-16 w-16 shrink-0 rounded-lg object-cover" />
+                       className="h-16 w-16 shrink-0 object-cover"
+                       style={{ borderRadius: 'var(--radius-control)' }} />
                 ) : (
-                  <div className="card-flat flex h-16 w-16 shrink-0 items-center justify-center !p-0 text-lg prose-muted">
+                  <div className="card-flat flex h-16 w-16 shrink-0 items-center justify-center !p-0 t-xl prose-muted">
                     {i.kind === 'service' ? '◷' : '◫'}
                   </div>
                 )}
 
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium">{i.title}</p>
-                  {i.subtitle && <p className="truncate text-xs prose-muted">{i.subtitle}</p>}
+                  <p className="t-lg truncate">{i.title}</p>
+                  {i.subtitle && <p className="t-xs truncate prose-muted">{i.subtitle}</p>}
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                     <span className={i.status === 'active' ? 'badge-success'
                       : i.status === 'draft' ? 'badge-warn' : 'badge'}>
@@ -128,7 +129,7 @@ export function CatalogClient({ items, error }: { items: CatalogItem[]; error: s
                 </div>
 
                 <div className="shrink-0 text-right">
-                  <p className="display font-semibold">
+                  <p className="tabular t-md">
                     {i.price != null
                       ? `${i.price.toLocaleString('uk-UA')} ${i.currency === 'UAH' ? '₴' : i.currency}`
                       : '—'}

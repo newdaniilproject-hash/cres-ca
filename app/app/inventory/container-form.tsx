@@ -230,13 +230,13 @@ export function ContainerForm({
 
           {made && (
             <div className="card-flat rise sm:col-span-2">
-              <p className="font-medium">Банку {made} створено</p>
-              <p className="mt-1 text-sm prose-muted">
+              <p className="t-lg">Банку {made} створено</p>
+              <p className="t-md mt-1 prose-muted">
                 Роздрукуйте наліпку з QR і наклейте на банку — далі майстер
                 просто сканує її камерою.
               </p>
               <a href="/app/inventory/labels" target="_blank" rel="noreferrer"
-                 className="btn-secondary mt-3 h-9 text-xs">
+                 className="btn-secondary mt-3 h-9 t-sm">
                 Друк QR-наліпок
               </a>
             </div>

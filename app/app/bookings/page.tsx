@@ -21,7 +21,7 @@ export default async function BookingsPage() {
     .limit(100)
 
   return (
-    <AppShell active="/app/bookings" title="Записи">
+    <AppShell modules={m.modules} active="/app/bookings" title="Записи">
       <BookingsClient
         bookings={(data ?? []).map((b) => ({
           id: b.id, number: b.number, title: b.title, variant: b.variant_name,

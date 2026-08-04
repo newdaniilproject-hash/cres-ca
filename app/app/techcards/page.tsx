@@ -34,7 +34,7 @@ export default async function TechCardsPage() {
   ])
 
   return (
-    <AppShell active="/app/journals" title="Техкарти обробки">
+    <AppShell modules={m.modules} active="/app/journals" title="Техкарти обробки">
       <TechCardsClient
         tenantId={m.tenantId}
         userId={user!.id}

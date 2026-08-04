@@ -3,10 +3,10 @@
 import { useEffect, useState } from 'react'
 
 // Выбор темы хранится в localStorage и ставится классом на <html>.
-// Значений три: 'light', 'dark' и отсутствие ключа — «как в системе».
-// Класса при системном режиме нет намеренно: тогда работают
-// медиа-запросы в globals.css, и тема меняется вслед за системой
-// без перезагрузки страницы.
+// Значений три: 'light', 'dark' и отсутствие ключа — «как есть».
+// Значения по умолчанию в globals.css — тёмные, и системную тему
+// файл намеренно не слушает: тёмный интерфейс здесь не «ночной
+// режим», а основной вид продукта.
 const KEY = 'theme'
 
 type Choice = 'light' | 'dark' | 'system'
@@ -65,7 +65,7 @@ export function ThemeToggle({ className = '' }: { className?: string }) {
           title={o.title}
           aria-label={o.title}
           aria-pressed={choice === o.value}
-          className="h-8 w-8 rounded-full text-sm leading-none transition-colors"
+          className="btn-icon t-md rounded-full leading-none transition-colors"
           style={
             choice === o.value
               ? { background: 'var(--color-accent)', color: 'var(--color-accent-text)' }

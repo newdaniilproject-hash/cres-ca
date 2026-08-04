@@ -36,7 +36,7 @@ export default function RegisterPage() {
   if (state === 'confirm') {
     return (
       <AuthShell title="Підтвердіть пошту" subtitle={`Надіслали лист на ${email}`}>
-        <p className="text-sm prose-muted">
+        <p className="t-md prose-muted">
           Відкрийте посилання з листа — і акаунт готовий.
         </p>
       </AuthShell>
@@ -73,7 +73,7 @@ export default function RegisterPage() {
 
       <GoogleButton next="/account" />
 
-      <p className="mt-6 text-sm prose-muted">
+      <p className="t-md mt-6 prose-muted">
         Вже з нами? <Link href="/login" className="underline underline-offset-2">Увійти</Link>
       </p>
     </AuthShell>

@@ -88,7 +88,7 @@ export default async function FinancePage({
   }
 
   return (
-    <AppShell active="/app/finance" title="Фінанси">
+    <AppShell modules={m.modules} active="/app/finance" title="Фінанси">
       <FinanceClient
         tenantId={m.tenantId}
         userId={user?.id ?? ''}

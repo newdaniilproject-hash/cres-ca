@@ -81,7 +81,7 @@ export function MaterialForm({
 
   return (
     <form onSubmit={save} className="card rise grid gap-3 sm:grid-cols-2">
-      <p className="display text-base font-semibold sm:col-span-2">Новий витратний засіб</p>
+      <p className="display t-lg sm:col-span-2">Новий витратний засіб</p>
 
       <div className="sm:col-span-2">
         <label className="field-label">Назва</label>
@@ -134,7 +134,7 @@ export function MaterialForm({
         </select>
       </div>
 
-      <label className="flex items-center gap-2 text-sm sm:col-span-2">
+      <label className="t-md flex items-center gap-2 sm:col-span-2">
         <input type="checkbox" checked={cosmetic}
                onChange={(e) => setCosmetic(e.target.checked)} />
         Косметичний засіб — потрібно для перевірки Держпродспоживслужби
@@ -142,7 +142,7 @@ export function MaterialForm({
 
       {cosmetic && (
         <div className="card-flat grid gap-3 sm:col-span-2 sm:grid-cols-2">
-          <p className="text-xs prose-muted sm:col-span-2">
+          <p className="t-xs prose-muted sm:col-span-2">
             Паспорт засобу за Технічним регламентом №65. Перепишіть з етикетки —
             саме це питає інспектор.
           </p>

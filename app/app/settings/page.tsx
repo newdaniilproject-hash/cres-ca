@@ -24,7 +24,7 @@ export default async function SettingsPage() {
   if (!shop) redirect('/register/seller')
 
   return (
-    <AppShell active="/app/settings" title="Магазин">
+    <AppShell modules={m.modules} active="/app/settings" title="Магазин">
       <SettingsClient
         shop={shop}
         canWrite={can(m, 'settings.write')}

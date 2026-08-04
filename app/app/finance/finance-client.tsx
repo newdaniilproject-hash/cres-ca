@@ -166,23 +166,23 @@ export function FinanceClient({
             {p.label}
           </button>
         ))}
-        <span className="text-xs prose-muted">{day(from)} — {day(to)}</span>
+        <span className="tabular t-xs prose-muted">{day(from)} — {day(to)}</span>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="card rise-1">
-          <p className="text-xs prose-muted">Доходи</p>
-          <p className="display mt-1 text-2xl font-semibold"
+          <p className="t-xs prose-muted">Доходи</p>
+          <p className="tabular t-3xl mt-1"
              style={{ color: 'var(--color-success)' }}>{money(income)}</p>
         </div>
         <div className="card rise-2">
-          <p className="text-xs prose-muted">Витрати</p>
-          <p className="display mt-1 text-2xl font-semibold"
+          <p className="t-xs prose-muted">Витрати</p>
+          <p className="tabular t-3xl mt-1"
              style={{ color: 'var(--color-danger)' }}>{money(expense)}</p>
         </div>
         <div className="card rise-3">
-          <p className="text-xs prose-muted">Різниця</p>
-          <p className="display mt-1 text-2xl font-semibold"
+          <p className="t-xs prose-muted">Різниця</p>
+          <p className="tabular t-3xl mt-1"
              style={{ color: balance < 0 ? 'var(--color-danger)' : 'var(--color-accent)' }}>
             {money(balance)}
           </p>
@@ -249,7 +249,7 @@ export function FinanceClient({
           return (
             <div key={r.id} className="row flex-wrap px-5">
               <div className="min-w-0">
-                <p className="flex flex-wrap items-center gap-2 font-medium">
+                <p className="t-md flex flex-wrap items-center gap-2">
                   <span>{category?.name ?? (r.note ? r.note : 'без категорії')}</span>
                   {/* Автозапись триггера orders_income_record: продавец
                       не вносил её руками, и это должно быть видно. */}
@@ -257,7 +257,7 @@ export function FinanceClient({
                     <span className="badge-accent">із замовлення</span>
                   )}
                 </p>
-                <p className="mt-0.5 text-xs prose-muted">
+                <p className="tabular t-xs mt-0.5 prose-muted">
                   {day(r.occurredOn)}
                   {category && r.note ? ` · ${r.note}` : ''}
                   {r.orderId && (
@@ -271,15 +271,15 @@ export function FinanceClient({
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <span className="text-sm font-medium"
+                <span className="tabular t-md"
                       style={{ color: r.kind === 'income' ? 'var(--color-success)' : 'var(--color-danger)' }}>
                   {r.kind === 'income' ? '+' : '−'}{money(r.amount)}
                 </span>
                 {canWrite && (
                   <>
-                    <button className="btn-ghost h-8 text-xs"
+                    <button className="btn-ghost h-8 t-sm"
                             onClick={() => startEdit(r)}>Нотатка</button>
-                    <button className="btn-ghost h-8 text-xs"
+                    <button className="btn-ghost h-8 t-sm"
                             onClick={() => startReverse(r)}>Зворотний запис</button>
                   </>
                 )}
@@ -305,11 +305,11 @@ export function FinanceClient({
                     </select>
                   </div>
                   <div className="sm:col-span-3 flex gap-2">
-                    <button className="btn-primary h-10 text-sm" disabled={busy === r.id}
+                    <button className="btn-primary h-10 t-md" disabled={busy === r.id}
                             onClick={() => void saveEdit(r.id)}>Зберегти</button>
-                    <button className="btn-secondary h-10 text-sm"
+                    <button className="btn-secondary h-10 t-md"
                             onClick={() => setEditing(null)}>Скасувати</button>
-                    <span className="self-center text-xs prose-muted">
+                    <span className="t-xs self-center prose-muted">
                       Сума й вид залишаться незмінними — база їх не віддасть.
                     </span>
                   </div>
@@ -329,12 +329,12 @@ export function FinanceClient({
 
       {/* Справочник категорий */}
       <section className="card rise-4">
-        <h2 className="mb-3 font-medium">Категорії</h2>
+        <h2 className="t-lg mb-3">Категорії</h2>
         {categories.length === 0 ? (
-          <p className="text-sm prose-muted">
+          <div className="empty !py-6">
             Категорій ще немає. Вони потрібні тільки вам — щоб через рік
             бачити, куди пішли гроші.
-          </p>
+          </div>
         ) : (
           <div className="flex flex-wrap gap-2">
             {categories.map((c) => (

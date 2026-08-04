@@ -190,8 +190,8 @@ export function DocumentsClient({
 
       {missing.length > 0 && (
         <div className="card-flat rise-1 flex flex-wrap items-center gap-3">
-          <span className="badge-warn">без документів: {missing.length}</span>
-          <p className="text-sm prose-muted">
+          <span className="badge-warn tabular">без документів: {missing.length}</span>
+          <p className="t-md prose-muted">
             На косметичні засоби перевірка вимагає паспорт безпеки, сертифікат
             якості та висновок СЕС. Завантажте їх зараз — під час перевірки
             шукати вже пізно.
@@ -253,8 +253,8 @@ export function DocumentsClient({
               <section key={m.id} className="card rise-2 flex flex-col gap-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <h2 className="display text-lg">{m.name}</h2>
-                    <p className="text-xs prose-muted">
+                    <h2 className="display t-lg">{m.name}</h2>
+                    <p className="t-xs prose-muted">
                       {m.brand ? `${m.brand} · ` : ''}одиниця: {m.unit}
                     </p>
                   </div>
@@ -265,20 +265,20 @@ export function DocumentsClient({
                         потрібні документи для перевірки
                       </span>
                     ) : (
-                      <span className="badge">документів: {docs.length}</span>
+                      <span className="badge tabular">документів: {docs.length}</span>
                     )}
                   </span>
                 </div>
 
                 {docs.length === 0 ? (
-                  <p className="text-sm prose-muted">Документів не завантажено.</p>
+                  <div className="empty !py-6">Документів не завантажено.</div>
                 ) : (
                   <div className="flex flex-col">
                     {docs.map((d) => (
                       <div key={d.id} className="row">
                         <div className="min-w-0">
-                          <p className="truncate font-medium">{d.title}</p>
-                          <p className="text-xs prose-muted">
+                          <p className="t-md truncate">{d.title}</p>
+                          <p className="tabular t-xs prose-muted">
                             {KIND_LABEL[d.kind]} · {fmt(d.createdAt)}
                           </p>
                         </div>
@@ -287,7 +287,8 @@ export function DocumentsClient({
                                   onClick={() => void view(d)}>Переглянути</button>
                           <button className="btn-ghost" disabled={busy === d.id}
                                   onClick={() => void download(d)}>Завантажити</button>
-                          <button className="btn-ghost" disabled={busy === d.id}
+                          <button className="btn-icon" aria-label="Видалити"
+                                  disabled={busy === d.id}
                                   onClick={() => void remove(d)}>✕</button>
                         </span>
                       </div>

@@ -35,7 +35,7 @@ export default async function DocumentsPage() {
     ])
 
   return (
-    <AppShell active="/app/journals" title="Документи на матеріали">
+    <AppShell modules={m.modules} active="/app/journals" title="Документи на матеріали">
       <DocumentsClient
         tenantId={m.tenantId}
         userId={user!.id}

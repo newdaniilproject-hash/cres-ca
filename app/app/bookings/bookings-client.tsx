@@ -55,7 +55,7 @@ export function BookingsClient({ bookings }: { bookings: B[] }) {
   if (bookings.length === 0) {
     return (
       <div className="empty card rise">
-        <p className="display text-lg" style={{ color: 'var(--color-text)' }}>Записів немає</p>
+        <p className="display t-lg" style={{ color: 'var(--color-text)' }}>Записів немає</p>
         <p>Поділіться посиланням на вашу сторінку в Instagram — записи зʼявляться тут.</p>
       </div>
     )
@@ -66,20 +66,20 @@ export function BookingsClient({ bookings }: { bookings: B[] }) {
       {err && <p className="field-error rise">{err}</p>}
       {byDay.map(([day, list], di) => (
         <section key={day} className={`rise-${Math.min(di + 1, 4)}`}>
-          <h2 className="mb-2 text-sm font-medium capitalize prose-muted">{day}</h2>
+          <h2 className="t-sm mb-2 capitalize prose-muted">{day}</h2>
           <div className="card !p-0">
             {list.map((b) => (
               <div key={b.id} className="row flex-wrap px-5">
                 <div className="flex min-w-0 items-center gap-3">
-                  <span className="display text-lg font-semibold" style={{ color: 'var(--color-accent)' }}>
+                  <span className="tabular t-xl" style={{ color: 'var(--color-accent)' }}>
                     {new Date(b.start).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })}
                   </span>
                   <div className="min-w-0">
-                    <p className="truncate font-medium">
+                    <p className="t-md truncate">
                       {b.name}
                       {b.phone && <a href={`tel:${b.phone}`} className="prose-muted"> · {b.phone}</a>}
                     </p>
-                    <p className="truncate text-xs prose-muted">
+                    <p className="tabular t-xs truncate prose-muted">
                       {b.title} · {b.variant} · {b.staff}
                       {b.deposit > 0 && ` · передоплата ${b.deposit.toLocaleString('uk-UA')} ₴`}
                     </p>
@@ -95,7 +95,7 @@ export function BookingsClient({ bookings }: { bookings: B[] }) {
                   </span>
                   {(NEXT[b.status] ?? []).map((a) => (
                     <button key={a.to}
-                            className={a.kind === 'primary' ? 'btn-primary h-9 text-xs' : 'btn-secondary h-9 text-xs'}
+                            className={a.kind === 'primary' ? 'btn-primary h-9 t-sm' : 'btn-secondary h-9 t-sm'}
                             disabled={busy === b.id}
                             onClick={() => void move(b.id, a.to)}>
                       {a.label}

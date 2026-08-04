@@ -4,149 +4,25 @@
    Дизайн-система. Единственный источник значений: захардкоженный
    цвет или радиус в компоненте — ошибка приёмки.
 
-   Устроена как ОДИН набор смысловых имён (--color-bg, --color-accent,
-   и так далее) и ДВА набора значений под них. Компоненты ниже написаны
-   один раз и не знают, где их показывают.
+   Характер — тот, что был в первой крес-ке и который решили
+   вернуть (решение директора 04.08.2026, отменяет разделение
+   на две поверхности): мягкий чёрный #141417, кобальтовый акцент,
+   гротеск, плотная шкала, крупные скругления, двухслойные мягкие
+   тени вместо жирных границ. Тёмный интерфейс — основной вид.
 
-     data-surface="app"  — кабинет продавца. Тёмная база, кобальт,
-                           плотная шкала, гротеск. В нём работают по
-                           восемь часов подряд: он не должен кричать.
-     data-surface="shop"  — витрина, каталог, лендинг, вход. Тёплая
-                           бумага, глубокая зелень, латунь, серифные
-                           заголовки, крупный ритм. Это шоу-рум.
+   Светлая тема есть, но она вторична: включается переключателем
+   и хранится в localStorage. Класс ставится на <html> синхронным
+   скриптом до первой отрисовки (components/theme.tsx), иначе
+   виден кадр с чужим фоном.
 
-   Почему не один язык на всё: витрина продавца обещана ему как
-   «его собственный сайт». Если она выглядит как админка, обещание
-   не выполнено. И наоборот — серифные заголовки поверх плотных
-   таблиц склада читаются тяжелее гротеска.
-
-   Почему ровно два, а не «сколько понадобится»: в прошлой версии
-   проекта языков стало четыре, и склеивать их пришлось четырьмя
-   десятками правил с !important. Третий появляется только вместе
-   с отдельным ADR.
-
-   Тема (светлая/тёмная) — независимое измерение: у каждой поверхности
-   есть оба варианта. Выбор хранится в localStorage и ставится классом
-   на <html> ДО гидрации (см. components/theme.tsx), иначе на первом
-   кадре мигает чужая тема.
+   Чего НЕ повторять из первой крес-ки: там источников правды по
+   цвету было четыре одновременно, и склеивать их пришлось сорока
+   правилами с !important. Здесь источник ровно один — этот файл.
    ============================================================ */
 
 @theme {
-  /* Значения по умолчанию = витрина, светлая. Так выглядит страница
-     до того, как какой-либо слой объявил свою поверхность. */
-  --color-bg: #faf8f5;
-  --color-surface: #ffffff;
-  --color-surface-2: #f3f0ea;
-  --color-border: #e7e2d9;
-  --color-border-strong: #d6cfc2;
-  --color-text: #1c1a17;
-  --color-muted: #766f64;
-  --color-faint: #a39b8d;
-
-  --color-accent: #22443a;
-  --color-accent-hover: #2d574a;
-  --color-accent-soft: #e8efe9;
-  --color-accent-text: #f6f4ef;
-  --color-gold: #b08d3f;
-
-  --color-danger: #a83a32;
-  --color-danger-soft: #f7e9e7;
-  --color-success: #2e6b46;
-  --color-success-soft: #e6f0e8;
-  --color-warn: #9a6b1f;
-  --color-warn-soft: #f7efdd;
-
-  /* Радиус растёт вместе с размером объекта: значок — управляющий
-     элемент — карточка — шторка. Смешивать ступени нельзя. */
-  --radius-control: 0.625rem;
-  --radius-card: 1rem;
-  --radius-hero: 1.5rem;
-
-  --shadow-card: 0 1px 2px rgb(28 26 23 / 0.04), 0 8px 24px -12px rgb(28 26 23 / 0.10);
-  --shadow-lift: 0 2px 4px rgb(28 26 23 / 0.06), 0 16px 40px -16px rgb(28 26 23 / 0.18);
-  --shadow-overlay: 0 24px 64px -16px rgb(28 26 23 / 0.28);
-
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  --font-display: var(--font-serif), Georgia, 'Times New Roman', serif;
-
-  /* Заголовки: витрина — серифом, кабинет переопределяет на гротеск. */
-  --font-heading: var(--font-display);
-  --heading-weight: 560;
-  --heading-tracking: -0.015em;
-
-  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
-  --dur-fast: 150ms;
-  --dur-base: 260ms;
-  --dur-slow: 420ms;
-
-  /* Минимальная зона нажатия по Apple HIG. Всё, во что тыкают
-     пальцем, обязано быть не меньше. */
-  --tap-min: 44px;
-}
-
-/* ── Витрина, тёмная ─────────────────────────────────────────
-   Тёплая темнота, а не серый: бумага, погашенная до ночи.
-   Акцент светлеет — глубокая зелень на тёмном не читается.
-
-   Витрина следует системе, пока покупатель не выбрал сам: она
-   открывается по ссылке из инстаграма, второго шанса объяснить
-   переключатель не будет. Кабинет — наоборот, тёмный всегда
-   (см. ниже): это рабочий инструмент, и решение принято за
-   пользователя осознанно.                                       */
-@media (prefers-color-scheme: dark) {
-  html:not(.light) body,
-  html:not(.light) [data-surface='shop'] {
-    --color-bg: #12100e;
-    --color-surface: #1b1917;
-    --color-surface-2: #242119;
-    --color-border: #322e28;
-    --color-border-strong: #46403a;
-    --color-text: #f2efe9;
-    --color-muted: #a89f92;
-    --color-faint: #6f6759;
-    --color-accent: #7fae97;
-    --color-accent-hover: #93c0aa;
-    --color-accent-soft: #22302a;
-    --color-accent-text: #10201a;
-    --color-gold: #cfa957;
-    --color-danger: #d97b72;
-    --color-danger-soft: #33211f;
-    --color-success: #83b795;
-    --color-success-soft: #1e2c23;
-    --color-warn: #d0a355;
-    --color-warn-soft: #2e2617;
-  }
-}
-
-html.dark body,
-html.dark [data-surface='shop'] {
-  --color-bg: #12100e;
-  --color-surface: #1b1917;
-  --color-surface-2: #242119;
-  --color-border: #322e28;
-  --color-border-strong: #46403a;
-  --color-text: #f2efe9;
-  --color-muted: #a89f92;
-  --color-faint: #6f6759;
-  --color-accent: #7fae97;
-  --color-accent-hover: #93c0aa;
-  --color-accent-soft: #22302a;
-  --color-accent-text: #10201a;
-  --color-gold: #cfa957;
-  --color-danger: #d97b72;
-  --color-danger-soft: #33211f;
-  --color-success: #83b795;
-  --color-success-soft: #1e2c23;
-  --color-warn: #d0a355;
-  --color-warn-soft: #2e2617;
-}
-
-/* ── Кабинет, тёмный (основной вид) ──────────────────────────
-   Мягкий чёрный #141417, а не #000: глаз не проваливается.
-   Границы полупрозрачно-белые — на тёмном сплошной серый
-   выглядит грязно. Заголовки гротеском: в плотных списках
-   склада и журналов сериф мешает.                              */
-[data-surface='app'] {
+  /* Мягкий чёрный, а не #000: глаз не проваливается.
+     Границы полупрозрачно-белые — сплошной серый на тёмном грязнит. */
   --color-bg: #141417;
   --color-surface: #1a1a1d;
   --color-surface-2: #212125;
@@ -169,21 +45,53 @@ html.dark [data-surface='shop'] {
   --color-warn: #fcd34d;
   --color-warn-soft: rgb(180 83 9 / 0.18);
 
-  --radius-control: 0.625rem;
-  --radius-card: 0.875rem;
-  --radius-hero: 1.25rem;
+  /* Радиус растёт вместе с размером объекта: значок — поле —
+     карточка — шторка. Смешивать ступени нельзя. */
+  --radius-control: 0.75rem;
+  --radius-card: 1rem;
+  --radius-hero: 1.5rem;
 
+  /* Тень, а не граница, отделяет карточку от фона. Два слоя:
+     ближний даёт край, дальний — высоту. */
   --shadow-card: 0 1px 2px rgb(0 0 0 / 0.32), 0 4px 12px rgb(0 0 0 / 0.28);
   --shadow-lift: 0 2px 6px rgb(0 0 0 / 0.42), 0 12px 32px rgb(0 0 0 / 0.42);
   --shadow-overlay: 0 24px 64px rgb(0 0 0 / 0.6);
 
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-serif), Georgia, 'Times New Roman', serif;
+
+  /* Заголовки — гротеском. Сериф остаётся только для витрины,
+     которую будем переделывать отдельно. */
   --font-heading: var(--font-sans);
   --heading-weight: 650;
   --heading-tracking: -0.02em;
+
+  /* Кривая «99% движений» из первой крес-ки: быстрый старт, долгое
+     мягкое торможение. Выход всегда быстрее входа — уходящее окно
+     не должно задерживать. */
+  --ease-out-soft: cubic-bezier(0.23, 1, 0.32, 1);
+  --dur-instant: 80ms;   /* фокус, нажатие */
+  --dur-fast: 150ms;     /* наведение */
+  --dur-base: 240ms;     /* окна, переходы */
+  --dur-slow: 400ms;     /* крупные появления */
+  --dur-exit: 140ms;
+
+  /* Высоты управляющих элементов. Поле выше кнопки на 6px намеренно:
+     в форме поле — главное, кнопка при нём. */
+  --h-sm: 32px;
+  --h-md: 40px;
+  --h-lg: 48px;
+  --h-input: 46px;
+
+  --tap-min: 44px;
 }
 
-/* Кабинет, светлый — для тех, кто работает у окна. */
-html.light [data-surface='app'] {
+/* ── Светлая тема ────────────────────────────────────────────
+   Вторична: включается переключателем, класс на <html>.
+   Системную тему НЕ слушаем намеренно — тёмный интерфейс здесь
+   не «ночной режим», а основной вид продукта.
+   Акцент темнеет: #60a5fa на белом не читается.               */
+html.light {
   --color-bg: #fbfbfc;
   --color-surface: #ffffff;
   --color-surface-2: #f4f4f5;
@@ -212,8 +120,7 @@ html.light [data-surface='app'] {
 }
 
 @layer base {
-  :root { color-scheme: light dark; }
-  html.dark { color-scheme: dark; }
+  :root { color-scheme: dark; }
   html.light { color-scheme: light; }
 
   html {
@@ -232,13 +139,6 @@ html.light [data-surface='app'] {
     /* Альтернативные глифы Inter: «а» и «g» перестают выглядеть
        дефолтно — именно это читается как «сделано руками». */
     font-feature-settings: 'ss01', 'cv11';
-  }
-
-  /* Поверхность красит себя сама: она может быть вложена в body,
-     у которого значения по умолчанию другие. */
-  [data-surface] {
-    background: var(--color-bg);
-    color: var(--color-text);
   }
 
   h1, h2, h3, .display {
@@ -348,25 +248,30 @@ html.light [data-surface='app'] {
   .btn-icon:hover { color: var(--color-text); background: var(--color-surface-2); }
 
   /* Карточки */
+  /* Отступ карточки: 16px на телефоне, 24px на столе. Одно значение
+     на оба — либо тесно на большом экране, либо мало места на малом. */
   .card {
-    @apply p-5 border;
+    @apply p-4 sm:p-6 border;
     border-radius: var(--radius-card);
     border-color: var(--color-border);
     background: var(--color-surface);
     box-shadow: var(--shadow-card);
   }
   .card-link {
-    @apply block p-5 border;
+    @apply block p-4 sm:p-6 border;
     border-radius: var(--radius-card);
     border-color: var(--color-border);
     background: var(--color-surface);
     box-shadow: var(--shadow-card);
     transition: transform var(--dur-base) var(--ease-out-soft), box-shadow var(--dur-base), border-color var(--dur-base);
   }
-  .card-link:hover { transform: translateY(-3px); box-shadow: var(--shadow-lift); border-color: var(--color-border-strong); }
+    /* Подъём пропорционален важности объекта: обычная карточка — 1px,
+     карточка каталога — 4px. Одинаковый подъём у всего делает
+     интерфейс плоским по смыслу. */
+  .card-link:hover { transform: translateY(-4px); box-shadow: var(--shadow-lift); border-color: var(--color-border-strong); }
 
   .card-flat {
-    @apply p-5 border;
+    @apply p-4 sm:p-5 border;
     border-radius: var(--radius-card);
     border-color: var(--color-border);
     background: var(--color-surface-2);
@@ -380,7 +285,8 @@ html.light [data-surface='app'] {
   /* Размер шрифта не ниже 16px: iOS сам зумит страницу на любом
      поле мельче — и обратно уже не отъезжает. */
   .input, .select {
-    @apply w-full h-11 px-3.5 text-base sm:text-sm border outline-none;
+    @apply w-full px-3.5 text-base sm:text-sm border outline-none;
+    height: var(--h-input);
     border-radius: var(--radius-control);
     border-color: var(--color-border-strong);
     background: var(--color-surface);
@@ -524,6 +430,28 @@ html.light [data-surface='app'] {
   .divider { @apply border-t; border-color: var(--color-border); }
 
   .prose-muted { color: var(--color-muted); }
+
+  /* ── Шкала первой крес-ки ───────────────────────────────────────
+     Начинается низко (11–13px) и резко прыгает вверх (28–56px).
+     Средней каши 15–16px нет намеренно: из-за этого интерфейс
+     читается редакционным, а не табличным. Вес растёт вместе
+     с размером, отрицательный трекинг — тоже: на 11px он ноль,
+     на 56px уже −0.04em. Промежуточные веса 550 и 650 вместо
+     привычных 500 и 700 — именно они читаются как «сделано руками». */
+  .t-xs   { font-size: 11px; line-height: 14px; font-weight: 500; }
+  .t-sm   { font-size: 12px; line-height: 16px; font-weight: 500; }
+  .t-base { font-size: 13px; line-height: 18px; font-weight: 500; }
+  .t-md   { font-size: 14px; line-height: 20px; font-weight: 550; }
+  .t-lg   { font-size: 16px; line-height: 22px; font-weight: 600; letter-spacing: -0.01em; }
+  .t-xl   { font-size: 19px; line-height: 24px; font-weight: 650; letter-spacing: -0.015em; }
+  .t-2xl  { font-size: 22px; line-height: 28px; font-weight: 700; letter-spacing: -0.02em; }
+  .t-3xl  { font-size: 28px; line-height: 34px; font-weight: 700; letter-spacing: -0.025em; }
+  .t-4xl  { font-size: 40px; line-height: 48px; font-weight: 800; letter-spacing: -0.03em; }
+  .t-5xl  { font-size: clamp(40px, 7vw, 56px); line-height: 1.05; font-weight: 800; letter-spacing: -0.04em; }
+
+  /* Цифры, которые обновляются: цены, остатки, счётчики, время.
+     Без этого числа прыгают по ширине при каждом обновлении. */
+  .tabular { font-variant-numeric: tabular-nums; }
 
   /* Надзаголовок секции: капслок, разрядка, акцент. Дёшево даёт
      редакционный вид там, где иначе была бы просто вторая строка. */

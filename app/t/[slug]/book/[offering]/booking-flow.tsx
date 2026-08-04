@@ -79,21 +79,21 @@ export function BookingFlow({
     const when = slot ? new Date(slot.starts_at) : null
     return (
       <div className="card rise mt-8 text-center">
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center text-2xl"
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center t-2xl"
              style={{ borderRadius: '50%', background: 'var(--color-success-soft)', color: 'var(--color-success)' }}>
           ✓
         </div>
-        <h2 className="display text-xl font-semibold">Запис №{booked.number} створено</h2>
-        <p className="mt-2 text-sm prose-muted">
+        <h2 className="display t-xl tabular">Запис №{booked.number} створено</h2>
+        <p className="t-md mt-2 prose-muted">
           {variant?.name}{when ? ` · ${when.toLocaleDateString('uk-UA', { day: 'numeric', month: 'long' })}, ${when.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })}` : ''}
           {slot ? ` · ${slot.staff_name}` : ''}
         </p>
         {booked.deposit_due > 0 && (
-          <p className="badge-warn mx-auto mt-4">
+          <p className="badge-warn tabular mx-auto mt-4">
             Передоплата {Number(booked.deposit_due).toLocaleString('uk-UA')} ₴ — заклад надішле реквізити
           </p>
         )}
-        <p className="mt-4 text-xs prose-muted">
+        <p className="t-xs mt-4 prose-muted">
           Нагадаємо за добу та за 2 години. Скасувати чи перенести можна
           не пізніше ніж за {cancelWindow} год до візиту.
         </p>
@@ -114,8 +114,8 @@ export function BookingFlow({
               style={variant?.id === v.id
                 ? { borderColor: 'var(--color-accent)', boxShadow: '0 0 0 3px var(--color-accent-soft)' }
                 : undefined}>
-              <span className="font-medium">{v.name}</span>
-              <span className="flex items-center gap-3 text-sm prose-muted">
+              <span className="t-md">{v.name}</span>
+              <span className="tabular t-md flex items-center gap-3 prose-muted">
                 <span>{v.minutes} хв</span>
                 {v.price != null && <span className="font-medium" style={{ color: 'var(--color-text)' }}>
                   {v.price.toLocaleString('uk-UA')} ₴
@@ -136,15 +136,15 @@ export function BookingFlow({
               const active = day && iso(day) === iso(d)
               return (
                 <button key={iso(d)} type="button" onClick={() => setDay(d)}
-                  className="flex w-14 shrink-0 flex-col items-center gap-0.5 border py-2.5 text-sm transition-all"
+                  className="t-md flex w-14 shrink-0 flex-col items-center gap-0.5 border py-2.5 transition-all"
                   style={{
                     borderRadius: 'var(--radius-control)',
                     borderColor: active ? 'var(--color-accent)' : 'var(--color-border-strong)',
                     background: active ? 'var(--color-accent)' : 'var(--color-surface)',
                     color: active ? 'var(--color-accent-text)' : 'var(--color-text)',
                   }}>
-                  <span className="text-[11px] opacity-70">{l.top}</span>
-                  <span className="font-semibold">{l.bottom}</span>
+                  <span className="t-xs opacity-70">{l.top}</span>
+                  <span className="tabular font-semibold">{l.bottom}</span>
                 </button>
               )
             })}
@@ -171,7 +171,7 @@ export function BookingFlow({
                   <button key={`${s.staff_id}-${s.starts_at}`} type="button"
                     onClick={() => setSlot(s)}
                     title={s.staff_name}
-                    className="h-11 border text-sm font-medium transition-all"
+                    className="tabular t-md h-11 border transition-all"
                     style={{
                       borderRadius: 'var(--radius-control)',
                       borderColor: active ? 'var(--color-accent)' : 'var(--color-border-strong)',
@@ -204,7 +204,7 @@ export function BookingFlow({
           </div>
 
           {variant && depositPercent > 0 && variant.price != null && (
-            <p className="badge-warn self-start">
+            <p className="badge-warn tabular self-start">
               Передоплата {Math.round(variant.price * depositPercent / 100).toLocaleString('uk-UA')} ₴
               підтверджує запис
             </p>

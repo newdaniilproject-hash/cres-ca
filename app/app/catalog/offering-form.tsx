@@ -494,7 +494,7 @@ export function OfferingForm({
         )}
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {saved && (
-            <span className="text-sm rise" style={{ color: 'var(--color-success)' }}>Збережено ✓</span>
+            <span className="t-md rise" style={{ color: 'var(--color-success)' }}>Збережено ✓</span>
           )}
           <button type="button" className="btn-secondary h-10" disabled={busy !== null}
                   onClick={() => void save()}>
@@ -621,7 +621,7 @@ export function OfferingForm({
                  placeholder="зима, новинка — через кому" />
         </div>
 
-        <label className="flex items-center gap-2 text-sm sm:col-span-2">
+        <label className="t-md flex items-center gap-2 sm:col-span-2">
           <input type="checkbox" checked={listed}
                  onChange={(e) => setListed(e.target.checked)} />
           Показувати в загальному каталозі маркетплейсу
@@ -631,7 +631,7 @@ export function OfferingForm({
       {/* Условия записи — только у услуг */}
       {isService && (
         <section className="card rise-2 grid gap-4 sm:grid-cols-3">
-          <h2 className="font-medium sm:col-span-3">Умови запису</h2>
+          <h2 className="t-lg sm:col-span-3">Умови запису</h2>
           <div>
             <label className="field-label">Передоплата, %</label>
             <input className="input" inputMode="numeric" value={deposit}
@@ -654,10 +654,10 @@ export function OfferingForm({
       {/* Варианты */}
       <section className="card rise-2 flex flex-col gap-4">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="font-medium">
+          <h2 className="t-lg">
             {isService ? 'Варіанти послуги' : 'Варіанти товару'}
           </h2>
-          <button type="button" className="btn-secondary h-9 text-xs"
+          <button type="button" className="btn-secondary h-9 t-sm"
                   onClick={() => setDrafts([...drafts, emptyDraft(kind)])}>
             Додати варіант
           </button>
@@ -671,15 +671,15 @@ export function OfferingForm({
         {drafts.map((d, i) => (
           <div key={d.key} className="card-flat grid gap-3 sm:grid-cols-2">
             <div className="sm:col-span-2 flex items-center justify-between gap-3">
-              <span className="text-xs prose-muted">Варіант {i + 1}</span>
+              <span className="tabular t-xs prose-muted">Варіант {i + 1}</span>
               <div className="flex items-center gap-3">
-                <label className="flex items-center gap-2 text-xs">
+                <label className="t-xs flex items-center gap-2">
                   <input type="checkbox" checked={d.isActive}
                          onChange={(e) => patchDraft(d.key, { isActive: e.target.checked })} />
                   У продажу
                 </label>
                 {drafts.length > 1 && (
-                  <button type="button" className="btn-ghost !h-8 !px-2 text-xs"
+                  <button type="button" className="btn-ghost !h-8 !px-2 t-sm"
                           onClick={() => setDrafts(drafts.filter((x) => x.key !== d.key))}>
                     Прибрати
                   </button>
@@ -764,11 +764,11 @@ export function OfferingForm({
                 <div>
                   <label className="field-label">Залишок</label>
                   <div className="flex h-11 items-center gap-2">
-                    <span className="badge">
+                    <span className="badge tabular">
                       {d.trackStock ? `${d.stockQty} ${d.unit || 'шт'}` : 'без обліку'}
                     </span>
                     {d.reservedQty > 0 && (
-                      <span className="badge">у резерві {d.reservedQty}</span>
+                      <span className="badge tabular">у резерві {d.reservedQty}</span>
                     )}
                   </div>
                   {/* Правило 5: остаток — кэш журнала движений, вписать его
@@ -778,7 +778,7 @@ export function OfferingForm({
                     надходженням або інвентаризацією. Так кожна одиниця має слід.
                   </p>
                 </div>
-                <label className="flex items-center gap-2 text-sm sm:col-span-2">
+                <label className="t-md flex items-center gap-2 sm:col-span-2">
                   <input type="checkbox" checked={d.trackStock}
                          onChange={(e) => patchDraft(d.key, { trackStock: e.target.checked })} />
                   Вести облік залишку
@@ -791,7 +791,7 @@ export function OfferingForm({
 
       {/* Фото */}
       <section className="card rise-3 flex flex-col gap-3">
-        <h2 className="font-medium">Фото</h2>
+        <h2 className="t-lg">Фото</h2>
 
         {!offeringId ? (
           <p className="field-hint !mt-0">
@@ -820,21 +820,22 @@ export function OfferingForm({
                     {/* Миниатюра из публичного бакета; размеров оригинала
                         мы не храним, поэтому обычный img. */}
                     <img src={publicUrl(item.path)} alt=""
-                         className="mb-2 aspect-square w-full rounded-lg object-cover" />
+                         className="mb-2 aspect-square w-full object-cover"
+                         style={{ borderRadius: 'var(--radius-control)' }} />
                     <div className="flex items-center justify-between">
                       <div className="flex">
-                        <button type="button" className="btn-ghost !h-8 !px-2"
+                        <button type="button" className="btn-icon" aria-label="Вище"
                                 disabled={i === 0 || busy !== null}
                                 onClick={() => void moveMedia(i, -1)}>↑</button>
-                        <button type="button" className="btn-ghost !h-8 !px-2"
+                        <button type="button" className="btn-icon" aria-label="Нижче"
                                 disabled={i === mediaList.length - 1 || busy !== null}
                                 onClick={() => void moveMedia(i, 1)}>↓</button>
                       </div>
-                      <button type="button" className="btn-ghost !h-8 !px-2"
+                      <button type="button" className="btn-icon" aria-label="Видалити фото"
                               disabled={busy !== null}
                               onClick={() => void removeMedia(item)}>✕</button>
                     </div>
-                    {i === 0 && <p className="text-center text-xs prose-muted">обкладинка</p>}
+                    {i === 0 && <p className="t-xs text-center prose-muted">обкладинка</p>}
                   </div>
                 ))}
               </div>

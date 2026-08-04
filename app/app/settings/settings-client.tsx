@@ -51,13 +51,13 @@ export function SettingsClient({ shop, canWrite, team }: {
     <div className="flex flex-col gap-5 pb-8">
       {/* Публичная ссылка — то, что уходит в шапку Instagram */}
       <section className="card rise-1">
-        <h2 className="mb-1 font-medium">Ваша сторінка</h2>
-        <p className="mb-3 text-sm prose-muted">
+        <h2 className="t-lg mb-1">Ваша сторінка</h2>
+        <p className="t-md mb-3 prose-muted">
           Це посилання — у шапку Instagram: клієнти записуються самі.
         </p>
         <div className="flex flex-wrap items-center gap-2">
-          <code className="card-flat !px-3 !py-2 text-sm">{publicUrl}</code>
-          <button type="button" className="btn-secondary h-9 text-xs"
+          <code className="card-flat t-md !px-3 !py-2">{publicUrl}</code>
+          <button type="button" className="btn-secondary h-9 t-sm"
                   onClick={() => navigator.clipboard.writeText(publicUrl)}>
             Скопіювати
           </button>
@@ -112,7 +112,7 @@ export function SettingsClient({ shop, canWrite, team }: {
               {state === 'busy' ? 'Зберігаємо…' : 'Зберегти'}
             </button>
             {state === 'saved' && (
-              <span className="text-sm rise" style={{ color: 'var(--color-success)' }}>Збережено ✓</span>
+              <span className="t-md rise" style={{ color: 'var(--color-success)' }}>Збережено ✓</span>
             )}
           </div>
         )}
@@ -121,13 +121,13 @@ export function SettingsClient({ shop, canWrite, team }: {
       {/* Команда */}
       <section className="card rise-3 !p-0">
         <div className="flex items-center justify-between p-5 pb-3">
-          <h2 className="font-medium">Команда</h2>
+          <h2 className="t-lg">Команда</h2>
         </div>
         {team.map((t) => (
           <div key={t.userId} className="row px-5">
             <div className="min-w-0">
-              <p className="truncate font-medium">{t.name ?? t.email ?? 'Без імені'}</p>
-              {t.name && t.email && <p className="text-xs prose-muted">{t.email}</p>}
+              <p className="t-md truncate">{t.name ?? t.email ?? 'Без імені'}</p>
+              {t.name && t.email && <p className="t-xs prose-muted">{t.email}</p>}
             </div>
             <span className={t.role === 'owner' ? 'badge-accent' : 'badge'}>
               {ROLE_LABEL[t.role] ?? t.role}

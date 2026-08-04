@@ -25,13 +25,13 @@ export default async function CustomersPage() {
   ])
 
   return (
-    <AppShell active="/app/customers" title="Клієнти">
+    <AppShell modules={m.modules} active="/app/customers" title="Клієнти">
       {(reminders ?? []).length > 0 && (
         <section className="card-flat rise mb-5">
-          <h2 className="mb-2 text-sm font-medium">Нагадування</h2>
+          <h2 className="t-md mb-2">Нагадування</h2>
           <div className="flex flex-wrap gap-2">
             {(reminders ?? []).map((r) => (
-              <span key={r.id} className="badge-warn">
+              <span key={r.id} className="badge-warn tabular">
                 {r.title}
                 {(r.customers as unknown as { name: string })?.name
                   ? ` · ${(r.customers as unknown as { name: string }).name}` : ''}
@@ -51,8 +51,8 @@ export default async function CustomersPage() {
         ) : (customers ?? []).map((c) => (
           <div key={c.id} className="row px-5">
             <div className="min-w-0">
-              <p className="truncate font-medium">{c.name}</p>
-              <p className="mt-0.5 text-xs prose-muted">
+              <p className="t-md truncate">{c.name}</p>
+              <p className="tabular t-xs mt-0.5 prose-muted">
                 {c.phone ?? 'без телефону'}
                 {c.last_order_at
                   ? ` · останній візит ${new Date(c.last_order_at).toLocaleDateString('uk-UA')}` : ''}
@@ -60,9 +60,9 @@ export default async function CustomersPage() {
             </div>
             <div className="flex shrink-0 items-center gap-2">
               {Number(c.total_spent) > 0 && (
-                <span className="badge">{Number(c.total_spent).toLocaleString('uk-UA')} ₴</span>
+                <span className="badge tabular">{Number(c.total_spent).toLocaleString('uk-UA')} ₴</span>
               )}
-              <span className="badge-accent">{c.orders_count} зам.</span>
+              <span className="badge-accent tabular">{c.orders_count} зам.</span>
             </div>
           </div>
         ))}

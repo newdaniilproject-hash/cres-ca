@@ -29,7 +29,7 @@ export default async function CatalogPage() {
     .limit(200)
 
   return (
-    <AppShell active="/app/catalog" title="Каталог">
+    <AppShell modules={m.modules} active="/app/catalog" title="Каталог">
       <CatalogClient
         error={error?.message ?? null}
         items={(data ?? []).map((o) => {

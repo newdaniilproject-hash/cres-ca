@@ -45,7 +45,7 @@ export default async function OrdersPage({
     .limit(100)
 
   return (
-    <AppShell active="/app/orders" title="Замовлення">
+    <AppShell modules={m.modules} active="/app/orders" title="Замовлення">
       <OrdersClient
         active={active}
         total={count ?? 0}

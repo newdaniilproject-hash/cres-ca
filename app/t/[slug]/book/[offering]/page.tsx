@@ -49,9 +49,9 @@ export default async function BookPage({
     <>
       <PublicHeader authed={!!user} />
       <main className="mx-auto max-w-xl px-4 pb-16 pt-10 sm:px-6">
-        <p className="rise text-sm prose-muted">{shop.name}</p>
-        <h1 className="display rise mt-1 text-3xl font-semibold tracking-tight">{off.title}</h1>
-        {off.subtitle && <p className="rise-1 mt-2 text-sm prose-muted">{off.subtitle}</p>}
+        <p className="rise t-sm prose-muted">{shop.name}</p>
+        <h1 className="display rise mt-1 t-3xl">{off.title}</h1>
+        {off.subtitle && <p className="rise-1 t-md mt-2 prose-muted">{off.subtitle}</p>}
 
         <BookingFlow
           tenantId={shop.id}

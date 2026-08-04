@@ -90,7 +90,7 @@ export function JournalsClient({
     <div className="flex flex-col gap-5">
       <div className="rise flex flex-wrap items-center gap-2">
         <a href="/app/journals/report" target="_blank" rel="noreferrer"
-           className="btn-primary h-9 text-xs">
+           className="btn-primary h-9 t-sm">
           Звіт для перевірки → PDF
         </a>
         <span className="w-full sm:w-px" />
@@ -112,13 +112,13 @@ export function JournalsClient({
             ) : tasks.map((t) => (
               <div key={t.id} className="row px-5">
                 <div>
-                  <p className="font-medium">{t.name}</p>
-                  {t.schedule && <p className="text-xs prose-muted">{t.schedule}</p>}
+                  <p className="t-md">{t.name}</p>
+                  {t.schedule && <p className="t-xs prose-muted">{t.schedule}</p>}
                 </div>
                 {t.doneToday ? (
                   <span className="badge-success">сьогодні ✓</span>
                 ) : (
-                  <button className="btn-secondary h-9 text-xs" disabled={busy === t.id}
+                  <button className="btn-secondary h-9 t-sm" disabled={busy === t.id}
                           onClick={() => void markTask(t.id)}>
                     Виконано
                   </button>
@@ -176,12 +176,12 @@ export function JournalsClient({
               return (
                 <div key={s.id} className="row px-5">
                   <div>
-                    <p className="font-medium">{s.agent_name} · {s.concentration}</p>
-                    <p className="text-xs prose-muted">
+                    <p className="t-md">{s.agent_name} · {s.concentration}</p>
+                    <p className="tabular t-xs prose-muted">
                       {Number(s.volume)} {s.unit} · приготовано {fmt(s.prepared_at)}
                     </p>
                   </div>
-                  <span className={active ? 'badge-success' : 'badge'}>
+                  <span className={active ? 'badge-success tabular' : 'badge tabular'}>
                     {active ? `до ${fmt(s.expires_at)}` : 'непридатний'}
                   </span>
                 </div>
@@ -209,7 +209,7 @@ export function JournalsClient({
               <input required type="number" min="1" className="input"
                      value={mins} onChange={(e) => setMins(e.target.value)} />
             </div>
-            <label className="flex items-center gap-2 text-sm sm:col-span-2">
+            <label className="t-md flex items-center gap-2 sm:col-span-2">
               <input type="checkbox" checked={indicator}
                      onChange={(e) => setIndicator(e.target.checked)} />
               Індикатор змінив колір (цикл успішний)
@@ -225,8 +225,8 @@ export function JournalsClient({
             ) : cycles.map((c) => (
               <div key={c.id} className="row px-5">
                 <div>
-                  <p className="font-medium">{c.device}</p>
-                  <p className="text-xs prose-muted">
+                  <p className="t-md">{c.device}</p>
+                  <p className="tabular t-xs prose-muted">
                     {c.temperature_c}°C · {c.duration_minutes} хв · {fmt(c.performed_at)}
                   </p>
                 </div>
