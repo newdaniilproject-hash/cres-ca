@@ -5,7 +5,7 @@ import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from '@/lib/supabase/config'
 // Обновление сессии на каждом запросе — стандартный контур @supabase/ssr.
 // Токен с правами (см. Auth Hook) живёт час; middleware продлевает его
 // прозрачно, чтобы продавец не вылетал посреди приёмки.
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request })
 
   const supabase = createServerClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
