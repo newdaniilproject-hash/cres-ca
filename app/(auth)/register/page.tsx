@@ -5,6 +5,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { AuthShell } from '../auth-shell'
+import { GoogleButton } from '../google-button'
 
 // Регистрация покупателя: имя, почта, пароль. Телефон попросим тогда,
 // когда он реально понадобится — при первом заказе (create_order).
@@ -69,6 +70,8 @@ export default function RegisterPage() {
           {state === 'busy' ? 'Створюємо…' : 'Створити акаунт'}
         </button>
       </form>
+
+      <GoogleButton next="/account" />
 
       <p className="mt-6 text-sm prose-muted">
         Вже з нами? <Link href="/login" className="underline underline-offset-2">Увійти</Link>

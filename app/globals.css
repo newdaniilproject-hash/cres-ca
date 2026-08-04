@@ -1,14 +1,39 @@
 @import "tailwindcss";
 
 /* ============================================================
-   Дизайн-система, часть кода. Единственный источник значений.
-   Характер: дорогая сдержанность — тёплая бумага, глубокая
-   зелень, серифные заголовки, движение едва заметное и мягкое.
-   Правило прежнее: значение в компоненте — ошибка приёмки.
+   Дизайн-система. Единственный источник значений: захардкоженный
+   цвет или радиус в компоненте — ошибка приёмки.
+
+   Устроена как ОДИН набор смысловых имён (--color-bg, --color-accent,
+   и так далее) и ДВА набора значений под них. Компоненты ниже написаны
+   один раз и не знают, где их показывают.
+
+     data-surface="app"  — кабинет продавца. Тёмная база, кобальт,
+                           плотная шкала, гротеск. В нём работают по
+                           восемь часов подряд: он не должен кричать.
+     data-surface="shop"  — витрина, каталог, лендинг, вход. Тёплая
+                           бумага, глубокая зелень, латунь, серифные
+                           заголовки, крупный ритм. Это шоу-рум.
+
+   Почему не один язык на всё: витрина продавца обещана ему как
+   «его собственный сайт». Если она выглядит как админка, обещание
+   не выполнено. И наоборот — серифные заголовки поверх плотных
+   таблиц склада читаются тяжелее гротеска.
+
+   Почему ровно два, а не «сколько понадобится»: в прошлой версии
+   проекта языков стало четыре, и склеивать их пришлось четырьмя
+   десятками правил с !important. Третий появляется только вместе
+   с отдельным ADR.
+
+   Тема (светлая/тёмная) — независимое измерение: у каждой поверхности
+   есть оба варианта. Выбор хранится в localStorage и ставится классом
+   на <html> ДО гидрации (см. components/theme.tsx), иначе на первом
+   кадре мигает чужая тема.
    ============================================================ */
 
 @theme {
-  /* Палитра: тёплый графит на тёплой бумаге, глубокий лесной акцент */
+  /* Значения по умолчанию = витрина, светлая. Так выглядит страница
+     до того, как какой-либо слой объявил свою поверхность. */
   --color-bg: #faf8f5;
   --color-surface: #ffffff;
   --color-surface-2: #f3f0ea;
@@ -18,11 +43,11 @@
   --color-muted: #766f64;
   --color-faint: #a39b8d;
 
-  --color-accent: #22443a;        /* глубокая зелень */
+  --color-accent: #22443a;
   --color-accent-hover: #2d574a;
   --color-accent-soft: #e8efe9;
   --color-accent-text: #f6f4ef;
-  --color-gold: #b08d3f;          /* латунь, дозированно */
+  --color-gold: #b08d3f;
 
   --color-danger: #a83a32;
   --color-danger-soft: #f7e9e7;
@@ -31,6 +56,8 @@
   --color-warn: #9a6b1f;
   --color-warn-soft: #f7efdd;
 
+  /* Радиус растёт вместе с размером объекта: значок — управляющий
+     элемент — карточка — шторка. Смешивать ступени нельзя. */
   --radius-control: 0.625rem;
   --radius-card: 1rem;
   --radius-hero: 1.5rem;
@@ -42,14 +69,33 @@
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-serif), Georgia, 'Times New Roman', serif;
 
+  /* Заголовки: витрина — серифом, кабинет переопределяет на гротеск. */
+  --font-heading: var(--font-display);
+  --heading-weight: 560;
+  --heading-tracking: -0.015em;
+
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
   --dur-fast: 150ms;
   --dur-base: 260ms;
   --dur-slow: 420ms;
+
+  /* Минимальная зона нажатия по Apple HIG. Всё, во что тыкают
+     пальцем, обязано быть не меньше. */
+  --tap-min: 44px;
 }
 
+/* ── Витрина, тёмная ─────────────────────────────────────────
+   Тёплая темнота, а не серый: бумага, погашенная до ночи.
+   Акцент светлеет — глубокая зелень на тёмном не читается.
+
+   Витрина следует системе, пока покупатель не выбрал сам: она
+   открывается по ссылке из инстаграма, второго шанса объяснить
+   переключатель не будет. Кабинет — наоборот, тёмный всегда
+   (см. ниже): это рабочий инструмент, и решение принято за
+   пользователя осознанно.                                       */
 @media (prefers-color-scheme: dark) {
-  :root {
+  html:not(.light) body,
+  html:not(.light) [data-surface='shop'] {
     --color-bg: #12100e;
     --color-surface: #1b1917;
     --color-surface-2: #242119;
@@ -69,15 +115,113 @@
     --color-success-soft: #1e2c23;
     --color-warn: #d0a355;
     --color-warn-soft: #2e2617;
-    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px -12px rgb(0 0 0 / 0.5);
-    --shadow-lift: 0 2px 4px rgb(0 0 0 / 0.5), 0 16px 40px -16px rgb(0 0 0 / 0.6);
   }
+}
+
+html.dark body,
+html.dark [data-surface='shop'] {
+  --color-bg: #12100e;
+  --color-surface: #1b1917;
+  --color-surface-2: #242119;
+  --color-border: #322e28;
+  --color-border-strong: #46403a;
+  --color-text: #f2efe9;
+  --color-muted: #a89f92;
+  --color-faint: #6f6759;
+  --color-accent: #7fae97;
+  --color-accent-hover: #93c0aa;
+  --color-accent-soft: #22302a;
+  --color-accent-text: #10201a;
+  --color-gold: #cfa957;
+  --color-danger: #d97b72;
+  --color-danger-soft: #33211f;
+  --color-success: #83b795;
+  --color-success-soft: #1e2c23;
+  --color-warn: #d0a355;
+  --color-warn-soft: #2e2617;
+}
+
+/* ── Кабинет, тёмный (основной вид) ──────────────────────────
+   Мягкий чёрный #141417, а не #000: глаз не проваливается.
+   Границы полупрозрачно-белые — на тёмном сплошной серый
+   выглядит грязно. Заголовки гротеском: в плотных списках
+   склада и журналов сериф мешает.                              */
+[data-surface='app'] {
+  --color-bg: #141417;
+  --color-surface: #1a1a1d;
+  --color-surface-2: #212125;
+  --color-border: rgb(255 255 255 / 0.08);
+  --color-border-strong: rgb(255 255 255 / 0.16);
+  --color-text: #fafafa;
+  --color-muted: rgb(255 255 255 / 0.62);
+  --color-faint: rgb(255 255 255 / 0.34);
+
+  --color-accent: #60a5fa;
+  --color-accent-hover: #93c5fd;
+  --color-accent-soft: rgb(96 165 250 / 0.14);
+  --color-accent-text: #0b1220;
+  --color-gold: #d9b262;
+
+  --color-danger: #fca5a5;
+  --color-danger-soft: rgb(185 28 28 / 0.18);
+  --color-success: #86efac;
+  --color-success-soft: rgb(21 128 61 / 0.18);
+  --color-warn: #fcd34d;
+  --color-warn-soft: rgb(180 83 9 / 0.18);
+
+  --radius-control: 0.625rem;
+  --radius-card: 0.875rem;
+  --radius-hero: 1.25rem;
+
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.32), 0 4px 12px rgb(0 0 0 / 0.28);
+  --shadow-lift: 0 2px 6px rgb(0 0 0 / 0.42), 0 12px 32px rgb(0 0 0 / 0.42);
+  --shadow-overlay: 0 24px 64px rgb(0 0 0 / 0.6);
+
+  --font-heading: var(--font-sans);
+  --heading-weight: 650;
+  --heading-tracking: -0.02em;
+}
+
+/* Кабинет, светлый — для тех, кто работает у окна. */
+html.light [data-surface='app'] {
+  --color-bg: #fbfbfc;
+  --color-surface: #ffffff;
+  --color-surface-2: #f4f4f5;
+  --color-border: #e4e4e7;
+  --color-border-strong: #d4d4d8;
+  --color-text: #0a0a0a;
+  --color-muted: #52525b;
+  --color-faint: #a1a1aa;
+
+  --color-accent: #2563eb;
+  --color-accent-hover: #1d4ed8;
+  --color-accent-soft: rgb(37 99 235 / 0.10);
+  --color-accent-text: #ffffff;
+  --color-gold: #b08d3f;
+
+  --color-danger: #b91c1c;
+  --color-danger-soft: rgb(185 28 28 / 0.08);
+  --color-success: #15803d;
+  --color-success-soft: rgb(21 128 61 / 0.08);
+  --color-warn: #b45309;
+  --color-warn-soft: rgb(180 83 9 / 0.08);
+
+  --shadow-card: 0 1px 2px rgb(15 18 24 / 0.04), 0 4px 12px rgb(15 18 24 / 0.04);
+  --shadow-lift: 0 2px 4px rgb(15 18 24 / 0.06), 0 12px 32px -12px rgb(15 18 24 / 0.16);
+  --shadow-overlay: 0 24px 64px -16px rgb(15 18 24 / 0.24);
 }
 
 @layer base {
   :root { color-scheme: light dark; }
+  html.dark { color-scheme: dark; }
+  html.light { color-scheme: light; }
 
-  html { scroll-behavior: smooth; }
+  html {
+    scroll-behavior: smooth;
+    /* Зум НЕ блокируем: user-scalable=no — нарушение доступности.
+       От случайного зума на полях защищает размер шрифта 16px. */
+    -webkit-text-size-adjust: 100%;
+  }
 
   body {
     background: var(--color-bg);
@@ -85,20 +229,45 @@
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+    /* Альтернативные глифы Inter: «а» и «g» перестают выглядеть
+       дефолтно — именно это читается как «сделано руками». */
+    font-feature-settings: 'ss01', 'cv11';
+  }
+
+  /* Поверхность красит себя сама: она может быть вложена в body,
+     у которого значения по умолчанию другие. */
+  [data-surface] {
+    background: var(--color-bg);
+    color: var(--color-text);
   }
 
   h1, h2, h3, .display {
-    font-family: var(--font-display);
-    letter-spacing: -0.015em;
-    font-weight: 560;
+    font-family: var(--font-heading);
+    letter-spacing: var(--heading-tracking);
+    font-weight: var(--heading-weight);
   }
 
+  /* Числа не должны прыгать при обновлении: цены, остатки, счётчики,
+     время. Дешевле поставить глобально, чем помнить в каждом месте. */
+  table, .tabular, input[type='number'] { font-variant-numeric: tabular-nums; }
+
   ::selection { background: var(--color-accent); color: var(--color-accent-text); }
+
+  /* Фокус виден всегда — но только с клавиатуры, чтобы не мешать мыши. */
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  /* Синяя вспышка при тапе на мобильном — артефакт, не обратная связь. */
+  a, button, [role='button'] { -webkit-tap-highlight-color: transparent; }
 
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
       animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
     }
   }
 }
@@ -112,6 +281,10 @@
 @keyframes shimmer {
   from { background-position: 200% 0; }
   to   { background-position: -200% 0; }
+}
+@keyframes sheet-up {
+  from { transform: translateY(100%); }
+  to   { transform: none; }
 }
 
 @layer components {
@@ -162,6 +335,18 @@
   }
   .btn-danger:hover { filter: brightness(0.97); }
 
+  /* Значок-кнопка: часто оказывается меньше пальца, поэтому
+     минимальный размер задан здесь, а не в каждом месте вызова. */
+  .btn-icon {
+    @apply inline-flex items-center justify-center shrink-0;
+    min-width: var(--tap-min);
+    min-height: var(--tap-min);
+    border-radius: var(--radius-control);
+    color: var(--color-muted);
+    transition: color var(--dur-fast), background var(--dur-fast);
+  }
+  .btn-icon:hover { color: var(--color-text); background: var(--color-surface-2); }
+
   /* Карточки */
   .card {
     @apply p-5 border;
@@ -192,64 +377,49 @@
   .field-hint  { @apply mt-1.5 text-xs; color: var(--color-muted); }
   .field-error { @apply mt-1.5 text-xs; color: var(--color-danger); }
 
-  .input {
-    @apply w-full h-11 px-3.5 text-sm border outline-none;
+  /* Размер шрифта не ниже 16px: iOS сам зумит страницу на любом
+     поле мельче — и обратно уже не отъезжает. */
+  .input, .select {
+    @apply w-full h-11 px-3.5 text-base sm:text-sm border outline-none;
     border-radius: var(--radius-control);
     border-color: var(--color-border-strong);
     background: var(--color-surface);
     color: var(--color-text);
     transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
   }
-  .input:focus { border-color: var(--color-accent); box-shadow: 0 0 0 3px var(--color-accent-soft); }
+  .input:focus, .select:focus { border-color: var(--color-accent); box-shadow: 0 0 0 3px var(--color-accent-soft); }
   .input::placeholder { color: var(--color-faint); }
 
-  .select {
-    @apply w-full h-11 px-3.5 text-sm border outline-none appearance-none pr-9;
+  .select { @apply appearance-none pr-9; }
+  .textarea {
+    @apply w-full min-h-24 p-3.5 text-base sm:text-sm border outline-none resize-y;
     border-radius: var(--radius-control);
     border-color: var(--color-border-strong);
     background: var(--color-surface);
     color: var(--color-text);
-    transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
-  }
-  .select:focus { border-color: var(--color-accent); box-shadow: 0 0 0 3px var(--color-accent-soft); }
-  .textarea {
-    @apply w-full min-h-24 p-3.5 text-sm border outline-none resize-y;
-    border-radius: var(--radius-control);
-    border-color: var(--color-border-strong);
-    background: var(--color-surface);
     transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
   }
   .textarea:focus { border-color: var(--color-accent); box-shadow: 0 0 0 3px var(--color-accent-soft); }
 
   /* Значки и статусы */
-  .badge {
-    @apply inline-flex items-center gap-1.5 h-6 px-2.5 text-xs font-medium border;
-    border-radius: 999px;
-    border-color: var(--color-border);
-    background: var(--color-surface);
-    color: var(--color-muted);
-  }
-  .badge-accent, .badge-success, .badge-warn, .badge-danger {
+  .badge, .badge-accent, .badge-success, .badge-warn, .badge-danger {
     @apply inline-flex items-center gap-1.5 h-6 px-2.5 text-xs font-medium border;
     border-radius: 999px;
   }
+  .badge { border-color: var(--color-border); background: var(--color-surface); color: var(--color-muted); }
   .badge-accent  { background: var(--color-accent-soft); border-color: transparent; color: var(--color-accent); }
   .badge-success { background: var(--color-success-soft); border-color: transparent; color: var(--color-success); }
   .badge-warn    { background: var(--color-warn-soft); border-color: transparent; color: var(--color-warn); }
   .badge-danger  { background: var(--color-danger-soft); border-color: transparent; color: var(--color-danger); }
 
-  .chip {
+  .chip, .chip-active {
     @apply inline-flex items-center h-9 px-4 text-sm font-medium border select-none cursor-pointer;
     border-radius: 999px;
-    border-color: var(--color-border-strong);
-    background: var(--color-surface);
     transition: all var(--dur-fast);
   }
+  .chip { border-color: var(--color-border-strong); background: var(--color-surface); }
   .chip:hover { border-color: var(--color-accent); }
   .chip-active {
-    @apply inline-flex items-center h-9 px-4 text-sm font-medium border select-none cursor-pointer;
-    border-radius: 999px;
-    transition: all var(--dur-fast);
     background: var(--color-accent);
     border-color: var(--color-accent);
     color: var(--color-accent-text);
@@ -272,19 +442,31 @@
     @apply sticky top-0 z-40 border-b backdrop-blur-md;
     border-color: var(--color-border);
     background: color-mix(in srgb, var(--color-bg) 82%, transparent);
+    padding-top: env(safe-area-inset-top);
   }
+
+  /* Нижняя навигация — плавающая пилюля, а не приклеенная к краю
+     полоса: под ней виден фон, и палец не задевает системный
+     индикатор жестов. Отступ снизу учитывает вырез. */
   .bottomnav {
-    @apply fixed bottom-0 inset-x-0 z-40 border-t backdrop-blur-md;
+    @apply fixed inset-x-3 z-40 border backdrop-blur-xl;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    border-radius: 999px;
     border-color: var(--color-border);
-    background: color-mix(in srgb, var(--color-surface) 88%, transparent);
-    padding-bottom: env(safe-area-inset-bottom);
+    background: color-mix(in srgb, var(--color-surface) 86%, transparent);
+    box-shadow: var(--shadow-lift);
   }
   .bottomnav-item {
-    @apply flex flex-col items-center gap-0.5 py-2 text-[11px] font-medium;
+    @apply flex flex-col items-center justify-center gap-0.5 text-[11px] font-medium;
+    min-height: var(--tap-min);
+    border-radius: 999px;
     color: var(--color-muted);
-    transition: color var(--dur-fast);
+    transition: color var(--dur-fast), background var(--dur-fast);
   }
-  .bottomnav-item[data-active="true"] { color: var(--color-accent); }
+  .bottomnav-item[data-active="true"] {
+    color: var(--color-accent);
+    background: var(--color-accent-soft);
+  }
 
   .sidebar-item {
     @apply flex items-center gap-3 h-10 px-3 text-sm font-medium;
@@ -294,6 +476,32 @@
   }
   .sidebar-item:hover { color: var(--color-text); background: var(--color-surface-2); }
   .sidebar-item[data-active="true"] { color: var(--color-accent); background: var(--color-accent-soft); }
+
+  /* Шторка снизу. Высота в dvh, а не vh: при открытии клавиатуры
+     dvh уменьшается сам, и кнопка «Зберегти» остаётся на экране —
+     на vh она уезжает под клавиатуру. */
+  .sheet {
+    @apply fixed inset-x-0 bottom-0 z-50 border-t p-5;
+    max-height: 90dvh;
+    overflow-y: auto;
+    border-radius: var(--radius-hero) var(--radius-hero) 0 0;
+    border-color: var(--color-border);
+    background: var(--color-surface);
+    box-shadow: var(--shadow-overlay);
+    padding-bottom: calc(1.25rem + env(safe-area-inset-bottom));
+    animation: sheet-up var(--dur-base) var(--ease-out-soft) both;
+  }
+  .sheet-grip {
+    @apply mx-auto mb-4 block;
+    width: 40px; height: 4px;
+    border-radius: 999px;
+    background: var(--color-border-strong);
+  }
+  .sheet-backdrop {
+    @apply fixed inset-0 z-40;
+    background: rgb(0 0 0 / 0.5);
+    animation: fade var(--dur-fast) both;
+  }
 
   /* Таблица-список */
   .row {
@@ -316,4 +524,12 @@
   .divider { @apply border-t; border-color: var(--color-border); }
 
   .prose-muted { color: var(--color-muted); }
+
+  /* Надзаголовок секции: капслок, разрядка, акцент. Дёшево даёт
+     редакционный вид там, где иначе была бы просто вторая строка. */
+  .eyebrow {
+    @apply text-xs font-bold uppercase;
+    letter-spacing: 0.1em;
+    color: var(--color-accent);
+  }
 }

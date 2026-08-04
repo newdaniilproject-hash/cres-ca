@@ -1,4 +1,14 @@
-node_modules
-.next
-.env*
+node_modules/
+.next/
+out/
+build/
+.env
+.env*.local
+.vercel
+.DS_Store
+*.tsbuildinfo
+
+# Next.js
+/.next/
+/out/
 next-env.d.ts

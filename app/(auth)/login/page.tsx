@@ -1,23 +1,42 @@
 'use client'
 
 import Link from 'next/link'
-import { Suspense, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { AuthShell } from '../auth-shell'
+import { GoogleButton, authErrorText } from '../google-button'
 
 // Вход: пароль ИЛИ одноразовая ссылка — двумя вкладками.
 // Ссылка первой: людям «из инстаграма» пароль не нужен вовсе.
 function LoginInner() {
   const router = useRouter()
-  const next = useSearchParams().get('next') ?? '/account'
+  const params = useSearchParams()
+  // next приходит из адреса — принимаем только внутренний путь,
+  // иначе ссылка вида /login?next=https://… уводит человека с площадки.
+  const rawNext = params.get('next')
+  const next = rawNext && rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/account'
+  const returned = params.get('error')
   const supabase = createClient()
 
   const [mode, setMode] = useState<'link' | 'password'>('link')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [state, setState] = useState<'idle' | 'busy' | 'sent' | 'error'>('idle')
-  const [error, setError] = useState('')
+  const [state, setState] = useState<'idle' | 'busy' | 'sent' | 'error'>(returned ? 'error' : 'idle')
+  const [error, setError] = useState(returned ? authErrorText(returned) : '')
+
+  // Часть провайдеров возвращает отказ якорем — на сервер он не попадает,
+  // но переживает редирект /auth/callback → /login и виден отсюда.
+  useEffect(() => {
+    const hash = window.location.hash
+    if (!hash.includes('error')) return
+    const h = new URLSearchParams(hash.slice(1))
+    const raw = h.get('error_description') ?? h.get('error')
+    if (!raw) return
+    setState('error')
+    setError(authErrorText(raw))
+    window.history.replaceState(null, '', window.location.pathname + window.location.search)
+  }, [])
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -89,6 +108,8 @@ function LoginInner() {
           {state === 'busy' ? 'Хвилинку…' : mode === 'link' ? 'Надіслати посилання' : 'Увійти'}
         </button>
       </form>
+
+      <GoogleButton next={next} />
 
       <p className="mt-6 text-sm prose-muted">
         Немає акаунта?{' '}

@@ -13,8 +13,14 @@ export default async function InventoryPage() {
   const m = await currentMembership()
   if (!m) redirect('/register/seller')
   const supabase = await createClient()
+  // created_by у партии и ёмкости обязателен и сверяется политикой RLS
+  // с auth.uid() — без этого id форма не сможет ничего записать.
+  const { data: { user } } = await supabase.auth.getUser()
 
-  const [{ data: containers }, { data: materials }, { data: variants }, { data: value }] =
+  const [
+    { data: containers }, { data: materials }, { data: variants }, { data: value },
+    { data: suppliers }, { data: locations }, { data: batches },
+  ] =
     await Promise.all([
       supabase.from('material_containers')
         .select('id, code, status, use_by, opened_at, volume, unit, materials(name)')
@@ -33,12 +39,26 @@ export default async function InventoryPage() {
         .eq('is_active', true)
         .order('created_at').limit(200),
       supabase.from('stock_value_view').select('*').eq('tenant_id', m.tenantId).maybeSingle(),
+      // Справочники для выпадающих списков форм.
+      supabase.from('suppliers')
+        .select('id, name').eq('tenant_id', m.tenantId)
+        .eq('is_active', true).order('name').limit(200),
+      supabase.from('storage_locations')
+        .select('id, name').eq('tenant_id', m.tenantId)
+        .eq('is_active', true).order('position').limit(200),
+      // Партии нужны только чтобы привязать банку, поэтому берём самые
+      // свежие по сроку — просроченные в новую банку не наливают.
+      supabase.from('material_batches')
+        .select('id, material_id, batch_number, expiry_date')
+        .eq('tenant_id', m.tenantId)
+        .order('expiry_date', { ascending: false }).limit(200),
     ])
 
   return (
     <AppShell active="/app/inventory" title="Склад">
       <InventoryClient
         tenantId={m.tenantId}
+        userId={user!.id}
         containers={(containers ?? []).map((c) => ({
           id: c.id, code: c.code, status: c.status,
           useBy: c.use_by, openedAt: c.opened_at,
@@ -55,6 +75,12 @@ export default async function InventoryPage() {
           title: (v.offerings as unknown as { title: string })?.title ?? '',
           stock: v.stock_qty, reserved: v.reserved_qty,
           threshold: v.min_stock_threshold, unit: v.unit, tracked: v.track_stock,
+        }))}
+        suppliers={suppliers ?? []}
+        locations={locations ?? []}
+        batches={(batches ?? []).map((b) => ({
+          id: b.id, materialId: b.material_id,
+          number: b.batch_number, expiry: b.expiry_date,
         }))}
         totals={value ? {
           units: Number(value.units ?? 0),

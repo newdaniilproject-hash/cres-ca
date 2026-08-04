@@ -1,4 +1,6 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
+import { cache } from 'react'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { PublicHeader, PublicFooter } from '@/components/shell'
@@ -11,6 +13,36 @@ type Offering = {
   rating_avg: number; rating_count: number
 }
 type Staff = { id: string; name: string; title: string | null }
+type Shop = {
+  name: string; tagline: string | null; description: string | null
+  city: string | null; address: string | null; kind: string
+}
+type Storefront = { shop: Shop; offerings: Offering[] | null; staff: Staff[] | null }
+
+// cache() из React: заголовок страницы и сама страница рендерятся в одном
+// запросе, поэтому функция базы вызывается один раз, а не дважды.
+const getStorefront = cache(async (slug: string): Promise<Storefront | null> => {
+  const supabase = await createClient()
+  const { data } = await supabase.rpc('storefront', { p_slug: slug })
+  return (data ?? null) as Storefront | null
+})
+
+// Заголовок вкладки и выдачи — имя заведения: витрина живёт как отдельный
+// сайт продавца, «Маркетплейс» здесь только суффиксом (шаблон из layout).
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>
+}): Promise<Metadata> {
+  const { slug } = await params
+  const data = await getStorefront(slug)
+  if (!data) return { title: 'Заклад не знайдено' }
+  const { name, tagline, description, city } = data.shop
+  return {
+    title: city ? `${name} · ${city}` : name,
+    description: tagline ?? description ?? undefined,
+  }
+}
 
 // Витрина заведения — та самая ссылка в шапку Instagram.
 // Всё содержимое приходит одной функцией базы (storefront).
@@ -21,18 +53,15 @@ export default async function ShopPage({
 }) {
   const { slug } = await params
   const supabase = await createClient()
-  const [{ data: { user } }, { data }] = await Promise.all([
+  const [{ data: { user } }, data] = await Promise.all([
     supabase.auth.getUser(),
-    supabase.rpc('storefront', { p_slug: slug }),
+    getStorefront(slug),
   ])
 
   if (!data) notFound()
-  const shop = data.shop as {
-    name: string; tagline: string | null; description: string | null
-    city: string | null; address: string | null; kind: string
-  }
-  const offerings = (data.offerings ?? []) as Offering[]
-  const staff = (data.staff ?? []) as Staff[]
+  const shop = data.shop
+  const offerings = data.offerings ?? []
+  const staff = data.staff ?? []
   const services = offerings.filter((o) => o.kind === 'service')
   const products = offerings.filter((o) => o.kind === 'product')
 

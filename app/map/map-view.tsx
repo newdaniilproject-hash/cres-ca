@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import 'leaflet/dist/leaflet.css'
 
 type Point = {
   slug: string; name: string; tagline: string | null
@@ -23,6 +22,7 @@ export function MapView({ points }: { points: Point[] }) {
 
     ;(async () => {
       const L = (await import('leaflet')).default
+      await import('leaflet/dist/leaflet.css')
 
       // Центр: по точкам, иначе — центр Украины.
       const center: [number, number] = points.length

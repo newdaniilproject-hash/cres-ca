@@ -5,6 +5,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { AuthShell } from '../../auth-shell'
+import { GoogleButton } from '../../google-button'
 
 // Онбординг продавца: два шага. Шаг 1 — аккаунт (или уже вошли),
 // шаг 2 — заведение. После register_tenant ОБЯЗАТЕЛЕН refreshSession:
@@ -68,6 +69,7 @@ export default function SellerRegisterPage() {
         : 'Крок 2 із 2 · назву можна змінити будь-коли'}
     >
       {step === 0 ? (
+        <>
         <form onSubmit={submitAccount} className="flex flex-col gap-4">
           <div>
             <label className="field-label" htmlFor="email">Пошта</label>
@@ -84,10 +86,15 @@ export default function SellerRegisterPage() {
           <button className="btn-primary" disabled={state === 'busy'}>
             {state === 'busy' ? 'Хвилинку…' : 'Далі'}
           </button>
-          <p className="text-sm prose-muted">
-            Вже є акаунт? <Link href="/login?next=/register/seller" className="underline underline-offset-2">Увійти</Link>
-          </p>
         </form>
+
+        {/* Только шаг 1: на шаге заведения человек уже вошёл */}
+        <GoogleButton next="/register/seller" />
+
+        <p className="mt-6 text-sm prose-muted">
+          Вже є акаунт? <Link href="/login?next=/register/seller" className="underline underline-offset-2">Увійти</Link>
+        </p>
+        </>
       ) : (
         <form onSubmit={submitShop} className="flex flex-col gap-5">
           <div>

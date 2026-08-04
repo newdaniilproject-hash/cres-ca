@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { PublicHeader, PublicFooter } from '@/components/shell'
 
 export const dynamic = 'force-dynamic'
+export const metadata = { title: 'Пошук' }
 
 type Result = {
   result_type: 'shop' | 'offering'

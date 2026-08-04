@@ -3,6 +3,9 @@
 import { useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { MaterialForm, type RefItem } from './material-form'
+import { ContainerForm, type BatchOption } from './container-form'
+import { RefsForm } from './refs-form'
 
 type Container = {
   id: string; code: string; status: string; useBy: string | null
@@ -30,17 +33,25 @@ type ContainerHit = {
 // фолбэк — ручной ввод кода. Результат прошлого скана остаётся
 // на экране, поле готово к следующему — это цикл, не разовое действие.
 export function InventoryClient({
-  tenantId, containers, materials, variants, totals,
+  tenantId, userId, containers, materials, variants, totals,
+  suppliers, locations, batches,
 }: {
   tenantId: string
+  userId: string
   containers: Container[]
   materials: Material[]
   variants: Variant[]
   totals: { units: number; cost: number; retail: number } | null
+  suppliers: RefItem[]
+  locations: RefItem[]
+  batches: BatchOption[]
 }) {
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
   const [tab, setTab] = useState<'containers' | 'materials' | 'goods'>('containers')
+  // Формы раскрываются прямо на странице, а не модалкой: на телефоне
+  // модальное окно перекрывается клавиатурой и поля уезжают из вида.
+  const [adding, setAdding] = useState<'material' | 'container' | 'refs' | null>(null)
   const [code, setCode] = useState('')
   const [scan, setScan] = useState<{ item?: ScanHit; container?: ContainerHit; miss?: string } | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
@@ -114,6 +125,13 @@ export function InventoryClient({
 
   const fmtDate = (d: string | null) =>
     d ? new Date(d).toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' }) : '—'
+
+  // Смена вкладки закрывает открытую форму: иначе форма банки
+  // остаётся висеть над списком товаров и сбивает с толку.
+  function switchTab(next: 'containers' | 'materials' | 'goods') {
+    setTab(next)
+    setAdding(null)
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -191,33 +209,86 @@ export function InventoryClient({
       </section>
 
       {/* Вкладки */}
-      <div className="rise-2 flex gap-2">
-        <button onClick={() => setTab('containers')}
+      <div className="rise-2 flex flex-wrap items-center gap-2">
+        <button onClick={() => switchTab('containers')}
                 className={tab === 'containers' ? 'chip-active' : 'chip'}>
           Ємності {containers.length > 0 && `· ${containers.length}`}
         </button>
-        <button onClick={() => setTab('materials')}
+        <button onClick={() => switchTab('materials')}
                 className={tab === 'materials' ? 'chip-active' : 'chip'}>
           Витратні
         </button>
-        <button onClick={() => setTab('goods')}
+        <button onClick={() => switchTab('goods')}
                 className={tab === 'goods' ? 'chip-active' : 'chip'}>
           Товари
         </button>
-        {tab === 'containers' && containers.length > 0 && (
-          <a href="/app/inventory/labels" target="_blank" rel="noreferrer"
-             className="btn-secondary ml-auto h-9 text-xs">
-            Друк QR-наліпок
-          </a>
-        )}
+
+        <div className="ml-auto flex gap-2">
+          {tab === 'containers' && (
+            <>
+              {containers.length > 0 && (
+                <a href="/app/inventory/labels" target="_blank" rel="noreferrer"
+                   className="btn-secondary h-9 text-xs">
+                  Друк QR-наліпок
+                </a>
+              )}
+              <button type="button" className="btn-primary h-9 text-xs"
+                      onClick={() => setAdding(adding === 'container' ? null : 'container')}>
+                + Додати
+              </button>
+            </>
+          )}
+          {tab === 'materials' && (
+            <>
+              <button type="button" className="btn-secondary h-9 text-xs"
+                      onClick={() => setAdding(adding === 'refs' ? null : 'refs')}>
+                Довідники
+              </button>
+              <button type="button" className="btn-primary h-9 text-xs"
+                      onClick={() => setAdding(adding === 'material' ? null : 'material')}>
+                + Додати
+              </button>
+            </>
+          )}
+          {/* Товар заводится в каталоге вместе с ценой и фото — второй
+              формы для того же самого на складе быть не должно. */}
+          {tab === 'goods' && (
+            <a href="/app/catalog" className="btn-secondary h-9 text-xs">
+              Додати в каталозі
+            </a>
+          )}
+        </div>
       </div>
+
+      {tab === 'containers' && adding === 'container' && (
+        <ContainerForm
+          tenantId={tenantId} userId={userId}
+          materials={materials} batches={batches} suppliers={suppliers}
+          onDone={() => setAdding(null)}
+        />
+      )}
+      {tab === 'materials' && adding === 'material' && (
+        <MaterialForm
+          tenantId={tenantId} suppliers={suppliers} locations={locations}
+          onDone={() => setAdding(null)}
+        />
+      )}
+      {tab === 'materials' && adding === 'refs' && (
+        <RefsForm
+          tenantId={tenantId} suppliers={suppliers} locations={locations}
+          onDone={() => setAdding(null)}
+        />
+      )}
 
       {tab === 'containers' && (
         <section className="card rise !p-0">
           {containers.length === 0 ? (
             <div className="empty">
-              Ємностей поки немає. Заведіть банку в картці витратного засобу —
-              і наклейте QR із кодом.
+              Ємностей поки немає. Заведіть банку — і наклейте на неї QR із кодом.
+              <button type="button" className="btn-primary"
+                      onClick={() => setAdding('container')}>
+                Завести банку
+              </button>
             </div>
           ) : containers.map((c) => {
             const expired = c.useBy != null && new Date(c.useBy) < new Date()
@@ -256,7 +327,13 @@ export function InventoryClient({
       {tab === 'materials' && (
         <section className="card rise !p-0">
           {materials.length === 0 ? (
-            <div className="empty">Витратних засобів поки немає</div>
+            <div className="empty">
+              Витратних засобів поки немає
+              <button type="button" className="btn-primary"
+                      onClick={() => setAdding('material')}>
+                Додати засіб
+              </button>
+            </div>
           ) : materials.map((mt) => (
             <div key={mt.id} className="row px-5">
               <div className="min-w-0">

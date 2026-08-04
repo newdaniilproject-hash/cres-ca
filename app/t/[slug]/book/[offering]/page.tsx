@@ -4,6 +4,7 @@ import { PublicHeader } from '@/components/shell'
 import { BookingFlow } from './booking-flow'
 
 export const dynamic = 'force-dynamic'
+export const metadata = { title: 'Запис' }
 
 // Страница записи: вариант → день → время → имя и телефон. Четыре шага
 // на одном экране, каждый следующий появляется после предыдущего —
