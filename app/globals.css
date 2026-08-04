@@ -203,7 +203,15 @@
   .input:focus { border-color: var(--color-accent); box-shadow: 0 0 0 3px var(--color-accent-soft); }
   .input::placeholder { color: var(--color-faint); }
 
-  .select { @apply input appearance-none pr-9; }
+  .select {
+    @apply w-full h-11 px-3.5 text-sm border outline-none appearance-none pr-9;
+    border-radius: var(--radius-control);
+    border-color: var(--color-border-strong);
+    background: var(--color-surface);
+    color: var(--color-text);
+    transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
+  }
+  .select:focus { border-color: var(--color-accent); box-shadow: 0 0 0 3px var(--color-accent-soft); }
   .textarea {
     @apply w-full min-h-24 p-3.5 text-sm border outline-none resize-y;
     border-radius: var(--radius-control);
@@ -221,10 +229,14 @@
     background: var(--color-surface);
     color: var(--color-muted);
   }
-  .badge-accent  { @apply badge; background: var(--color-accent-soft); border-color: transparent; color: var(--color-accent); }
-  .badge-success { @apply badge; background: var(--color-success-soft); border-color: transparent; color: var(--color-success); }
-  .badge-warn    { @apply badge; background: var(--color-warn-soft); border-color: transparent; color: var(--color-warn); }
-  .badge-danger  { @apply badge; background: var(--color-danger-soft); border-color: transparent; color: var(--color-danger); }
+  .badge-accent, .badge-success, .badge-warn, .badge-danger {
+    @apply inline-flex items-center gap-1.5 h-6 px-2.5 text-xs font-medium border;
+    border-radius: 999px;
+  }
+  .badge-accent  { background: var(--color-accent-soft); border-color: transparent; color: var(--color-accent); }
+  .badge-success { background: var(--color-success-soft); border-color: transparent; color: var(--color-success); }
+  .badge-warn    { background: var(--color-warn-soft); border-color: transparent; color: var(--color-warn); }
+  .badge-danger  { background: var(--color-danger-soft); border-color: transparent; color: var(--color-danger); }
 
   .chip {
     @apply inline-flex items-center h-9 px-4 text-sm font-medium border select-none cursor-pointer;
@@ -235,7 +247,9 @@
   }
   .chip:hover { border-color: var(--color-accent); }
   .chip-active {
-    @apply chip;
+    @apply inline-flex items-center h-9 px-4 text-sm font-medium border select-none cursor-pointer;
+    border-radius: 999px;
+    transition: all var(--dur-fast);
     background: var(--color-accent);
     border-color: var(--color-accent);
     color: var(--color-accent-text);

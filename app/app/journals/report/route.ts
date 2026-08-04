@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { currentMembership } from '@/lib/tenant'
-import { reportHtml } from '@/lib/report/sanitation-report'
+import { reportHtml, type ReportData } from '@/lib/report/sanitation-report'
 
 // Paperless-отчёт для перевірки (Держпродспоживслужба / Держлікслужба).
 //
@@ -58,11 +58,15 @@ export async function GET(request: Request) {
     shop: shop.data,
     days,
     materials: materials.data ?? [],
-    batches: batches.data ?? [],
-    containers: containers.data ?? [],
-    solutions: solutions.data ?? [],
-    cleaning: cleaning.data ?? [],
-    cycles: cycles.data ?? [],
+    // Embedded FK relations (materials, suppliers, profiles, cleaning_tasks) are
+    // to-one, but without generated Supabase Database types the client can't
+    // know that and infers them as arrays — same reason as the cast in
+    // app/app/inventory/labels/route.ts.
+    batches: (batches.data ?? []) as unknown as ReportData['batches'],
+    containers: (containers.data ?? []) as unknown as ReportData['containers'],
+    solutions: (solutions.data ?? []) as unknown as ReportData['solutions'],
+    cleaning: (cleaning.data ?? []) as unknown as ReportData['cleaning'],
+    cycles: (cycles.data ?? []) as unknown as ReportData['cycles'],
     cards: cards.data ?? [],
   })
 
