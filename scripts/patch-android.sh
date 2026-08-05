@@ -18,12 +18,12 @@ OS_APP_ID="${ONESIGNAL_APP_ID:-ONESIGNAL_APP_ID_NOT_SET}"
 MANIFEST="android/app/src/main/AndroidManifest.xml"
 if [ -f "$MANIFEST" ]; then
   # macOS BSD sed ломается на \n — perl ведёт себя одинаково везде (урок DaKi).
-  for PERM in CAMERA POST_NOTIFICATIONS USE_BIOMETRIC; do
+  for PERM in CAMERA POST_NOTIFICATIONS USE_BIOMETRIC VIBRATE; do
     if ! grep -q "android.permission.$PERM" "$MANIFEST"; then
       perl -0pi -e "s{<application}{<uses-permission android:name=\"android.permission.$PERM\" />\n    <application}" "$MANIFEST"
     fi
   done
-  echo "OK: AndroidManifest — камера/уведомления/биометрия"
+  echo "OK: AndroidManifest — камера/уведомления/биометрия/вибрация"
 else
   echo "ERROR: AndroidManifest.xml не найден"; exit 1
 fi
@@ -52,6 +52,9 @@ import android.Manifest;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
+import android.os.VibratorManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
 import androidx.annotation.NonNull;
@@ -64,6 +67,11 @@ import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.BridgeWebChromeClient;
 import com.onesignal.OneSignal;
 import com.onesignal.Continue;
+import com.onesignal.notifications.INotificationClickEvent;
+import com.onesignal.notifications.INotificationClickListener;
+import com.onesignal.notifications.INotificationLifecycleListener;
+import com.onesignal.notifications.INotificationWillDisplayEvent;
+import org.json.JSONObject;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executor;
@@ -92,6 +100,45 @@ public class MainActivity extends BridgeActivity {
       if (!ONESIGNAL_APP_ID.contains("NOT_SET")) {
         OneSignal.initWithContext(getApplicationContext(), ONESIGNAL_APP_ID);
         OneSignal.getNotifications().requestPermission(true, Continue.none());
+
+        // Уведомление, пришедшее при ОТКРЫТОМ приложении, система
+        // не показывает — и продавец, сидящий в складе, узнаёт
+        // о заказе последним. Перехватываем и отдаём вебу: он рисует
+        // полоску сверху, как в инстаграме и телеграме.
+        OneSignal.getNotifications().addForegroundLifecycleListener(new INotificationLifecycleListener() {
+          @Override
+          public void onWillDisplay(INotificationWillDisplayEvent event) {
+            try {
+              String title = event.getNotification().getTitle();
+              String body = event.getNotification().getBody();
+              String url = null;
+              JSONObject extra = event.getNotification().getAdditionalData();
+              if (extra != null) url = extra.optString("url", null);
+              // Системную шторку гасим: своя полоска уже показана,
+              // две подряд — это уже шум.
+              event.preventDefault();
+              emitNotify(title, body, url);
+            } catch (Throwable ignored) {}
+          }
+        });
+
+        // Тап по уведомлению из шторки — переход туда, куда оно указывает.
+        OneSignal.getNotifications().addClickListener(new INotificationClickListener() {
+          @Override
+          public void onClick(INotificationClickEvent event) {
+            try {
+              JSONObject extra = event.getNotification().getAdditionalData();
+              final String url = extra == null ? null : extra.optString("url", null);
+              if (url != null && !url.isEmpty()) {
+                runOnUiThread(new Runnable() {
+                  @Override public void run() {
+                    try { getBridge().getWebView().loadUrl("https://cres-ca.com" + url); } catch (Throwable ignored) {}
+                  }
+                });
+              }
+            } catch (Throwable ignored) {}
+          }
+        });
       }
     } catch (Throwable ignored) { /* пуш не должен ронять приложение */ }
 
@@ -99,6 +146,7 @@ public class MainActivity extends BridgeActivity {
     try {
       this.getBridge().getWebView().addJavascriptInterface(new OneSignalJsBridge(), "AndroidOneSignal");
       this.getBridge().getWebView().addJavascriptInterface(new BiometricJsBridge(), "AndroidBiometric");
+      this.getBridge().getWebView().addJavascriptInterface(new HapticsJsBridge(), "AndroidHaptics");
     } catch (Throwable ignored) {}
 
     applyWebViewPermissionGrant();
@@ -138,6 +186,79 @@ public class MainActivity extends BridgeActivity {
         }
       });
     } catch (Throwable ignored) {}
+  }
+
+  // Полоска уведомления рисуется вебом: событие 'cres:notify'.
+  private void emitNotify(final String title, final String body, final String url) {
+    runOnUiThread(new Runnable() {
+      @Override public void run() {
+        try {
+          JSONObject d = new JSONObject();
+          d.put("title", title == null ? "Маркет" : title);
+          if (body != null) d.put("body", body);
+          if (url != null && !url.isEmpty()) d.put("href", url);
+          getBridge().getWebView().evaluateJavascript(
+            "window.dispatchEvent(new CustomEvent('cres:notify',{detail:" + d.toString() + "}))", null);
+        } catch (Throwable ignored) {}
+      }
+    });
+  }
+
+  // Отклик на касание. navigator.vibrate в WebView даёт грубое
+  // «жужжание» — здесь короткие точные импульсы, как у системных
+  // элементов. Длительность и сила подобраны так, чтобы отклик
+  // чувствовался пальцем и не был слышен ухом.
+  public class HapticsJsBridge {
+    private Vibrator vib() {
+      try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+          VibratorManager vm = (VibratorManager) getSystemService(VIBRATOR_MANAGER_SERVICE);
+          return vm == null ? null : vm.getDefaultVibrator();
+        }
+        return (Vibrator) getSystemService(VIBRATOR_SERVICE);
+      } catch (Throwable e) { return null; }
+    }
+
+    private void buzz(long ms, int amplitude) {
+      try {
+        Vibrator v = vib();
+        if (v == null || !v.hasVibrator()) return;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+          v.vibrate(VibrationEffect.createOneShot(ms, amplitude));
+        } else {
+          v.vibrate(ms);
+        }
+      } catch (Throwable ignored) {}
+    }
+
+    @JavascriptInterface
+    public void impact(String style) {
+      if ("heavy".equals(style))       buzz(18, 200);
+      else if ("medium".equals(style)) buzz(12, 150);
+      else                             buzz(8, 110);
+    }
+
+    @JavascriptInterface
+    public void select() { buzz(5, 80); }
+
+    // Итог действия читается ритмом, а не силой: успех — один щелчок,
+    // предупреждение — два, ошибка — три коротких.
+    @JavascriptInterface
+    public void notify(String type) {
+      try {
+        Vibrator v = vib();
+        if (v == null || !v.hasVibrator()) return;
+        long[] pattern;
+        if ("ERROR".equals(type))        pattern = new long[]{0, 12, 70, 12, 70, 12};
+        else if ("WARNING".equals(type)) pattern = new long[]{0, 12, 90, 12};
+        else                             pattern = new long[]{0, 14};
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+          v.vibrate(VibrationEffect.createWaveform(pattern, -1));
+        } else {
+          v.vibrate(pattern, -1);
+        }
+      } catch (Throwable ignored) {}
+    }
   }
 
   public static class OneSignalJsBridge {
@@ -202,4 +323,4 @@ public class MainActivity extends BridgeActivity {
   }
 }
 EOF
-echo "OK: MainActivity — разрешения, OneSignal, биометрия, назад"
+echo "OK: MainActivity — разрешения, OneSignal (+foreground), биометрия, вибрация, назад"
