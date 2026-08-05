@@ -1,8 +1,9 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { isNative, bioLockEnabled, setBioLockEnabled } from '@/components/native'
 
 type Shop = {
   id: string; name: string; slug: string; tagline: string | null
@@ -41,6 +42,12 @@ export function SettingsClient({ shop, canWrite, team }: {
   const [killing, setKilling] = useState(false)
   const [killError, setKillError] = useState('')
   const soleOwner = team.filter((t) => t.role === 'owner').length === 1
+
+  // Биометрический замок — только в приложении: в браузере его нет.
+  // Читаем после монтирования, иначе сервер и клиент разойдутся.
+  const [inApp, setInApp] = useState(false)
+  const [bio, setBio] = useState(false)
+  useEffect(() => { setInApp(isNative()); setBio(bioLockEnabled()) }, [])
 
   async function deleteAccount() {
     setKilling(true); setKillError('')
@@ -167,6 +174,26 @@ export function SettingsClient({ shop, canWrite, team }: {
           Ваші дані належать вам. Ви можете видалити акаунт у будь-який момент —
           без листів, дзвінків і пояснень.
         </p>
+
+        {inApp && (
+          <label
+            className="card-flat mb-4 flex items-center justify-between gap-4"
+            style={{ minHeight: 'var(--tap-min)', cursor: 'pointer' }}
+          >
+            <span>
+              <span className="t-md block">Вхід за Face ID / відбитком</span>
+              <span className="t-xs block" style={{ color: 'var(--color-faint)' }}>
+                Питаємо лише після перезапуску застосунку або довгої перерви
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              checked={bio}
+              onChange={(e) => { setBio(e.target.checked); setBioLockEnabled(e.target.checked) }}
+              style={{ width: 22, height: 22, accentColor: 'var(--color-accent)' }}
+            />
+          </label>
+        )}
 
         {!danger ? (
           <button type="button" className="btn-secondary h-9 t-sm"
