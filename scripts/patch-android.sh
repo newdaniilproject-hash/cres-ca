@@ -28,11 +28,17 @@ else
   echo "ERROR: AndroidManifest.xml не найден"; exit 1
 fi
 
-# androidx.biometric для BiometricPrompt.
+# Зависимости: androidx.biometric для BiometricPrompt и нативный SDK
+# OneSignal (в v5 он же тянет firebase-messaging).
+#
+# ГРАБЛИ: тут был s{...}{...} с фигурной скобкой ВНУТРИ замены
+# («dependencies {»). perl считает вложенные скобки, замена не закрывалась,
+# и он проглатывал имя файла как продолжение кода — билд падал с
+# «Unknown regexp modifier "/t"». Разделитель / и никаких лишних скобок.
 GRADLE="android/app/build.gradle"
 if ! grep -q 'androidx.biometric' "$GRADLE"; then
-  perl -0pi -e "s{dependencies \{}{dependencies {\n    implementation \"androidx.biometric:biometric:1.1.0\"}" "$GRADLE"
-  echo "OK: androidx.biometric добавлен"
+  perl -0pi -e 's/dependencies \{/dependencies \{\n    implementation "androidx.biometric:biometric:1.1.0"\n    implementation "com.onesignal:OneSignal:[5.0.0, 5.99.99]"/' "$GRADLE"
+  echo "OK: androidx.biometric + OneSignal SDK добавлены"
 fi
 
 MA=$(find android/app/src/main/java -name MainActivity.java | head -1)
