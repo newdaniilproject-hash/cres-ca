@@ -33,6 +33,25 @@ export function SettingsClient({ shop, canWrite, team }: {
   const [state, setState] = useState<'idle' | 'busy' | 'saved' | 'error'>('idle')
   const [error, setError] = useState('')
 
+  // Видалення акаунта. Правило Apple 5.1.1(v): без цієї кнопки
+  // застосунок не проходить ревʼю. Слово-підтвердження, а не «ви впевнені?»:
+  // випадково натиснути двічі можна, випадково надрукувати слово — ні.
+  const [danger, setDanger] = useState(false)
+  const [confirmWord, setConfirmWord] = useState('')
+  const [killing, setKilling] = useState(false)
+  const [killError, setKillError] = useState('')
+  const soleOwner = team.filter((t) => t.role === 'owner').length === 1
+
+  async function deleteAccount() {
+    setKilling(true); setKillError('')
+    const { error } = await supabase.rpc('delete_my_account')
+    if (error) { setKilling(false); setKillError(error.message); return }
+    await supabase.auth.signOut()
+    // Не router.push: після видалення користувача треба повне
+    // перезавантаження, інакше клієнт живе зі знищеною сесією.
+    window.location.href = '/'
+  }
+
   const publicUrl = `${typeof location !== 'undefined' ? location.origin : ''}/t/${shop.slug}`
 
   async function save(e: React.FormEvent) {
@@ -139,6 +158,60 @@ export function SettingsClient({ shop, canWrite, team }: {
           скоро тут. Ролі вже працюють: майстер бачить склад і записи,
           але не бачить фінансів.
         </p>
+      </section>
+
+      {/* Безпека: видалення акаунта */}
+      <section className="card rise-3">
+        <h2 className="t-lg mb-1">Безпека</h2>
+        <p className="t-md mb-3 prose-muted">
+          Ваші дані належать вам. Ви можете видалити акаунт у будь-який момент —
+          без листів, дзвінків і пояснень.
+        </p>
+
+        {!danger ? (
+          <button type="button" className="btn-secondary h-9 t-sm"
+                  onClick={() => setDanger(true)}>
+            Видалити акаунт
+          </button>
+        ) : (
+          <div className="card-flat flex flex-col gap-3">
+            <p className="t-md">
+              Буде видалено:{' '}
+              {soleOwner
+                ? <>ваш акаунт <b>і заклад «{shop.name}»</b> з усіма товарами,
+                    складом, замовленнями, записами та журналами</>
+                : <>ваш акаунт і доступ до закладу «{shop.name}».
+                    Сам заклад залишиться — у нього є інший власник</>}
+              .
+            </p>
+            <p className="t-sm prose-muted">
+              Дію не можна скасувати. Якщо потрібні дані — спершу вивантажте їх.
+            </p>
+
+            <div>
+              <label className="field-label">
+                Щоб підтвердити, надрукуйте <b>ВИДАЛИТИ</b>
+              </label>
+              <input className="input" value={confirmWord} autoComplete="off"
+                     onChange={(e) => setConfirmWord(e.target.value)} />
+            </div>
+
+            {killError && <p className="field-error">{killError}</p>}
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" className="btn-danger"
+                      disabled={confirmWord.trim() !== 'ВИДАЛИТИ' || killing}
+                      onClick={deleteAccount}>
+                {killing ? 'Видаляємо…' : 'Видалити назавжди'}
+              </button>
+              <button type="button" className="btn-secondary h-9 t-sm"
+                      disabled={killing}
+                      onClick={() => { setDanger(false); setConfirmWord(''); setKillError('') }}>
+                Скасувати
+              </button>
+            </div>
+          </div>
+        )}
       </section>
     </div>
   )
