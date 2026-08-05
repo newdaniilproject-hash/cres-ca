@@ -130,7 +130,13 @@ export default function MobileShopPage() {
               <button
                 key={k.value}
                 type="button"
-                onClick={() => setKind(k.value)}
+                // Выбор рода занятий — не ввод текста. Клавиатура,
+                // поднятая полем «Назва», должна уйти: иначе человек
+                // тыкает в переключатели поверх половины экрана.
+                onClick={() => {
+                  ;(document.activeElement as HTMLElement | null)?.blur()
+                  setKind(k.value)
+                }}
                 className="card-flat flex items-center justify-between gap-3 text-left"
                 style={{
                   minHeight: 'var(--tap-min)',
