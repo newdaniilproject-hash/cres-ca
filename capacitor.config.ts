@@ -34,8 +34,15 @@ const config = {
     cleartext: false,
     iosScheme: 'https',
     androidScheme: 'https',
-    // Куки авторизации Supabase + вход через Google.
-    allowNavigation: ['cres-ca.com', '*.cres-ca.com', '*.supabase.co', 'accounts.google.com'],
+    // Куки авторизации Supabase. Домены провайдеров здесь на всякий
+    // случай: вход через Apple и Google идёт в СИСТЕМНОМ браузере
+    // (внутри веб-вью его и Google, и Apple запрещают), но если
+    // мост почему-то не поднялся, lib/oauth уходит в веб-вью —
+    // и лучше пусть там откроется страница входа, чем «заблоковано».
+    allowNavigation: [
+      'cres-ca.com', '*.cres-ca.com', '*.supabase.co',
+      'accounts.google.com', 'appleid.apple.com',
+    ],
   },
 
   ios: {

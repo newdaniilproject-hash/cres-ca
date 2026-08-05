@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { CodeInput } from '../code-input'
 import { nextRoute } from '../where'
 import { AppScreen, Field, keepVisible } from '../ui'
+import { OAuthButtons } from '../oauth'
 
 const CODE_LENGTH = 8
 const RESEND_SECONDS = 60
@@ -37,7 +38,10 @@ export function MobileLoginForm() {
   const [left, setLeft] = useState(0)
 
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
+  // Вход через провайдера возвращается сюда с причиной отказа
+  // в адресе: своего состояния у него быть не может — приложение
+  // за это время успело перезагрузиться.
+  const [error, setError] = useState(params.get('oauth') ?? '')
   const [noAccount, setNoAccount] = useState(false)
 
   function tick() {
@@ -221,6 +225,11 @@ export function MobileLoginForm() {
           {busy ? 'Хвилинку…' : byPassword ? 'Увійти' : 'Надіслати код'}
         </button>
       </form>
+
+      {/* Провайдеры показываем только на обычном входе: на экране
+          восстановления пароля кнопка «Продовжити з Apple» — это
+          другой разговор, и человек теряет нить. */}
+      {mode !== 'reset' && <OAuthButtons disabled={busy} />}
 
       <div className="mt-6 flex flex-col items-center gap-3">
         {byPassword ? (

@@ -45,11 +45,15 @@ export type QueuedAction =
       kind: 'journal.cleaning'
       tenantId: string
       taskId: string
+      // Кто выполнил. В колонке performed_by стоит NOT NULL без
+      // default — без этого поля досылка падала бы на каждой записи.
+      userId: string
       note?: string | null
     }
   | {
       kind: 'journal.sterilization'
       tenantId: string
+      userId: string
       device: string
       temperatureC: number
       durationMinutes: number
@@ -59,6 +63,7 @@ export type QueuedAction =
   | {
       kind: 'journal.solution'
       tenantId: string
+      userId: string
       agentName: string
       registration?: string | null
       concentration?: string | null
@@ -110,6 +115,20 @@ function newId(): string {
   const c = globalThis.crypto as Crypto | undefined
   if (c && 'randomUUID' in c) return c.randomUUID()
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+// «Это сеть упала или я сделал что-то не то?» — вопрос, от которого
+// зависит всё поведение кнопки. Ошибка сети → действие в очередь,
+// человек работает дальше. Ошибка данных → показать текст и НЕ прятать
+// в очередь: она не отправится никогда и застрянет там навечно.
+//
+// navigator.onLine ловит явный офлайн, тексты — случай «wifi есть,
+// интернета нет»: Chrome говорит "Failed to fetch", Safari — "Load
+// failed", остальное — вариации со словом network.
+export function isNetworkError(e: unknown): boolean {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return true
+  const m = e instanceof Error ? e.message : String(e ?? '')
+  return /failed to fetch|load failed|network|fetch failed|ERR_INTERNET|ERR_NETWORK/i.test(m)
 }
 
 export async function enqueue(label: string, action: QueuedAction): Promise<QueuedRecord> {
@@ -185,6 +204,7 @@ async function send(supabase: SupabaseClient, rec: QueuedRecord): Promise<void> 
     const { error } = await supabase.from('cleaning_entries').insert({
       tenant_id: a.tenantId,
       task_id: a.taskId,
+      performed_by: a.userId,
       note: a.note ?? null,
       // Время выполнения — когда мастер нажал кнопку, а не когда
       // появилась сеть. Иначе журнал врёт проверяющему.
@@ -196,6 +216,7 @@ async function send(supabase: SupabaseClient, rec: QueuedRecord): Promise<void> 
   if (a.kind === 'journal.sterilization') {
     const { error } = await supabase.from('sterilization_cycles').insert({
       tenant_id: a.tenantId,
+      performed_by: a.userId,
       device: a.device,
       temperature_c: a.temperatureC,
       duration_minutes: a.durationMinutes,
@@ -209,6 +230,7 @@ async function send(supabase: SupabaseClient, rec: QueuedRecord): Promise<void> 
   if (a.kind === 'journal.solution') {
     const { error } = await supabase.from('sanitation_solutions').insert({
       tenant_id: a.tenantId,
+      prepared_by: a.userId,
       agent_name: a.agentName,
       registration: a.registration ?? null,
       concentration: a.concentration ?? null,

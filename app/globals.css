@@ -1085,3 +1085,130 @@ html[data-native] .m-scroll,
 html[data-native] .appshell main {
   animation: screen-in 180ms var(--ease-out-soft) both;
 }
+
+/* ── Вход через Apple и Google ───────────────────────────────────
+   Кнопки провайдеров вне @layer components: они обязаны выигрывать
+   у утилит раскладки, а слой utilities идёт после components.
+
+   Высота 52 — та же, что у btn-primary: три кнопки подряд разной
+   высоты читаются как три разных по важности действия. */
+.oauth {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Разделитель «або». Полоса рисуется фоном, а не двумя пустыми
+   элементами: меньше разметки и не разъезжается при переносе. */
+.oauth-sep {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 22px 0 12px;
+  color: var(--color-faint);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+.oauth-sep::before,
+.oauth-sep::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--color-border);
+}
+
+.btn-apple,
+.btn-google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-height: var(--tap-min);
+  height: 52px;
+  border-radius: var(--radius-control);
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  transition: transform var(--dur-fast) var(--ease-out-soft),
+              border-color var(--dur-fast) var(--ease-out-soft);
+}
+.btn-apple:active,
+.btn-google:active { transform: scale(0.98); }
+.btn-apple:disabled,
+.btn-google:disabled { opacity: 0.5; pointer-events: none; }
+
+/* Apple рисуется по их гайдлайну: сплошной фон, знак и текст одного
+   цвета, никаких рамок и градиентов. На тёмном фоне — белая кнопка,
+   на светлом — чёрная. Отклонение от гайдлайна — повод для отказа
+   в ревью, поэтому цвета тут не из палитры проекта. */
+.btn-apple {
+  background: #ffffff;
+  color: #000000;
+  border: 1px solid #ffffff;
+}
+html.light .btn-apple {
+  background: #000000;
+  color: #ffffff;
+  border-color: #000000;
+}
+
+/* Google: нейтральная кнопка поверхности с их разноцветным знаком —
+   вариант, который они разрешают для тёмных интерфейсов. */
+.btn-google {
+  background: var(--color-surface-2);
+  color: var(--color-text);
+  border: 1px solid var(--color-border-strong);
+}
+.btn-google:hover { border-color: var(--color-accent); }
+/* Разделитель под кнопками: сверху к ним ближе, снизу — воздух
+   перед формой. Зеркалить отступы нельзя, иначе «або» прилипает
+   к первому полю. */
+.oauth-sep.below { margin: 18px 0 6px; }
+
+/* ── Шторка разделов (бургер-меню кабинета) ──────────────────────
+   Вне @layer: обязана выигрывать у утилит. Слева, как принято
+   у меню с содержанием; жест от левого края занят системным «назад»,
+   поэтому открытие — только кнопкой. */
+.drawer-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgb(0 0 0 / 0.5);
+  animation: fade var(--dur-fast) both;
+}
+.drawer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  width: min(78vw, 320px);
+  padding: env(safe-area-inset-top) 16px calc(16px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+  box-shadow: var(--shadow-overlay);
+  animation: drawer-in var(--dur-base) var(--ease-out-soft) both;
+}
+@keyframes drawer-in {
+  from { transform: translateX(-100%); }
+  to   { transform: none; }
+}
+.drawer-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: var(--tap-min);
+  padding: 0 12px;
+  border-radius: var(--radius-control);
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--color-text);
+}
+.drawer-item[data-active='true'] {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-weight: 650;
+}
+.drawer-item:active { background: var(--color-surface-2); }

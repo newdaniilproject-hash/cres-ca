@@ -27,7 +27,7 @@ workflows:
       vars:
         BUNDLE_ID: com.cresca.app
         APP_NAME: "Маркет"
-      node: 20
+      node: 24
       xcode: latest
       cocoapods: default
     triggering:
@@ -37,11 +37,11 @@ workflows:
           include: true
     scripts:
       - name: Install JS dependencies
-        script: npm ci --legacy-peer-deps
+        script: npm install --legacy-peer-deps
 
       - name: Add iOS platform (idempotent)
         script: |
-          if [ ! -d "ios" ]; then npx cap add ios; fi
+          if [ ! -d "ios" ]; then npx cap add ios --packagemanager Cocoapods; fi
 
       - name: Sync Capacitor → iOS
         script: npx cap sync ios
@@ -109,6 +109,42 @@ workflows:
           # Только стандартный HTTPS — снимает вопрос Missing Compliance в TestFlight.
           /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" App/Info.plist 2>/dev/null || true
 
+      - name: Глубокие ссылки — схема cresca://
+        script: |
+          cd ios/App
+          # Без этой схемы вход через Apple и Google не возвращается
+          # в приложение ВООБЩЕ: системный браузер получает от
+          # /auth/callback ссылку cresca://auth?code=… и, не найдя,
+          # кто её обслуживает, просто показывает ошибку.
+          # Этой же схемой открываются тапы по пушам.
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" App/Info.plist 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0 dict" App/Info.plist 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLName string $BUNDLE_ID" App/Info.plist 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" App/Info.plist 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string cresca" App/Info.plist 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes" App/Info.plist
+
+      - name: Universal Links (только если возможность включена в Apple)
+        script: |
+          cd ios/App
+          # Associated Domains добавляется ТОЛЬКО по флагу. Причина
+          # жёсткая: если в App ID возможность не включена, профиль
+          # её не содержит, и подпись падает — билд теряется целиком.
+          #
+          # Порядок включения, когда дойдут руки:
+          #   1. developer.apple.com → Identifiers → com.cresca.app →
+          #      поставить галочку Associated Domains;
+          #   2. в Codemagic задать IOS_ASSOCIATED_DOMAINS=1;
+          #   3. файл /.well-known/apple-app-site-association уже отдаётся.
+          if [ "${IOS_ASSOCIATED_DOMAINS:-0}" = "1" ]; then
+            /usr/libexec/PlistBuddy -c "Add :com.apple.developer.associated-domains array" App/App.entitlements 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :com.apple.developer.associated-domains:0 string applinks:cres-ca.com" App/App.entitlements 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :com.apple.developer.associated-domains:1 string webcredentials:cres-ca.com" App/App.entitlements 2>/dev/null || true
+            echo "OK: Universal Links включены"
+          else
+            echo "Universal Links пропущены (IOS_ASSOCIATED_DOMAINS != 1) — схема cresca:// работает и без них"
+          fi
+
       - name: Build number = счётчик Codemagic
         script: |
           cd ios/App
@@ -144,8 +180,8 @@ workflows:
       vars:
         BUNDLE_ID: com.cresca.app
         APP_NAME: "Маркет"
-      node: 20
-      java: 17
+      node: 24
+      java: 21
     triggering:
       events: [tag]
       tag_patterns:
@@ -153,7 +189,7 @@ workflows:
           include: true
     scripts:
       - name: Install JS dependencies
-        script: npm ci --legacy-peer-deps
+        script: npm install --legacy-peer-deps
       - name: Add Android platform (idempotent)
         script: |
           if [ ! -d "android" ]; then npx cap add android; fi
@@ -194,8 +230,8 @@ workflows:
       groups: [push, android_signing]
       vars:
         BUNDLE_ID: com.cresca.app
-      node: 20
-      java: 17
+      node: 24
+      java: 21
     triggering:
       events: [tag]
       tag_patterns:
@@ -203,7 +239,7 @@ workflows:
           include: true
     scripts:
       - name: Install JS dependencies
-        script: npm ci --legacy-peer-deps
+        script: npm install --legacy-peer-deps
       - name: Add Android platform
         script: |
           if [ ! -d "android" ]; then npx cap add android; fi

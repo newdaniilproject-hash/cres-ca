@@ -7,6 +7,7 @@ import { LEGAL_VERSION, LEGAL_DOCS } from '@/lib/legal'
 import { CodeInput } from '../code-input'
 import { nextRoute } from '../where'
 import { AppScreen, Field, keepVisible } from '../ui'
+import { OAuthButtons } from '../oauth'
 
 const CODE_LENGTH = 8
 const RESEND_SECONDS = 60
@@ -269,6 +270,12 @@ export function MobileRegisterForm() {
       subtitle="Кілька полів — і склад ваш"
       backHref="/m"
     >
+      {/* Провайдеры ПЕРЕД анкетой, а не под ней. Человеку, готовому
+          войти одним тапом, незачем пролистывать семь полей, чтобы
+          об этой возможности узнать. Согласие тут же строкой: галочки
+          он не увидит, а запись в журнал уйдёт всё равно. */}
+      <OAuthButtons sep="below" hint="або заповніть анкету" legal disabled={busy} />
+
       <form onSubmit={submit} className="flex flex-col gap-5">
         <div className="flex gap-3">
           <Field label="Імʼя" htmlFor="f-first" className="flex-1">

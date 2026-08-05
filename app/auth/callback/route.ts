@@ -1,39 +1,88 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 
-// Обмен кода на сессию: письма (вход по ссылке, подтверждение почты,
-// восстановление пароля) и возврат от внешнего провайдера (Google).
-// Провайдер отдаёт отказ теми же query-параметрами (error, error_description),
-// поэтому разбор ошибки живёт здесь, а понятный текст собирает /login.
+// Возврат от Apple и Google.
+//
+// Две разные развилки, и путать их нельзя.
+//
+// Веб: человек в обычном браузере, PKCE-верификатор лежит в его куках.
+// Отправляем на /auth/finish, там сессия и собирается.
+//
+// Приложение (native=1): страница открыта в СИСТЕМНОМ браузере, а куки
+// веб-вью ему недоступны. Верификатора здесь нет и быть не может,
+// поэтому обменять код на сессию отсюда невозможно физически.
+// Отдаём код обратно в приложение ссылкой схемы cresca:// — обмен
+// сделает components/deep-link, уже внутри веб-вью.
+export const dynamic = 'force-dynamic'
+
 export async function GET(request: Request) {
   const url = new URL(request.url)
   const code = url.searchParams.get('code')
-  const next = safeNext(url.searchParams.get('next'))
-  const denied = url.searchParams.get('error_description') ?? url.searchParams.get('error')
+  const err =
+    url.searchParams.get('error_description') ??
+    url.searchParams.get('error') ??
+    null
+  const native = url.searchParams.get('native') === '1'
+  const next = url.searchParams.get('next') || ''
 
-  if (denied) return toLogin(url, denied)
-
-  if (code) {
-    const supabase = await createClient()
-    const { error } = await supabase.auth.exchangeCodeForSession(code)
-    if (!error) {
-      return NextResponse.redirect(new URL(next, url.origin))
-    }
-    return toLogin(url, error.message)
+  if (native) {
+    const target = new URL('cresca://auth')
+    if (code) target.searchParams.set('code', code)
+    if (err) target.searchParams.set('error', err)
+    if (next) target.searchParams.set('next', next)
+    return new NextResponse(handoff(target.toString()), {
+      headers: {
+        'content-type': 'text/html; charset=utf-8',
+        'cache-control': 'no-store',
+      },
+    })
   }
 
-  return toLogin(url, null)
+  const finish = new URL('/auth/finish', url.origin)
+  if (code) finish.searchParams.set('code', code)
+  if (err) finish.searchParams.set('error', err)
+  if (next) finish.searchParams.set('next', next)
+  return NextResponse.redirect(finish)
 }
 
-// Только внутренний путь: «//evil.com» и абсолютный адрес new URL() принял бы
-// как чужой origin — это открытый редирект прямо на странице входа.
-function safeNext(value: string | null): string {
-  if (!value || !value.startsWith('/') || value.startsWith('//')) return '/account'
-  return value
-}
-
-function toLogin(url: URL, reason: string | null) {
-  const target = new URL('/login', url.origin)
-  if (reason) target.searchParams.set('error', reason)
-  return NextResponse.redirect(target)
+// Страница-пересадка. Ей жить полторы секунды, поэтому ни React,
+// ни шрифтов, ни CSS-переменных — только собственная разметка.
+// Цвета совпадают с --color-bg и --color-muted намеренно: иначе
+// на возврате в приложение мигает белым.
+function handoff(target: string): string {
+  const safe = target.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+  return `<!doctype html>
+<html lang="uk"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#141417">
+<title>Повертаємось у застосунок…</title>
+<style>
+ html,body{margin:0;height:100%;background:#141417;color:#e8e8ec;
+  font:500 16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased}
+ .w{display:flex;min-height:100%;flex-direction:column;align-items:center;
+  justify-content:center;gap:18px;padding:24px;text-align:center}
+ p{margin:0;color:#8b8b96;font-size:14px}
+ a{display:inline-flex;align-items:center;justify-content:center;height:52px;
+  padding:0 26px;border-radius:14px;background:#2563eb;color:#fff;
+  font-weight:650;letter-spacing:-.02em;text-decoration:none}
+ .s{width:26px;height:26px;border:2px solid rgba(255,255,255,.16);
+  border-top-color:#60a5fa;border-radius:999px;animation:r .7s linear infinite}
+ @keyframes r{to{transform:rotate(360deg)}}
+ #b{display:none}
+</style>
+</head><body>
+<div class="w">
+ <div class="s"></div>
+ <p>Повертаємось у застосунок…</p>
+ <a id="b" href="${safe}">Відкрити застосунок</a>
+</div>
+<script>
+ var t=${JSON.stringify(target)};
+ location.replace(t);
+ // Если система не подхватила схему за полторы секунды — показываем
+ // кнопку. Молча висящий спиннер человек читает как поломку.
+ setTimeout(function(){document.getElementById('b').style.display='inline-flex'},1500);
+</script>
+</body></html>`
 }

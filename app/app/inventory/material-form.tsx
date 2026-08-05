@@ -30,6 +30,7 @@ export function MaterialForm({
 
   const [name, setName] = useState('')
   const [unit, setUnit] = useState(UNITS[0])
+  const [sku, setSku] = useState('')
   const [category, setCategory] = useState('')
   const [threshold, setThreshold] = useState('0')
   const [cost, setCost] = useState('')
@@ -50,6 +51,9 @@ export function MaterialForm({
       tenant_id: tenantId,
       name: name.trim(),
       unit,
+      // Артикул — прямой пункт ТЗ (3.1). Приводим к верхнему регистру:
+      // «kj-12» и «KJ-12» — один и тот же товар, а не два.
+      sku: sku.trim().toUpperCase() || null,
       category: category.trim() || null,
       // current_stock не отправляем сознательно: это кэш от журнала
       // движений, прямой update блокирует триггер (CLAUDE.md, правило 5).
@@ -115,6 +119,13 @@ export function MaterialForm({
         <label className="field-label">Категорія</label>
         <input className="input" placeholder="Канекалон"
                value={category} onChange={(e) => setCategory(e.target.value)} />
+      </div>
+
+      <div>
+        <label className="field-label">Артикул</label>
+        <input className="input" placeholder="KJ-24-BLK"
+               value={sku} onChange={(e) => setSku(e.target.value)} />
+        <p className="field-hint">Код з етикетки чи накладної — за ним шукає і інспектор, і постачальник.</p>
       </div>
 
       <div>

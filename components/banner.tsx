@@ -102,13 +102,27 @@ export function NotifyBanner() {
       push(n.title ?? 'Маркет', n.body, extra?.url ?? extra?.href)
     }
 
+    // Тап по уведомлению из системной шторки. Без этого пуш открывает
+    // просто приложение — на том экране, где его закрыли, — и человек
+    // сам ищет, о каком заказе речь. На Android то же самое делает
+    // addClickListener в MainActivity.
+    const onClick = (e: { notification?: PushPayload }) => {
+      const extra = e.notification?.additionalData ?? e.notification?.data
+      const href = extra?.url ?? extra?.href
+      if (href && href.startsWith('/')) window.location.assign(href)
+    }
+
     const os = w.Capacitor?.isNativePlatform?.() ? w.plugins?.OneSignal : undefined
     try { os?.Notifications?.addEventListener?.('foregroundWillDisplay', onForeground) }
     catch { /* пуш не должен ронять экран */ }
+    try { os?.Notifications?.addEventListener?.('click', onClick) }
+    catch { /* ignore */ }
 
     return () => {
       window.removeEventListener('cres:notify', onEvent)
       try { os?.Notifications?.removeEventListener?.('foregroundWillDisplay', onForeground) }
+      catch { /* ignore */ }
+      try { os?.Notifications?.removeEventListener?.('click', onClick) }
       catch { /* ignore */ }
     }
   }, [push])

@@ -10,6 +10,7 @@ import { KeyboardFit } from '@/components/keyboard-fit'
 import { SwipeBack } from '@/components/swipe-back'
 import { NotifyBanner } from '@/components/banner'
 import { NativeFeel } from '@/components/native-feel'
+import { DeepLink } from '@/components/deep-link'
 import './globals.css'
 
 // Один шрифт на весь интерфейс: заголовки теперь гротеском
@@ -68,6 +69,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <SwipeBack />
           <NotifyBanner />
           <NativeFeel />
+          {/* Глубокие ссылки: возврат от Apple и Google, тап по пушу,
+              ссылка на товар, присланная в мессенджере. Один обработчик
+              на всё приложение — иначе на одном экране ссылка открывает
+              нужное, а на другом ничего не делает. */}
+          <DeepLink />
           {children}
         </ToastProvider>
       </body>

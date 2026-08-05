@@ -8,6 +8,8 @@ import { MaterialForm, type RefItem } from './material-form'
 import { ContainerForm, type BatchOption } from './container-form'
 import { RefsForm } from './refs-form'
 import { Sheet } from '@/components/sheet'
+import { enqueue, isNetworkError } from '@/lib/offline/queue'
+import { useToast } from '@/components/toast'
 
 type Container = {
   id: string; code: string; status: string; useBy: string | null
@@ -50,6 +52,7 @@ export function InventoryClient({
 }) {
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
+  const toast = useToast()
   const [tab, setTab] = useState<'containers' | 'materials' | 'goods'>('containers')
   // Формы раскрываются прямо на странице, а не модалкой: на телефоне
   // модальное окно перекрывается клавиатурой и поля уезжают из вида.
@@ -105,22 +108,51 @@ export function InventoryClient({
     }
   }
 
-  async function openContainer(id: string) {
+  // Смена статуса ёмкости — то самое действие, которое мастер делает
+  // с банкой в руке в подвале без сети. Ошибка сети не роняет действие:
+  // оно ложится в офлайн-очередь и уходит само при появлении связи
+  // (пункт ТЗ про офлайн). Ошибка данных — честно показывается: класть
+  // её в очередь бессмысленно, она не отправится никогда.
+  async function setContainerStatus(
+    id: string, code: string,
+    status: 'opened' | 'finished' | 'disposed',
+    label: string,
+  ) {
     setBusy(id)
-    const { error } = await supabase.from('material_containers')
-      .update({ status: 'opened' }).eq('id', id)
+    try {
+      const { error } = await supabase.from('material_containers')
+        .update({ status }).eq('id', id)
+      if (error) throw new Error(error.message)
+    } catch (e) {
+      setBusy(null)
+      if (isNetworkError(e)) {
+        await enqueue(`${label} · ${code}`, { kind: 'container.status', containerId: id, status })
+        toast.info('Збережено офлайн', 'Надішлеться само, щойно зʼявиться мережа.')
+        return true
+      }
+      toast.error('Не вдалося зберегти', e instanceof Error ? e.message : String(e))
+      return false
+    }
     setBusy(null)
-    if (error) { alert(error.message); return }
+    return true
+  }
+
+  async function openContainer(id: string) {
+    const code = scan?.container?.id === id ? scan.container.code : ''
+    const ok = await setContainerStatus(id, code, 'opened', 'Відкрити банку')
+    if (!ok) return
     router.refresh()
     if (scan?.container?.id === id) void lookup(scan.container.code)
   }
 
   async function finishContainer(id: string, disposed = false) {
-    setBusy(id)
-    const { error } = await supabase.from('material_containers')
-      .update({ status: disposed ? 'disposed' : 'finished' }).eq('id', id)
-    setBusy(null)
-    if (error) { alert(error.message); return }
+    const code = scan?.container?.id === id ? scan.container.code : ''
+    const ok = await setContainerStatus(
+      id, code,
+      disposed ? 'disposed' : 'finished',
+      disposed ? 'Списати ємність' : 'Ємність закінчилась',
+    )
+    if (!ok) return
     setScan(null)
     router.refresh()
   }

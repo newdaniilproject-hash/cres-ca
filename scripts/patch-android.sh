@@ -24,6 +24,40 @@ if [ -f "$MANIFEST" ]; then
     fi
   done
   echo "OK: AndroidManifest — камера/уведомления/биометрия/вибрация"
+
+  # Глубокие ссылки. Без них вход через Apple и Google не возвращается
+  # в приложение вовсе: Chrome получает от /auth/callback ссылку
+  # cresca://auth?code=… и, не найдя, кто её обслуживает, показывает
+  # «страница недоступна». Этой же схемой открываются тапы по пушам.
+  #
+  # singleTask обязателен: без него ссылка запускает ВТОРУЮ копию
+  # активности, onNewIntent не вызывается никогда, и человек
+  # возвращается на пустой экран поверх старого.
+  if ! grep -q 'android:scheme="cresca"' "$MANIFEST"; then
+    perl -0pi -e 's/android:launchMode="[^"]*"/android:launchMode="singleTask"/' "$MANIFEST"
+    if ! grep -q 'android:launchMode' "$MANIFEST"; then
+      perl -0pi -e 's/(<activity\b)/$1\n      android:launchMode="singleTask"/' "$MANIFEST"
+    fi
+    # Замена в ПЕРВОМ </activity> — это MainActivity, других
+    # активностей Capacitor в манифест не кладёт.
+    perl -0pi -e 's{</activity>}{
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="cresca" />
+            </intent-filter>
+
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="cres-ca.com" />
+                <data android:scheme="https" android:host="www.cres-ca.com" />
+            </intent-filter>
+        </activity>}' "$MANIFEST"
+    echo "OK: AndroidManifest — cresca:// и ссылки cres-ca.com, singleTask"
+  fi
 else
   echo "ERROR: AndroidManifest.xml не найден"; exit 1
 fi
@@ -37,8 +71,8 @@ fi
 # «Unknown regexp modifier "/t"». Разделитель / и никаких лишних скобок.
 GRADLE="android/app/build.gradle"
 if ! grep -q 'androidx.biometric' "$GRADLE"; then
-  perl -0pi -e 's/dependencies \{/dependencies \{\n    implementation "androidx.biometric:biometric:1.1.0"\n    implementation "com.onesignal:OneSignal:[5.0.0, 5.99.99]"/' "$GRADLE"
-  echo "OK: androidx.biometric + OneSignal SDK добавлены"
+  perl -0pi -e 's/dependencies \{/dependencies \{\n    implementation "androidx.biometric:biometric:1.1.0"\n    implementation "androidx.browser:browser:1.8.0"\n    implementation "com.onesignal:OneSignal:[5.0.0, 5.99.99]"/' "$GRADLE"
+  echo "OK: androidx.biometric + androidx.browser + OneSignal SDK добавлены"
 fi
 
 MA=$(find android/app/src/main/java -name MainActivity.java | head -1)
@@ -49,7 +83,9 @@ cat > "$MA" <<EOF
 package ${PKG};
 
 import android.Manifest;
+import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.VibrationEffect;
@@ -60,6 +96,7 @@ import android.webkit.PermissionRequest;
 import androidx.annotation.NonNull;
 import androidx.biometric.BiometricManager;
 import androidx.biometric.BiometricPrompt;
+import androidx.browser.customtabs.CustomTabsIntent;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.fragment.app.FragmentActivity;
@@ -79,9 +116,15 @@ import java.util.concurrent.Executor;
 public class MainActivity extends BridgeActivity {
   private static final String ONESIGNAL_APP_ID = "${OS_APP_ID}";
 
+  // Ссылка, которой приложение ЗАПУСТИЛИ. Событие сюда не годится:
+  // в момент onCreate веб-вью ещё пуст, слушателя нет, и событие
+  // уходит в пустоту. Поэтому ссылка ждёт, пока веб сам её заберёт.
+  private String pendingLink = null;
+
   @Override
   public void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
+    pendingLink = linkOf(getIntent());
 
     // Разрешения — сразу при старте, одним диалогом, без похода в настройки.
     List<String> perms = new ArrayList<>();
@@ -147,6 +190,8 @@ public class MainActivity extends BridgeActivity {
       this.getBridge().getWebView().addJavascriptInterface(new OneSignalJsBridge(), "AndroidOneSignal");
       this.getBridge().getWebView().addJavascriptInterface(new BiometricJsBridge(), "AndroidBiometric");
       this.getBridge().getWebView().addJavascriptInterface(new HapticsJsBridge(), "AndroidHaptics");
+      this.getBridge().getWebView().addJavascriptInterface(new OAuthJsBridge(), "AndroidOAuth");
+      this.getBridge().getWebView().addJavascriptInterface(new DeepLinkJsBridge(), "AndroidDeepLink");
     } catch (Throwable ignored) {}
 
     applyWebViewPermissionGrant();
@@ -154,6 +199,83 @@ public class MainActivity extends BridgeActivity {
 
   @Override public void onStart()  { super.onStart();  applyWebViewPermissionGrant(); }
   @Override public void onResume() { super.onResume(); applyWebViewPermissionGrant(); }
+
+  // Ссылка, пришедшая в УЖЕ запущенное приложение: возврат от Apple
+  // и Google, тап по пушу, ссылка на товар из мессенджера. Веб-вью
+  // здесь заведомо жив, поэтому событие доедет.
+  @Override
+  protected void onNewIntent(Intent intent) {
+    super.onNewIntent(intent);
+    setIntent(intent);
+    String url = linkOf(intent);
+    if (url != null) { pendingLink = url; emitDeepLink(url); }
+  }
+
+  private String linkOf(Intent intent) {
+    try {
+      if (intent == null) return null;
+      if (!Intent.ACTION_VIEW.equals(intent.getAction())) return null;
+      Uri data = intent.getData();
+      return data == null ? null : data.toString();
+    } catch (Throwable e) { return null; }
+  }
+
+  private void emitDeepLink(final String url) {
+    runOnUiThread(new Runnable() {
+      @Override public void run() {
+        try {
+          JSONObject d = new JSONObject();
+          d.put("url", url);
+          getBridge().getWebView().evaluateJavascript(
+            "window.dispatchEvent(new CustomEvent('cres:deeplink',{detail:" + d.toString() + "}))", null);
+        } catch (Throwable ignored) {}
+      }
+    });
+  }
+
+  // Веб забирает ссылку запуска сам, когда обработчик готов.
+  // Отдаём один раз: второй вызов вернёт пустую строку, иначе
+  // при каждом рендере приложение снова уходило бы по той же ссылке.
+  public class DeepLinkJsBridge {
+    @JavascriptInterface
+    public String consume() {
+      String u = pendingLink;
+      pendingLink = null;
+      return u == null ? "" : u;
+    }
+  }
+
+  // Вход через Apple и Google — в СИСТЕМНОМ браузере, а не в веб-вью.
+  // Это не наша прихоть: Google отвечает disallowed_useragent любому
+  // встроенному веб-вью, и обойти это нельзя — только вывести окно
+  // ввода пароля туда, где человек видит адресную строку.
+  //
+  // Custom Tabs, а не полный браузер: то же окно, но с нашими цветами
+  // и без ухода из приложения.
+  public class OAuthJsBridge {
+    @JavascriptInterface
+    public void open(final String url) {
+      runOnUiThread(new Runnable() {
+        @Override public void run() {
+          try {
+            CustomTabsIntent tab = new CustomTabsIntent.Builder()
+              .setShowTitle(false)
+              .setUrlBarHidingEnabled(true)
+              .build();
+            tab.intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            tab.launchUrl(MainActivity.this, Uri.parse(url));
+          } catch (Throwable e) {
+            // Chrome может быть выключен — тогда любой браузер.
+            try {
+              Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+              i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+              startActivity(i);
+            } catch (Throwable ignored) {}
+          }
+        }
+      });
+    }
+  }
 
   // «Назад» листает историю WebView, а не убивает приложение —
   // иначе первый же случайный свайп выбрасывает мастера со склада.
@@ -323,4 +445,4 @@ public class MainActivity extends BridgeActivity {
   }
 }
 EOF
-echo "OK: MainActivity — разрешения, OneSignal (+foreground), биометрия, вибрация, назад"
+echo "OK: MainActivity — разрешения, OneSignal, биометрия, вибрация, назад, глубокие ссылки, вход через провайдера"

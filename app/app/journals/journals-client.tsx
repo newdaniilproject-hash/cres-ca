@@ -1,8 +1,10 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useMemo, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { enqueue, isNetworkError } from '@/lib/offline/queue'
+import { useToast } from '@/components/toast'
 
 type Solution = {
   id: string; agent_name: string; concentration: string
@@ -12,6 +14,10 @@ type Task = { id: string; name: string; schedule: string | null; doneToday: bool
 type Cycle = {
   id: string; device: string; temperature_c: number
   duration_minutes: number; indicator_ok: boolean; performed_at: string
+}
+type AuditRow = {
+  id: number; action: string; entity: string
+  label: string | null; actor_email: string | null; at: string
 }
 
 // Три журнала одним экраном. Каждая запись — одно касание или одна
@@ -24,9 +30,35 @@ export function JournalsClient({
 }) {
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
-  const [tab, setTab] = useState<'cleaning' | 'solutions' | 'sterilization'>('cleaning')
+  const toast = useToast()
+
+  // Активная вкладка живёт в адресе (?tab=), а не в состоянии.
+  // Причины две: нижние табы приложения — это ссылки, и ссылку
+  // «покажи журнал стерилизации» можно отправить мастеру в чат.
+  const search = useSearchParams()
+  const raw = search.get('tab')
+  const tab: 'cleaning' | 'solutions' | 'sterilization' | 'actions' =
+    raw === 'solutions' || raw === 'sterilization' || raw === 'actions' ? raw : 'cleaning'
+  const setTab = (t: typeof tab) =>
+    router.replace(t === 'cleaning' ? '/app/journals' : `/app/journals?tab=${t}`)
   const [busy, setBusy] = useState<string | null>(null)
   const [err, setErr] = useState('')
+  // Отметки, сделанные без сети: показываем «сьогодні ✓» сразу,
+  // не дожидаясь досылки, — иначе мастер жмёт кнопку второй раз.
+  const [offDone, setOffDone] = useState<Set<string>>(new Set())
+
+  // Журнал действий (Audit Trail из ТЗ): грузится при первом открытии
+  // вкладки, а не с экраном, — обычно он нужен раз в месяц, при проверке.
+  const [audit, setAudit] = useState<AuditRow[] | null>(null)
+  useEffect(() => {
+    if (tab !== 'actions' || audit !== null) return
+    void supabase
+      .from('audit_log')
+      .select('id, action, entity, label, actor_email, at')
+      .order('at', { ascending: false })
+      .limit(200)
+      .then((res: { data: unknown }) => setAudit((res.data as AuditRow[] | null) ?? []))
+  }, [tab, audit, supabase])
 
   // формы
   const [agent, setAgent] = useState(''); const [conc, setConc] = useState('')
@@ -38,11 +70,28 @@ export function JournalsClient({
 
   async function markTask(taskId: string) {
     setBusy(taskId); setErr('')
-    const { error } = await supabase.from('cleaning_entries').insert({
-      tenant_id: tenantId, task_id: taskId, performed_by: userId,
-    })
+    try {
+      const { error } = await supabase.from('cleaning_entries').insert({
+        tenant_id: tenantId, task_id: taskId, performed_by: userId,
+      })
+      if (error) throw new Error(error.message)
+    } catch (e) {
+      setBusy(null)
+      // Мастер в подвале без сети — ровно тот случай, ради которого
+      // ТЗ требует офлайн. Отметка ложится в очередь со временем
+      // нажатия и уходит сама; галочка загорается сразу.
+      if (isNetworkError(e)) {
+        await enqueue('Прибирання: відмітка', {
+          kind: 'journal.cleaning', tenantId, taskId, userId,
+        })
+        setOffDone((prev) => new Set(prev).add(taskId))
+        toast.info('Збережено офлайн', 'Запис піде в журнал, щойно зʼявиться мережа.')
+        return
+      }
+      setErr(e instanceof Error ? e.message : String(e))
+      return
+    }
     setBusy(null)
-    if (error) { setErr(error.message); return }
     router.refresh()
   }
 
@@ -60,25 +109,56 @@ export function JournalsClient({
   async function addSolution(e: React.FormEvent) {
     e.preventDefault()
     setBusy('solution'); setErr('')
-    const { error } = await supabase.from('sanitation_solutions').insert({
-      tenant_id: tenantId, agent_name: agent, concentration: conc,
-      volume: Number(vol), prepared_by: userId,
-      expires_at: new Date(Date.now() + Number(hours) * 36e5).toISOString(),
-    })
+    const expiresAt = new Date(Date.now() + Number(hours) * 36e5).toISOString()
+    try {
+      const { error } = await supabase.from('sanitation_solutions').insert({
+        tenant_id: tenantId, agent_name: agent, concentration: conc,
+        volume: Number(vol), prepared_by: userId, expires_at: expiresAt,
+      })
+      if (error) throw new Error(error.message)
+    } catch (ex) {
+      setBusy(null)
+      if (isNetworkError(ex)) {
+        await enqueue(`Дезрозчин: ${agent}`, {
+          kind: 'journal.solution', tenantId, userId,
+          agentName: agent, concentration: conc,
+          volume: Number(vol) || null, expiresAt,
+        })
+        toast.info('Збережено офлайн', 'Розчин зʼявиться в журналі після синхронізації.')
+        setAgent(''); setConc(''); setVol('')
+        return
+      }
+      setErr(ex instanceof Error ? ex.message : String(ex))
+      return
+    }
     setBusy(null)
-    if (error) { setErr(error.message); return }
     setAgent(''); setConc(''); setVol(''); router.refresh()
   }
 
   async function addCycle(e: React.FormEvent) {
     e.preventDefault()
     setBusy('cycle'); setErr('')
-    const { error } = await supabase.from('sterilization_cycles').insert({
-      tenant_id: tenantId, device, temperature_c: Number(temp),
-      duration_minutes: Number(mins), indicator_ok: indicator, performed_by: userId,
-    })
+    try {
+      const { error } = await supabase.from('sterilization_cycles').insert({
+        tenant_id: tenantId, device, temperature_c: Number(temp),
+        duration_minutes: Number(mins), indicator_ok: indicator, performed_by: userId,
+      })
+      if (error) throw new Error(error.message)
+    } catch (ex) {
+      setBusy(null)
+      if (isNetworkError(ex)) {
+        await enqueue(`Стерилізація: ${device}`, {
+          kind: 'journal.sterilization', tenantId, userId, device,
+          temperatureC: Number(temp), durationMinutes: Number(mins),
+          indicatorOk: indicator,
+        })
+        toast.info('Збережено офлайн', 'Цикл зʼявиться в журналі після синхронізації.')
+        return
+      }
+      setErr(ex instanceof Error ? ex.message : String(ex))
+      return
+    }
     setBusy(null)
-    if (error) { setErr(error.message); return }
     router.refresh()
   }
 
@@ -93,13 +173,17 @@ export function JournalsClient({
            className="btn-primary h-9 t-sm">
           Звіт для перевірки → PDF
         </a>
-        <span className="w-full sm:w-px" />
+        <span className="hidden w-px lg:block" />
+        {/* На телефоне эти же вкладки живут в нижней панели приложения —
+            дублировать их чипсами значит съесть экран дважды. */}
         <button onClick={() => setTab('cleaning')}
-                className={tab === 'cleaning' ? 'chip-active' : 'chip'}>Прибирання</button>
+                className={(tab === 'cleaning' ? 'chip-active' : 'chip') + ' hidden lg:inline-flex'}>Прибирання</button>
         <button onClick={() => setTab('solutions')}
-                className={tab === 'solutions' ? 'chip-active' : 'chip'}>Дезрозчини</button>
+                className={(tab === 'solutions' ? 'chip-active' : 'chip') + ' hidden lg:inline-flex'}>Дезрозчини</button>
         <button onClick={() => setTab('sterilization')}
-                className={tab === 'sterilization' ? 'chip-active' : 'chip'}>Стерилізація</button>
+                className={(tab === 'sterilization' ? 'chip-active' : 'chip') + ' hidden lg:inline-flex'}>Стерилізація</button>
+        <button onClick={() => setTab('actions')}
+                className={(tab === 'actions' ? 'chip-active' : 'chip') + ' hidden lg:inline-flex'}>Дії</button>
       </div>
 
       {err && <p className="field-error rise">{err}</p>}
@@ -115,7 +199,7 @@ export function JournalsClient({
                   <p className="t-md">{t.name}</p>
                   {t.schedule && <p className="t-xs prose-muted">{t.schedule}</p>}
                 </div>
-                {t.doneToday ? (
+                {t.doneToday || offDone.has(t.id) ? (
                   <span className="badge-success">сьогодні ✓</span>
                 ) : (
                   <button className="btn-secondary h-9 t-sm" disabled={busy === t.id}
@@ -238,6 +322,66 @@ export function JournalsClient({
           </div>
         </section>
       )}
+
+      {/* Журнал дій — Audit Trail з ТЗ (п.4). Кожна зміна даних пишеться
+          тригером у незмінювану таблицю; тут її лише читають. Це відповідь
+          на запитання інспектора «хто і коли це виправив» — і водночас
+          захист самого власника від «я нічого не міняв». */}
+      {tab === 'actions' && (
+        <section className="flex flex-col gap-4">
+          <p className="field-hint rise">
+            Сюди автоматично потрапляє кожна зміна: картки засобів, партії,
+            ємності, техкарти, довідники, команда. Записи не можна ні
+            виправити, ні стерти — навіть власнику.
+          </p>
+          <div className="card rise-1 !p-0">
+            {audit === null ? (
+              <div className="empty">Завантажуємо…</div>
+            ) : audit.length === 0 ? (
+              <div className="empty">Поки жодної зміни не зафіксовано</div>
+            ) : audit.map((a) => (
+              <div key={a.id} className="row px-5">
+                <div className="min-w-0">
+                  <p className="t-md truncate">
+                    {ACTION_UA[a.action] ?? a.action}{' '}
+                    {ENTITY_UA[a.entity] ?? a.entity}
+                    {a.label ? <span className="prose-muted"> · {a.label}</span> : null}
+                  </p>
+                  <p className="t-xs prose-muted truncate">{a.actor_email ?? 'система'}</p>
+                </div>
+                <span className="badge tabular shrink-0">{fmt(a.at)}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   )
+}
+
+// Словарики журнала действий. Тригер пишет техническое (insert/update,
+// имя таблицы) — человеку показываем человеческое. Неизвестное значение
+// выводится как есть: лучше английское слово, чем спрятанная запись.
+const ACTION_UA: Record<string, string> = {
+  insert: 'Створено',
+  update: 'Змінено',
+  delete: 'Видалено',
+}
+const ENTITY_UA: Record<string, string> = {
+  materials: 'засіб',
+  material_batches: 'партію',
+  material_containers: 'ємність',
+  material_documents: 'документ',
+  material_barcodes: 'штрихкод',
+  tech_cards: 'техкарту',
+  cleaning_tasks: 'пункт чек-листа',
+  customers: 'клієнта',
+  offerings: 'позицію каталогу',
+  offering_variants: 'варіант позиції',
+  variant_materials: 'рецептуру',
+  suppliers: 'постачальника',
+  storage_locations: 'місце зберігання',
+  staff: 'співробітника',
+  tenant_members: 'учасника команди',
+  tenants: 'налаштування закладу',
 }
