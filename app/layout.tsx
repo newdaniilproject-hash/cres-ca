@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import { themeBootScript } from '@/components/theme'
+import { nativeBootScript } from '@/components/native-boot'
 import { ToastProvider } from '@/components/toast'
 import { OfflineBar } from '@/components/offline'
 import { PwaProvider } from '@/components/pwa'
@@ -43,6 +44,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* Класс темы ставится синхронно, до первой отрисовки:
             иначе виден кадр с чужим фоном. */}
         <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
+        {/* И признак приложения — тоже до первой отрисовки, иначе виден
+            кадр с боковым меню и переключателем темы. */}
+        <script dangerouslySetInnerHTML={{ __html: nativeBootScript }} />
       </head>
       <body>
         {/* Уведомления, состояние связи и предложение установки живут

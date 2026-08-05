@@ -178,6 +178,8 @@ html.light {
   to   { opacity: 1; transform: none; }
 }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+/* Курсор в поле кода: настоящий спрятан, этот рисуем сами. */
+@keyframes caret-blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
 @keyframes shimmer {
   from { background-position: 200% 0; }
   to   { background-position: -200% 0; }
@@ -668,3 +670,155 @@ html.light {
     .mock-wrap { display: block; }
   }
 }
+
+/* ============================================================
+   Приложение, а не сайт в рамке.
+
+   Атрибут data-native ставится на <html> синхронно, до первой
+   отрисовки (components/native-boot.ts). Всё, что ниже, —
+   единственное место, где веб и приложение расходятся. Разметка
+   компонентов общая: правило «общий слой вместо паритета».
+
+   Чего здесь добиваемся, по пунктам жалобы «видно, что это
+   обёртка»: нет бокового меню, нет переключателя темы, нет
+   ссылок на сайт, нет резинового отскока при прокрутке, нет
+   выделения текста долгим нажатием, нет полос прокрутки,
+   нет подсветки тапа синим прямоугольником.
+   ============================================================ */
+
+html[data-native] .web-only { display: none; }
+
+html[data-native] {
+  /* Резиновый отскок — самый заметный признак веб-вью.
+     overscroll-behavior гасит и его, и «потяни, чтобы обновить». */
+  overscroll-behavior-y: none;
+}
+
+html[data-native] body {
+  overscroll-behavior-y: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+
+/* Поля ввода — исключение: без выделения в них нельзя ни исправить
+   опечатку, ни вставить код из письма. */
+html[data-native] input,
+html[data-native] textarea,
+html[data-native] [contenteditable='true'] {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
+/* Полос прокрутки в приложении не бывает. */
+html[data-native] ::-webkit-scrollbar { width: 0; height: 0; }
+html[data-native] * { scrollbar-width: none; }
+
+/* Наведение курсора на телефоне не существует; оставленные :hover
+   залипают после тапа и выглядят как сломанная кнопка. */
+@media (hover: none) {
+  html[data-native] .sidebar-item:hover { background: transparent; }
+}
+
+/* Правила ниже НЕ в @layer: слой utilities у Tailwind идёт после
+   components, и `lg:hidden` победил бы любую специфичность внутри
+   слоя. Незаслоённые правила выигрывают у всех слоёв — это
+   единственный способ показать вкладки в приложении и спрятать
+   веб-хром, не разводя !important. Тех самых сорока правил
+   с !important, которыми склеивали первую версию, здесь не будет.
+   ============================================================ */
+
+/* Нижние вкладки в приложении — основная навигация на любой ширине,
+   включая планшет. В вебе они остаются телефонными (lg:hidden),
+   потому что там есть боковое меню. */
+html[data-native] .bottomnav { display: flex; }
+
+/* Шапка экрана. В вебе это просто заголовок; в приложении —
+   навигационная панель: липкая, уходит под вырез, во всю ширину.
+   Отрицательные поля по горизонтали ровно равны отступам контейнера
+   (px-4, на sm — px-6), иначе панель не дотянется до краёв
+   и станет видна подложка. */
+html[data-native] .appshell > div { padding-top: 0; }
+
+html[data-native] .apphead {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  margin-inline: -16px;
+  margin-bottom: 16px;
+  padding: 8px 16px 10px;
+  padding-top: calc(8px + env(safe-area-inset-top));
+  border-bottom: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-bg) 82%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+html[data-native] .apphead-back {
+  width: var(--tap-min);
+  height: var(--tap-min);
+  margin-left: -10px;
+  border-radius: var(--radius-control);
+  color: var(--color-text);
+}
+
+/* Стрелка «назад» — только в приложении. В браузере для этого есть
+   кнопка браузера, вторая ссылка рядом с ней лишняя. */
+html:not([data-native]) .apphead-back { display: none; }
+
+@media (min-width: 640px) {
+  html[data-native] .apphead {
+    margin-inline: -24px;
+    padding-inline: 24px;
+  }
+}
+
+/* Стрелка «назад» на экранах входа и регистрации приложения. */
+.navback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--tap-min);
+  height: var(--tap-min);
+  border-radius: var(--radius-control);
+  color: var(--color-text);
+}
+.navback:active { background: var(--color-surface-2); }
+
+/* Юридический документ: оферта, политика, cookie. Один набор правил
+   на все три — иначе документы разъезжаются по виду, и это первое,
+   что замечает проверяющий магазина. Ширина строки ограничена
+   контейнером: длинная строка юридического текста нечитаема. */
+.legal { color: var(--color-muted); font-size: 15px; line-height: 1.65; }
+.legal h2 {
+  margin-top: 32px;
+  margin-bottom: 10px;
+  font-size: 19px;
+  line-height: 24px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  color: var(--color-text);
+}
+.legal h3 {
+  margin-top: 20px;
+  margin-bottom: 6px;
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--color-text);
+}
+.legal p  { margin-bottom: 12px; }
+.legal ul { margin: 0 0 12px 0; padding-left: 20px; list-style: disc; }
+.legal li { margin-bottom: 6px; }
+.legal strong { color: var(--color-text); font-weight: 600; }
+.legal a { color: var(--color-accent); text-decoration: underline; text-underline-offset: 2px; }
+.legal table { width: 100%; margin-bottom: 16px; border-collapse: collapse; }
+.legal th, .legal td {
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  text-align: left;
+  vertical-align: top;
+  font-size: 14px;
+}
+.legal th { color: var(--color-text); font-weight: 600; background: var(--color-surface-2); }
