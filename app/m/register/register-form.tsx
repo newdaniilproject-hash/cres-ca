@@ -450,18 +450,21 @@ export function MobileRegisterForm() {
 
         {error && <p className="field-error">{error}</p>}
 
-        <button
-          className="btn-primary flex items-center justify-center"
-          style={{ height: 52, fontSize: 16 }}
-          disabled={busy || !ready}
-        >
-          {busy ? 'Створюємо…' : 'Створити акаунт'}
-        </button>
-
-        <p className="t-sm text-center prose-muted" style={{ paddingBottom: 8 }}>
+        <p className="t-sm text-center prose-muted">
           Вже маєте акаунт?{' '}
           <Link href="/m/login" className="underline underline-offset-2">Увійти</Link>
         </p>
+
+        {/* Кнопка липнет к низу видимой области — над клавиатурой. */}
+        <div className="m-sticky">
+          <button
+            className="btn-primary flex w-full items-center justify-center"
+            style={{ height: 52, fontSize: 16 }}
+            disabled={busy || !ready}
+          >
+            {busy ? 'Створюємо…' : 'Створити акаунт'}
+          </button>
+        </div>
       </form>
     </AppScreen>
   )
