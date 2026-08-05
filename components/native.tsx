@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/toast'
+import { haptic } from '@/lib/haptic'
 
 // Нативный слой: то, что оживает только внутри приложения из магазина.
 // В обычном браузере весь файл — тишина, ни одного лишнего запроса.
@@ -112,6 +113,41 @@ export function NativeProvider() {
     check()
     window.addEventListener('popstate', check)
     return () => window.removeEventListener('popstate', check)
+  }, [])
+
+  // ── Отклик на касание ──────────────────────────────────────────
+  // Один обработчик на всё приложение вместо onClick в каждой кнопке.
+  // Причина не в лени: расставленный руками отклик обязательно где-то
+  // забудут, и половина интерфейса будет отзываться, а половина нет —
+  // это заметнее, чем полное его отсутствие.
+  //
+  // touchstart, а не click: палец должен получить ответ в момент
+  // касания, до того как отработает переход. Разница в 100–200 мс
+  // и есть та самая «отзывчивость нативного».
+  useEffect(() => {
+    if (!nativeish()) return
+
+    const onTouch = (e: TouchEvent) => {
+      const t = e.target as HTMLElement | null
+      const el = t?.closest?.(
+        'button, a, [role="button"], label, summary, .bottomnav-item, .sidebar-item, .chip, .chip-active',
+      ) as HTMLElement | null
+      if (!el) return
+      if (el.hasAttribute('disabled') || el.getAttribute('aria-disabled') === 'true') return
+      // Поля ввода отзываться не должны: набор текста — это не нажатие.
+      if (el.closest('input, textarea, select')) return
+      // Переключатели и вкладки — «выбор», у него свой, более сухой отклик.
+      const isChoice =
+        el.getAttribute('role') === 'tab' ||
+        el.classList.contains('bottomnav-item') ||
+        el.classList.contains('chip') ||
+        el.classList.contains('chip-active') ||
+        el.tagName === 'LABEL'
+      if (isChoice) haptic.select(); else haptic.tap()
+    }
+
+    document.addEventListener('touchstart', onTouch, { passive: true })
+    return () => document.removeEventListener('touchstart', onTouch)
   }, [])
   const [locked, setLocked] = useState(false)
   const [offerBio, setOfferBio] = useState(false)
