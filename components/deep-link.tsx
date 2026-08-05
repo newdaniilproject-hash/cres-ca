@@ -132,7 +132,23 @@ export function DeepLink() {
         .catch(() => {})
     }
     if (app?.getLaunchUrl) {
-      void app.getLaunchUrl().then((d) => { if (d?.url) void handle(d.url) }).catch(() => {})
+      void app.getLaunchUrl().then((d) => {
+        // ТОЛЬКО своя схема, и это не придирка к чистоте.
+        //
+        // При удалённом server.url getLaunchUrl отдаёт САМ server.url —
+        // https://cres-ca.com/m. Это не глубокая ссылка, приложение просто
+        // так запустилось. Пропустив её дальше, получаем вечный цикл:
+        // handle → go('/m') → страница грузится → DeepLink монтируется →
+        // getLaunchUrl → то же самое. WKWebView вешает процесс и убивает
+        // его, человек видит «This page couldn't load» вместо кабинета.
+        // Ловилось 05.08.2026: экран смерти на ВСЕХ сборках сразу, включая
+        // старые, — потому что причина ехала с сервера, а не в бинаре.
+        //
+        // Ссылка снаружи всегда приходит схемой cresca:// (см. шапку файла);
+        // https-ссылки на Android приезжают через AndroidDeepLink, где мост
+        // отдаёт ровно то, что перехватил, и подмены server.url нет.
+        if (d?.url && d.url.startsWith('cresca:')) void handle(d.url)
+      }).catch(() => {})
     }
 
     return () => {
