@@ -61,6 +61,9 @@ export function NativeProvider() {
   const toast = useToast()
   const [locked, setLocked] = useState(false)
   const [offerBio, setOfferBio] = useState(false)
+  // Показывать текст и кнопки на экране замка только после отказа:
+  // пока висит системное окно Face ID, за ним должно быть пусто.
+  const [denied, setDenied] = useState(false)
 
   // ── Привязка пушей к пользователю ──────────────────────────────
   // sendPush на сервере шлёт по external_id = id пользователя Supabase,
@@ -174,7 +177,7 @@ export function NativeProvider() {
 
     // Холодный старт — запираем сразу.
     setLocked(true)
-    void (async () => { if (await verify()) setLocked(false) })()
+    void (async () => { if (await verify()) { setLocked(false); setDenied(false) } else setDenied(true) })()
 
     // Возврат после долгого сворачивания — запираем снова.
     let hiddenAt = 0
@@ -182,7 +185,7 @@ export function NativeProvider() {
       if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return }
       if (hiddenAt && Date.now() - hiddenAt > BIO_GRACE_MS) {
         setLocked(true)
-        void (async () => { if (await verify()) setLocked(false) })()
+        void (async () => { if (await verify()) { setLocked(false); setDenied(false) } else setDenied(true) })()
       }
       hiddenAt = 0
     }
@@ -191,22 +194,34 @@ export function NativeProvider() {
   }, [verify])
 
   if (locked) {
+    // Пока системный запрос Face ID открыт — за ним ничего не пишем.
+    // Своя надпись под чужим окном выглядит как ошибка вёрстки, а человеку
+    // и так понятно, чего от него хотят. Текст и кнопки появляются только
+    // если он отменил проверку.
     return (
       <div className="fixed inset-0 z-[80] flex flex-col items-center justify-center gap-5 px-8"
            style={{ background: 'var(--color-bg)' }}>
         <p className="display t-xl">Маркет<span style={{ color: 'var(--color-gold)' }}>.</span></p>
-        <p className="t-md text-center prose-muted">
-          Кабінет заблоковано. Підтвердіть, що це ви.
-        </p>
-        <button className="btn-primary"
-                onClick={() => void (async () => { if (await verify()) setLocked(false) })()}>
-          Розблокувати
-        </button>
-        <button className="t-sm underline underline-offset-2 prose-muted"
-                onClick={() => { localStorage.setItem(BIO_KEY, '0'); setLocked(false)
-                  toast.info('Замок вимкнено', 'Увімкнути знову можна в налаштуваннях безпеки.') }}>
-          Вимкнути замок
-        </button>
+
+        {denied && (
+          <>
+            <p className="t-md text-center prose-muted">
+              Не вдалося підтвердити. Спробуйте ще раз.
+            </p>
+            <button className="btn-primary"
+                    onClick={() => void (async () => {
+                      setDenied(false)
+                      if (await verify()) setLocked(false); else setDenied(true)
+                    })()}>
+              Розблокувати
+            </button>
+            <button className="t-sm underline underline-offset-2 prose-muted"
+                    onClick={() => { localStorage.setItem(BIO_KEY, '0'); setLocked(false); setDenied(false)
+                      toast.info('Замок вимкнено', 'Увімкнути знову можна в налаштуваннях безпеки.') }}>
+              Вимкнути замок
+            </button>
+          </>
+        )}
       </div>
     )
   }
