@@ -63,26 +63,46 @@ export function setBioLockEnabled(on: boolean) {
 // и справедливо говорит, что это сайт в рамке.
 const APP_PATHS = ['/m', '/app', '/terms', '/privacy', '/cookies', '/auth']
 
+// Вебовые экраны, у которых есть родной двойник в приложении.
+// Порядок важен: сначала более длинный путь.
+const TWINS: [string, string][] = [
+  // Вебовый онбординг продавца — это два шага: акаунт и заклад.
+  // В приложении их разводят два разных экрана, и решает, какой нужен,
+  // сам /m/shop: без сессии он уводит на приветствие, с сессией
+  // показывает одношаговое создание заклада.
+  ['/register/seller', '/m/shop'],
+  ['/register', '/m/register'],
+  ['/login', '/m/login'],
+  ['/account', '/app'],
+]
+
+// Внутри приложения признак ставится ещё до отрисовки (native-boot.ts),
+// и это единственная надёжная проверка на Android: моста Capacitor там
+// при удалённом server.url нет вовсе.
+function nativeish(): boolean {
+  if (typeof document === 'undefined') return false
+  return document.documentElement.hasAttribute('data-native') || isNative()
+}
+
 export function NativeProvider() {
   const toast = useToast()
 
-  // Страховка от ухода на сайт. Ловит и случайную ссылку, которую
-  // забыли спрятать, и возврат по истории на страницу лендинга.
+  // Страховка от ухода на сайт. Ловит и случайную ссылку, которую забыли
+  // спрятать, и — что важнее — уже установленный на телефон бинарь,
+  // собранный со старым server.url: он открывает /app, кабинет не видит
+  // заведения и уводит на вебовую форму «Акаунт для бізнесу».
+  // Пересборка это чинит, но человек с приложением на руках не должен
+  // ждать ревью магазина.
   useEffect(() => {
-    if (!isNative()) {
-      // Метка приложения ставится до отрисовки и живёт в localStorage.
-      // Если платформа оказалась вебом — метку снимаем, иначе обычный
-      // браузер на том же устройстве останется без бокового меню.
-      try {
-        if (localStorage.getItem('cres:native') === '1') {
-          localStorage.removeItem('cres:native')
-          document.documentElement.removeAttribute('data-native')
-        }
-      } catch { /* приватный режим */ }
-      return
-    }
+    if (!nativeish()) return
+
     const check = () => {
       const p = window.location.pathname
+      const twin = TWINS.find(([from]) => p === from || p.startsWith(from + '/'))
+      if (twin) {
+        window.location.replace(twin[1] + window.location.search)
+        return
+      }
       if (!APP_PATHS.some((a) => p === a || p.startsWith(a + '/'))) {
         window.location.replace('/m')
       }
