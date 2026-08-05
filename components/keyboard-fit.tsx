@@ -52,11 +52,33 @@ export function KeyboardFit() {
       const tag = el.tagName
       return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable
     }
+    // Поднять поле к верхней кромке экрана.
+    //
+    // block: 'start', а НЕ 'center'. Центр — это середина той высоты,
+    // которую браузер СЧИТАЕТ видимой; в веб-вью он считает её неверно
+    // и «центрирует» поле ровно под клавиатуру. Верхняя кромка от
+    // измерений не зависит: выше неё клавиатуры не бывает. Отступ под
+    // подпись поля даёт scroll-margin-top в globals.css.
+    //
+    // Дважды: сразу и через 420 мс. Клавиатура выезжает около трети
+    // секунды, и первый расчёт делается по ещё не сжатому экрану.
+    const lift = (el: HTMLElement) => {
+      const up = () => el.scrollIntoView({ block: 'start', behavior: 'smooth' })
+      setTimeout(up, 60)
+      setTimeout(up, 420)
+    }
+
     let blurTimer = 0
     const onIn = (e: FocusEvent) => {
       if (!isField(e.target)) return
       clearTimeout(blurTimer)
       document.body.classList.add('kb-open')
+      // Прокрутка здесь, а не в onFocus каждого поля. Причина та же,
+      // что у отклика на касание: расставленное руками где-нибудь
+      // забудут, и половина форм будет вести себя правильно, а
+      // половина — нет. Здесь это работает для всех полей приложения,
+      // включая кабинет, без единой правки в компонентах.
+      lift(e.target as HTMLElement)
     }
     const onOut = (e: FocusEvent) => {
       if (!isField(e.target)) return
