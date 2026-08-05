@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { nextRoute } from './where'
 
 // Первый экран приложения. Канон мобильного онбординга: одна мысль,
 // два действия, юридические ссылки мелким шрифтом снизу — и ничего больше.
@@ -14,10 +15,10 @@ export default function MobileWelcome() {
   // Уже вошедшего человека приветственный экран не должен встречать вовсе.
   useEffect(() => {
     let alive = true
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(async ({ data }) => {
       if (!alive) return
       if (data.session) {
-        window.location.replace('/app')
+        window.location.replace(await nextRoute(supabase))
         return
       }
       setChecking(false)

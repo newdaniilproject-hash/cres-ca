@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { nextRoute } from './where'
 
 const CODE_LENGTH = 6
 const RESEND_SECONDS = 60
@@ -75,7 +76,7 @@ export function MobileAuthFlow({ mode }: { mode: 'login' | 'register' }) {
       codeRef.current?.focus()
       return
     }
-    window.location.href = '/app'
+    window.location.href = await nextRoute(supabase)
   }
 
   function onCodeChange(raw: string) {
