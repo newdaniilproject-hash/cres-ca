@@ -995,10 +995,10 @@ html[data-native] body:has(input:focus, textarea:focus) .bottomnav { display: no
 
 /* Поле поднимается к ВЕРХНЕЙ кромке экрана, а не в середину: выше
    верхней кромки клавиатуры не бывает ни при каких измерениях.
-   Отступ оставляет место подписи поля — иначе она срезается краем. */
-.m-scroll input,
-.m-scroll textarea,
-.m-scroll select {
+   Отступ оставляет место подписи поля — иначе она срезается краем.
+   Правило общее для всего приложения, а не только для экранов /m:
+   прокрутку делает один обработчик в keyboard-fit.tsx. */
+input, textarea, select {
   scroll-margin-top: 84px;
   scroll-margin-bottom: 24px;
 }
