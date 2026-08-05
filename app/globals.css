@@ -672,118 +672,47 @@ html.light {
 }
 
 /* ============================================================
-   Приложение, а не сайт в рамке.
+   Хром кабинета.
 
-   Атрибут data-native ставится на <html> синхронно, до первой
-   отрисовки (components/native-boot.ts). Всё, что ниже, —
-   единственное место, где веб и приложение расходятся. Разметка
-   компонентов общая: правило «общий слой вместо паритета».
+   Здесь был блок «приложение, а не сайт в рамке»: два десятка
+   правил, включавшихся атрибутом `data-native`. Они прятали боковое
+   меню и переключатель темы, гасили резиновый отскок, выделение
+   текста и полосы прокрутки — чтобы сайт в веб-вью не выдавал
+   в себе сайт. Ставил атрибут `components/native-boot.ts`.
 
-   Чего здесь добиваемся, по пунктам жалобы «видно, что это
-   обёртка»: нет бокового меню, нет переключателя темы, нет
-   ссылок на сайт, нет резинового отскока при прокрутке, нет
-   выделения текста долгим нажатием, нет полос прокрутки,
-   нет подсветки тапа синим прямоугольником.
+   Обёртки больше нет (CLAUDE.md → «Мобильная версия»), поэтому
+   атрибут и все зависевшие от него правила удалены по правилу 8.
+   Для браузера это не меняет ничего: `data-native` в нём никогда
+   и не появлялся, а значит ни одно из тех правил не применялось.
+
+   ОТДЕЛЬНОЕ НАЗВАННОЕ ИЗМЕНЕНИЕ (сосед М14, навигация). Одно
+   правило пряталось наоборот — `html:not([data-native])
+   .apphead-back { display: none }`. Оно задумывалось как «стрелка
+   «назад» не нужна там, где есть кнопка браузера», но класс
+   `.apphead-back` висит и на стрелке, И НА БУРГЕРЕ. В браузере
+   с телефона бургер поэтому не показывался никогда, а другого пути
+   к шторке разделов нет: нижняя панель даёт табы ТЕКУЩЕГО раздела,
+   боковое меню появляется только с lg. То есть разделы с телефона
+   были недостижимы. Правило снято, кнопка видна — это и есть
+   поведение, описанное в КОНСПЕКТЫ.md, М14.
+
+   Правила ниже НЕ в @layer намеренно: слой utilities у Tailwind
+   идёт после components, и `lg:hidden` победил бы любую
+   специфичность внутри слоя. Незаслоённое правило выигрывает
+   у всех слоёв — это заменяет !important полностью.
    ============================================================ */
 
-html[data-native] .web-only { display: none; }
-
-/* Обратное правило: разметка, которая существует только в приложении.
-   По умолчанию скрыта, поэтому в браузере её нет даже на кадр. */
-.native-only { display: none; }
-html[data-native] .native-only { display: flex; }
-
-html[data-native] {
-  /* Резиновый отскок — самый заметный признак веб-вью.
-     overscroll-behavior гасит и его, и «потяни, чтобы обновить». */
-  overscroll-behavior-y: none;
-}
-
-html[data-native] body {
-  overscroll-behavior-y: none;
-  -webkit-user-select: none;
-  user-select: none;
-  -webkit-tap-highlight-color: transparent;
-  -webkit-touch-callout: none;
-}
-
-/* Поля ввода — исключение: без выделения в них нельзя ни исправить
-   опечатку, ни вставить код из письма. */
-html[data-native] input,
-html[data-native] textarea,
-html[data-native] [contenteditable='true'] {
-  -webkit-user-select: text;
-  user-select: text;
-  -webkit-touch-callout: default;
-}
-
-/* Полос прокрутки в приложении не бывает. */
-html[data-native] ::-webkit-scrollbar { width: 0; height: 0; }
-html[data-native] * { scrollbar-width: none; }
-
-/* Наведение курсора на телефоне не существует; оставленные :hover
-   залипают после тапа и выглядят как сломанная кнопка. */
-@media (hover: none) {
-  html[data-native] .sidebar-item:hover { background: transparent; }
-}
-
-/* Правила ниже НЕ в @layer: слой utilities у Tailwind идёт после
-   components, и `lg:hidden` победил бы любую специфичность внутри
-   слоя. Незаслоённые правила выигрывают у всех слоёв — это
-   единственный способ показать вкладки в приложении и спрятать
-   веб-хром, не разводя !important. Тех самых сорока правил
-   с !important, которыми склеивали первую версию, здесь не будет.
-   ============================================================ */
-
-/* Нижние вкладки в приложении — основная навигация на любой ширине,
-   включая планшет. В вебе они остаются телефонными (lg:hidden),
-   потому что там есть боковое меню. */
-html[data-native] .bottomnav { display: flex; }
-
-/* Шапка экрана. В вебе это просто заголовок; в приложении —
-   навигационная панель: липкая, уходит под вырез, во всю ширину.
-   Отрицательные поля по горизонтали ровно равны отступам контейнера
-   (px-4, на sm — px-6), иначе панель не дотянется до краёв
-   и станет видна подложка. */
-html[data-native] .appshell > div { padding-top: 0; }
-
-/* Клавиатура в кабинете. Плавающая нижняя навигация висит над
-   содержимым, поэтому запас снизу и так большой — но при поднятой
-   клавиатуре его не хватает ровно на её высоту, и последнее поле
-   формы оказывается недостижимым. --kb меряет keyboard-fit.tsx. */
-html[data-native] .appshell { padding-bottom: calc(8rem + var(--kb, 0px)); }
-
-html[data-native] .apphead {
-  position: sticky;
-  top: 0;
-  z-index: 40;
-  margin-inline: -16px;
-  margin-bottom: 16px;
-  padding: 8px 16px 10px;
-  padding-top: calc(8px + env(safe-area-inset-top));
-  border-bottom: 1px solid var(--color-border);
-  background: color-mix(in srgb, var(--color-bg) 82%, transparent);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-}
-
-html[data-native] .apphead-back {
+/* Размер кнопки в шапке — бургер на корневом экране, «назад»
+   на карточке (в одном слоте, взаимоисключающе). `display` здесь
+   не задаётся сознательно: им управляет `lg:hidden` на бургере,
+   и перебивать утилиту незаслоённым правилом было бы ровно тем
+   склеиванием, от которого этот файл уходит. */
+.apphead-back {
   width: var(--tap-min);
   height: var(--tap-min);
   margin-left: -10px;
   border-radius: var(--radius-control);
   color: var(--color-text);
-}
-
-/* Стрелка «назад» — только в приложении. В браузере для этого есть
-   кнопка браузера, вторая ссылка рядом с ней лишняя. */
-html:not([data-native]) .apphead-back { display: none; }
-
-@media (min-width: 640px) {
-  html[data-native] .apphead {
-    margin-inline: -24px;
-    padding-inline: 24px;
-  }
 }
 
 /* Стрелка «назад» на экранах входа и регистрации приложения. */
@@ -833,12 +762,6 @@ html:not([data-native]) .apphead-back { display: none; }
   font-size: 14px;
 }
 .legal th { color: var(--color-text); font-weight: 600; background: var(--color-surface-2); }
-
-/* Пока клавиатура поднята, плавающая навигация перекрывает поле ввода:
-   она прижата к низу видимой области, а видимая область — это и есть
-   клавиатура. Прячем на время набора. Проверка через :has по фокусу
-   внутри страницы: отдельного состояния для этого заводить незачем. */
-html[data-native] body:has(input:focus, textarea:focus) .bottomnav { display: none; }
 
 /* ============================================================
    Нативные повадки: шторка, полоска уведомления, отклик нажатия.
@@ -954,22 +877,6 @@ html[data-native] body:has(input:focus, textarea:focus) .bottomnav { display: no
   background: var(--color-accent);
 }
 
-/* ── Отклик нажатия ───────────────────────────────────────── */
-/* Кнопка обязана проседать под пальцем. Без этого нажатие ощущается
-   как промах, и человек жмёт второй раз. Только в приложении и только
-   на сенсорном экране: у мыши для этого есть :hover. */
-@media (hover: none) {
-  html[data-native] button:active,
-  html[data-native] a:active,
-  html[data-native] [role='button']:active,
-  html[data-native] .card-flat:active {
-    transform: scale(0.975);
-    transition: transform var(--dur-instant) var(--ease-out-soft);
-  }
-  /* Полосу вкладок не давим целиком — давим только сам пункт. */
-  html[data-native] .bottomnav:active { transform: none; }
-}
-
 /* ============================================================
    Клавиатура на телефоне.
 
@@ -1073,18 +980,6 @@ body.kb-open .m-sticky {
 .pull-refresh.ready .pull-spinner { transform: rotate(180deg); }
 .pull-refresh.spinning .pull-spinner { animation: spin 0.7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-
-/* ── Появление экрана ───────────────────────────────────────────
-   Мгновенная подмена содержимого читается как перезагрузка страницы.
-   Нативный экран приезжает — коротко и сдержанно, 180 мс. */
-@keyframes screen-in {
-  from { opacity: 0; transform: translateX(12px); }
-  to   { opacity: 1; transform: none; }
-}
-html[data-native] .m-scroll,
-html[data-native] .appshell main {
-  animation: screen-in 180ms var(--ease-out-soft) both;
-}
 
 /* ── Вход через Apple и Google ───────────────────────────────────
    Кнопки провайдеров вне @layer components: они обязаны выигрывать

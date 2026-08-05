@@ -1,7 +1,6 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { haptic } from '@/lib/haptic'
 
 // Шторка снизу. В приложении окно посреди экрана — чужой элемент:
 // нативные экраны показывают дополнительное содержимое снизу, оттуда,
@@ -38,14 +37,13 @@ export function Sheet({
   const [drag, setDrag] = useState(0)
   const start = useRef<{ y: number; t: number } | null>(null)
 
-  const close = useCallback(() => { haptic.tap(); onClose() }, [onClose])
+  const close = useCallback(() => onClose(), [onClose])
 
   // Пока шторка открыта — страница под ней неподвижна. Иначе палец,
   // не попавший в шторку, прокручивает список за ней, и это выглядит
   // как поломка.
   useEffect(() => {
     if (!open) return
-    haptic.tap()
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }

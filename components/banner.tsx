@@ -1,7 +1,6 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { haptic } from '@/lib/haptic'
 
 // Уведомление, пришедшее, пока приложение открыто.
 //
@@ -54,7 +53,6 @@ export function NotifyBanner() {
   const push = useCallback((title: string, body?: string, href?: string) => {
     if (!title) return
     const id = ++seq.current
-    haptic.tap()
     // Одна полоска за раз: стопка уведомлений поверх содержимого —
     // это уже не сообщение, а помеха.
     setNotes([{ id, title, body, href }])
@@ -149,7 +147,7 @@ export function NotifyBanner() {
           if (dy < -30) drop(n.id); else setOffset(0)
         }}
         onClick={() => {
-          if (n.href) { haptic.tap(); window.location.href = n.href }
+          if (n.href) window.location.href = n.href
           drop(n.id)
         }}
         role={n.href ? 'link' : 'status'}

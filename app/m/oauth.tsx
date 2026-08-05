@@ -4,7 +4,6 @@ import Link from 'next/link'
 import { useState } from 'react'
 import { signInWithProvider, type OAuthProvider } from '@/lib/oauth'
 import { LEGAL_DOCS } from '@/lib/legal'
-import { haptic } from '@/lib/haptic'
 
 // Кнопки входа через Apple и Google.
 //
@@ -36,7 +35,6 @@ export function OAuthButtons({
 
   async function run(p: OAuthProvider) {
     setBusy(p); setError('')
-    haptic.tap()
     try {
       await signInWithProvider(p)
       // Окно провайдера открылось — приложение ждёт возврата

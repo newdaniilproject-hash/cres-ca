@@ -1,16 +1,10 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import { themeBootScript } from '@/components/theme'
-import { nativeBootScript } from '@/components/native-boot'
 import { ToastProvider } from '@/components/toast'
 import { OfflineBar } from '@/components/offline'
-import { PwaProvider } from '@/components/pwa'
-import { NativeProvider } from '@/components/native'
 import { KeyboardFit } from '@/components/keyboard-fit'
-import { SwipeBack } from '@/components/swipe-back'
 import { NotifyBanner } from '@/components/banner'
-import { NativeFeel } from '@/components/native-feel'
-import { DeepLink } from '@/components/deep-link'
 import './globals.css'
 
 // Один шрифт на весь интерфейс: заголовки теперь гротеском
@@ -49,31 +43,25 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* Класс темы ставится синхронно, до первой отрисовки:
             иначе виден кадр с чужим фоном. */}
         <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
-        {/* И признак приложения — тоже до первой отрисовки, иначе виден
-            кадр с боковым меню и переключателем темы. */}
-        <script dangerouslySetInnerHTML={{ __html: nativeBootScript }} />
       </head>
       <body>
-        {/* Уведомления, состояние связи и предложение установки живут
-            в одном нижнем стеке и доступны с любого экрана. Правило,
-            ради которого это здесь: у любого действия виден исход,
-            непонятных состояний быть не должно. */}
-        <ToastProvider overlay={<><NativeProvider /><PwaProvider /><OfflineBar /></>}>
-          {/* Нативные повадки. Все трое — сквозные: работают на любом
-              экране, поэтому подключаются один раз в корне.
-              KeyboardFit  — высота клавиатуры в переменную --kb.
-              SwipeBack    — жест «назад» от левого края.
-              NotifyBanner — уведомление, пришедшее при открытом
-                             приложении: система такие не показывает. */}
+        {/* Уведомления и состояние связи живут в одном нижнем стеке
+            и доступны с любого экрана. Правило, ради которого это здесь:
+            у любого действия виден исход, непонятных состояний быть
+            не должно. */}
+        <ToastProvider overlay={<OfflineBar />}>
+          {/* Сквозные, поэтому подключаются один раз в корне.
+              KeyboardFit  — высота клавиатуры в переменную --kb;
+                             считает через visualViewport, то есть
+                             работает в обычном браузере и остаётся.
+              NotifyBanner — уведомление при открытой вкладке.
+
+              Отсюда ушли SwipeBack и NativeFeel: обе проверяли атрибут
+              `data-native` и в браузере не делали ничего никогда.
+              Вместе с обёрткой они стали пустышками — удалены
+              по правилу 8, а не оставлены «пусть висят». */}
           <KeyboardFit />
-          <SwipeBack />
           <NotifyBanner />
-          <NativeFeel />
-          {/* Глубокие ссылки: возврат от Apple и Google, тап по пушу,
-              ссылка на товар, присланная в мессенджере. Один обработчик
-              на всё приложение — иначе на одном экране ссылка открывает
-              нужное, а на другом ничего не делает. */}
-          <DeepLink />
           {children}
         </ToastProvider>
       </body>

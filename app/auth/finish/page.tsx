@@ -5,8 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { ensureConsent } from '@/lib/consent'
 import { nextRoute } from '@/lib/where'
 
-// Завершение входа через провайдера в ВЕБЕ (в приложении этим
-// занимается components/deep-link — там код приезжает ссылкой схемы).
+// Завершение входа через провайдера.
 //
 // Обмен делается на клиенте сознательно: PKCE-верификатор Supabase
 // кладёт в куки браузера при нажатии кнопки, и код, обменянный

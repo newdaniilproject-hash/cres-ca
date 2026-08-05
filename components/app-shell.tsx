@@ -6,7 +6,6 @@ import { Suspense, useCallback, useEffect, useState } from 'react'
 import { ThemeToggle } from '@/components/theme'
 import { Sheet } from '@/components/sheet'
 import { createClient } from '@/lib/supabase/client'
-import { haptic } from '@/lib/haptic'
 import type { TenantModule } from '@/lib/tenant'
 
 // Навигация кабинета. Архитектура — решение директора 05.08.2026:
@@ -137,7 +136,7 @@ function AppShellInner({
   // произошла — навигационная мебель обязана уйти с дороги сама.
   useEffect(() => { setDrawer(false); setMore(false) }, [pathname, params])
 
-  const openDrawer = useCallback(() => { haptic.tap(); setDrawer(true) }, [])
+  const openDrawer = useCallback(() => setDrawer(true), [])
 
   const tabActive = (t: SectionTab): boolean => {
     if (t.tab !== undefined) {
@@ -150,15 +149,16 @@ function AppShellInner({
 
   async function signOut() {
     await createClient().auth.signOut()
-    const native = document.documentElement.hasAttribute('data-native')
-    window.location.href = native ? '/m' : '/'
+    // Раньше здесь была развилка по `data-native`: из обёртки уводили
+    // на /m, из браузера — на главную. Обёртки нет, развилка удалена.
+    window.location.href = '/'
   }
 
   return (
     <div className="appshell min-h-dvh pb-32 lg:pb-0">
       <div className="mx-auto flex max-w-6xl gap-8 px-4 pt-6 sm:px-6">
         {/* ── Десктоп: постоянный сайдбар, ничего не пряталось ── */}
-        <aside className="web-only hidden w-52 shrink-0 lg:block">
+        <aside className="hidden w-52 shrink-0 lg:block">
           <Link href="/" className="display mb-8 block t-xl">
             Маркет<span style={{ color: 'var(--color-gold)' }}>.</span>
           </Link>
@@ -202,7 +202,7 @@ function AppShellInner({
             )}
             <h1 className="display rise t-2xl min-w-0 flex-1 truncate">{title}</h1>
             {action}
-            <ThemeToggle className="web-only lg:hidden" />
+            <ThemeToggle className="lg:hidden" />
           </div>
           {children}
         </main>
@@ -222,7 +222,7 @@ function AppShellInner({
           ))}
           {section.more && section.more.length > 0 && (
             <button type="button" className="bottomnav-item flex-1"
-                    onClick={() => { haptic.tap(); setMore(true) }}>
+                    onClick={() => setMore(true)}>
               <span aria-hidden className="t-lg leading-none">⋯</span>
               Ще
             </button>
@@ -252,7 +252,7 @@ function AppShellInner({
               {visible.map((s) => (
                 <Link key={s.href} href={s.href} className="drawer-item"
                       data-active={section.href === s.href}
-                      onClick={() => haptic.select()}>
+                      >
                   <span aria-hidden className="w-5 text-center t-lg">{s.icon}</span>
                   {s.label}
                 </Link>
@@ -279,7 +279,7 @@ function AppShellInner({
             <Link key={m.href} href={m.href}
                   className="card-flat flex items-center justify-between gap-3"
                   style={{ minHeight: 'var(--tap-min)' }}
-                  onClick={() => haptic.select()}>
+                  >
               <span>
                 <span className="t-md block">{m.label}</span>
                 <span className="t-xs block" style={{ color: 'var(--color-faint)' }}>{m.hint}</span>
