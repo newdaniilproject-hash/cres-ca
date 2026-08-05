@@ -17,6 +17,7 @@ export default function MobileShopPage() {
   const supabase = useMemo(() => createClient(), [])
 
   const [ready, setReady] = useState(false)
+  const [who, setWho] = useState('')
   const [name, setName] = useState('')
   const [kind, setKind] = useState<Kind>('services')
   const [city, setCity] = useState('')
@@ -28,10 +29,18 @@ export default function MobileShopPage() {
     supabase.auth.getSession().then(({ data }) => {
       if (!alive) return
       if (!data.session) { window.location.replace('/m'); return }
+      setWho(data.session.user.email ?? '')
       setReady(true)
     })
     return () => { alive = false }
   }, [supabase])
+
+  // Экран не должен быть ловушкой: человек мог попасть сюда сразу после
+  // запуска, потому что вход уже был. Он видит, под кем зашёл, и может выйти.
+  async function signOut() {
+    await supabase.auth.signOut()
+    window.location.href = '/m'
+  }
 
   async function create(e: React.FormEvent) {
     e.preventDefault()
@@ -59,10 +68,24 @@ export default function MobileShopPage() {
 
   return (
     <main className="flex flex-1 flex-col px-6 pb-6">
-      <div style={{ height: 20 }} />
-      <h1 className="display t-2xl">Ваш заклад</h1>
+      <div className="flex items-center justify-between" style={{ height: 56 }}>
+        <span className="display t-lg">
+          Маркет<span style={{ color: 'var(--color-gold)' }}>.</span>
+        </span>
+        <button
+          type="button"
+          onClick={signOut}
+          className="t-sm underline underline-offset-2"
+          style={{ color: 'var(--color-muted)', minHeight: 'var(--tap-min)' }}
+        >
+          Вийти
+        </button>
+      </div>
+
+      <h1 className="display t-2xl mt-2">Ваш заклад</h1>
       <p className="t-md mt-2" style={{ color: 'var(--color-muted)', lineHeight: 1.5 }}>
-        Назву й місто можна змінити будь-коли.
+        {who ? <>Ви увійшли як {who}. </> : null}
+        Залишився один крок — назву й місто можна змінити будь-коли.
       </p>
 
       <form onSubmit={create} className="mt-7 flex flex-1 flex-col">
