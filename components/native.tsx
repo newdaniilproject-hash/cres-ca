@@ -42,7 +42,20 @@ function platform(): 'ios' | 'android' | 'web' {
 }
 
 const BIO_KEY = 'cres:biolock'          // '1' — включён, '0' — отказался
-const BIO_GRACE_MS = 45_000             // короткое сворачивание замка не требует
+const SESSION_KEY = 'cres:bio:passed'   // разблокировано в этом запуске приложения
+const BIO_GRACE_MS = 5 * 60_000         // свернул на минуту-другую — не запирать
+
+// Тумблер для кабинета: «Безпека» читает и пишет тот же ключ, что и замок.
+export function bioLockEnabled(): boolean {
+  if (typeof window === 'undefined') return false
+  return localStorage.getItem(BIO_KEY) === '1'
+}
+
+export function setBioLockEnabled(on: boolean) {
+  localStorage.setItem(BIO_KEY, on ? '1' : '0')
+  // Выключили — снимаем и метку сессии, чтобы включение снова спросило палец.
+  if (!on) sessionStorage.removeItem(SESSION_KEY)
+}
 
 export function NativeProvider() {
   const toast = useToast()
@@ -93,7 +106,17 @@ export function NativeProvider() {
   }, [])
 
   // ── Биометрический замок (Face ID / отпечаток) ─────────────────
+  // Успешная проверка помечает запуск приложения как разблокированный,
+  // чтобы палец не спрашивали на каждой перезагрузке страницы.
   const verify = useCallback(async (): Promise<boolean> => {
+    const ok = await rawVerify()
+    if (ok) { try { sessionStorage.setItem(SESSION_KEY, '1') } catch { /* приватный режим */ } }
+    return ok
+  }, [])
+
+  // Объявление функцией, а не константой: verify() создаётся раньше по коду,
+  // а объявления поднимаются — иначе временная мёртвая зона.
+  async function rawVerify(): Promise<boolean> {
     const p = platform()
     if (p === 'android') {
       const w = window as unknown as { AndroidBiometric?: { available: () => boolean; request: () => void } }
@@ -128,7 +151,7 @@ export function NativeProvider() {
       }
     }
     return true
-  }, [])
+  }
 
   useEffect(() => {
     if (!isNative()) return
@@ -140,6 +163,14 @@ export function NativeProvider() {
       return () => clearTimeout(t)
     }
     if (enabled !== '1') return
+
+    // ГРАБЛИ: каждая перезагрузка страницы внутри приложения выглядела как
+    // холодный старт, и Face ID спрашивали после каждого перехода — а это
+    // ровно то, что бесит. sessionStorage живёт, пока жив процесс приложения,
+    // и умирает, когда его смахнули из многозадачности. Именно та граница,
+    // которая нам нужна: «уже разблокировали в этом запуске» против
+    // «приложение закрыли».
+    if (sessionStorage.getItem(SESSION_KEY) === '1') return
 
     // Холодный старт — запираем сразу.
     setLocked(true)
