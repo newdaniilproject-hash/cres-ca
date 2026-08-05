@@ -86,6 +86,8 @@ export function AppShell({
   active,
   title,
   modules,
+  back,
+  action,
   children,
 }: {
   active: string
@@ -93,6 +95,13 @@ export function AppShell({
   /** Модули арендатора. Не передан — показываем всё: так ведут себя
       экраны, которые ещё не научились их прокидывать. */
   modules?: TenantModule[]
+  /** Куда ведёт стрелка «назад» в шапке приложения. Не передан — экран
+      считается корневым, стрелки нет. В вебе не показывается вовсе:
+      там для этого есть кнопка браузера. */
+  back?: string
+  /** Одно действие справа в шапке — так устроен любой нативный экран.
+      Кнопка «Додати» на телефоне живёт здесь, а не посреди списка. */
+  action?: React.ReactNode
   children: React.ReactNode
 }) {
   const nav = APP_NAV.filter((i) => !i.module || !modules || modules.includes(i.module))
@@ -101,9 +110,15 @@ export function AppShell({
     // Отступ снизу 128px, а не высота панели: плавающая навигация
     // висит над контентом, и без запаса последняя карточка уезжает
     // под неё вместе с индикатором жестов.
-    <div className="min-h-dvh pb-32 lg:pb-0">
+    //
+    // Разметка ОДНА на веб и приложение — правило «общий слой вместо
+    // паритета». Различие держится атрибутом data-native на <html>
+    // (ставится в app/layout.tsx до первой отрисовки) и десятком правил
+    // в globals.css. Второго дерева компонентов не заводим: тогда
+    // добавление пункта меню требовало бы правки двух файлов.
+    <div className="appshell min-h-dvh pb-32 lg:pb-0">
       <div className="mx-auto flex max-w-6xl gap-8 px-4 pt-6 sm:px-6">
-        <aside className="hidden w-52 shrink-0 lg:block">
+        <aside className="web-only hidden w-52 shrink-0 lg:block">
           <Link href="/" className="display mb-8 block t-xl">
             Маркет<span style={{ color: 'var(--color-gold)' }}>.</span>
           </Link>
@@ -122,9 +137,26 @@ export function AppShell({
         </aside>
 
         <main className="min-w-0 flex-1 pb-12">
-          <div className="mb-6 flex items-center justify-between gap-4">
-            <h1 className="display rise t-2xl">{title}</h1>
-            <ThemeToggle className="lg:hidden" />
+          {/* В приложении это не заголовок страницы, а навигационная
+              шапка: она липкая, уходит под вырез и содержит стрелку
+              назад и одно действие. В вебе — обычный заголовок. */}
+          <div className="apphead mb-6 flex items-center gap-3">
+            {back ? (
+              <Link
+                href={back}
+                aria-label="Назад"
+                className="apphead-back flex shrink-0 items-center justify-center"
+              >
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" strokeWidth="2"
+                     strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M15 18l-6-6 6-6" />
+                </svg>
+              </Link>
+            ) : null}
+            <h1 className="display rise t-2xl min-w-0 flex-1 truncate">{title}</h1>
+            {action}
+            <ThemeToggle className="web-only lg:hidden" />
           </div>
           {children}
         </main>

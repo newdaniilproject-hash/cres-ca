@@ -57,8 +57,40 @@ export function setBioLockEnabled(on: boolean) {
   if (!on) sessionStorage.removeItem(SESSION_KEY)
 }
 
+// Экраны, которым разрешено существовать внутри приложения.
+// Всё остальное — сайт: витрина, карта, лендинг, вебовая регистрация.
+// Попав туда, человек видит шапку с «Мапа», «Пошук», «Для бізнесу»
+// и справедливо говорит, что это сайт в рамке.
+const APP_PATHS = ['/m', '/app', '/terms', '/privacy', '/cookies', '/auth']
+
 export function NativeProvider() {
   const toast = useToast()
+
+  // Страховка от ухода на сайт. Ловит и случайную ссылку, которую
+  // забыли спрятать, и возврат по истории на страницу лендинга.
+  useEffect(() => {
+    if (!isNative()) {
+      // Метка приложения ставится до отрисовки и живёт в localStorage.
+      // Если платформа оказалась вебом — метку снимаем, иначе обычный
+      // браузер на том же устройстве останется без бокового меню.
+      try {
+        if (localStorage.getItem('cres:native') === '1') {
+          localStorage.removeItem('cres:native')
+          document.documentElement.removeAttribute('data-native')
+        }
+      } catch { /* приватный режим */ }
+      return
+    }
+    const check = () => {
+      const p = window.location.pathname
+      if (!APP_PATHS.some((a) => p === a || p.startsWith(a + '/'))) {
+        window.location.replace('/m')
+      }
+    }
+    check()
+    window.addEventListener('popstate', check)
+    return () => window.removeEventListener('popstate', check)
+  }, [])
   const [locked, setLocked] = useState(false)
   const [offerBio, setOfferBio] = useState(false)
   // Показывать текст и кнопки на экране замка только после отказа:
