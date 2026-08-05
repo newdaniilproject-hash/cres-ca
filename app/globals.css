@@ -747,6 +747,12 @@ html[data-native] .bottomnav { display: flex; }
    и станет видна подложка. */
 html[data-native] .appshell > div { padding-top: 0; }
 
+/* Клавиатура в кабинете. Плавающая нижняя навигация висит над
+   содержимым, поэтому запас снизу и так большой — но при поднятой
+   клавиатуре его не хватает ровно на её высоту, и последнее поле
+   формы оказывается недостижимым. --kb меряет keyboard-fit.tsx. */
+html[data-native] .appshell { padding-bottom: calc(8rem + var(--kb, 0px)); }
+
 html[data-native] .apphead {
   position: sticky;
   top: 0;
@@ -827,3 +833,9 @@ html:not([data-native]) .apphead-back { display: none; }
   font-size: 14px;
 }
 .legal th { color: var(--color-text); font-weight: 600; background: var(--color-surface-2); }
+
+/* Пока клавиатура поднята, плавающая навигация перекрывает поле ввода:
+   она прижата к низу видимой области, а видимая область — это и есть
+   клавиатура. Прячем на время набора. Проверка через :has по фокусу
+   внутри страницы: отдельного состояния для этого заводить незачем. */
+html[data-native] body:has(input:focus, textarea:focus) .bottomnav { display: none; }
