@@ -839,3 +839,133 @@ html:not([data-native]) .apphead-back { display: none; }
    клавиатура. Прячем на время набора. Проверка через :has по фокусу
    внутри страницы: отдельного состояния для этого заводить незачем. */
 html[data-native] body:has(input:focus, textarea:focus) .bottomnav { display: none; }
+
+/* ============================================================
+   Нативные повадки: шторка, полоска уведомления, отклик нажатия.
+   Не в @layer — эти правила обязаны выигрывать у утилит.
+   ============================================================ */
+
+/* ── Шторка снизу ─────────────────────────────────────────── */
+.sheet-layer { position: fixed; inset: 0; z-index: 60; }
+
+.sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  border: 0;
+  background: rgb(0 0 0 / 0.55);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  animation: fade var(--dur-base) var(--ease-out-soft) both;
+}
+
+/* Высота под клавиатуру: в шторке бывают поля, и кнопка «Зберегти»
+   обязана оставаться на экране. --kb меряет keyboard-fit.tsx.
+   Правило нарочно привязано к .sheet-layer: класс .sheet уже носят
+   окна кабинета, и переопределять его глобально значило бы сломать
+   то, что работает. */
+.sheet-layer .sheet {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(92dvh - var(--kb, 0px));
+  padding: 8px 20px 0;
+  border-top: 1px solid var(--color-border);
+  border-radius: var(--radius-hero) var(--radius-hero) 0 0;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-overlay);
+  transition: transform var(--dur-base) var(--ease-out-soft);
+  animation: sheet-up var(--dur-base) var(--ease-out-soft) both;
+  /* Жест «вниз» по шторке — её закрытие, а не прокрутка страницы. */
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+}
+
+/* Полоска-ручка. Не украшение: она сообщает, что шторку можно тянуть. */
+.sheet-grip {
+  width: 40px;
+  height: 4px;
+  margin: 0 auto 12px;
+  border-radius: 999px;
+  background: var(--color-border-strong);
+  flex-shrink: 0;
+}
+
+.sheet-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 12px;
+}
+
+/* Полоса действий прижата к низу и не уезжает с содержимым. */
+.sheet-foot {
+  flex-shrink: 0;
+  padding: 12px 0 calc(12px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+.sheet-layer .sheet:not(:has(.sheet-foot)) .sheet-body {
+  padding-bottom: calc(20px + env(safe-area-inset-bottom));
+}
+
+/* ── Полоска уведомления сверху ───────────────────────────── */
+.notify-layer {
+  position: fixed;
+  inset-inline: 0;
+  top: 0;
+  z-index: 70;
+  padding: calc(8px + env(safe-area-inset-top)) 12px 0;
+  pointer-events: none;
+}
+
+.notify {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-card);
+  background: color-mix(in srgb, var(--color-surface) 92%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: var(--shadow-lift);
+  animation: notify-in var(--dur-base) var(--ease-out-soft) both;
+  transition: transform var(--dur-fast) var(--ease-out-soft);
+  cursor: pointer;
+}
+
+@keyframes notify-in {
+  from { opacity: 0; transform: translateY(-120%); }
+  to   { opacity: 1; transform: none; }
+}
+
+.notify-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: var(--color-accent);
+}
+
+/* ── Отклик нажатия ───────────────────────────────────────── */
+/* Кнопка обязана проседать под пальцем. Без этого нажатие ощущается
+   как промах, и человек жмёт второй раз. Только в приложении и только
+   на сенсорном экране: у мыши для этого есть :hover. */
+@media (hover: none) {
+  html[data-native] button:active,
+  html[data-native] a:active,
+  html[data-native] [role='button']:active,
+  html[data-native] .card-flat:active {
+    transform: scale(0.975);
+    transition: transform var(--dur-instant) var(--ease-out-soft);
+  }
+  /* Полосу вкладок не давим целиком — давим только сам пункт. */
+  html[data-native] .bottomnav:active { transform: none; }
+}

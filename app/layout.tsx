@@ -7,6 +7,8 @@ import { OfflineBar } from '@/components/offline'
 import { PwaProvider } from '@/components/pwa'
 import { NativeProvider } from '@/components/native'
 import { KeyboardFit } from '@/components/keyboard-fit'
+import { SwipeBack } from '@/components/swipe-back'
+import { NotifyBanner } from '@/components/banner'
 import './globals.css'
 
 // Один шрифт на весь интерфейс: заголовки теперь гротеском
@@ -55,9 +57,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             ради которого это здесь: у любого действия виден исход,
             непонятных состояний быть не должно. */}
         <ToastProvider overlay={<><NativeProvider /><PwaProvider /><OfflineBar /></>}>
-        {/* Высота клавиатуры → CSS-переменная --kb. Нужна на каждом
-            экране с формой, поэтому живёт в корне. */}
-        <KeyboardFit />
+          {/* Нативные повадки. Все трое — сквозные: работают на любом
+              экране, поэтому подключаются один раз в корне.
+              KeyboardFit  — высота клавиатуры в переменную --kb.
+              SwipeBack    — жест «назад» от левого края.
+              NotifyBanner — уведомление, пришедшее при открытом
+                             приложении: система такие не показывает. */}
+          <KeyboardFit />
+          <SwipeBack />
+          <NotifyBanner />
           {children}
         </ToastProvider>
       </body>
