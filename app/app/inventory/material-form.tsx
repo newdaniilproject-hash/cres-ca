@@ -80,8 +80,7 @@ export function MaterialForm({
   }
 
   return (
-    <form onSubmit={save} className="card rise grid gap-3 sm:grid-cols-2">
-      <p className="display t-lg sm:col-span-2">Новий витратний засіб</p>
+    <form onSubmit={save} className="grid gap-3 sm:grid-cols-2">
 
       <div className="sm:col-span-2">
         <label className="field-label">Назва</label>

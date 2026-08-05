@@ -64,11 +64,7 @@ export function RefsForm({
   }
 
   return (
-    <div className="card rise flex flex-col gap-4">
-      <div className="flex items-center gap-2">
-        <p className="display t-lg">Довідники</p>
-        <button type="button" className="btn-ghost ml-auto" onClick={onDone}>Закрити</button>
-      </div>
+    <div className="flex flex-col gap-4">
 
       {err && <p className="field-error">{err}</p>}
 

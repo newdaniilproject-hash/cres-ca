@@ -147,7 +147,7 @@ export function ContainerForm({
   }
 
   return (
-    <div className="card rise flex flex-col gap-4">
+    <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" onClick={() => { setMode('container'); setErr('') }}
                 className={mode === 'container' ? 'chip-active' : 'chip'}>
