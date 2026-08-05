@@ -42,6 +42,20 @@ function validDate(dd: string, mm: string, yyyy: string): Date | null {
   return dt
 }
 
+// Платформа для журнала согласий. Именно эти три значения разрешены
+// ограничением user_consents.source — «app» база не примет.
+function signupSource(): 'web' | 'ios' | 'android' {
+  if (typeof window === 'undefined') return 'web'
+  const w = window as unknown as { Capacitor?: { getPlatform?: () => string } }
+  const p = w.Capacitor?.getPlatform?.()
+  if (p === 'ios' || p === 'android') return p
+  // На Android при удалённом server.url моста Capacitor нет — опознаём
+  // приложение по интерфейсам, которые ставит MainActivity.
+  const a = window as unknown as { AndroidBiometric?: unknown; AndroidOneSignal?: unknown }
+  if (a.AndroidBiometric || a.AndroidOneSignal) return 'android'
+  return 'web'
+}
+
 function ageYears(dt: Date) {
   const now = new Date()
   let a = now.getUTCFullYear() - dt.getUTCFullYear()
@@ -150,7 +164,9 @@ export function MobileRegisterForm() {
           // handle_new_user кладёт её в журнал согласий. Галочка без
           // этой строки — картинка, а не согласие.
           terms_version: LEGAL_VERSION,
-          signup_source: 'app',
+          // Откуда пришла регистрация — в журнал согласий. Значения
+          // сверены с ограничением в базе: web, ios, android.
+          signup_source: signupSource(),
         },
       },
     })
