@@ -70,15 +70,18 @@ export default function MobileWelcome() {
           Увійти
         </Link>
 
+        {/* Согласие человек даёт галочкой в форме регистрации — здесь
+            только ссылки, чтобы документы можно было прочитать
+            до того, как заводить акаунт. */}
         <p
           className="t-xs mt-3 text-center"
-          style={{ color: 'var(--color-faint)', lineHeight: 1.5 }}
+          style={{ color: 'var(--color-faint)', lineHeight: 1.6 }}
         >
-          Продовжуючи, ви приймаєте{' '}
-          <Link href="/privacy" className="underline underline-offset-2">
-            Політику конфіденційності
-          </Link>
-          .
+          <Link href="/terms" className="underline underline-offset-2">Умови</Link>
+          {' · '}
+          <Link href="/privacy" className="underline underline-offset-2">Конфіденційність</Link>
+          {' · '}
+          <Link href="/cookies" className="underline underline-offset-2">Cookie</Link>
         </p>
       </div>
     </main>
