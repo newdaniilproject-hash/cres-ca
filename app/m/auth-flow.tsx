@@ -28,6 +28,9 @@ export function MobileAuthFlow({ mode }: { mode: 'login' | 'register' }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [codeError, setCodeError] = useState('')
+  // Пришёл регистрироваться, а акаунт уже есть — экран кода превращается
+  // во вход, и мы говорим об этом прямо.
+  const [existing, setExisting] = useState(false)
   const [left, setLeft] = useState(0)
   const codeRef = useRef<HTMLInputElement>(null)
 
@@ -45,9 +48,33 @@ export function MobileAuthFlow({ mode }: { mode: 'login' | 'register' }) {
 
   async function sendCode(e?: React.FormEvent) {
     e?.preventDefault()
-    setBusy(true); setError('')
+    setBusy(true); setError(''); setExisting(false)
+    const addr = email.trim()
+
+    // Регистрация и вход — разные обещания, и человек должен понимать,
+    // что с ним произошло. Supabase сам по себе молчит: с shouldCreateUser
+    // он и создаст нового, и впустит существующего, ничего не сказав.
+    //
+    // Поэтому сначала пробуем войти БЕЗ создания. Прошло — значит акаунт
+    // уже есть, и код, который только что ушёл, — код для входа; так и
+    // говорим. Не прошло с «signups not allowed» — почты нет, создаём.
+    // Письмо в обоих случаях уходит ровно одно.
+    if (mode === 'register') {
+      const probe = await supabase.auth.signInWithOtp({
+        email: addr, options: { shouldCreateUser: false },
+      })
+      if (!probe.error) {
+        setBusy(false); setExisting(true)
+        setCode(''); setCodeError(''); setLeft(RESEND_SECONDS); setStep('code')
+        return
+      }
+      if (!probe.error.message.toLowerCase().includes('signups not allowed')) {
+        setBusy(false); setError(probe.error.message); return
+      }
+    }
+
     const { error } = await supabase.auth.signInWithOtp({
-      email: email.trim(),
+      email: addr,
       options: { shouldCreateUser: mode === 'register' },
     })
     setBusy(false)
@@ -91,9 +118,11 @@ export function MobileAuthFlow({ mode }: { mode: 'login' | 'register' }) {
   if (step === 'code') {
     return (
       <Frame
-        title="Введіть код"
-        subtitle={`Надіслали шість цифр на ${email}`}
-        onBack={() => { setStep('email'); setCode(''); setCodeError('') }}
+        title={existing ? 'Ви вже з нами' : 'Введіть код'}
+        subtitle={existing
+          ? `На ${email} уже є акаунт. Надіслали код для входу.`
+          : `Надіслали шість цифр на ${email}`}
+        onBack={() => { setStep('email'); setCode(''); setCodeError(''); setExisting(false) }}
       >
         <input
           ref={codeRef}
