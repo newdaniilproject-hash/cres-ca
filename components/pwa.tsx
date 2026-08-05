@@ -59,6 +59,12 @@ export function PwaProvider() {
   }, [])
 
   useEffect(() => {
+    // Внутри приложения из магазина предложение «встановити на телефон»
+    // выглядит как признак того, что перед человеком сайт. Признак
+    // приложения ставится на <html> до первой отрисовки, поэтому здесь
+    // он уже есть — Capacitor на Android при удалённом server.url
+    // проверить нечем.
+    if (document.documentElement.hasAttribute('data-native')) return
     const onPrompt = (e: Event) => {
       e.preventDefault()
       setDeferred(e as InstallEvent)
@@ -71,6 +77,7 @@ export function PwaProvider() {
   // не запущены как установленное приложение.
   useEffect(() => {
     // Внутри приложения из магазина PWA-подсказки бессмысленны и вредны.
+    if (document.documentElement.hasAttribute('data-native')) return
     const w = window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }
     if (w.Capacitor?.isNativePlatform?.()) return
     const ua = navigator.userAgent
