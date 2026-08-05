@@ -51,8 +51,17 @@ export default function MobileShopPage() {
       p_city: city.trim() || null,
     })
     if (error) { setBusy(false); setError(error.message); return }
-    // Полная перезагрузка: права и модули приезжают новым токеном,
-    // клиентская навигация оставила бы старый.
+
+    // ГРАБЛИ, из-за которых человека выбрасывало на вебовую форму «Крок 2 із 2»
+    // и просило ввести всё заново: заклад создавался, но членство живёт
+    // в JWT, а токен на руках остался старым — без него /app считает, что
+    // заведения нет, и уводит на регистрацию продавца.
+    //
+    // refreshSession заставляет Supabase выпустить новый токен, а хук
+    // custom_access_token_hook кладёт в него членства, права и модули.
+    // Без этой строки шаг замыкается в кольцо.
+    await supabase.auth.refreshSession()
+
     window.location.href = '/app'
   }
 
@@ -66,8 +75,19 @@ export default function MobileShopPage() {
     )
   }
 
+  // Клавиатура на телефоне съедает половину экрана. Поэтому: экран
+  // прокручивается, а поле при фокусе само подтягивается в середину —
+  // иначе человек печатает вслепую под клавиатурой.
+  function keepVisible(e: React.FocusEvent<HTMLInputElement>) {
+    const el = e.currentTarget
+    setTimeout(() => el.scrollIntoView({ block: 'center', behavior: 'smooth' }), 250)
+  }
+
   return (
-    <main className="flex flex-1 flex-col px-6 pb-6">
+    <main
+      className="flex flex-1 flex-col px-6 pb-6"
+      style={{ overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}
+    >
       <div className="flex items-center justify-between" style={{ height: 56 }}>
         <span className="display t-lg">
           Маркет<span style={{ color: 'var(--color-gold)' }}>.</span>
@@ -88,7 +108,7 @@ export default function MobileShopPage() {
         Залишився один крок — назву й місто можна змінити будь-коли.
       </p>
 
-      <form onSubmit={create} className="mt-7 flex flex-1 flex-col">
+      <form onSubmit={create} className="mt-7 flex flex-col">
         <label className="field-label" htmlFor="shop-name">Назва закладу</label>
         <input
           id="shop-name"
@@ -97,6 +117,7 @@ export default function MobileShopPage() {
           className="input"
           style={{ height: 52, fontSize: 16 }}
           value={name}
+          onFocus={keepVisible}
           onChange={(e) => setName(e.target.value)}
           placeholder="Braids Studio"
         />
@@ -140,13 +161,12 @@ export default function MobileShopPage() {
           className="input"
           style={{ height: 52, fontSize: 16 }}
           value={city}
+          onFocus={keepVisible}
           onChange={(e) => setCity(e.target.value)}
           placeholder="Харків"
         />
 
         {error && <p className="field-error">{error}</p>}
-
-        <div className="flex-1" />
 
         <button
           className="btn-primary mt-6 flex items-center justify-center"
