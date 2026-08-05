@@ -9,6 +9,7 @@ import { NativeProvider } from '@/components/native'
 import { KeyboardFit } from '@/components/keyboard-fit'
 import { SwipeBack } from '@/components/swipe-back'
 import { NotifyBanner } from '@/components/banner'
+import { NativeFeel } from '@/components/native-feel'
 import './globals.css'
 
 // Один шрифт на весь интерфейс: заголовки теперь гротеском
@@ -66,6 +67,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <KeyboardFit />
           <SwipeBack />
           <NotifyBanner />
+          <NativeFeel />
           {children}
         </ToastProvider>
       </body>
