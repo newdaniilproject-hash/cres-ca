@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { keepVisible } from '../ui'
 
 type Kind = 'services' | 'goods' | 'both'
 
@@ -75,19 +76,12 @@ export default function MobileShopPage() {
     )
   }
 
-  // Клавиатура на телефоне съедает половину экрана. Поэтому: экран
-  // прокручивается, а поле при фокусе само подтягивается в середину —
-  // иначе человек печатает вслепую под клавиатурой.
-  function keepVisible(e: React.FocusEvent<HTMLInputElement>) {
-    const el = e.currentTarget
-    setTimeout(() => el.scrollIntoView({ block: 'center', behavior: 'smooth' }), 250)
-  }
 
   return (
-    <main
-      className="flex flex-1 flex-col px-6 pb-6"
-      style={{ overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}
-    >
+    // m-scroll: пока печатают, снизу добавляется запас в три четверти
+    // экрана — без него последнее поле физически некуда поднять над
+    // клавиатурой. Правило в globals.css, там же scroll-margin-top.
+    <main className="m-scroll flex flex-1 flex-col px-6 pb-6">
       <div className="flex items-center justify-between" style={{ height: 56 }}>
         <span className="display t-lg">
           Маркет<span style={{ color: 'var(--color-gold)' }}>.</span>
