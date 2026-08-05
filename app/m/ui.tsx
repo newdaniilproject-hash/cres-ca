@@ -26,12 +26,11 @@ export function AppScreen({
   children: React.ReactNode
 }) {
   return (
-    // Экран прокручивается целиком: при поднятой клавиатуре видимая
-    // высота падает вдвое, и без прокрутки нижние поля недостижимы.
-    <main
-      className="flex flex-1 flex-col px-6 pb-8"
-      style={{ overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}
-    >
+    // m-scroll — прокручиваемая область экрана. Класс не косметический:
+    // пока печатают, к нему снизу добавляется запас в три четверти
+    // экрана, иначе последнее поле физически некуда поднять над
+    // клавиатурой. Правило в globals.css.
+    <main className="m-scroll flex flex-1 flex-col px-6 pb-8">
       <div className="flex items-center" style={{ height: 56, marginLeft: -10 }}>
         {onBack ? (
           <button type="button" onClick={onBack} aria-label="Назад" className="navback">
@@ -86,10 +85,21 @@ export function Field({
   )
 }
 
-// Клавиатура съедает половину экрана, и поле под ней человек набирает
-// вслепую. Задержка — пока клавиатура выезжает: без неё браузер
-// считает высоту по старому экрану и подтягивает не туда.
+// Поднять поле к верхней кромке экрана при фокусе.
+//
+// block: 'start', а НЕ 'center'. Центр — это середина той высоты,
+// которую браузер считает видимой; в веб-вью он считает её неправильно
+// и «центрирует» поле ровно под клавиатуру. Верхняя кромка не зависит
+// ни от каких измерений: выше неё клавиатуры не бывает.
+//
+// Отступ сверху даёт scroll-margin-top в globals.css — иначе подпись
+// поля срезается краем экрана.
+//
+// Дважды: сразу и ещё раз через 420 мс. Клавиатура выезжает примерно
+// треть секунды, и первый расчёт делается по старой высоте экрана.
 export function keepVisible(e: React.FocusEvent<HTMLInputElement>) {
   const el = e.currentTarget
-  setTimeout(() => el.scrollIntoView({ block: 'center', behavior: 'smooth' }), 250)
+  const up = () => el.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  setTimeout(up, 60)
+  setTimeout(up, 420)
 }
