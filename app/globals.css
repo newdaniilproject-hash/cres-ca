@@ -688,6 +688,11 @@ html.light {
 
 html[data-native] .web-only { display: none; }
 
+/* Обратное правило: разметка, которая существует только в приложении.
+   По умолчанию скрыта, поэтому в браузере её нет даже на кадр. */
+.native-only { display: none; }
+html[data-native] .native-only { display: flex; }
+
 html[data-native] {
   /* Резиновый отскок — самый заметный признак веб-вью.
      overscroll-behavior гасит и его, и «потяни, чтобы обновить». */
