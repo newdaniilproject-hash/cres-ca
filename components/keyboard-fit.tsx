@@ -60,12 +60,15 @@ export function KeyboardFit() {
     // измерений не зависит: выше неё клавиатуры не бывает. Отступ под
     // подпись поля даёт scroll-margin-top в globals.css.
     //
-    // Дважды: сразу и через 420 мс. Клавиатура выезжает около трети
-    // секунды, и первый расчёт делается по ещё не сжатому экрану.
+    // Дважды: сразу плавно и через 420 мс — рывком. Клавиатура выезжает
+    // около трети секунды, и первый расчёт делается по ещё не сжатому
+    // экрану. Второй заход намеренно МГНОВЕННЫЙ: плавная прокрутка
+    // асинхронна, её может съесть что угодно — палец, перерисовка,
+    // заморозка анимаций. Мгновенная выполняется всегда, и именно она
+    // гарантирует, что поле окажется наверху.
     const lift = (el: HTMLElement) => {
-      const up = () => el.scrollIntoView({ block: 'start', behavior: 'smooth' })
-      setTimeout(up, 60)
-      setTimeout(up, 420)
+      setTimeout(() => el.scrollIntoView({ block: 'start', behavior: 'smooth' }), 60)
+      setTimeout(() => el.scrollIntoView({ block: 'start', behavior: 'instant' as ScrollBehavior }), 420)
     }
 
     let blurTimer = 0
