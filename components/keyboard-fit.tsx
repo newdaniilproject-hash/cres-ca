@@ -4,52 +4,81 @@ import { useEffect } from 'react'
 
 // Клавиатура и высота экрана.
 //
-// ГРАБЛИ, из-за которых форма создания заклада наполовину уходила под
-// клавиатуру: 100dvh про клавиатуру НЕ знает. В обычном мобильном
-// браузере строка адреса и клавиатура уменьшают видимую область, и dvh
-// пересчитывается. В веб-вью приложения этого не происходит: страница
-// остаётся высотой в целый экран, клавиатура ложится поверх, и нижняя
-// треть формы — вместе с кнопкой «Створити заклад» — становится
-// недостижимой. scrollIntoView спасает только то поле, в которое уже
-// поставили курсор, а кнопку и переключатели — нет.
+// ЧТО БЫЛО СЛОМАНО ДВАЖДЫ. Первый раз — раскладка в 100dvh: в веб-вью
+// dvh про клавиатуру не знает, страница остаётся во весь экран,
+// клавиатура ложится поверх, нижние поля недостижимы.
 //
-// Единственный источник правды о том, сколько экрана реально осталось, —
-// visualViewport. Он есть и в WKWebView, и в Android WebView, и в обычном
-// браузере. Разница между окном и видимой областью и есть высота
-// клавиатуры; кладём её в переменную --kb, а раскладка сама ужимается
-// на эту величину (app/m/layout.tsx, .appshell в globals.css).
+// Второй раз — попытка вычесть высоту клавиатуры как
+// innerHeight - visualViewport.height. В веб-вью с Capacitor Keyboard
+// (resize: 'body') оба числа уменьшаются ОДИНАКОВО, разность выходит
+// нулём, и поправка не применяется вовсе. Поле «Місто» так и осталось
+// под клавиатурой.
 //
-// Без визуального вьюпорта (старые движки) переменная остаётся нулём —
-// поведение ровно то, что было, ничего не ломается.
+// ВЫВОД, ради которого переписано: не вычислять клавиатуру, а взять
+// то единственное, что и так означает «видимая часть экрана», —
+// visualViewport.height. Оно верно в любом из режимов: если веб-вью
+// уже ужали нативно, там ужатая высота; если не ужали — высота над
+// клавиатурой. Разность больше нигде не считается.
+//
+// И вторая, независимая страховка — класс kb-open на body по фокусу
+// в поле. Она работает даже если visualViewport врёт или его нет:
+// прокручиваемому экрану добавляется запас снизу, и поле поднимается
+// к верхней кромке. Две защиты вместо одной сознательно — на этом
+// уже дважды обожглись.
 export function KeyboardFit() {
   useEffect(() => {
-    const vv = window.visualViewport
-    if (!vv) return
-
     const root = document.documentElement
-    let raf = 0
 
+    // ── 1. Реальная видимая высота ──────────────────────────────
+    const vv = window.visualViewport
+    let raf = 0
     const apply = () => {
+      if (!vv) return
       cancelAnimationFrame(raf)
       raf = requestAnimationFrame(() => {
-        // offsetTop учитывает случай, когда страницу подняли вверх:
-        // без него при поднятой клавиатуре получается отрицательный
-        // остаток и раскладка дёргается.
-        const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop)
-        // Порог: мелкие колебания в 1–2 пикселя даёт строка адреса,
-        // и перерисовывать из-за них всю раскладку незачем.
-        root.style.setProperty('--kb', kb > 60 ? `${Math.round(kb)}px` : '0px')
+        root.style.setProperty('--vvh', `${Math.round(vv.height)}px`)
+        root.style.setProperty('--vvt', `${Math.round(vv.offsetTop)}px`)
       })
     }
-
     apply()
-    vv.addEventListener('resize', apply)
-    vv.addEventListener('scroll', apply)
+    vv?.addEventListener('resize', apply)
+    vv?.addEventListener('scroll', apply)
+
+    // ── 2. Признак «сейчас печатают» ────────────────────────────
+    // Не зависит ни от каких измерений: событие фокуса есть везде.
+    const isField = (t: EventTarget | null) => {
+      const el = t as HTMLElement | null
+      if (!el) return false
+      const tag = el.tagName
+      return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable
+    }
+    let blurTimer = 0
+    const onIn = (e: FocusEvent) => {
+      if (!isField(e.target)) return
+      clearTimeout(blurTimer)
+      document.body.classList.add('kb-open')
+    }
+    const onOut = (e: FocusEvent) => {
+      if (!isField(e.target)) return
+      // Переход между полями не должен схлопывать запас и дёргать экран.
+      clearTimeout(blurTimer)
+      blurTimer = window.setTimeout(() => {
+        if (!isField(document.activeElement)) document.body.classList.remove('kb-open')
+      }, 120)
+    }
+    document.addEventListener('focusin', onIn)
+    document.addEventListener('focusout', onOut)
+
     return () => {
       cancelAnimationFrame(raf)
-      vv.removeEventListener('resize', apply)
-      vv.removeEventListener('scroll', apply)
-      root.style.removeProperty('--kb')
+      clearTimeout(blurTimer)
+      vv?.removeEventListener('resize', apply)
+      vv?.removeEventListener('scroll', apply)
+      document.removeEventListener('focusin', onIn)
+      document.removeEventListener('focusout', onOut)
+      root.style.removeProperty('--vvh')
+      root.style.removeProperty('--vvt')
+      document.body.classList.remove('kb-open')
     }
   }, [])
 
