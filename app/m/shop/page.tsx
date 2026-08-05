@@ -168,18 +168,24 @@ export default function MobileShopPage() {
 
         {error && <p className="field-error">{error}</p>}
 
-        <button
-          className="btn-primary mt-6 flex items-center justify-center"
-          style={{ height: 52, fontSize: 16 }}
-          disabled={busy || name.trim().length < 2}
-        >
-          {busy ? 'Створюємо…' : 'Створити заклад'}
-        </button>
-
-        <p className="t-xs mt-3" style={{ color: 'var(--color-faint)', lineHeight: 1.5 }}>
+        <p className="t-xs mt-5" style={{ color: 'var(--color-faint)', lineHeight: 1.5 }}>
           Заклад створюється як чернетка: наповнюйте склад одразу,
           публічна сторінка вмикається після перевірки.
         </p>
+
+        {/* m-sticky: кнопка остаётся у нижней кромки экрана, прямо над
+            клавиатурой, пока поля прокручиваются. Так сделано в любом
+            нативном приложении с формой — и именно этого не хватало:
+            поле поднималось, а кнопка уезжала вниз. */}
+        <div className="m-sticky">
+          <button
+            className="btn-primary flex w-full items-center justify-center"
+            style={{ height: 52, fontSize: 16 }}
+            disabled={busy || name.trim().length < 2}
+          >
+            {busy ? 'Створюємо…' : 'Створити заклад'}
+          </button>
+        </div>
       </form>
     </main>
   )
