@@ -1,0 +1,126 @@
+# Сборка мобильного приложения «Маркет» (Flutter) в облаке Codemagic.
+# Mac не нужен: iOS собирается на их mac_mini_m2.
+#
+# Заменяет прежний пайплайн под Capacitor целиком (решение 05.08.2026).
+# Из старого сохранены только «мины», оплаченные потерянными сборками
+# на DaKi и cres-ca, — они помечены по месту и от смены стека не исчезли.
+#
+# Что настроено в Codemagic ОДИН раз (уже сделано, менять не нужно):
+#   • интеграция app_store_connect с именем cresca-app-store-connect
+#     (ключ 547STB3RN4, команда MBV78PNGVH)
+#   • группа ios_signing: CM_CERTIFICATE_PRIVATE_KEY — постоянный RSA-ключ
+#
+# Запуск: git tag ios-v1 && git push --tags
+#
+# Приложение живёт в mobile/ — отсюда working_directory. Веб в корне
+# репозитория этим пайплайном не собирается: его собирает Vercel сам.
+
+workflows:
+  ios-testflight:
+    name: Маркет → TestFlight (Flutter)
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    working_directory: mobile
+
+    integrations:
+      app_store_connect: cresca-app-store-connect
+
+    environment:
+      # environment.ios_signing НЕ используем сознательно. У Flutter папка
+      # ios/ в репозитории есть, и соблазн велик — но автоподпись Codemagic
+      # берёт профиль до того, как отработает pod install, и на проектах
+      # с подами падает с «No matching profiles found». Подписываем скриптом,
+      # порядок под контролем.
+      groups:
+        - ios_signing
+      vars:
+        BUNDLE_ID: com.cresca.app
+      # Версия прибита гвоздём и совпадает с машиной разработки
+      # (C:\src\flutter, 3.44.8). «stable» здесь — это способ однажды
+      # обнаружить, что локально собирается, а в облаке нет.
+      flutter: 3.44.8
+      xcode: latest
+      cocoapods: default
+
+    triggering:
+      events: [tag]
+      tag_patterns:
+        - pattern: 'ios-v*'
+          include: true
+
+    scripts:
+      - name: Зависимости Flutter
+        script: flutter pub get
+
+      - name: Анализ и тесты
+        script: |
+          # Ловим ошибку здесь, а не через десять минут на этапе сборки.
+          # build_runner здесь НЕ запускается сознательно: local_db.g.dart
+          # лежит в git. Иначе кодогенерация становится частью сборки,
+          # и расхождение схемы с генератором вылезет только в облаке.
+          flutter analyze
+          flutter test
+
+      - name: Code signing через App Store Connect API
+        script: |
+          set -ex
+          keychain initialize
+          # ПОСТОЯННЫЙ ключ подписи из переменной окружения. Без него каждая
+          # сборка плодит новый distribution-сертификат и упирается в лимит
+          # Apple — DaKi на этом потерял две сборки.
+          if [ -z "$CM_CERTIFICATE_PRIVATE_KEY" ]; then
+            echo "❌ CM_CERTIFICATE_PRIVATE_KEY не задан. Сгенерировать:"
+            echo "   openssl genrsa 2048 → PEM в Codemagic → группа ios_signing (secure)."
+            exit 1
+          fi
+          printf '%s' "$CM_CERTIFICATE_PRIVATE_KEY" > /tmp/cert_key.pem
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE --certificate-key=@file:/tmp/cert_key.pem --create
+          keychain add-certificates
+          # Прописывает профили в проект И создаёт export_options.plist,
+          # который ниже забирает flutter build ipa.
+          xcode-project use-profiles
+
+      - name: Info.plist — камера и шифрование
+        script: |
+          PLIST=ios/Runner/Info.plist
+          # Без purpose-строки приложение падает в момент запроса камеры
+          # и не проходит ревью. Сканер QR — основной экран склада.
+          /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string 'Камера потрібна для сканування QR-кодів на ємностях і товарах.'" "$PLIST" 2>/dev/null || true
+          # Снимает вопрос Missing Compliance в TestFlight: используем
+          # только стандартный HTTPS.
+          /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$PLIST" 2>/dev/null || true
+          # Face ID и схему cresca:// сюда добавим, КОГДА появятся модули
+          # биометрии и входа через провайдера. Заранее — мёртвый код
+          # в конфиге, правило 8.
+
+      - name: Сборка IPA
+        script: |
+          # Номер сборки — счётчик Codemagic. get-latest-app-store-build-number
+          # для билда «в проверке» возвращает 1 и ломает публикацию
+          # дубликатом (урок DaKi).
+          BN="${BUILD_NUMBER:-$(date +%Y%m%d%H%M)}"
+          flutter build ipa --release \
+            --build-number="$BN" \
+            --export-options-plist=/Users/builder/export_options.plist
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        # beta_groups не указываем: внутренние тестировщики получают сборку
+        # автоматически, а назначить внутреннюю группу через API нельзя
+        # (урок DaKi). Внешняя бета не опубликуется, пока в App Store Connect
+        # не заполнена форма TestFlight → Test Information: Feedback Email,
+        # имя, фамилия, телефон, почта. Сборка при этом собирается и доступна
+        # внутренним — это НЕ ошибка пайплайна.
+
+# Android-сборки сознательно не описаны: решение директора — сначала iPhone.
+# Пока приложение проверяется на Android локально (flutter run, телефон
+# по USB или эмулятор), CI ему не нужен. Когда дойдёт до раздачи APK —
+# добавляется вторым workflow: flutter build apk --debug, артефакт
+# build/app/outputs/flutter-apk/*.apk, триггер по тегу android-v*.

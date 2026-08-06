@@ -36,9 +36,20 @@ dependencies:
   cupertino_icons: ^1.0.8
   supabase_flutter: ^2.17.1
 
+  # Слой офлайн-данных: локальная база — единственный источник для экранов.
+  drift: ^2.28.0
+  drift_flutter: ^0.2.4
+  sqlite3_flutter_libs: ^0.5.0
+  uuid: ^4.5.0
+  connectivity_plus: ^7.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
+
+  # Кодогенерация drift: local_db.g.dart.
+  drift_dev: ^2.28.0
+  build_runner: ^2.4.0
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
