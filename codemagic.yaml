@@ -1,9 +1,18 @@
-# Сборка мобильного приложения «Маркет» (Flutter) в облаке Codemagic.
+# Сборка мобильного приложения «Маркет» в облаке Codemagic.
 # Mac не нужен: iOS собирается на их mac_mini_m2.
 #
-# Заменяет прежний пайплайн под Capacitor целиком (решение 05.08.2026).
-# Из старого сохранены только «мины», оплаченные потерянными сборками
-# на DaKi и cres-ca, — они помечены по месту и от смены стека не исчезли.
+# ДВА СТЕКА В ОДНОМ ФАЙЛЕ, и это намеренно (решение 11.08.2026):
+#
+#   ios-testflight, android-apk   — ОБЁРТКА Capacitor. Основное
+#                                   приложение для магазинов. Веб-вью
+#                                   открывает боевой сайт, JS внутри нет.
+#   flutter-ios-testflight        — Flutter. Параллельный трек, список 8
+#                                   плана. НЕ УДАЛЯТЬ: переезд с обёртки
+#                                   идёт по критерию, а не по дате.
+#
+# Правка 05.08.2026 удалила процесс под Capacitor целиком. Отменено:
+# причина отказа веб-вью найдена и лежит в web-коде
+# (components/deep-link.tsx, фильтр по схеме cresca:), а не в пайплайне.
 #
 # Что настроено в Codemagic ОДИН раз (уже сделано, менять не нужно):
 #   • интеграция app_store_connect с именем cresca-app-store-connect
@@ -12,12 +21,13 @@
 #
 # Запуск: git tag ios-v1 && git push --tags
 #
-# Приложение живёт в mobile/ — отсюда working_directory. Веб в корне
-# репозитория этим пайплайном не собирается: его собирает Vercel сам.
+# Flutter-приложение живёт в mobile/ — отсюда working_directory в его
+# процессе. Обёртка собирается из корня. Веб в корне ни одним из этих
+# процессов не собирается: его собирает Vercel сам.
 
 workflows:
-  ios-testflight:
-    name: Маркет → TestFlight (Flutter)
+  flutter-ios-testflight:
+    name: Маркет → TestFlight (Flutter, параллельный трек)
     instance_type: mac_mini_m2
     max_build_duration: 60
     working_directory: mobile
@@ -119,8 +129,280 @@ workflows:
         # имя, фамилия, телефон, почта. Сборка при этом собирается и доступна
         # внутренним — это НЕ ошибка пайплайна.
 
-# Android-сборки сознательно не описаны: решение директора — сначала iPhone.
-# Пока приложение проверяется на Android локально (flutter run, телефон
-# по USB или эмулятор), CI ему не нужен. Когда дойдёт до раздачи APK —
-# добавляется вторым workflow: flutter build apk --debug, артефакт
-# build/app/outputs/flutter-apk/*.apk, триггер по тегу android-v*.
+# Android-сборки ДЛЯ FLUTTER сознательно не описаны: пока приложение
+# проверяется на Android локально (flutter run, телефон по USB или
+# эмулятор), CI ему не нужен. Когда дойдёт до раздачи APK — добавляется
+# рядом: flutter build apk --debug, артефакт
+# build/app/outputs/flutter-apk/*.apk, триггер по тегу flutter-android-v*.
+# Процессы android-apk и android-play ниже — это ОБЁРТКА, не Flutter.
+#
+# ─────────────────────────────────────────────────────────────────────
+# Ниже — обёртка Capacitor. Триггер ios-v* общий с Flutter-процессом
+# выше: по тегу запустятся ОБА. Это осознанно на время параллельного
+# трека — так видно, что Flutter не отстал. Когда надоест, у Flutter
+# сменить tag_patterns на 'flutter-v*'.
+# ─────────────────────────────────────────────────────────────────────
+  ios-testflight:
+    name: Маркет → TestFlight
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    integrations:
+      app_store_connect: cresca-app-store-connect  # ключ 547STB3RN4, команда MBV78PNGVH
+    environment:
+      # НЕ используем environment.ios_signing: он срабатывает ДО генерации
+      # iOS-проекта (папки ios/ в репо нет, её создаёт cap add) и падает
+      # с "No matching profiles found". Подписываем скриптом ПОСЛЕ cap sync.
+      groups:
+        - ios_signing
+        - push
+      vars:
+        BUNDLE_ID: com.cresca.app
+        APP_NAME: "Маркет"
+      node: 24
+      xcode: latest
+      cocoapods: default
+    triggering:
+      events: [tag]
+      tag_patterns:
+        - pattern: 'ios-v*'
+          include: true
+    scripts:
+      - name: Install JS dependencies
+        script: npm install --legacy-peer-deps
+
+      - name: Add iOS platform (idempotent)
+        script: |
+          if [ ! -d "ios" ]; then npx cap add ios --packagemanager Cocoapods; fi
+
+      - name: Sync Capacitor → iOS
+        script: npx cap sync ios
+
+      - name: Icons + splash из resources/icon.png
+        script: |
+          if [ -f "resources/icon.png" ]; then
+            npx capacitor-assets generate \
+              --iconBackgroundColor "#141417" --iconBackgroundColorDark "#141417" \
+              --splashBackgroundColor "#141417" --splashBackgroundColorDark "#141417"
+          else
+            echo "::error::resources/icon.png отсутствует — Apple отклонит без иконки"; exit 1
+          fi
+
+      - name: Ровный тёмный launch-экран без логотипа
+        script: |
+          # Дефолтный capacitor-assets рисует белый квадрат с логотипом —
+          # выглядит дёшево (урок DaKi). Перекрываем своим storyboard.
+          cp native-config/LaunchScreen.storyboard ios/App/App/Base.lproj/LaunchScreen.storyboard
+
+      - name: Code signing через App Store Connect API
+        script: |
+          set -ex
+          keychain initialize
+          # ПОСТОЯННЫЙ ключ подписи из env. Без него каждый билд плодит новый
+          # distribution-сертификат и упирается в лимит Apple — DaKi на этом
+          # потерял два билда.
+          if [ -z "$CM_CERTIFICATE_PRIVATE_KEY" ]; then
+            echo "❌ CM_CERTIFICATE_PRIVATE_KEY не задан. Сгенерируй: openssl genrsa 2048 →"
+            echo "   вставь PEM в Codemagic → группа ios_signing (secure)."
+            exit 1
+          fi
+          printf '%s' "$CM_CERTIFICATE_PRIVATE_KEY" > /tmp/cert_key.pem
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE --certificate-key=@file:/tmp/cert_key.pem --create
+          keychain add-certificates
+          xcode-project use-profiles
+
+      - name: Push capability + entitlements
+        script: |
+          set -e
+          cd ios/App
+          /usr/libexec/PlistBuddy -c "Add :aps-environment string production" App/App.entitlements 2>/dev/null || \
+          /usr/libexec/PlistBuddy -c "Set :aps-environment production" App/App.entitlements
+          # КРИТИЧНО (урок DaKi): привязать entitlements к таргету, иначе файл
+          # лежит, но проект на него не ссылается → APNs не выдаёт токен.
+          gem install xcodeproj --no-document >/dev/null 2>&1 || sudo gem install xcodeproj --no-document
+          ruby -e '
+            require "xcodeproj"
+            proj = Xcodeproj::Project.open("App.xcodeproj")
+            t = proj.targets.find { |x| x.name == "App" }
+            abort("App target not found") unless t
+            t.build_configurations.each { |c| c.build_settings["CODE_SIGN_ENTITLEMENTS"] = "App/App.entitlements" }
+            proj.save
+          '
+
+      - name: Info.plist — камера, Face ID, шифрование
+        script: |
+          cd ios/App
+          # Без purpose-строк приложение крашится на запросе и не проходит ревью.
+          /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string 'Камера потрібна для сканування QR-кодів на ємностях і товарах.'" App/Info.plist 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :NSFaceIDUsageDescription string 'Face ID захищає вхід у кабінет вашого закладу.'" App/Info.plist 2>/dev/null || true
+          # OneSignal SDK ссылается на location API — строка обязательна (ITMS-90683).
+          /usr/libexec/PlistBuddy -c "Add :NSLocationWhenInUseUsageDescription string 'Локація може використовуватись для релевантних сповіщень.'" App/Info.plist 2>/dev/null || true
+          # Только стандартный HTTPS — снимает вопрос Missing Compliance в TestFlight.
+          /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" App/Info.plist 2>/dev/null || true
+
+      - name: Глубокие ссылки — схема cresca://
+        script: |
+          cd ios/App
+          # Без этой схемы вход через Apple и Google не возвращается
+          # в приложение ВООБЩЕ: системный браузер получает от
+          # /auth/callback ссылку cresca://auth?code=… и, не найдя,
+          # кто её обслуживает, просто показывает ошибку.
+          # Этой же схемой открываются тапы по пушам.
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" App/Info.plist 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0 dict" App/Info.plist 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLName string $BUNDLE_ID" App/Info.plist 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" App/Info.plist 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string cresca" App/Info.plist 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes" App/Info.plist
+
+      - name: Universal Links (только если возможность включена в Apple)
+        script: |
+          cd ios/App
+          # Associated Domains добавляется ТОЛЬКО по флагу. Причина
+          # жёсткая: если в App ID возможность не включена, профиль
+          # её не содержит, и подпись падает — билд теряется целиком.
+          #
+          # Порядок включения, когда дойдут руки:
+          #   1. developer.apple.com → Identifiers → com.cresca.app →
+          #      поставить галочку Associated Domains;
+          #   2. в Codemagic задать IOS_ASSOCIATED_DOMAINS=1;
+          #   3. файл /.well-known/apple-app-site-association уже отдаётся.
+          if [ "${IOS_ASSOCIATED_DOMAINS:-0}" = "1" ]; then
+            /usr/libexec/PlistBuddy -c "Add :com.apple.developer.associated-domains array" App/App.entitlements 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :com.apple.developer.associated-domains:0 string applinks:cres-ca.com" App/App.entitlements 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :com.apple.developer.associated-domains:1 string webcredentials:cres-ca.com" App/App.entitlements 2>/dev/null || true
+            echo "OK: Universal Links включены"
+          else
+            echo "Universal Links пропущены (IOS_ASSOCIATED_DOMAINS != 1) — схема cresca:// работает и без них"
+          fi
+
+      - name: Build number = счётчик Codemagic
+        script: |
+          cd ios/App
+          # get-latest-app-store-build-number для билда «в проверке» возвращает 1
+          # и ломает публикацию дубликатом (урок DaKi) — счётчик надёжнее.
+          BN="${BUILD_NUMBER:-$(date +%Y%m%d%H%M)}"
+          agvtool new-version -all "$BN"
+
+      - name: Build IPA
+        script: |
+          cd ios/App
+          xcode-project build-ipa --workspace "App.xcworkspace" --scheme "App" \
+            --archive-flags="-destination 'generic/platform=iOS'"
+
+    artifacts:
+      - ios/App/build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        # beta_groups не указываем: внутренним тестировщикам билды раздаются
+        # автоматически, а назначить внутреннюю группу через API нельзя (урок DaKi).
+
+  android-apk:
+    name: Маркет → Android APK (проверка на своём телефоне)
+    # linux_x2 недоступен на бесплатном тарифе — mac_mini_m2 собирает Android
+    # так же (в образе есть SDK+JDK), проверено на DaKi.
+    instance_type: mac_mini_m2
+    max_build_duration: 45
+    environment:
+      groups: [push]
+      vars:
+        BUNDLE_ID: com.cresca.app
+        APP_NAME: "Маркет"
+      node: 24
+      java: 21
+    triggering:
+      events: [tag]
+      tag_patterns:
+        - pattern: 'android-v*'
+          include: true
+    scripts:
+      - name: Install JS dependencies
+        script: npm install --legacy-peer-deps
+      - name: Add Android platform (idempotent)
+        script: |
+          if [ ! -d "android" ]; then npx cap add android; fi
+      - name: google-services.json (FCM push)
+        script: |
+          # Постоянная копия живёт в native-config/ — папка android/ пересоздаётся.
+          if [ -f "native-config/google-services.json" ]; then
+            cp native-config/google-services.json android/app/google-services.json
+          else
+            echo "::warning::native-config/google-services.json нет — Android-пуш работать не будет"
+          fi
+      - name: Sync Capacitor → Android
+        script: npx cap sync android
+      - name: Патч натива (разрешения, OneSignal, биометрия, назад)
+        script: bash scripts/patch-android.sh
+      - name: Icons + splash
+        script: |
+          if [ -f "resources/icon.png" ]; then
+            npx capacitor-assets generate --android \
+              --iconBackgroundColor "#141417" --iconBackgroundColorDark "#141417" \
+              --splashBackgroundColor "#141417" --splashBackgroundColorDark "#141417"
+          fi
+      - name: Build debug APK
+        script: |
+          cd android && chmod +x ./gradlew && ./gradlew assembleDebug
+    artifacts:
+      - android/app/build/outputs/**/*.apk
+    publishing:
+      email:
+        recipients: [daniilpadalko97@gmail.com]
+        notify: { success: true, failure: true }
+
+  android-play:
+    name: Маркет → Google Play (.aab, подписанный)
+    instance_type: mac_mini_m2
+    max_build_duration: 45
+    environment:
+      groups: [push, android_signing]
+      vars:
+        BUNDLE_ID: com.cresca.app
+      node: 24
+      java: 21
+    triggering:
+      events: [tag]
+      tag_patterns:
+        - pattern: 'play-v*'
+          include: true
+    scripts:
+      - name: Install JS dependencies
+        script: npm install --legacy-peer-deps
+      - name: Add Android platform
+        script: |
+          if [ ! -d "android" ]; then npx cap add android; fi
+      - name: google-services.json
+        script: |
+          if [ -f "native-config/google-services.json" ]; then
+            cp native-config/google-services.json android/app/google-services.json
+          fi
+      - name: Sync + патч натива
+        script: |
+          npx cap sync android
+          bash scripts/patch-android.sh
+      - name: Icons + splash
+        script: |
+          npx capacitor-assets generate --android \
+            --iconBackgroundColor "#141417" --iconBackgroundColorDark "#141417" \
+            --splashBackgroundColor "#141417" --splashBackgroundColorDark "#141417"
+      - name: Release keystore из env
+        script: |
+          # Логика в scripts/patch-android-signing.sh: heredoc внутри YAML
+          # ломается на отступах (урок DaKi), поэтому только вызов скрипта.
+          bash scripts/patch-android-signing.sh
+      - name: Версия = счётчик Codemagic
+        script: |
+          BN="${BUILD_NUMBER:-1}"
+          perl -0pi -e "s{versionCode \d+}{versionCode $BN}" android/app/build.gradle
+      - name: Build AAB
+        script: |
+          cd android && chmod +x ./gradlew && ./gradlew bundleRelease
+    artifacts:
+      - android/app/build/outputs/**/*.aab
+    publishing:
+      email:
+        recipients: [daniilpadalko97@gmail.com]
+        notify: { success: true, failure: true }

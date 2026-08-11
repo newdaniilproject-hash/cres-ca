@@ -1,0 +1,101 @@
+<!doctype html>
+<!--
+  Локальный офлайн-экран нативного приложения (Capacitor server.errorPath).
+
+  Показывается ВМЕСТО встроенной страницы ошибки Capacitor, когда WebView
+  не смог загрузить cres-ca.com/m — холодный старт без сети, подвал,
+  моргнувший 5G. Лежит в бинаре, открывается без единого байта из сети.
+
+  Правила файла:
+  • Всё инлайном — стили, скрипт. Это ЕДИНСТВЕННОЕ допустимое исключение
+    из правила «значения только из globals.css»: файл живёт в бинаре
+    и обязан работать, когда globals.css недоступен. Значения скопированы
+    из globals.css: фон #141417, поверхность #1a1a1d, акцент #60a5fa,
+    тап-зона 44px.
+  • На Android эта страница не имеет доступа к плагинам Capacitor
+    (ограничение errorPath) — поэтому только чистый JS: fetch + location.
+  • Автоповтор: каждые 4 секунды тихо проверяем сеть; как только появилась —
+    сами уходим на приложение. Кнопка — для нетерпеливых.
+-->
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Маркет</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    background: #141417;
+    color: rgba(255,255,255,.92);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 20px;
+    padding: 24px;
+    padding-top: max(24px, env(safe-area-inset-top));
+    padding-bottom: max(24px, env(safe-area-inset-bottom));
+    text-align: center;
+  }
+  .dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: #60a5fa;
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: .25; transform: scale(.85); }
+    50%      { opacity: 1;   transform: scale(1); }
+  }
+  h1 {
+    font-size: 19px; font-weight: 650; letter-spacing: -0.02em;
+  }
+  p {
+    font-size: 14px; line-height: 1.5;
+    color: rgba(255,255,255,.55);
+    max-width: 280px;
+  }
+  button {
+    margin-top: 8px;
+    min-height: 44px; /* тап-зона Apple HIG, --tap-min */
+    padding: 0 28px;
+    border: 1px solid rgba(255,255,255,.14);
+    border-radius: 14px;
+    background: #1a1a1d;
+    color: rgba(255,255,255,.92);
+    font-size: 16px; font-weight: 500;
+    font-family: inherit;
+  }
+  button:active { opacity: .7; }
+</style>
+</head>
+<body>
+  <div class="dot" aria-hidden="true"></div>
+  <h1>Немає з'єднання</h1>
+  <p>Застосунок відкриється сам, щойно з'явиться мережа. Перевіряю
+     кожні кілька секунд.</p>
+  <button id="retry" type="button">Спробувати зараз</button>
+
+<script>
+  var APP = 'https://cres-ca.com/m';
+  var busy = false;
+
+  // no-cors: ответ непрозрачный, но fetch падает только если сети
+  // реально нет. Успех = сервер достижим = можно переходить.
+  function ping() {
+    if (busy) return;
+    busy = true;
+    fetch(APP, { mode: 'no-cors', cache: 'no-store' })
+      .then(function () { location.replace(APP); })
+      .catch(function () { busy = false; });
+  }
+
+  document.getElementById('retry').addEventListener('click', ping);
+  window.addEventListener('online', ping);
+  setInterval(ping, 4000);
+  ping();
+</script>
+</body>
+</html>

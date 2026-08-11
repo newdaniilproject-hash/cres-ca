@@ -84,6 +84,35 @@
   --h-input: 46px;
 
   --tap-min: 44px;
+
+  /* ── Шкала отступов ────────────────────────────────────────
+     Шаг 4px. Отступ вне шкалы — ошибка приёмки: именно из-за
+     чисел по месту разметка расползается. Карточка внутри —
+     space-4 на телефоне, space-5 на столе.                    */
+  --space-1: 4px;    /* зазор между значком и текстом */
+  --space-2: 8px;    /* внутри строки списка */
+  --space-3: 12px;   /* между полем и подсказкой */
+  --space-4: 16px;   /* внутри карточки, телефон */
+  --space-5: 24px;   /* внутри карточки, стол; между карточками */
+  --space-6: 32px;   /* между блоками экрана */
+  --space-7: 48px;   /* между разделами */
+  --space-8: 64px;   /* верх и низ страницы */
+
+  /* ── Типографическая шкала ─────────────────────────────────
+     Основной размер 16px и не ниже: iOS зумит страницу на любом
+     поле мельче и обратно не отъезжает. Заголовки гротеском,
+     вес и разрядка уже заданы выше.                            */
+  --text-xs: 12px;     --lh-xs: 1.4;    /* подсказка, ошибка поля */
+  --text-sm: 14px;     --lh-sm: 1.5;    /* вторичный текст, подпись */
+  --text-base: 16px;   --lh-base: 1.55; /* основной текст, поля */
+  --text-lg: 18px;     --lh-lg: 1.4;    /* заголовок карточки */
+  --text-xl: 22px;     --lh-xl: 1.3;    /* заголовок экрана */
+  --text-2xl: 28px;    --lh-2xl: 1.25;  /* заголовок раздела */
+  --text-3xl: 36px;    --lh-3xl: 1.15;  /* витрина, крупные цифры */
+
+  /* Цифры в таблицах и списках не должны прыгать при обновлении:
+     моноширинные цифры дают ровный столбец.                    */
+  --num-feature: "tnum" 1;
 }
 
 /* ── Светлая тема ────────────────────────────────────────────
@@ -190,6 +219,13 @@ html.light {
 }
 
 @layer components {
+  /* Суммы, остатки, счётчики — всё, что меняется на глазах */
+  .num {
+    font-variant-numeric: tabular-nums;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+  }
+
   .rise   { animation: rise var(--dur-slow) var(--ease-out-soft) both; }
   .rise-1 { animation: rise var(--dur-slow) var(--ease-out-soft) 60ms both; }
   .rise-2 { animation: rise var(--dur-slow) var(--ease-out-soft) 130ms both; }
@@ -222,11 +258,17 @@ html.light {
 
   .btn-ghost {
     @apply inline-flex items-center gap-2 h-10 px-3 text-sm font-medium;
+    /* h-10 (40px) — ниже --tap-min (44px). min-height не меняет видимую
+       высоту/отступы, только добавляет невидимый запас клика: h-10 плюс
+       min-height:44px дают фактические 44px без визуального раздутия. */
+    min-height: var(--tap-min);
     border-radius: var(--radius-control);
     color: var(--color-muted);
     transition: color var(--dur-fast), background var(--dur-fast);
   }
   .btn-ghost:hover { color: var(--color-text); background: var(--color-surface-2); }
+  .btn-ghost:active { background: var(--color-surface-2); transform: scale(0.98); }
+  .btn-ghost:disabled { opacity: 0.4; pointer-events: none; }
 
   .btn-danger {
     @apply inline-flex items-center justify-center gap-2 h-11 px-5 text-sm font-medium;
@@ -236,6 +278,30 @@ html.light {
     transition: filter var(--dur-fast), transform var(--dur-fast);
   }
   .btn-danger:hover { filter: brightness(0.97); }
+  .btn-danger:active { transform: scale(0.98); filter: brightness(0.94); }
+  .btn-danger:disabled { opacity: 0.4; pointer-events: none; }
+
+  /* Состояние загрузки для btn-primary/btn-secondary/btn-danger:
+     текст гасится через color: transparent, а не удаляется из
+     разметки — ширина кнопки остаётся прежней. Индикатор поверх,
+     позиционирован абсолютно, чтобы не участвовать в раскладке. */
+  .btn-loading {
+    position: relative;
+    color: transparent;
+    pointer-events: none;
+  }
+  .btn-loading::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    width: 16px;
+    height: 16px;
+    border: 2px solid transparent;
+    border-top-color: var(--color-accent-text);
+    border-radius: 999px;
+    animation: spin var(--dur-fast) linear infinite;
+  }
 
   /* Значок-кнопка: часто оказывается меньше пальца, поэтому
      минимальный размер задан здесь, а не в каждом месте вызова. */
@@ -248,6 +314,8 @@ html.light {
     transition: color var(--dur-fast), background var(--dur-fast);
   }
   .btn-icon:hover { color: var(--color-text); background: var(--color-surface-2); }
+  .btn-icon:active { background: var(--color-surface-2); transform: scale(0.94); }
+  .btn-icon:disabled { opacity: 0.35; pointer-events: none; }
 
   /* Карточки */
   /* Отступ карточки: 16px на телефоне, 24px на столе. Одно значение
@@ -309,6 +377,24 @@ html.light {
   }
   .textarea:focus { border-color: var(--color-accent); box-shadow: 0 0 0 3px var(--color-accent-soft); }
 
+  .input:disabled, .select:disabled, .textarea:disabled {
+    opacity: 0.5; background: var(--color-surface-2); cursor: not-allowed;
+  }
+  .input:read-only, .select:read-only, .textarea:read-only {
+    background: var(--color-surface-2); border-style: dashed;
+  }
+  /* Специфичность поднята составным селектором (.input.input-error), а не
+     !important: у прошлого проекта источников правды по цвету стало
+     четыре, и склейку чинили сорока правилами с !important — здесь
+     источник один (globals.css), и специфичность решает конфликт с
+     .input:focus (тоже класс+псевдокласс) без обхода каскада. */
+  .input.input-error, .select.select-error, .textarea.textarea-error {
+    border-color: var(--color-danger);
+  }
+  .input.input-error:focus, .select.select-error:focus, .textarea.textarea-error:focus {
+    box-shadow: 0 0 0 3px var(--color-danger-soft);
+  }
+
   /* Значки и статусы */
   .badge, .badge-accent, .badge-success, .badge-warn, .badge-danger {
     @apply inline-flex items-center gap-1.5 h-6 px-2.5 text-xs font-medium border;
@@ -322,6 +408,8 @@ html.light {
 
   .chip, .chip-active {
     @apply inline-flex items-center h-9 px-4 text-sm font-medium border select-none cursor-pointer;
+    /* h-9 (36px) — ниже --tap-min, это кликабельные кнопки фильтров. */
+    min-height: var(--tap-min);
     border-radius: 999px;
     transition: all var(--dur-fast);
   }
@@ -333,17 +421,130 @@ html.light {
     color: var(--color-accent-text);
   }
 
+  /* Крупное число как главное на экране: одно число сверху отвечает
+     на главный вопрос экрана — не дублировать вторым таким же ниже. */
+  .shift-hero {
+    display: flex; flex-direction: column; align-items: center;
+    gap: var(--space-2); text-align: center; padding: var(--space-7) 0 var(--space-6);
+  }
+  .shift-hero-figure { font-size: 64px; line-height: 1; color: var(--color-text); }
+  .shift-hero-figure[data-alert="true"] { color: var(--color-danger); }
+
+  /* Три круглые кнопки быстрых действий — только там, где их
+     действительно три равнозначных на экране, не декоративно. */
+  .quick-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-4); }
+  .quick-action {
+    display: flex; flex-direction: column; align-items: center; gap: var(--space-2);
+    min-height: var(--tap-min); color: var(--color-text);
+  }
+  .quick-action-circle {
+    width: 56px; height: 56px; border-radius: 999px; background: var(--color-surface-2);
+    display: grid; place-items: center; font-size: 20px;
+    transition: background var(--dur-fast), transform var(--dur-fast);
+  }
+  .quick-action:active .quick-action-circle { transform: scale(0.94); background: var(--color-border); }
+
   /* Состояния */
   .empty {
     @apply flex flex-col items-center justify-center gap-3 py-14 text-center text-sm;
     color: var(--color-muted);
   }
-  .skeleton {
-    border-radius: var(--radius-control);
+  .empty-icon {
+    width: 56px; height: 56px; border-radius: var(--radius-card);
+    display: grid; place-items: center; font-size: 22px;
+    background: var(--color-surface-2); color: var(--color-faint);
+  }
+  .empty[data-tone="danger"] .empty-icon { background: var(--color-danger-soft); color: var(--color-danger); }
+  .empty-title { color: var(--color-text); font-size: var(--text-lg); font-weight: 650; }
+  .empty-desc { max-width: 320px; }
+  .empty-actions { display: flex; gap: var(--space-3); margin-top: var(--space-1); }
+
+  /* Скелетоны повторяют форму содержимого, а не заливают место
+     одним прямоугольником — иначе скелетон мигает вместо того,
+     чтобы помогать. Материал (градиент + shimmer) один на все —
+     вынесен в общий селектор, форму каждого куска задаёт nth-child.
+     Разметка — пустые дочерние узлы в фиксированном порядке,
+     сколько и в каком — написано в комментарии перед каждым видом. */
+  .skeleton,
+  .skeleton-row > *,
+  .skeleton-card > *,
+  .skeleton-tile > *,
+  .skeleton-table > *,
+  .skeleton-calendar > * {
     background: linear-gradient(90deg, var(--color-surface-2) 25%, var(--color-border) 50%, var(--color-surface-2) 75%);
     background-size: 200% 100%;
     animation: shimmer 1.6s linear infinite;
   }
+  .skeleton {
+    border-radius: var(--radius-control);
+  }
+
+  /* Строка списка: 4 узла — кружок, заголовок, подпись, значение справа. */
+  .skeleton-row {
+    display: grid;
+    grid-template-columns: var(--h-sm) 1fr auto;
+    grid-template-rows: 1fr 1fr;
+    column-gap: var(--space-3);
+    row-gap: var(--space-1);
+    align-items: center;
+    padding: var(--space-3) 0;
+  }
+  .skeleton-row > :nth-child(1) { grid-row: 1 / 3; width: var(--h-sm); height: var(--h-sm); border-radius: 999px; }
+  .skeleton-row > :nth-child(2) { grid-column: 2; grid-row: 1; height: var(--text-sm); width: 65%; border-radius: var(--radius-control); }
+  .skeleton-row > :nth-child(3) { grid-column: 2; grid-row: 2; height: var(--text-xs); width: 40%; border-radius: var(--radius-control); }
+  .skeleton-row > :nth-child(4) { grid-row: 1 / 3; width: 56px; height: var(--text-sm); justify-self: end; border-radius: var(--radius-control); }
+
+  /* Карточка: 5 узлов — заголовок, три строки текста, кнопка. */
+  .skeleton-card {
+    @apply p-4 sm:p-6 border flex flex-col;
+    border-radius: var(--radius-card);
+    border-color: var(--color-border);
+    background: var(--color-surface);
+    box-shadow: var(--shadow-card);
+    gap: var(--space-2);
+  }
+  .skeleton-card > :nth-child(1) { height: var(--text-lg); width: 50%; border-radius: var(--radius-control); }
+  .skeleton-card > :nth-child(2) { height: var(--text-sm); width: 100%; border-radius: var(--radius-control); }
+  .skeleton-card > :nth-child(3) { height: var(--text-sm); width: 90%; border-radius: var(--radius-control); }
+  .skeleton-card > :nth-child(4) { height: var(--text-sm); width: 75%; border-radius: var(--radius-control); }
+  .skeleton-card > :nth-child(5) { align-self: flex-start; height: var(--h-sm); width: 40%; margin-top: var(--space-2); border-radius: var(--radius-control); }
+
+  /* Плитка каталога: 3 узла — квадрат фото, заголовок, цена. */
+  .skeleton-tile {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .skeleton-tile > :nth-child(1) { aspect-ratio: 1 / 1; width: 100%; border-radius: var(--radius-card); }
+  .skeleton-tile > :nth-child(2) { height: var(--text-sm); width: 80%; border-radius: var(--radius-control); }
+  .skeleton-tile > :nth-child(3) { height: var(--text-sm); width: 45%; border-radius: var(--radius-control); }
+
+  /* Строка таблицы движений: 4 узла — по одному на колонку. */
+  .skeleton-table {
+    display: grid;
+    grid-template-columns: 1fr 2fr 1fr 1fr;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .skeleton-table > * { height: var(--text-sm); border-radius: var(--radius-control); }
+  .skeleton-table > :nth-child(1) { width: 60%; }
+  .skeleton-table > :nth-child(2) { width: 85%; }
+  .skeleton-table > :nth-child(3) { width: 50%; }
+  .skeleton-table > :nth-child(4) { width: 45%; justify-self: end; }
+
+  /* Сетка дня: пары «время слева — слот справа», по одной паре на строку;
+     каждая четвёртая пара короче — иначе сетка читается неестественно ровной. */
+  .skeleton-calendar {
+    display: grid;
+    grid-template-columns: var(--h-sm) 1fr;
+    column-gap: var(--space-3);
+    row-gap: var(--space-2);
+  }
+  .skeleton-calendar > :nth-child(odd)  { height: var(--text-xs); width: 70%; border-radius: var(--radius-control); }
+  .skeleton-calendar > :nth-child(even) { height: var(--h-sm); width: 100%; border-radius: var(--radius-control); }
+  .skeleton-calendar > :nth-child(4n+2) { width: 60%; }
 
   /* Навигация */
   .topbar {
@@ -378,6 +579,8 @@ html.light {
 
   .sidebar-item {
     @apply flex items-center gap-3 h-10 px-3 text-sm font-medium;
+    /* h-10 (40px) — ниже --tap-min; ссылка навигации, тач-цель тоже. */
+    min-height: var(--tap-min);
     border-radius: var(--radius-control);
     color: var(--color-muted);
     transition: all var(--dur-fast);
@@ -417,6 +620,26 @@ html.light {
     border-color: var(--color-border);
   }
   .row:last-child { border-bottom: none; }
+
+  /* Разделитель группировки списка по датам — только там, где записи
+     упорядочены во времени, не для статических списков. */
+  .list-date-sep {
+    display: flex; align-items: center; gap: var(--space-3);
+    padding: var(--space-3) 0 var(--space-2); color: var(--color-faint); font-size: var(--text-sm);
+  }
+  .list-date-sep::before, .list-date-sep::after { content: ''; flex: 1; height: 1px; background: var(--color-border); }
+
+  /* Значок-якорь слева в строке списка. */
+  .list-anchor {
+    width: var(--h-sm); height: var(--h-sm); border-radius: 999px;
+    background: var(--color-surface-2); display: grid; place-items: center;
+    flex-shrink: 0; font-size: 14px; color: var(--color-muted); overflow: hidden;
+  }
+
+  /* Цвет только для исключения (например, приход в журнале движений),
+     а не для нормы — обычное списание/расход остаётся нейтральным. */
+  .amount-in { color: var(--color-success); }
+  .amount-out { color: var(--color-text); }
 
   /* Крупный поиск главной */
   .search-hero {
@@ -672,35 +895,135 @@ html.light {
 }
 
 /* ============================================================
-   Хром кабинета.
+   Хром кабинета и блок «приложение, а не сайт в рамке».
 
-   Здесь был блок «приложение, а не сайт в рамке»: два десятка
-   правил, включавшихся атрибутом `data-native`. Они прятали боковое
-   меню и переключатель темы, гасили резиновый отскок, выделение
-   текста и полосы прокрутки — чтобы сайт в веб-вью не выдавал
-   в себе сайт. Ставил атрибут `components/native-boot.ts`.
+   Атрибут `data-native` ставится на <html> синхронно, до первой
+   отрисовки (`components/native-boot.ts`). Всё, что ниже с этим
+   атрибутом, — единственное место, где веб и обёртка расходятся.
+   Разметка компонентов общая: правило «общий слой вместо паритета».
 
-   Обёртки больше нет (CLAUDE.md → «Мобильная версия»), поэтому
-   атрибут и все зависевшие от него правила удалены по правилу 8.
-   Для браузера это не меняет ничего: `data-native` в нём никогда
-   и не появлялся, а значит ни одно из тех правил не применялось.
+   Блок возвращён 11.08.2026 вместе с обёрткой Capacitor. Для
+   браузера он не меняет ничего: `data-native` там не появляется,
+   и ни одно из этих правил не применяется.
 
-   ОТДЕЛЬНОЕ НАЗВАННОЕ ИЗМЕНЕНИЕ (сосед М14, навигация). Одно
-   правило пряталось наоборот — `html:not([data-native])
-   .apphead-back { display: none }`. Оно задумывалось как «стрелка
-   «назад» не нужна там, где есть кнопка браузера», но класс
-   `.apphead-back` висит и на стрелке, И НА БУРГЕРЕ. В браузере
-   с телефона бургер поэтому не показывался никогда, а другого пути
-   к шторке разделов нет: нижняя панель даёт табы ТЕКУЩЕГО раздела,
-   боковое меню появляется только с lg. То есть разделы с телефона
-   были недостижимы. Правило снято, кнопка видна — это и есть
-   поведение, описанное в КОНСПЕКТЫ.md, М14.
+   Чего добиваемся, по пунктам жалобы «видно, что это обёртка»:
+   нет бокового меню, нет переключателя темы, нет ссылок на сайт,
+   нет резинового отскока при прокрутке, нет выделения текста
+   долгим нажатием, нет полос прокрутки, нет подсветки тапа синим.
+
+   ОДНО ПРАВИЛО НАМЕРЕННО НЕ ВОЗВРАЩЕНО (сосед М14, навигация):
+   `html:not([data-native]) .apphead-back { display: none }`.
+   Оно задумывалось как «стрелка «назад» не нужна там, где есть
+   кнопка браузера», но класс `.apphead-back` висит и на стрелке,
+   И НА БУРГЕРЕ. В браузере с телефона бургер поэтому не показывался
+   никогда, а другого пути к шторке разделов нет: нижняя панель даёт
+   табы ТЕКУЩЕГО раздела, боковое меню появляется только с lg.
+   Разделы с телефона были недостижимы. Не возвращать.
 
    Правила ниже НЕ в @layer намеренно: слой utilities у Tailwind
    идёт после components, и `lg:hidden` победил бы любую
    специфичность внутри слоя. Незаслоённое правило выигрывает
    у всех слоёв — это заменяет !important полностью.
    ============================================================ */
+
+html[data-native] .web-only { display: none; }
+
+/* Обратное правило: разметка, которая существует только в обёртке.
+   По умолчанию скрыта, поэтому в браузере её нет даже на кадр. */
+.native-only { display: none; }
+html[data-native] .native-only { display: flex; }
+
+html[data-native] {
+  /* Резиновый отскок — самый заметный признак веб-вью.
+     overscroll-behavior гасит и его, и «потяни, чтобы обновить». */
+  overscroll-behavior-y: none;
+}
+
+html[data-native] body {
+  overscroll-behavior-y: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+
+/* Поля ввода — исключение: без выделения в них нельзя ни исправить
+   опечатку, ни вставить код из письма. */
+html[data-native] input,
+html[data-native] textarea,
+html[data-native] [contenteditable='true'] {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
+/* Полос прокрутки в приложении не бывает. */
+html[data-native] ::-webkit-scrollbar { width: 0; height: 0; }
+html[data-native] * { scrollbar-width: none; }
+
+/* Наведение курсора на телефоне не существует; оставленные :hover
+   залипают после тапа и выглядят как сломанная кнопка. */
+@media (hover: none) {
+  html[data-native] .sidebar-item:hover { background: transparent; }
+}
+
+/* Нижние вкладки в обёртке — основная навигация на любой ширине,
+   включая планшет. В вебе они остаются телефонными (lg:hidden),
+   потому что там есть боковое меню. */
+html[data-native] .bottomnav { display: flex; }
+
+html[data-native] .appshell > div { padding-top: 0; }
+
+/* Клавиатура в кабинете. Плавающая нижняя навигация висит над
+   содержимым, поэтому запас снизу и так большой — но при поднятой
+   клавиатуре его не хватает ровно на её высоту, и последнее поле
+   формы оказывается недостижимым. --kb меряет keyboard-fit.tsx. */
+html[data-native] .appshell { padding-bottom: calc(8rem + var(--kb, 0px)); }
+
+/* Шапка экрана. В вебе это просто заголовок; в обёртке —
+   навигационная панель: липкая, уходит под вырез, во всю ширину.
+   Отрицательные поля по горизонтали ровно равны отступам контейнера
+   (px-4, на sm — px-6), иначе панель не дотянется до краёв. */
+html[data-native] .apphead {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  margin-inline: -16px;
+  margin-bottom: 16px;
+  padding: 8px 16px 10px;
+  padding-top: calc(8px + env(safe-area-inset-top));
+  border-bottom: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-bg) 82%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+@media (min-width: 640px) {
+  html[data-native] .apphead {
+    margin-inline: -24px;
+    padding-inline: 24px;
+  }
+}
+
+/* Пока клавиатура поднята, плавающая навигация перекрывает поле ввода:
+   она прижата к низу видимой области, а видимая область — это и есть
+   клавиатура. Прячем на время набора. */
+html[data-native] body:has(input:focus, textarea:focus) .bottomnav { display: none; }
+
+/* Отклик нажатия. Кнопка обязана проседать под пальцем: без этого
+   нажатие ощущается как промах, и человек жмёт второй раз. Только
+   в обёртке и только на сенсорном экране — у мыши есть :hover. */
+@media (hover: none) {
+  html[data-native] button:active,
+  html[data-native] a:active,
+  html[data-native] [role='button']:active,
+  html[data-native] .card-flat:active {
+    transform: scale(0.975);
+    transition: transform var(--dur-instant) var(--ease-out-soft);
+  }
+  /* Полосу вкладок не давим целиком — давим только сам пункт. */
+  html[data-native] .bottomnav:active { transform: none; }
+}
 
 /* Размер кнопки в шапке — бургер на корневом экране, «назад»
    на карточке (в одном слоте, взаимоисключающе). `display` здесь
@@ -806,6 +1129,14 @@ html.light {
   overscroll-behavior: contain;
 }
 
+@keyframes sheet-down {
+  from { transform: none; }
+  to   { transform: translateY(100%); }
+}
+/* Закрытие шторки — обратный ход sheet-up, короче (--dur-exit):
+   выход всегда быстрее входа, уходящее окно не задерживает. */
+.sheet-closing { animation: sheet-down var(--dur-exit) var(--ease-out-soft) both; }
+
 /* Полоска-ручка. Не украшение: она сообщает, что шторку можно тянуть. */
 .sheet-grip {
   width: 40px;
@@ -876,6 +1207,12 @@ html.light {
   border-radius: 999px;
   background: var(--color-accent);
 }
+
+@keyframes notify-out {
+  from { opacity: 1; transform: none; }
+  to   { opacity: 0; transform: translateY(-16%); }
+}
+.notify-closing { animation: notify-out var(--dur-exit) var(--ease-out-soft) both; }
 
 /* ============================================================
    Клавиатура на телефоне.
@@ -1106,4 +1443,25 @@ html.light .btn-apple {
   color: var(--color-accent);
   font-weight: 650;
 }
+
+/* ── Переходы между экранами ──────────────────────────────────
+   Вне @layer по тому же принципу, что drawer/sheet-layer выше:
+   правила хрома приложения обязаны выигрывать у утилит Tailwind.
+   Только transform и opacity, выход быстрее входа (--dur-exit
+   короче --dur-base). */
+@keyframes screen-in { from { transform: translateX(100%); } to { transform: none; } }
+@keyframes screen-out-dim { from { opacity: 0; } to { opacity: 0.45; } }
+.screen-enter { animation: screen-in var(--dur-base) var(--ease-out-soft) both; }
+/* Затемнение под уходящим экраном — сплошной --color-bg, а не
+   произвольный чёрный: интенсивность даёт сама анимация (0 → 0.45),
+   не альфа-канал цвета. */
+.screen-exit-scrim { position: absolute; inset: 0; background: var(--color-bg); animation: screen-out-dim var(--dur-base) var(--ease-out-soft) both; }
+
+@keyframes screen-back-in { from { transform: translateX(-28%); opacity: .6; } to { transform: none; opacity: 1; } }
+@keyframes screen-out-right { from { transform: none; } to { transform: translateX(100%); } }
+.screen-back-enter { animation: screen-back-in var(--dur-base) var(--ease-out-soft) both; }
+.screen-back-exit { animation: screen-out-right var(--dur-exit) var(--ease-out-soft) both; }
+
+.tab-fade { animation: fade var(--dur-fast) var(--ease-out-soft) both; }
+.content-swap { animation: fade var(--dur-fast) var(--ease-out-soft) both; }
 .drawer-item:active { background: var(--color-surface-2); }
