@@ -88,7 +88,7 @@ export function ReceiptsClient({
         <Link href="/app/inventory" className="btn-ghost">← Склад</Link>
         <Link href="/app/inventory/movements" className="btn-ghost">Журнал рухів</Link>
         {canWrite && (
-          <button type="button" className="btn-primary ml-auto h-10 t-md"
+          <button type="button" className="btn-primary ml-auto t-md"
                   onClick={() => { setOpen(!open); setErr('') }}>
             {open ? 'Згорнути' : '+ Нове приймання'}
           </button>

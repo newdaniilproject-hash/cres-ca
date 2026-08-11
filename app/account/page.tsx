@@ -46,7 +46,7 @@ export default async function AccountPage() {
             <h1 className="display t-2xl">{name}</h1>
             <p className="t-sm mt-0.5 prose-muted">{user.email}</p>
           </div>
-          <Link href="/account/security" className="btn-secondary h-10">Безпека</Link>
+          <Link href="/account/security" className="btn-secondary">Безпека</Link>
         </div>
 
         {memberships.length > 0 && (
@@ -55,7 +55,7 @@ export default async function AccountPage() {
               <p className="t-lg">Кабінет підприємця</p>
               <p className="t-sm mt-0.5 prose-muted">Склад, записи, клієнти</p>
             </div>
-            <span className="btn-primary h-10">Відкрити</span>
+            <span className="btn-primary">Відкрити</span>
           </Link>
         )}
 

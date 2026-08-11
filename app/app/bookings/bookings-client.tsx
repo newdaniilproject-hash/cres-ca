@@ -95,7 +95,7 @@ export function BookingsClient({ bookings }: { bookings: B[] }) {
                   </span>
                   {(NEXT[b.status] ?? []).map((a) => (
                     <button key={a.to}
-                            className={a.kind === 'primary' ? 'btn-primary h-9 t-sm' : 'btn-secondary h-9 t-sm'}
+                            className={a.kind === 'primary' ? 'btn-primary t-sm' : 'btn-secondary t-sm'}
                             disabled={busy === b.id}
                             onClick={() => void move(b.id, a.to)}>
                       {a.label}

@@ -121,7 +121,7 @@ export function CountsClient({
       <div className="rise flex flex-wrap items-center gap-2">
         <Link href="/app/inventory" className="btn-ghost">← Склад</Link>
         {canWrite && variants.length > 0 && (
-          <button type="button" className="btn-primary ml-auto h-10 t-md"
+          <button type="button" className="btn-primary ml-auto t-md"
                   onClick={() => { setOpen(!open); setErr('') }}>
             {open ? 'Згорнути' : '+ Почати перерахунок'}
           </button>

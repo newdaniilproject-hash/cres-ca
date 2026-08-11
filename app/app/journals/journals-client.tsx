@@ -170,7 +170,7 @@ export function JournalsClient({
     <div className="flex flex-col gap-5">
       <div className="rise flex flex-wrap items-center gap-2">
         <a href="/app/journals/report" target="_blank" rel="noreferrer"
-           className="btn-primary h-9 t-sm">
+           className="btn-primary t-sm">
           Звіт для перевірки → PDF
         </a>
         <span className="hidden w-px lg:block" />
@@ -202,7 +202,7 @@ export function JournalsClient({
                 {t.doneToday || offDone.has(t.id) ? (
                   <span className="badge-success">сьогодні ✓</span>
                 ) : (
-                  <button className="btn-secondary h-9 t-sm" disabled={busy === t.id}
+                  <button className="btn-secondary t-sm" disabled={busy === t.id}
                           onClick={() => void markTask(t.id)}>
                     Виконано
                   </button>

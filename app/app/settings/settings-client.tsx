@@ -76,7 +76,7 @@ export function SettingsClient({ shop, canWrite, team }: {
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <code className="card-flat t-md !px-3 !py-2">{publicUrl}</code>
-          <button type="button" className="btn-secondary h-9 t-sm"
+          <button type="button" className="btn-secondary t-sm"
                   onClick={() => navigator.clipboard.writeText(publicUrl)}>
             Скопіювати
           </button>
@@ -174,7 +174,7 @@ export function SettingsClient({ shop, canWrite, team }: {
             только через WebAuthn, а это уже не «замок на вход», а другой
             способ входа. Вернётся в приложении на Flutter. */}
         {!danger ? (
-          <button type="button" className="btn-secondary h-9 t-sm"
+          <button type="button" className="btn-secondary t-sm"
                   onClick={() => setDanger(true)}>
             Видалити акаунт
           </button>
@@ -209,7 +209,7 @@ export function SettingsClient({ shop, canWrite, team }: {
                       onClick={deleteAccount}>
                 {killing ? 'Видаляємо…' : 'Видалити назавжди'}
               </button>
-              <button type="button" className="btn-secondary h-9 t-sm"
+              <button type="button" className="btn-secondary t-sm"
                       disabled={killing}
                       onClick={() => { setDanger(false); setConfirmWord(''); setKillError('') }}>
                 Скасувати

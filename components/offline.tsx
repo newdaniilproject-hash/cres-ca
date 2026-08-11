@@ -108,12 +108,12 @@ export function OfflineBar() {
         {items.length > 0 && (
           <div className="flex shrink-0 gap-2">
             <button type="button" onClick={() => setOpen((v) => !v)}
-                    className="btn-ghost h-9 t-sm">
+                    className="btn-ghost t-sm">
               {open ? 'Сховати' : 'Показати'}
             </button>
             {online && (
               <button type="button" onClick={() => void sync(false)} disabled={busy}
-                      className="btn-primary h-9 t-sm">
+                      className="btn-primary t-sm">
                 {busy ? 'Надсилаємо…' : 'Надіслати'}
               </button>
             )}
@@ -135,7 +135,7 @@ export function OfflineBar() {
               {/* Отменить можно только то, что уже не проходит: иначе
                   мастер случайно выбросит запись, которая просто ждёт сети. */}
               {r.lastError && (
-                <button type="button" className="btn-ghost h-9 shrink-0 t-sm"
+                <button type="button" className="btn-ghost shrink-0 t-sm"
                         onClick={() => { void drop(r.id) }}>
                   Прибрати
                 </button>

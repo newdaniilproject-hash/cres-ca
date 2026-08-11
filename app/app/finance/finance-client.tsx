@@ -277,9 +277,9 @@ export function FinanceClient({
                 </span>
                 {canWrite && (
                   <>
-                    <button className="btn-ghost h-8 t-sm"
+                    <button className="btn-ghost t-sm"
                             onClick={() => startEdit(r)}>Нотатка</button>
-                    <button className="btn-ghost h-8 t-sm"
+                    <button className="btn-ghost t-sm"
                             onClick={() => startReverse(r)}>Зворотний запис</button>
                   </>
                 )}
@@ -305,9 +305,9 @@ export function FinanceClient({
                     </select>
                   </div>
                   <div className="sm:col-span-3 flex gap-2">
-                    <button className="btn-primary h-10 t-md" disabled={busy === r.id}
+                    <button className="btn-primary t-md" disabled={busy === r.id}
                             onClick={() => void saveEdit(r.id)}>Зберегти</button>
-                    <button className="btn-secondary h-10 t-md"
+                    <button className="btn-secondary t-md"
                             onClick={() => setEditing(null)}>Скасувати</button>
                     <span className="t-xs self-center prose-muted">
                       Сума й вид залишаться незмінними — база їх не віддасть.

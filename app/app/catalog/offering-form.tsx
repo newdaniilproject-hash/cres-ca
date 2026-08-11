@@ -496,24 +496,24 @@ export function OfferingForm({
           {saved && (
             <span className="t-md rise" style={{ color: 'var(--color-success)' }}>Збережено ✓</span>
           )}
-          <button type="button" className="btn-secondary h-10" disabled={busy !== null}
+          <button type="button" className="btn-secondary" disabled={busy !== null}
                   onClick={() => void save()}>
             {busy === 'save' ? 'Зберігаємо…' : 'Зберегти'}
           </button>
           {offeringId && status !== 'active' && (
-            <button type="button" className="btn-primary h-10" disabled={busy !== null}
+            <button type="button" className="btn-primary" disabled={busy !== null}
                     onClick={() => void changeStatus('active')}>
               Опублікувати
             </button>
           )}
           {offeringId && status === 'active' && (
-            <button type="button" className="btn-secondary h-10" disabled={busy !== null}
+            <button type="button" className="btn-secondary" disabled={busy !== null}
                     onClick={() => void changeStatus('draft')}>
               Зняти з публікації
             </button>
           )}
           {offeringId && status !== 'archived' && (
-            <button type="button" className="btn-danger h-10" disabled={busy !== null}
+            <button type="button" className="btn-danger" disabled={busy !== null}
                     onClick={() => void changeStatus('archived')}>
               В архів
             </button>
@@ -657,7 +657,7 @@ export function OfferingForm({
           <h2 className="t-lg">
             {isService ? 'Варіанти послуги' : 'Варіанти товару'}
           </h2>
-          <button type="button" className="btn-secondary h-9 t-sm"
+          <button type="button" className="btn-secondary t-sm"
                   onClick={() => setDrafts([...drafts, emptyDraft(kind)])}>
             Додати варіант
           </button>
@@ -679,7 +679,7 @@ export function OfferingForm({
                   У продажу
                 </label>
                 {drafts.length > 1 && (
-                  <button type="button" className="btn-ghost !h-8 !px-2 t-sm"
+                  <button type="button" className="btn-ghost !px-2 t-sm"
                           onClick={() => setDrafts(drafts.filter((x) => x.key !== d.key))}>
                     Прибрати
                   </button>
@@ -800,7 +800,7 @@ export function OfferingForm({
           </p>
         ) : (
           <>
-            <label className="btn-secondary h-10 w-fit cursor-pointer">
+            <label className="btn-secondary w-fit cursor-pointer">
               {busy === 'media' ? 'Завантажуємо…' : 'Додати фото'}
               <input type="file" accept="image/*" multiple className="hidden"
                      disabled={busy !== null}

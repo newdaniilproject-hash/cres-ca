@@ -71,7 +71,7 @@ export function CatalogClient({ items, error }: { items: CatalogItem[]; error: s
                 className={filter === 'draft' ? 'chip-active' : 'chip'}>
           Чернетки {counts.draft > 0 && `· ${counts.draft}`}
         </button>
-        <Link href="/app/catalog/new" className="btn-primary ml-auto h-9 t-sm">
+        <Link href="/app/catalog/new" className="btn-primary ml-auto t-sm">
           Додати
         </Link>
       </div>

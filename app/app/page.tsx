@@ -50,7 +50,7 @@ export default async function AppHome() {
           <p className="t-md">
             Заклад у чернетці: облік уже працює, публічна сторінка вимкнена.
           </p>
-          <Link href="/app/settings" className="btn-secondary h-9 t-sm">До публікації</Link>
+          <Link href="/app/settings" className="btn-secondary t-sm">До публікації</Link>
         </div>
       )}
 
@@ -59,7 +59,7 @@ export default async function AppHome() {
         <section className="card rise-1">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="t-lg">Записи сьогодні</h2>
-            <Link href="/app/bookings" className="btn-ghost h-8 t-sm">Усі</Link>
+            <Link href="/app/bookings" className="btn-ghost t-sm">Усі</Link>
           </div>
           {todays.length === 0 ? (
             <div className="empty !py-8">Сьогодні записів немає</div>
@@ -90,7 +90,7 @@ export default async function AppHome() {
         <section className="card rise-2">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="t-lg">Спливає термін</h2>
-            <Link href="/app/inventory" className="btn-ghost h-8 t-sm">Склад</Link>
+            <Link href="/app/inventory" className="btn-ghost t-sm">Склад</Link>
           </div>
           {(expiring ?? []).length === 0 ? (
             <div className="empty !py-8">Найближчі два тижні — усе в межах терміну</div>
@@ -113,7 +113,7 @@ export default async function AppHome() {
         <section className="card rise-3 lg:col-span-2">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="t-lg">Що закуповувати</h2>
-            <Link href="/app/inventory" className="btn-ghost h-8 t-sm">Залишки</Link>
+            <Link href="/app/inventory" className="btn-ghost t-sm">Залишки</Link>
           </div>
           {(low ?? []).length === 0 ? (
             <div className="empty !py-8">Запасів достатньо</div>

@@ -206,18 +206,18 @@ export function InventoryClient({
             </div>
             <div className="flex gap-2">
               {scan.container.status === 'sealed' && (
-                <button className="btn-primary h-10" disabled={busy === scan.container.id}
+                <button className="btn-primary" disabled={busy === scan.container.id}
                         onClick={() => void openContainer(scan.container!.id)}>
                   Відкрити банку
                 </button>
               )}
               {scan.container.status === 'opened' && (
                 <>
-                  <button className="btn-secondary h-10" disabled={busy === scan.container.id}
+                  <button className="btn-secondary" disabled={busy === scan.container.id}
                           onClick={() => void finishContainer(scan.container!.id)}>
                     Закінчилась
                   </button>
-                  <button className="btn-danger h-10" disabled={busy === scan.container.id}
+                  <button className="btn-danger" disabled={busy === scan.container.id}
                           onClick={() => void finishContainer(scan.container!.id, true)}>
                     Списати
                   </button>
@@ -246,22 +246,22 @@ export function InventoryClient({
           меняется только ими, и путь к ним должен быть виден с любой
           вкладки, а не прятаться под текущей. */}
       <div className="rise-2 flex flex-wrap gap-2">
-        <Link href="/app/inventory/receipts" className="btn-primary h-9 t-sm">
+        <Link href="/app/inventory/receipts" className="btn-primary t-sm">
           Прийняти товар
         </Link>
-        <Link href="/app/inventory/counts" className="btn-secondary h-9 t-sm">
+        <Link href="/app/inventory/counts" className="btn-secondary t-sm">
           Інвентаризація
         </Link>
-        <Link href="/app/inventory/reorder" className="btn-secondary h-9 t-sm">
+        <Link href="/app/inventory/reorder" className="btn-secondary t-sm">
           Пора замовити
         </Link>
-        <Link href="/app/inventory/recipes" className="btn-secondary h-9 t-sm">
+        <Link href="/app/inventory/recipes" className="btn-secondary t-sm">
           Рецептура
         </Link>
-        <Link href="/app/inventory/barcodes" className="btn-secondary h-9 t-sm">
+        <Link href="/app/inventory/barcodes" className="btn-secondary t-sm">
           Штрихкоди
         </Link>
-        <Link href="/app/inventory/movements" className="btn-secondary h-9 t-sm">
+        <Link href="/app/inventory/movements" className="btn-secondary t-sm">
           Журнал руху
         </Link>
       </div>
@@ -286,11 +286,11 @@ export function InventoryClient({
             <>
               {containers.length > 0 && (
                 <a href="/app/inventory/labels" target="_blank" rel="noreferrer"
-                   className="btn-secondary h-9 t-sm">
+                   className="btn-secondary t-sm">
                   Друк QR-наліпок
                 </a>
               )}
-              <button type="button" className="btn-primary h-9 t-sm"
+              <button type="button" className="btn-primary t-sm"
                       onClick={() => setAdding(adding === 'container' ? null : 'container')}>
                 + Додати
               </button>
@@ -298,11 +298,11 @@ export function InventoryClient({
           )}
           {tab === 'materials' && (
             <>
-              <button type="button" className="btn-secondary h-9 t-sm"
+              <button type="button" className="btn-secondary t-sm"
                       onClick={() => setAdding(adding === 'refs' ? null : 'refs')}>
                 Довідники
               </button>
-              <button type="button" className="btn-primary h-9 t-sm"
+              <button type="button" className="btn-primary t-sm"
                       onClick={() => setAdding(adding === 'material' ? null : 'material')}>
                 + Додати
               </button>
@@ -311,7 +311,7 @@ export function InventoryClient({
           {/* Товар заводится в каталоге вместе с ценой и фото — второй
               формы для того же самого на складе быть не должно. */}
           {tab === 'goods' && (
-            <a href="/app/catalog" className="btn-secondary h-9 t-sm">
+            <a href="/app/catalog" className="btn-secondary t-sm">
               Додати в каталозі
             </a>
           )}
@@ -390,7 +390,7 @@ export function InventoryClient({
                     </span>
                   )}
                   {c.status === 'sealed' && (
-                    <button className="btn-secondary h-9 t-sm" disabled={busy === c.id}
+                    <button className="btn-secondary t-sm" disabled={busy === c.id}
                             onClick={() => void openContainer(c.id)}>
                       Відкрити
                     </button>

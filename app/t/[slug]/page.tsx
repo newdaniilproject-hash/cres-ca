@@ -104,7 +104,7 @@ export default async function ShopPage({
                     {o.price != null && (
                       <p className="tabular t-md">{Number(o.price).toLocaleString('uk-UA')} ₴</p>
                     )}
-                    <Link href={`/t/${slug}/book/${o.id}`} className="btn-primary h-10">
+                    <Link href={`/t/${slug}/book/${o.id}`} className="btn-primary">
                       Записатися
                     </Link>
                   </div>

@@ -144,14 +144,14 @@ export function OrderDetail({
               <div className="flex flex-wrap gap-2">
                 {forward.map((s, i) => (
                   <button key={s} disabled={busy !== null}
-                          className={i === 0 ? 'btn-primary h-10 t-md' : 'btn-secondary h-10 t-md'}
+                          className={i === 0 ? 'btn-primary t-md' : 'btn-secondary t-md'}
                           onClick={() => void move(s)}>
                     {ACTION[s] ?? ORDER_LABEL[s]}
                   </button>
                 ))}
                 {undoing.map((s) => (
                   <button key={s} disabled={busy !== null}
-                          className="btn-danger h-10 t-md"
+                          className="btn-danger t-md"
                           onClick={() => void move(s)}>
                     {ACTION[s] ?? ORDER_LABEL[s]}
                   </button>

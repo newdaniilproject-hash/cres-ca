@@ -182,7 +182,7 @@ export function ReceiptDetail({
             {receipt.note && <p className="t-md mt-2 prose-muted">{receipt.note}</p>}
           </div>
           {editable && (
-            <button type="button" className="btn-secondary h-10 t-md"
+            <button type="button" className="btn-secondary t-md"
                     onClick={() => setEditHeader(!editHeader)}>
               {editHeader ? 'Згорнути' : 'Змінити'}
             </button>

@@ -73,7 +73,7 @@ export function ReorderClient({ items, error }: { items: LowItem[]; error: strin
       <div className="rise flex flex-wrap items-center gap-2">
         <Link href="/app/inventory" className="btn-ghost">← Склад</Link>
         {groups.length > 1 && (
-          <button type="button" className="btn-secondary ml-auto h-10 t-md"
+          <button type="button" className="btn-secondary ml-auto t-md"
                   onClick={() => void copy('all', allText)}>
             {copied === 'all' ? 'Скопійовано' : 'Скопіювати все'}
           </button>
@@ -100,7 +100,7 @@ export function ReorderClient({ items, error }: { items: LowItem[]; error: strin
               <p className="t-lg truncate">{g.supplier}</p>
               <p className="tabular t-xs mt-0.5 prose-muted">позицій: {g.list.length}</p>
             </div>
-            <button type="button" className="btn-secondary h-10 t-md"
+            <button type="button" className="btn-secondary t-md"
                     onClick={() => void copy(g.supplier, textFor(g.supplier, g.list))}>
               {copied === g.supplier ? 'Скопійовано' : 'Скопіювати список'}
             </button>

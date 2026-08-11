@@ -160,7 +160,7 @@ export function MovementsClient({
         <Link href="/app/inventory" className="btn-ghost">← Склад</Link>
         <Link href="/app/inventory/receipts" className="btn-ghost">Приймання</Link>
         {canWrite && (
-          <button type="button" className="btn-primary ml-auto h-10 t-md"
+          <button type="button" className="btn-primary ml-auto t-md"
                   onClick={() => { setOpen(!open); setErr('') }}>
             {open ? 'Згорнути' : 'Списати або повернути'}
           </button>

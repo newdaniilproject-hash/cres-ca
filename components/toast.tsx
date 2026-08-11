@@ -159,7 +159,7 @@ function ToastStack({ items, onClose }: { items: Toast[]; onClose: (id: number) 
               )}
             </div>
             <button type="button" onClick={() => onClose(t.id)} aria-label="Закрити"
-                    className="btn-icon shrink-0" style={{ minWidth: 28, minHeight: 28 }}>
+                    className="btn-icon shrink-0">
               ✕
             </button>
           </div>

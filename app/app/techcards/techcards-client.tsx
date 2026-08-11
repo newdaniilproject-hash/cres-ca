@@ -166,7 +166,7 @@ export function TechCardsClient({
   return (
     <div className="flex flex-col gap-5">
       <div className="rise flex flex-wrap items-center gap-2">
-        <button className="btn-primary h-9 t-sm" onClick={startNew} disabled={draft !== null}>
+        <button className="btn-primary t-sm" onClick={startNew} disabled={draft !== null}>
           Нова техкарта
         </button>
         <Link href="/app/journals" className="btn-ghost">← Санітарні журнали</Link>
@@ -290,7 +290,7 @@ export function TechCardsClient({
                     {g.latest.offeringTitle ?? 'Загальна для салону'} · версій: {g.versions.length}
                   </p>
                 </div>
-                <button className="btn-secondary h-9 t-sm" disabled={draft !== null}
+                <button className="btn-secondary t-sm" disabled={draft !== null}
                         onClick={() => startNextVersion(g)}>
                   Створити нову версію
                 </button>

@@ -21,7 +21,7 @@ export function PublicHeader({ authed }: { authed: boolean }) {
           <Link href="/search" className="btn-ghost hidden sm:inline-flex">Пошук</Link>
           <ThemeToggle className="hidden sm:inline-flex" />
           {authed ? (
-            <Link href="/account" className="btn-secondary h-10">Кабінет</Link>
+            <Link href="/account" className="btn-secondary">Кабінет</Link>
           ) : (
             <>
               <Link href="/login" className="btn-ghost">Увійти</Link>
@@ -31,7 +31,7 @@ export function PublicHeader({ authed }: { authed: boolean }) {
               <Link href="/register" className="btn-ghost hidden sm:inline-flex">
                 Реєстрація
               </Link>
-              <Link href="/register/seller" className="btn-primary h-10 hidden sm:inline-flex">
+              <Link href="/register/seller" className="btn-primary hidden sm:inline-flex">
                 Для бізнесу
               </Link>
             </>

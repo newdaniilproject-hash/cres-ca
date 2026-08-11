@@ -236,7 +236,7 @@ export function ContainerForm({
                 просто сканує її камерою.
               </p>
               <a href="/app/inventory/labels" target="_blank" rel="noreferrer"
-                 className="btn-secondary mt-3 h-9 t-sm">
+                 className="btn-secondary mt-3 t-sm">
                 Друк QR-наліпок
               </a>
             </div>
