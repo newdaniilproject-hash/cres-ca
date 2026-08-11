@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "878110662093",
+    "project_id": "cresca-market",
+    "storage_bucket": "cresca-market.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:878110662093:android:f0fddd70d7a217244cf884",
+        "android_client_info": {
+          "package_name": "com.cresca.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCBrmViNLIcria76E0iI4CznSL5smZAc5M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
