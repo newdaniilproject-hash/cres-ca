@@ -131,7 +131,9 @@ class OutboxService {
       );
 
   /// Запись в санитарный журнал. Таблица задаётся вызывающим:
-  /// cleaning_logs / solution_logs / sterilization_logs.
+  /// cleaning_entries / sanitation_solutions / sterilization_cycles
+  /// (реальные имена из 0014_compliance.sql — не cleaning_logs
+  /// и не solution_logs, таких таблиц в базе нет).
   ///
   /// performed_by / prepared_by обязательны в базе — без исполнителя
   /// журнал инспектору не нужен, и вставка упадёт. На этом уже
@@ -206,9 +208,19 @@ class OutboxService {
     try {
       switch (item.kind) {
         case 'container.status':
+          final status = payload['status'] as String;
+          final update = <String, dynamic>{'status': status};
+          // Дата вскрытия — момент нажатия кнопки, а не момент, когда
+          // очередь наконец доехала до сервера. containers_guard()
+          // на сервере принимает переданное значение при первом
+          // вскрытии (0014_compliance.sql) — не передать его значит
+          // однажды посчитать use_by от даты разбора очереди.
+          if (status == 'opened') {
+            update['opened_at'] = item.happenedAt.toIso8601String();
+          }
           await _sb
               .from('material_containers')
-              .update({'status': payload['status']})
+              .update(update)
               .eq('id', payload['id'] as String);
 
         case 'stock.movement':
@@ -222,14 +234,18 @@ class OutboxService {
           final row = Map<String, dynamic>.from(payload['row'] as Map);
           final userId = payload['user_id'] as String;
           final table = payload['table'] as String;
+          // sanitation_solutions — единственная из трёх с другими
+          // именами колонок: prepared_by/prepared_at вместо
+          // performed_by/performed_at. Остальные две совпадают.
+          final isSolution = table == 'sanitation_solutions';
           // Исполнитель и время нажатия проставляются здесь, а не при
           // отправке: иначе в журнал попадёт момент появления сети.
           row.putIfAbsent(
-            table == 'solution_logs' ? 'prepared_by' : 'performed_by',
+            isSolution ? 'prepared_by' : 'performed_by',
             () => userId,
           );
           row.putIfAbsent(
-            'performed_at',
+            isSolution ? 'prepared_at' : 'performed_at',
             () => item.happenedAt.toIso8601String(),
           );
           await _sb.from(table).insert(row);

@@ -149,8 +149,8 @@ class Outbox extends Table {
   /// с тем же ключом и товар не спишется дважды.
   TextColumn get idempotencyKey => text()();
 
-  /// Что делаем: 'container.status', 'stock.movement', 'journal.cleaning',
-  /// 'journal.solution', 'journal.sterilization'. Разбор — в outbox.dart.
+  /// Что делаем: 'container.status', 'stock.movement', 'journal.insert'
+  /// (таблица журнала лежит в payload.table). Разбор — outbox_service.dart.
   TextColumn get kind => text()();
 
   /// Параметры действия, JSON.

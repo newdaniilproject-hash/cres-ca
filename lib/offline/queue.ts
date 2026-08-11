@@ -175,9 +175,19 @@ export function onQueueChange(fn: () => void): () => void {
 async function send(supabase: SupabaseClient, rec: QueuedRecord): Promise<void> {
   const a = rec.action
   if (a.kind === 'container.status') {
+    const update: Record<string, unknown> = { status: a.status }
+    // Дата вскрытия — момент нажатия кнопки, а не момент, когда
+    // очередь наконец доехала до сервера. containers_guard()
+    // на сервере принимает переданное значение как есть и не
+    // трогает его, если оно уже задано (0014_compliance.sql) —
+    // не передать его значит однажды посчитать use_by от даты
+    // разбора очереди, а не от даты фактического вскрытия.
+    if (a.status === 'opened') {
+      update.opened_at = new Date(rec.at).toISOString()
+    }
     const { error } = await supabase
       .from('material_containers')
-      .update({ status: a.status })
+      .update(update)
       .eq('id', a.containerId)
     if (error) throw new Error(error.message)
     return
