@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Маркет</title>
+<!--
+  Локальная стартовая точка нативной обёртки. НЕ УДАЛЯТЬ.
+
+  ⚠️ ЧЕСТНО О ТОМ, ЗАЧЕМ ОН ЗДЕСЬ (уточнено 12.08.2026 по исходникам
+  Capacitor 8, а не по документации).
+
+  Файл добавлялся как исправление отказа «This page couldn't load»:
+  в webDir указан public, а index.html там не было. Гипотеза оказалась
+  НЕВЕРНОЙ, и вот чем она закрыта — CAPBridgeViewController.loadWebView():
+
+      guard FileManager.default.fileExists(
+              atPath: bridge.config.appStartFileURL.path)
+      else { fatalLoadError() }
+
+  appStartFileURL = appLocation + appStartPath. У appStartPath умолчания
+  НЕТ (CAPInstanceDescriptor читает его, только если задан явно), значит
+  путь равен КАТАЛОГУ public — а fileExists на каталоге возвращает true.
+  Проверка проходит и без index.html. Вдобавок fatalLoadError() делает
+  exit(1): приложение бы завершилось, а не показало экран ошибки.
+
+  Файл оставлен сознательно, но по другой причине: он делает поведение
+  однозначным при любом раскладе. Если однажды будет задан
+  server.appStartPath, или сменится поведение в следующей версии
+  Capacitor, или кто-то уберёт server.url — приложение всё равно
+  стартует и уйдёт на сайт, а не покажет системную ошибку. Стоимость —
+  3 КБ в бандле.
+
+  Файл намеренно самодостаточен: ни одного внешнего ресурса, ни одной
+  зависимости от сборки Next. Фон совпадает с --color-bg и с заставкой,
+  чтобы при запуске не мелькал белый кадр. Хост есть в allowNavigation,
+  переход разрешён.
+-->
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #141417;
+    color: #8a8a94;
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  main {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+</style>
+<script>
+  // Сразу, до отрисовки: экран-заглушка мелькать не должен.
+  location.replace('https://www.cres-ca.com/m');
+</script>
+</head>
+<body>
+  <main>Завантаження…</main>
+  <noscript>
+    <p style="text-align:center">
+      <a href="https://www.cres-ca.com/m" style="color:#c8a24a">Відкрити Маркет</a>
+    </p>
+  </noscript>
+</body>
+</html>

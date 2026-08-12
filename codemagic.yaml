@@ -172,7 +172,12 @@ workflows:
           include: true
     scripts:
       - name: Install JS dependencies
-        script: npm install --legacy-peer-deps
+        # npm ci, а НЕ npm install: ставит ровно то, что в package-lock.json,
+        # и падает, если lock разошёлся с package.json. Версии @capacitor/*
+        # прибиты точками (без ^): обёртка трижды ломалась на смене поведения
+        # между минорами, и «свежий минор приехал сам» — не тот сюрприз,
+        # который нужен в сборке для магазина.
+        script: npm ci --legacy-peer-deps
 
       - name: Add iOS platform (idempotent)
         script: |
@@ -243,6 +248,12 @@ workflows:
           /usr/libexec/PlistBuddy -c "Add :NSLocationWhenInUseUsageDescription string 'Локація може використовуватись для релевантних сповіщень.'" App/Info.plist 2>/dev/null || true
           # Только стандартный HTTPS — снимает вопрос Missing Compliance в TestFlight.
           /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" App/Info.plist 2>/dev/null || true
+          # Пуш будит приложение в фоне. Без этого ключа cap sync ругается
+          # («Configuration required for onesignal-cordova-plugin»), а тихие
+          # пуши и доставка при свёрнутом приложении не работают вовсе.
+          /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes array" App/Info.plist 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes:0 string remote-notification" App/Info.plist 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Print :UIBackgroundModes" App/Info.plist
 
       - name: Глубокие ссылки — схема cresca://
         script: |
@@ -331,7 +342,12 @@ workflows:
           include: true
     scripts:
       - name: Install JS dependencies
-        script: npm install --legacy-peer-deps
+        # npm ci, а НЕ npm install: ставит ровно то, что в package-lock.json,
+        # и падает, если lock разошёлся с package.json. Версии @capacitor/*
+        # прибиты точками (без ^): обёртка трижды ломалась на смене поведения
+        # между минорами, и «свежий минор приехал сам» — не тот сюрприз,
+        # который нужен в сборке для магазина.
+        script: npm ci --legacy-peer-deps
       - name: Add Android platform (idempotent)
         script: |
           if [ ! -d "android" ]; then npx cap add android; fi
@@ -381,7 +397,12 @@ workflows:
           include: true
     scripts:
       - name: Install JS dependencies
-        script: npm install --legacy-peer-deps
+        # npm ci, а НЕ npm install: ставит ровно то, что в package-lock.json,
+        # и падает, если lock разошёлся с package.json. Версии @capacitor/*
+        # прибиты точками (без ^): обёртка трижды ломалась на смене поведения
+        # между минорами, и «свежий минор приехал сам» — не тот сюрприз,
+        # который нужен в сборке для магазина.
+        script: npm ci --legacy-peer-deps
       - name: Add Android platform
         script: |
           if [ ! -d "android" ]; then npx cap add android; fi
