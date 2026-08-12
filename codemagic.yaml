@@ -11,9 +11,13 @@
 #                                   трек, список 8 плана. НЕ УДАЛЯТЬ:
 #                                   переезд идёт по критерию, не по дате.
 #
-# Правка 05.08.2026 удалила процесс под Capacitor целиком. Отменено:
-# причина отказа веб-вью найдена и лежит в web-коде
-# (components/deep-link.tsx, фильтр по схеме cresca:), а не в пайплайне.
+# Правка 05.08.2026 удалила процесс под Capacitor целиком — отменено.
+#
+# ⚠️ ВЕРСИИ CAPACITOR ЗДЕСЬ НЕ СЛУЧАЙНЫ: линия 6.2, node 20, `cap add ios`
+# без флагов. Это не «старьё, которое надо обновить», а СОЗНАТЕЛЬНОЕ
+# приведение к работающему эталону DaKi после четырёх отказавших сборок
+# на Capacitor 8.5 + node 24. Поднимать версии — только по одной,
+# с проверкой на устройстве после каждой (порядок в КОНСПЕКТЫ М6).
 #
 # Что настроено в Codemagic ОДИН раз (уже сделано, менять не нужно):
 #   • интеграция app_store_connect с именем cresca-app-store-connect
@@ -162,7 +166,7 @@ workflows:
       vars:
         BUNDLE_ID: com.cresca.app
         APP_NAME: "Маркет"
-      node: 24
+      node: 20
       xcode: latest
       cocoapods: default
     triggering:
@@ -181,7 +185,7 @@ workflows:
 
       - name: Add iOS platform (idempotent)
         script: |
-          if [ ! -d "ios" ]; then npx cap add ios --packagemanager Cocoapods; fi
+          if [ ! -d "ios" ]; then npx cap add ios; fi
 
       - name: Sync Capacitor → iOS
         script: npx cap sync ios
@@ -333,7 +337,7 @@ workflows:
       vars:
         BUNDLE_ID: com.cresca.app
         APP_NAME: "Маркет"
-      node: 24
+      node: 20
       java: 21
     triggering:
       events: [tag]
@@ -388,7 +392,7 @@ workflows:
       groups: [push, android_signing]
       vars:
         BUNDLE_ID: com.cresca.app
-      node: 24
+      node: 20
       java: 21
     triggering:
       events: [tag]
