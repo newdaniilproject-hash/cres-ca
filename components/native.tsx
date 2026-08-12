@@ -103,6 +103,15 @@ export function NativeProvider() {
   // Ничего, кроме входа и регистрации, отсюда никуда не уводится:
   // каталог и витрина внутри приложения остаются на месте.
   useEffect(() => {
+    // ⚠️ ВРЕМЕННЫЙ МАЯЧОК, удалить после разбора (components/ping.ts).
+    // Стоит ДО `if (!nativeish()) return` намеренно: иначе в вебе
+    // ступень не пришла бы вовсе, и было бы не отличить «эффект
+    // не запустился» от «запустился и вышел». Флаг ish говорит, каким
+    // из двух путей пошло.
+    ;(window as Window & {
+      __ping?: (s: string, e?: Record<string, unknown>) => void
+    }).__ping?.('native', { ish: nativeish() ? 1 : 0 })
+
     if (!nativeish()) return
 
     const check = () => {
