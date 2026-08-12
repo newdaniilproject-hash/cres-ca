@@ -112,16 +112,26 @@ export function NativeProvider() {
       __ping?: (s: string, e?: Record<string, unknown>) => void
     }).__ping?.('native', { ish: nativeish() ? 1 : 0 })
 
-    if (!nativeish()) return
+    // Всё, что трогает мост, — под try/catch. См. правило в шапке файла.
+    let check: (() => void) | null = null
+    try {
+      if (!nativeish()) return
 
-    const check = () => {
-      const p = window.location.pathname
-      const twin = TWINS.find(([from]) => p === from || p.startsWith(from + '/'))
-      if (twin) window.location.replace(twin[1] + window.location.search)
+      check = () => {
+        const p = window.location.pathname
+        const twin = TWINS.find(([from]) => p === from || p.startsWith(from + '/'))
+        if (twin) window.location.replace(twin[1] + window.location.search)
+      }
+      check()
+      window.addEventListener('popstate', check)
+    } catch {
+      // Мост чудит — перевод на родной поток входа в этом запуске
+      // не работает. Приложение работает.
+      return
     }
-    check()
-    window.addEventListener('popstate', check)
-    return () => window.removeEventListener('popstate', check)
+
+    const bound = check
+    return () => { if (bound) window.removeEventListener('popstate', bound) }
   }, [])
 
   // ── Отклик на касание ──────────────────────────────────────────
@@ -134,7 +144,8 @@ export function NativeProvider() {
   // касания, до того как отработает переход. Разница в 100–200 мс
   // и есть та самая «отзывчивость нативного».
   useEffect(() => {
-    if (!nativeish()) return
+    // Мост здесь трогают и nativeish(), и haptic.* внутри обработчика.
+    try { if (!nativeish()) return } catch { return }
 
     const onTouch = (e: TouchEvent) => {
       const t = e.target as HTMLElement | null
@@ -169,7 +180,8 @@ export function NativeProvider() {
   // поэтому после входа устройство обязано представиться этим id —
   // иначе уведомления о заказах и сроках летят в пустоту.
   useEffect(() => {
-    if (!isNative()) return
+    // isNative() читает мост — под try, как и всё остальное.
+    try { if (!isNative()) return } catch { return }
     const supabase = createClient()
 
     const bind = async () => {
@@ -256,8 +268,12 @@ export function NativeProvider() {
   }
 
   useEffect(() => {
-    if (!isNative()) return
-    const enabled = localStorage.getItem(BIO_KEY)
+    // isNative() читает мост, localStorage падает в приватном режиме.
+    let enabled: string | null = null
+    try {
+      if (!isNative()) return
+      enabled = localStorage.getItem(BIO_KEY)
+    } catch { return }
 
     // Первый запуск в приложении: один раз предлагаем включить замок.
     if (enabled === null) {

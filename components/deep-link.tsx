@@ -106,49 +106,84 @@ export function DeepLink() {
       if (/(^|\.)cres-ca\.com$/.test(u.host)) go(u.pathname + u.search)
     }
 
-    // ── Android: ссылка запуска лежит в мосте, дальше — события ──
-    try {
-      const first = w.AndroidDeepLink?.consume?.()
-      if (first) void handle(first)
-    } catch { /* моста нет — значит, не Android-приложение */ }
-
     const onEvent = (e: Event) => {
       const url = (e as CustomEvent<{ url?: string }>).detail?.url
       if (url) void handle(url)
     }
     window.addEventListener('cres:deeplink', onEvent as EventListener)
 
-    // ── iOS: плагин App ──────────────────────────────────────────
     let off: (() => void) | null = null
-    const app = w.Capacitor?.Plugins?.App
 
-    if (app?.addListener) {
-      void app
-        .addListener('appUrlOpen', (d) => { if (d?.url) void handle(d.url) })
-        .then((h) => {
-          if (dead) h.remove()
-          else off = () => h.remove()
-        })
-        .catch(() => {})
-    }
-    if (app?.getLaunchUrl) {
-      void app.getLaunchUrl().then((d) => {
-        // ТОЛЬКО своя схема, и это не придирка к чистоте.
+    // ═══════════════════════════════════════════════════════════════
+    // ВСЁ, ЧТО ТРОГАЕТ МОСТ, — ВНУТРИ try/catch. Правило, оплаченное
+    // неделей простоя 04–12.08.2026: отказ нативной возможности гасит
+    // ВОЗМОЖНОСТЬ, а не приложение. Этот эффект живёт в корневом
+    // макете и границей ошибок не накрыт, поэтому любой бросок отсюда
+    // сносит всё дерево React до первой отрисовки, а снаружи это
+    // выглядит как системный экран «This page couldn't load».
+    // ═══════════════════════════════════════════════════════════════
+    try {
+      // ── Android: ссылка запуска лежит в мосте, дальше — события ──
+      try {
+        const first = w.AndroidDeepLink?.consume?.()
+        if (first) void handle(first)
+      } catch { /* моста нет — значит, не Android-приложение */ }
+
+      // ── iOS: плагин App ────────────────────────────────────────
+      const app = w.Capacitor?.Plugins?.App
+
+      if (app?.addListener) {
+        // ⚠️ Promise.resolve ОБЯЗАТЕЛЕН. НЕ СНИМАТЬ.
         //
-        // При удалённом server.url getLaunchUrl отдаёт САМ server.url —
-        // https://cres-ca.com/m. Это не глубокая ссылка, приложение просто
-        // так запустилось. Пропустив её дальше, получаем вечный цикл:
-        // handle → go('/m') → страница грузится → DeepLink монтируется →
-        // getLaunchUrl → то же самое. WKWebView вешает процесс и убивает
-        // его, человек видит «This page couldn't load» вместо кабинета.
-        // Ловилось 05.08.2026: экран смерти на ВСЕХ сборках сразу, включая
-        // старые, — потому что причина ехала с сервера, а не в бинаре.
+        // Это и есть причина, по которой обёртка не открывалась
+        // с 04.08 по 12.08.2026 — десять сборок и шесть опровергнутых
+        // гипотез. Сломал коммит adb48796, добавивший слой глубоких
+        // ссылок.
         //
-        // Ссылка снаружи всегда приходит схемой cresca:// (см. шапку файла);
-        // https-ссылки на Android приезжают через AndroidDeepLink, где мост
-        // отдаёт ровно то, что перехватил, и подмены server.url нет.
-        if (d?.url && d.url.startsWith('cresca:')) void handle(d.url)
-      }).catch(() => {})
+        // Плагины здесь берутся ИЗ МОСТА (window.Capacitor.Plugins),
+        // а не из npm-обёртки, и это намеренно (см. шапку файла).
+        // Но контракты у них РАЗНЫЕ:
+        //   npm-обёртка  addListener -> Promise<PluginListenerHandle>
+        //   МОСТ         addListener -> PluginListenerHandle СИНХРОННО
+        // У синхронного handle нет .then, и вызов его давал
+        //   TypeError: …addListener("appUrlOpen", …).then is not a function
+        // Синхронный бросок внутри useEffect корневого макета →
+        // React сносит дерево → системный экран вместо сайта.
+        //
+        // Promise.resolve принимает и то, и другое. Снявший его
+        // сломает приложение снова и будет искать неделю.
+        Promise.resolve(
+          app.addListener('appUrlOpen', (d) => { if (d?.url) void handle(d.url) }),
+        )
+          .then((h) => {
+            if (dead) h?.remove?.()
+            else off = () => h?.remove?.()
+          })
+          .catch(() => {})
+      }
+      if (app?.getLaunchUrl) {
+        // Тот же контракт и та же защита: у моста getLaunchUrl тоже
+        // может отдать значение синхронно. Место не «на всякий
+        // случай» — это ровно вторая половина той же мины.
+        void Promise.resolve(app.getLaunchUrl()).then((d) => {
+          // ТОЛЬКО своя схема, и это не придирка к чистоте.
+          //
+          // При удалённом server.url getLaunchUrl отдаёт САМ server.url —
+          // https://cres-ca.com/m. Это не глубокая ссылка, приложение
+          // просто так запустилось. Пропустив её дальше, получаем цикл:
+          // handle → go('/m') → страница грузится → DeepLink монтируется
+          // → getLaunchUrl → то же самое.
+          //
+          // Ссылка снаружи всегда приходит схемой cresca:// (см. шапку
+          // файла); https-ссылки на Android приезжают через
+          // AndroidDeepLink, где мост отдаёт ровно то, что перехватил.
+          if (d?.url && d.url.startsWith('cresca:')) void handle(d.url)
+        }).catch(() => {})
+      }
+    } catch {
+      // Мост повёл себя не так, как ждали. Глубокие ссылки в этом
+      // запуске не работают — приложение работает. Это и есть правило:
+      // отказ возможности не равен отказу продукта.
     }
 
     return () => {

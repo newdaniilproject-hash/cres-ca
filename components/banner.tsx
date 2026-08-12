@@ -110,7 +110,11 @@ export function NotifyBanner() {
       if (href && href.startsWith('/')) window.location.assign(href)
     }
 
-    const os = w.Capacitor?.isNativePlatform?.() ? w.plugins?.OneSignal : undefined
+    // Чтение моста тоже под try: до этой строки он был снаружи, и любой
+    // его каприз ронял бы корневой макет (см. правило в deep-link.tsx).
+    let os: NonNullable<typeof w.plugins>['OneSignal']
+    try { os = w.Capacitor?.isNativePlatform?.() ? w.plugins?.OneSignal : undefined }
+    catch { os = undefined }
     try { os?.Notifications?.addEventListener?.('foregroundWillDisplay', onForeground) }
     catch { /* пуш не должен ронять экран */ }
     try { os?.Notifications?.addEventListener?.('click', onClick) }

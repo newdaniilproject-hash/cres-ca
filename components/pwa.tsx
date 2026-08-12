@@ -77,15 +77,19 @@ export function PwaProvider() {
   // не запущены как установленное приложение.
   useEffect(() => {
     // Внутри приложения из магазина PWA-подсказки бессмысленны и вредны.
-    if (document.documentElement.hasAttribute('data-native')) return
-    const w = window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }
-    if (w.Capacitor?.isNativePlatform?.()) return
-    const ua = navigator.userAgent
-    const isIos = /iPad|iPhone|iPod/.test(ua)
-    const standalone =
-      window.matchMedia('(display-mode: standalone)').matches ||
-      (navigator as unknown as { standalone?: boolean }).standalone === true
-    if (isIos && !standalone && !localStorage.getItem('pwa-ios-hint')) setIosHint(true)
+    // Мост и localStorage — под try: компонент живёт в корневом макете,
+    // и бросок отсюда снёс бы всё дерево (см. правило в deep-link.tsx).
+    try {
+      if (document.documentElement.hasAttribute('data-native')) return
+      const w = window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }
+      if (w.Capacitor?.isNativePlatform?.()) return
+      const ua = navigator.userAgent
+      const isIos = /iPad|iPhone|iPod/.test(ua)
+      const standalone =
+        window.matchMedia('(display-mode: standalone)').matches ||
+        (navigator as unknown as { standalone?: boolean }).standalone === true
+      if (isIos && !standalone && !localStorage.getItem('pwa-ios-hint')) setIosHint(true)
+    } catch { /* подсказка об установке не обязательна */ }
   }, [])
 
   if (deferred) {
