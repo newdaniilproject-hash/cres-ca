@@ -11,9 +11,6 @@ import { PwaProvider } from '@/components/pwa'
 import { SwipeBack } from '@/components/swipe-back'
 import { NativeFeel } from '@/components/native-feel'
 import { DeepLink } from '@/components/deep-link'
-// ⚠️ ВРЕМЕННОЕ: диагностика запуска, удалить вместе с маячками.
-import { pingHeadScript, pingBootScript } from '@/components/ping'
-import { PingMounted } from '@/components/ping-mounted'
 import './globals.css'
 
 // Один шрифт на весь интерфейс: заголовки теперь гротеском
@@ -49,19 +46,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="uk" className={inter.variable} suppressHydrationWarning>
       <head>
-        {/* ⚠️ ВРЕМЕННЫЙ МАЯЧОК, удалить после разбора (components/ping.ts).
-            Стоит ПЕРВЫМ намеренно: ловит в том числе падение скриптов
-            ниже. Ступень «head» + ловушки error и pagehide. */}
-        <script dangerouslySetInnerHTML={{ __html: pingHeadScript }} />
         {/* Класс темы ставится синхронно, до первой отрисовки:
             иначе виден кадр с чужим фоном. */}
         <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
         {/* И признак приложения — тоже до первой отрисовки, иначе виден
             кадр с боковым меню и переключателем темы. */}
         <script dangerouslySetInnerHTML={{ __html: nativeBootScript }} />
-        {/* ⚠️ ВРЕМЕННЫЙ МАЯЧОК. Ступень «boot»: сюда доехали — значит
-            оба загрузочных скрипта отработали. Флаги cap и native. */}
-        <script dangerouslySetInnerHTML={{ __html: pingBootScript }} />
       </head>
       <body>
         {/* Уведомления, состояние связи и предложение установки живут
@@ -76,9 +66,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               SwipeBack    — жест «назад» от левого края (только в обёртке).
               NotifyBanner — уведомление при открытой вкладке.
               NativeFeel   — мелкие нативные повадки (только в обёртке). */}
-          {/* ⚠️ ВРЕМЕННЫЙ МАЯЧОК. Ступень «mounted»: React ожил
-              и гидратация прошла. Удалить после разбора. */}
-          <PingMounted />
           <KeyboardFit />
           <SwipeBack />
           <NotifyBanner />

@@ -8,6 +8,7 @@ import { CodeInput } from '../code-input'
 import { nextRoute } from '../where'
 import { AppScreen, Field, keepVisible } from '../ui'
 import { OAuthButtons } from '../oauth'
+import { authErrorText } from '@/app/(auth)/google-button'
 
 const CODE_LENGTH = 8
 const RESEND_SECONDS = 60
@@ -41,7 +42,16 @@ export function MobileLoginForm() {
   // Вход через провайдера возвращается сюда с причиной отказа
   // в адресе: своего состояния у него быть не может — приложение
   // за это время успело перезагрузиться.
-  const [error, setError] = useState(params.get('oauth') ?? '')
+  //
+  // ⚠️ Через authErrorText, а не дословно (12.08.2026): сюда приезжает
+  // либо err из cresca://auth?error=… (тот же текст, что вернул
+  // провайдер или Supabase), либо error.message из неудавшегося
+  // exchangeCodeForSession в components/deep-link.tsx. Ни то ни другое
+  // не рассчитано на глаза человека.
+  const [error, setError] = useState(() => {
+    const oauth = params.get('oauth')
+    return oauth ? authErrorText(oauth) : ''
+  })
   const [noAccount, setNoAccount] = useState(false)
 
   function tick() {

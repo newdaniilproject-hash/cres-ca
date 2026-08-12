@@ -85,7 +85,7 @@ const TWINS: [string, string][] = [
 // Внутри приложения признак ставится ещё до отрисовки (native-boot.ts),
 // и это единственная надёжная проверка на Android: моста Capacitor там
 // при удалённом server.url нет вовсе.
-function nativeish(): boolean {
+export function nativeish(): boolean {
   if (typeof document === 'undefined') return false
   return document.documentElement.hasAttribute('data-native') || isNative()
 }
@@ -103,15 +103,6 @@ export function NativeProvider() {
   // Ничего, кроме входа и регистрации, отсюда никуда не уводится:
   // каталог и витрина внутри приложения остаются на месте.
   useEffect(() => {
-    // ⚠️ ВРЕМЕННЫЙ МАЯЧОК, удалить после разбора (components/ping.ts).
-    // Стоит ДО `if (!nativeish()) return` намеренно: иначе в вебе
-    // ступень не пришла бы вовсе, и было бы не отличить «эффект
-    // не запустился» от «запустился и вышел». Флаг ish говорит, каким
-    // из двух путей пошло.
-    ;(window as Window & {
-      __ping?: (s: string, e?: Record<string, unknown>) => void
-    }).__ping?.('native', { ish: nativeish() ? 1 : 0 })
-
     // Всё, что трогает мост, — под try/catch. См. правило в шапке файла.
     let check: (() => void) | null = null
     try {
