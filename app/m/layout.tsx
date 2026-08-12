@@ -35,11 +35,26 @@ export default function MobileLayout({ children }: { children: React.ReactNode }
         // Теперь высота берётся напрямую из visualViewport: это и есть
         // видимая часть экрана, считать нечего. 100dvh — только запасной
         // вариант для движков без visualViewport.
+        //
+        // ТРЕТЬЯ ГРАБЛЯ, 12.08.2026: здесь стояло
+        // transition: 'height var(--dur-fast) linear' — и это убивало
+        // процесс веб-вью. Кольцо: --vvh меняется → высота ЕДЕТ
+        // анимацией → пока едет, меняется область прокрутки →
+        // visualViewport стреляет 'scroll' → keyboard-fit пишет --vvh
+        // заново → transition перезапускается. Каждый кадр, вечно.
+        // Хватало колебания в один пиксель после Math.round.
+        // Снаружи это выглядело как «This page couldn't load» на всех
+        // сборках сразу, включая старые: причина ехала с сервера.
+        // В Safari не воспроизводилось — там visualViewport не дёргается,
+        // потому что нет Keyboard.resize:'native' и contentInset:'never'.
+        //
+        // Анимировать высоту нельзя и по правилу проекта (план, шаг 12):
+        // «ТОЛЬКО transform и opacity». Высота меняется мгновенно —
+        // клавиатура и так выезжает своей анимацией, и рывка не видно.
         height: 'var(--vvh, 100dvh)',
         background: 'var(--color-bg)',
         paddingTop: 'env(safe-area-inset-top)',
         paddingBottom: 'env(safe-area-inset-bottom)',
-        transition: 'height var(--dur-fast) linear',
         // Прокручивается содержимое внутри, а не сама рамка: иначе
         // экран «уезжает» целиком и шапка с кнопкой «Вийти» пропадает.
         overflow: 'hidden',

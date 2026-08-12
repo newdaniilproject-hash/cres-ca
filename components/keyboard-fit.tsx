@@ -32,12 +32,31 @@ export function KeyboardFit() {
     // ── 1. Реальная видимая высота ──────────────────────────────
     const vv = window.visualViewport
     let raf = 0
+    // Последние ЗАПИСАННЫЕ значения. Без этой пары запись шла на каждое
+    // событие, в том числе когда число не изменилось, — и любой подписчик
+    // на эти переменные пересчитывал раскладку впустую.
+    //
+    // ГРАБЛЯ 12.08.2026, стоила отказа обёртки: m/layout.tsx держал на
+    // --vvh высоту С АНИМАЦИЕЙ. Повторная запись перезапускала transition,
+    // едущая высота меняла область прокрутки, visualViewport стрелял
+    // 'scroll', сюда приходило новое событие — кольцо на каждый кадр,
+    // WebContent-процесс съедал память, iOS его убивал, человек видел
+    // «This page couldn't load». Анимацию из layout убрали, но сторож
+    // остаётся: следующий, кто повесит на эти переменные что-то тяжёлое,
+    // не должен заново оплачивать тот же урок.
+    let lastH = -1
+    let lastT = -1
     const apply = () => {
       if (!vv) return
       cancelAnimationFrame(raf)
       raf = requestAnimationFrame(() => {
-        root.style.setProperty('--vvh', `${Math.round(vv.height)}px`)
-        root.style.setProperty('--vvt', `${Math.round(vv.offsetTop)}px`)
+        const h = Math.round(vv.height)
+        const t = Math.round(vv.offsetTop)
+        if (h === lastH && t === lastT) return
+        lastH = h
+        lastT = t
+        root.style.setProperty('--vvh', `${h}px`)
+        root.style.setProperty('--vvt', `${t}px`)
       })
     }
     apply()
