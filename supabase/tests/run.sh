@@ -24,6 +24,64 @@ else
   RUN=(bash -c)
 fi
 
+# pg_cron и pg_net ставит Supabase, в чистом Postgres их нет — и миграция
+# 0018 на них падает. Это не мелочь стенда: из-за неё ОБЯЗАТЕЛЬНЫЙ прогон
+# («любая правка миграций прогоняется через run.sh до коммита») не доходил
+# ни до одного теста с того дня, как 0018 появилась. Отсюда и то, что
+# миграции 0016–0020 не покрыты ни одним сценарием: их нечем было проверить.
+#
+# Заглушки кладём РАСШИРЕНИЯМИ, а не объектами в 00_stubs.sql, сознательно:
+# тогда `create extension if not exists pg_cron` в миграции исполняется
+# ровно так, как уйдёт в бой, и мы тестируем настоящий текст файла,
+# а не его пересказ. Сигнатуры повторяют настоящие, включая имена
+# именованных аргументов net.http_get — иначе вызов в 0018 не разберётся.
+EXTDIR="$("$PGBIN/pg_config" --sharedir)/extension"
+for ext in pg_cron pg_net; do
+  [ -f "$EXTDIR/$ext.control" ] && continue
+  if [ ! -w "$EXTDIR" ]; then
+    echo "!! Нет ни расширения $ext, ни прав записи в $EXTDIR." >&2
+    echo "   Поставьте $ext или запустите прогон под root." >&2
+    exit 1
+  fi
+  printf "default_version = '1.0'\nrelocatable = false\n" > "$EXTDIR/$ext.control"
+done
+
+if [ ! -s "$EXTDIR/pg_cron--1.0.sql" ]; then
+  cat > "$EXTDIR/pg_cron--1.0.sql" <<'SQL'
+create schema if not exists cron;
+create table cron.job (
+  jobid    bigserial primary key,
+  schedule text not null,
+  command  text not null,
+  jobname  text unique,
+  active   boolean not null default true
+);
+create function cron.schedule(job_name text, schedule text, command text)
+  returns bigint language sql as $$
+  insert into cron.job (jobname, schedule, command) values (job_name, schedule, command)
+  on conflict (jobname) do update set schedule = excluded.schedule, command = excluded.command
+  returning jobid;
+$$;
+create function cron.unschedule(job_name text) returns boolean language sql as $$
+  delete from cron.job where jobname = job_name returning true;
+$$;
+SQL
+fi
+
+if [ ! -s "$EXTDIR/pg_net--1.0.sql" ]; then
+  cat > "$EXTDIR/pg_net--1.0.sql" <<'SQL'
+create schema if not exists net;
+-- Ничего никуда не шлёт: на стенде наружу ходить нельзя, да и незачем —
+-- проверяется, что задание СОЗДАНО и разбирается, а не что оно долетело.
+create function net.http_get(
+  url text,
+  params jsonb default '{}'::jsonb,
+  headers jsonb default '{}'::jsonb,
+  timeout_milliseconds int default 5000
+) returns bigint language sql as $$ select 1::bigint $$;
+SQL
+fi
+
 "${RUN[@]}" "PATH=$PGBIN:\$PATH initdb -D $PGDATA -A trust" >/dev/null
 "${RUN[@]}" "PATH=$PGBIN:\$PATH pg_ctl -D $PGDATA -l $PGDATA/log -o '-k $SOCK -p $PORT' start" >/dev/null
 sleep 2

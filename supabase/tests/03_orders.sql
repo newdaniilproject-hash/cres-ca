@@ -179,3 +179,37 @@ select test.login('22222222-2222-2222-2222-222222222222');
 set role authenticated;
 select count(*) as финзаписей_видно_ожид_0 from public.finance_records;
 reset role;
+
+\echo '--- отчёты склада не показывают чужой магазин даже вошедшему (0029)'
+-- Витрина здесь уже опубликована (см. начало файла), а значит
+-- offering_variants намеренно читаются шире одного арендатора — иначе
+-- не работает каталог. Ровно на этом и текли два представления склада:
+-- security_invoker наследовал ширину таблицы, и любой зарегистрированный
+-- человек собирал одним запросом себестоимость и остатки ВСЕХ магазинов
+-- площадки. 0013 закрыл это только от анонима.
+select test.login('33333333-3333-3333-3333-333333333333') is not null as вошли_стороннім;
+do $$
+declare v_value int; v_low int;
+begin
+  select count(*) into v_value from public.stock_value_view;
+  select count(*) into v_low   from public.stock_low_view;
+  if v_value > 0 then
+    raise exception 'ПРОВАЛ: stock_value_view віддав % рядків сторонньому — витік собівартості', v_value;
+  end if;
+  if v_low > 0 then
+    raise exception 'ПРОВАЛ: stock_low_view віддав % рядків сторонньому — видно, що закінчується у сусіда', v_low;
+  end if;
+  raise notice 'ok — обидва звіти складу порожні для стороннього';
+end $$;
+
+\echo '--- и при этом свой магазин в отчёте виден (фильтр не пересолен)'
+select test.login('11111111-1111-1111-1111-111111111111') is not null as вошли_власником;
+do $$
+declare v_value int;
+begin
+  select count(*) into v_value from public.stock_value_view;
+  if v_value = 0 then
+    raise exception 'ПРОВАЛ: власник не бачить власного складу — фільтр 0029 надто вузький';
+  end if;
+  raise notice 'ok — власник бачить свій склад (% рядків)', v_value;
+end $$;
