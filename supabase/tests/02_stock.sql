@@ -149,3 +149,36 @@ exception when others then
   raise notice 'ok — %', sqlerrm; end $$;
 
 select test.login('22222222-2222-2222-2222-222222222222');
+
+\echo '--- ЗАХОД 1: остаток нельзя СОЗДАТЬ вставкой строки (0031)'
+-- До 0031 охранники стояли только на UPDATE, и остаток заводился из воздуха:
+-- кэш расходился с журналом навсегда, потому что гасить встречным движением
+-- было нечего — движения не было.
+select test.login('22222222-2222-2222-2222-222222222222');
+
+do $$ begin
+  insert into public.materials (id, tenant_id, name, unit, current_stock)
+  values ('dddddddd-0000-0000-0000-000000000091','aaaaaaaa-0000-0000-0000-000000000001',
+          'Остаток из воздуха','кг', 500);
+  raise exception 'ПРОВАЛ: расходник заведён с ненулевым остатком';
+exception when others then
+  if sqlerrm like 'ПРОВАЛ%' then raise; end if;
+  raise notice 'ok — %', sqlerrm; end $$;
+
+do $$ begin
+  insert into public.offering_variants (id, tenant_id, offering_id, name, price, stock_qty)
+  values ('cccccccc-0000-0000-0000-000000000093','aaaaaaaa-0000-0000-0000-000000000001',
+          'bbbbbbbb-0000-0000-0000-000000000001','Из воздуха', 100, 999);
+  raise exception 'ПРОВАЛ: позиция заведена с ненулевым остатком';
+exception when others then
+  if sqlerrm like 'ПРОВАЛ%' then raise; end if;
+  raise notice 'ok — %', sqlerrm; end $$;
+
+\echo '    и при этом обычное заведение с нулём проходит'
+do $$ begin
+  insert into public.materials (id, tenant_id, name, unit)
+  values ('dddddddd-0000-0000-0000-000000000092','aaaaaaaa-0000-0000-0000-000000000001',
+          'Нормальный расходник','кг');
+  raise notice 'ok — расходник с нулевым остатком заводится';
+exception when others then
+  raise exception 'ПРОВАЛ: обычное заведение расходника сломано — %', sqlerrm; end $$;

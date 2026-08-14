@@ -58,6 +58,7 @@ export function ContainerForm({
   const [unit, setUnit] = useState('')
   const [pao, setPao] = useState('')
   const [made, setMade] = useState<string | null>(null)
+  const [madeId, setMadeId] = useState<string | null>(null)
 
   // партия
   const [bMaterial, setBMaterial] = useState('')
@@ -88,7 +89,9 @@ export function ContainerForm({
   async function saveContainer(e: React.FormEvent) {
     e.preventDefault()
     setBusy(true); setErr(''); setMade(null)
-    const { error } = await supabase.from('material_containers').insert({
+    // .select('id') нужен не «на всякий случай»: без него кнопка печати
+    // ниже не знает, какую банку печатать, и уходит на лист из всех 200.
+    const { data: row, error } = await supabase.from('material_containers').insert({
       tenant_id: tenantId,
       material_id: material,
       batch_id: batchId || null,
@@ -100,7 +103,7 @@ export function ContainerForm({
       // status оставляем по умолчанию 'sealed': банку заводят закрытой,
       // а открывают сканером в момент, когда реально сорвали пломбу —
       // от этого мгновения база считает use_by.
-    })
+    }).select('id').single()
     setBusy(false)
     if (error) {
       setErr(error.code === '23505' ? 'Такий код вже є' : error.message)
@@ -108,6 +111,7 @@ export function ContainerForm({
     }
     const created = code.trim()
     setMade(created)
+    setMadeId(row?.id ?? null)
     // Следующая банка обычно из той же партии — сбрасываем только код.
     setCode(genCode(materials.find((m) => m.id === material)?.name ?? ''))
     router.refresh()
@@ -235,9 +239,13 @@ export function ContainerForm({
                 Роздрукуйте наліпку з QR і наклейте на банку — далі майстер
                 просто сканує її камерою.
               </p>
-              <a href="/app/inventory/labels" target="_blank" rel="noreferrer"
+              {/* ids ОБЯЗАТЕЛЕН. Роут этот параметр принимал с самого начала,
+                  но оба экрана слали голый адрес — и «наліпка на цю банку»
+                  печатала лист на все двести ёмкостей. */}
+              <a href={madeId ? `/app/inventory/labels?ids=${madeId}` : '/app/inventory/labels'}
+                 target="_blank" rel="noreferrer"
                  className="btn-secondary mt-3 t-sm">
-                Друк QR-наліпок
+                Друк наліпки на цю банку
               </a>
             </div>
           )}

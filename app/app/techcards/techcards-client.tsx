@@ -12,9 +12,26 @@ type Card = {
 }
 type Service = { id: string; title: string }
 
+// Ключи шага заданы ТЗ 3.4 — «використані розчини, пропорції, час витримки»,
+// и отчёт для проверяющего читает именно их: step / solution / proportion /
+// minutes / note (lib/report/sanitation-report.ts).
+//
+// ГРАБЛЯ 14.08.2026, ради которой это переписано. Экран писал свои ключи
+// (title / detail / minutes), отчёт читал ТЗ-шные — и у карты, заведённой
+// через интерфейс, в документе печаталась пустая строка «<b></b>, N хв».
+// То есть проверяющему показывали бумагу, в которой нет ровно того, ради
+// чего пункт ТЗ написан: раствора и пропорции. Экран приведён к отчёту,
+// а не наоборот, потому что имена полей здесь диктует ТЗ, а не вёрстка.
+//
 // В форме minutes живёт строкой: пустое поле — это «час не нормований»,
 // а не ноль. В базу уходит число или null.
-type Step = { title: string; detail: string; minutes: string }
+type Step = {
+  step: string
+  solution: string
+  proportion: string
+  minutes: string
+  note: string
+}
 
 type Draft = {
   title: string
@@ -27,19 +44,25 @@ type Draft = {
   steps: Step[]
 }
 
-const EMPTY_STEP: Step = { title: '', detail: '', minutes: '' }
+const EMPTY_STEP: Step = { step: '', solution: '', proportion: '', minutes: '', note: '' }
 
-// Шаги первых карт заводились под ключами из комментария миграции 0014
-// («step», «solution», «note»). Читаем оба набора: иначе история версий,
-// ради которой таблица и версионная, покажется пустой.
+// Читаем ТРИ поколения ключей, иначе история версий — ради которой таблица
+// и версионная — покажется пустой:
+//   1) нынешние, они же ТЗ-шные: step / solution / proportion / minutes / note;
+//   2) экранные до 14.08.2026: title / detail / minutes. `detail` был одним
+//      полем «как саме», куда писали и раствор, и пропорцию вперемешку, —
+//      кладём его в solution, разделить задним числом нечем;
+//   3) самые первые, из комментария миграции 0014: step / solution / note.
 function normalizeSteps(raw: unknown): Step[] {
   if (!Array.isArray(raw)) return []
   return raw.map((item) => {
     const o = (item ?? {}) as Record<string, unknown>
     return {
-      title: String(o.title ?? o.step ?? ''),
-      detail: String(o.detail ?? o.solution ?? o.note ?? ''),
+      step: String(o.step ?? o.title ?? ''),
+      solution: String(o.solution ?? o.detail ?? ''),
+      proportion: String(o.proportion ?? ''),
       minutes: o.minutes == null ? '' : String(o.minutes),
+      note: String(o.note ?? ''),
     }
   })
 }
@@ -124,11 +147,13 @@ export function TechCardsClient({
     const title = draft.title.trim()
     const steps = draft.steps
       .map((s) => ({
-        title: s.title.trim(),
-        detail: s.detail.trim(),
+        step: s.step.trim(),
+        solution: s.solution.trim() || null,
+        proportion: s.proportion.trim() || null,
         minutes: s.minutes.trim() === '' ? null : Number(s.minutes),
+        note: s.note.trim() || null,
       }))
-      .filter((s) => s.title.length > 0)
+      .filter((s) => s.step.length > 0)
     if (!title) { setErr('Вкажіть назву техкарти'); return }
     if (steps.length === 0) { setErr('Додайте хоча б один крок із назвою'); return }
 
@@ -229,20 +254,35 @@ export function TechCardsClient({
                 <div>
                   <label className="field-label">Дія</label>
                   <input className="input" placeholder="Замочування"
-                         value={step.title}
-                         onChange={(e) => patchStep(i, { title: e.target.value })} />
+                         value={step.step}
+                         onChange={(e) => patchStep(i, { step: e.target.value })} />
+                </div>
+                {/* Розчин і пропорція — ОТДЕЛЬНЫМИ полями, а не одной строкой.
+                    ТЗ 3.4 называет их порознь, и отчёт для проверяющего печатает
+                    их порознь: «Замочування — розчин соди, пропорція 1:10, 15 хв». */}
+                <div>
+                  <label className="field-label">Розчин</label>
+                  <input className="input" placeholder="Розчин соди"
+                         value={step.solution}
+                         onChange={(e) => patchStep(i, { solution: e.target.value })} />
                 </div>
                 <div>
-                  <label className="field-label">Як саме</label>
-                  <input className="input" placeholder="Розчин соди 1:10, температура 40°C"
-                         value={step.detail}
-                         onChange={(e) => patchStep(i, { detail: e.target.value })} />
+                  <label className="field-label">Пропорція</label>
+                  <input className="input" placeholder="1:10"
+                         value={step.proportion}
+                         onChange={(e) => patchStep(i, { proportion: e.target.value })} />
                 </div>
                 <div>
                   <label className="field-label">Хвилин</label>
                   <input className="input" type="number" min="1" placeholder="15"
                          value={step.minutes}
                          onChange={(e) => patchStep(i, { minutes: e.target.value })} />
+                </div>
+                <div>
+                  <label className="field-label">Примітка</label>
+                  <input className="input" placeholder="Температура 40°C"
+                         value={step.note}
+                         onChange={(e) => patchStep(i, { note: e.target.value })} />
                 </div>
               </div>
             ))}
@@ -317,9 +357,16 @@ export function TechCardsClient({
                           {steps.length === 0 && <li className="prose-muted">Кроків не записано</li>}
                           {steps.map((s, i) => (
                             <li key={i}>
-                              <span className="font-medium">{i + 1}. {s.title}</span>
+                              <span className="font-medium">{i + 1}. {s.step}</span>
                               {s.minutes && <span className="prose-muted"> · {s.minutes} хв</span>}
-                              {s.detail && <p className="t-xs prose-muted">{s.detail}</p>}
+                              {(s.solution || s.proportion) && (
+                                <p className="t-xs prose-muted">
+                                  {s.solution}
+                                  {s.solution && s.proportion ? ', ' : ''}
+                                  {s.proportion && `пропорція ${s.proportion}`}
+                                </p>
+                              )}
+                              {s.note && <p className="t-xs prose-muted">{s.note}</p>}
                             </li>
                           ))}
                         </ol>

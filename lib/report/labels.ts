@@ -6,6 +6,10 @@ export type Label = {
   openedAt: string | null
   volume: number | null
   unit: string | null
+  /** Відповідальний майстер — реквизит ТЗ 3.2. Имя приходит из `staff`
+   *  (см. app/app/inventory/labels/route.ts): у profiles политика
+   *  «вижу только себя», и join к нему давал бы прочерк у всех чужих. */
+  master: string | null
 }
 
 const esc = (s: unknown) =>
@@ -26,6 +30,7 @@ export function labelsHtml(shop: string, labels: Label[]): string {
         <div class="code">${esc(l.code)}</div>
         ${l.batch ? `<div class="row">Партія: ${esc(l.batch)}</div>` : ''}
         ${l.volume ? `<div class="row">${l.volume} ${esc(l.unit ?? '')}</div>` : ''}
+        ${l.master ? `<div class="row">Майстер: <b>${esc(l.master)}</b></div>` : ''}
         <div class="row">Відкрито: <b>${d(l.openedAt)}</b></div>
         <div class="useby">Використати до: <b>${d(l.useBy)}</b></div>
       </div>
@@ -79,12 +84,35 @@ ${labels.length === 0
   : `<div class="sheet">${cells}</div>`}
 
 <script>
-  document.querySelectorAll('.qr').forEach(function (el) {
-    var c = document.createElement('canvas');
-    el.appendChild(c);
-    QRCode.toCanvas(c, el.dataset.code, { margin: 0, width: 200,
-      color: { dark: '#16150f', light: '#ffffff' } });
-  });
+  // ЗАПАСНОЙ ПУТЬ. Генератор тянется с чужого CDN, и без сети он просто
+  // не загрузится. До 14.08.2026 обработчик в этом случае падал на первой
+  // строке (ReferenceError: QRCode), лист печатался с ПУСТЫМИ КВАДРАТАМИ,
+  // и ни одного сообщения не показывалось: мастер клеил пустышки на банки
+  // и узнавал об этом на проверке. Теперь отказ виден до печати.
+  (function () {
+    var cells = document.querySelectorAll('.qr');
+    var ok = typeof QRCode !== 'undefined' && QRCode && typeof QRCode.toCanvas === 'function';
+    if (!ok) {
+      var warn = document.createElement('p');
+      warn.className = 'empty';
+      warn.textContent = 'QR-коди не згенеровано: генератор не завантажився '
+        + '(немає мережі). Друкувати не варто — на наліпках будуть порожні '
+        + 'квадрати. Перевірте зв’язок і оновіть сторінку.';
+      document.body.insertBefore(warn, document.body.firstChild);
+      cells.forEach(function (el) { el.textContent = '—'; });
+      return;
+    }
+    cells.forEach(function (el) {
+      var c = document.createElement('canvas');
+      el.appendChild(c);
+      try {
+        QRCode.toCanvas(c, el.dataset.code, { margin: 0, width: 200,
+          color: { dark: '#16150f', light: '#ffffff' } });
+      } catch (e) {
+        el.textContent = '—';
+      }
+    });
+  })();
 </script>
 
 </body></html>`
