@@ -35,7 +35,7 @@ export default async function OrderPage({
 
   if (error) {
     return (
-      <AppShell active="/app/orders" title="Замовлення">
+      <AppShell modules={m.modules} active="/app/orders" title="Замовлення">
         <p className="field-error rise">Не вдалося відкрити замовлення: {error.message}</p>
       </AppShell>
     )
@@ -65,7 +65,7 @@ export default async function OrderPage({
   ])
 
   return (
-    <AppShell active="/app/orders" title={`Замовлення №${order.number}`}>
+    <AppShell modules={m.modules} active="/app/orders" title={`Замовлення №${order.number}`}>
       <OrderDetail
         canWrite={can(m, 'orders.write')}
         userId={user?.id ?? ''}

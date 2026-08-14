@@ -24,7 +24,7 @@ export default async function NewOfferingPage() {
   ])
 
   return (
-    <AppShell active="/app/catalog" title="Нова позиція">
+    <AppShell modules={m.modules} active="/app/catalog" title="Нова позиція">
       <OfferingForm
         tenantId={m.tenantId}
         categories={(categories ?? []) as CategoryRow[]}
