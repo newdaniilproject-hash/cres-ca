@@ -27,8 +27,8 @@
 drop policy if exists tenant_domains_read on public.tenant_domains;
 
 create policy tenant_domains_read on public.tenant_domains
-  for select to authenticated
-  using (tenant_id in (select public.tenants_with('settings.read')));
+for select to authenticated
+using (tenant_id in (select public.tenants_with('settings.read')));
 
 -- ВНИМАНИЕ НА БУДУЩЕЕ. Когда появятся свои домены продавцов, разрешение
 -- hostname → tenant_id ПОНАДОБИТСЯ анониму. Возвращать публичное чтение
@@ -51,13 +51,17 @@ create policy tenant_domains_read on public.tenant_domains
 -- покупатель с уже оформленным заказом обязан сохранить возможность его
 -- отследить. Статус арендатора — про то, работает ли заведение вообще;
 -- витрина — про то, показывать ли каталог. Это разные вопросы.
-create or replace function public.track_order(p_tenant_slug citext, p_number bigint, p_phone text)
-returns table(number bigint, status public.order_status, total numeric,
-              currency character, tracking_number text, created_at timestamptz)
-language sql
-stable
-security definer
-set search_path to ''
+-- Тип пишется со схемой: под search_path = '' голое citext не разрешается.
+-- Найдено прогоном run.sh 14.08.2026: на проде проходило (у postgres схема extensions
+-- в search_path), а на голом Postgres миграция падала. То же правило записано
+-- в шапках 0025 и 0028 — здесь оно было нарушено.
+create or replace function public.track_order(p_tenant_slug extensions.citext, p_number bigint, p_phone text)
+ returns table(number bigint, status public.order_status, total numeric,
+               currency character, tracking_number text, created_at timestamptz)
+ language sql
+ stable
+ security definer
+ set search_path to ''
 as $function$
   select o.number, o.status, o.total, o.currency, o.tracking_number, o.created_at
     from public.orders o
@@ -73,8 +77,8 @@ $function$;
 -- Правило 7: явный revoke/grant после каждой функции. Postgres выдаёт EXECUTE
 -- роли PUBLIC на каждую новую функцию, и это трижды ловилось анализатором
 -- в этом проекте. track_order остаётся одной из восьми анонимных точек.
-revoke all on function public.track_order(citext, bigint, text) from public;
-grant execute on function public.track_order(citext, bigint, text) to anon, authenticated;
+revoke all on function public.track_order(extensions.citext, bigint, text) from public;
+grant execute on function public.track_order(extensions.citext, bigint, text) to anon, authenticated;
 
 -- ── 3. Чего эта миграция НЕ делает и почему ───────────────────────────────
 --
