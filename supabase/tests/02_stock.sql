@@ -89,3 +89,63 @@ do $$ declare c record; begin
 end $$;
 
 select * from test.check_ledger('после инвентаризации');
+
+\echo '--- ЗАДАНИЕ 01: consume_materials_for_variant не берёт чужую рецептуру (0030)'
+-- Второй арендатор — чтобы «чужой вариант» был настоящим чужим, а не выдумкой.
+-- Оператор 2222 состоит только в первом и имеет там stock.write; во втором
+-- у него прав нет вовсе.
+insert into public.tenants (id, slug, name, status)
+values ('aaaaaaaa-0000-0000-0000-000000000091','shop-guard','Магазин 2','active')
+on conflict (id) do nothing;
+
+insert into public.offerings (id, tenant_id, kind, status, slug, title, price)
+values ('bbbbbbbb-0000-0000-0000-000000000091','aaaaaaaa-0000-0000-0000-000000000091',
+        'product','active','chuzhe-guard','Чуже пальто', 100)
+on conflict (id) do nothing;
+
+insert into public.offering_variants (id, tenant_id, offering_id, name, price)
+values ('cccccccc-0000-0000-0000-000000000091','aaaaaaaa-0000-0000-0000-000000000091',
+        'bbbbbbbb-0000-0000-0000-000000000091','Чужий M', 100)
+on conflict (id) do nothing;
+
+-- Вариант СВОЕГО арендатора с ПУСТОЙ рецептурой: на нём проверяется вторая
+-- дыра — при пустом цикле record_stock_movement не звался ни разу, и прав
+-- не проверял никто.
+insert into public.offering_variants (id, tenant_id, offering_id, name, price)
+values ('cccccccc-0000-0000-0000-000000000092','aaaaaaaa-0000-0000-0000-000000000001',
+        'bbbbbbbb-0000-0000-0000-000000000001','Без рецептури', 50)
+on conflict (id) do nothing;
+
+select test.login('22222222-2222-2222-2222-222222222222');
+
+\echo '    1) свой вариант со своей рецептурой — списывает как раньше'
+do $$ declare n int; begin
+  select count(*) into n from public.consume_materials_for_variant(
+    'aaaaaaaa-0000-0000-0000-000000000001','cccccccc-0000-0000-0000-000000000001',
+    1, 'booking', null, 'тест 0030');
+  if n <> 1 then raise exception 'ПРОВАЛ: своя рецептура дала % движений вместо 1', n; end if;
+  raise notice 'ok — своя рецептура списалась (% рух)', n;
+end $$;
+
+\echo '    2) ЧУЖОЙ вариант обязан упасть (до 0030 — молча списывал своё)'
+do $$ begin
+  perform public.consume_materials_for_variant(
+    'aaaaaaaa-0000-0000-0000-000000000001','cccccccc-0000-0000-0000-000000000091',
+    1, 'booking', null, null);
+  raise exception 'ПРОВАЛ: списание по ЧУЖОЙ рецептуре прошло';
+exception when others then
+  if sqlerrm like 'ПРОВАЛ%' then raise; end if;
+  raise notice 'ok — %', sqlerrm; end $$;
+
+\echo '    3) без stock.write и с пустой рецептурой обязано упасть (до 0030 — тихий успех)'
+select test.login('33333333-3333-3333-3333-333333333333');
+do $$ begin
+  perform public.consume_materials_for_variant(
+    'aaaaaaaa-0000-0000-0000-000000000001','cccccccc-0000-0000-0000-000000000092',
+    1, 'booking', null, null);
+  raise exception 'ПРОВАЛ: посторонний списал при пустой рецептуре';
+exception when others then
+  if sqlerrm like 'ПРОВАЛ%' then raise; end if;
+  raise notice 'ok — %', sqlerrm; end $$;
+
+select test.login('22222222-2222-2222-2222-222222222222');
