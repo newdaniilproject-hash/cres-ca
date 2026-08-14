@@ -148,8 +148,11 @@ function InstallBar({
         <button type="button" onClick={() => void onCta()} className="btn-primary h-9 shrink-0 t-sm">
           {cta}
         </button>
-        <button type="button" onClick={onClose} aria-label="Закрити" className="btn-icon shrink-0"
-                style={{ minWidth: 32, minHeight: 32 }}>
+        {/* Зона нажатия — из .btn-icon (var(--tap-min), 44px). Инлайновой
+            поправки здесь быть не должно: она стояла на 32px и резала
+            крестик ниже минимума Apple HIG — по нему промахивались,
+            а промах по «закрыть» человек читает как «полоса не убирается». */}
+        <button type="button" onClick={onClose} aria-label="Закрити" className="btn-icon shrink-0">
           ✕
         </button>
       </div>

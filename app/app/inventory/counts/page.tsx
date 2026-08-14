@@ -48,7 +48,7 @@ export default async function CountsPage() {
   const lines = (lineRows?.data ?? []) as { count_id: string; counted_qty: number | null }[]
 
   return (
-    <AppShell active="/app/inventory" title="Інвентаризація">
+    <AppShell modules={m.modules} active="/app/inventory" title="Інвентаризація">
       <CountsClient
         tenantId={m.tenantId}
         canWrite={can(m, 'stock.write')}

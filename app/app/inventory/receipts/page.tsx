@@ -41,7 +41,7 @@ export default async function ReceiptsPage() {
   const lines = (lineRows?.data ?? []) as { receipt_id: string }[]
 
   return (
-    <AppShell active="/app/inventory" title="Приймання">
+    <AppShell modules={m.modules} active="/app/inventory" title="Приймання">
       <ReceiptsClient
         tenantId={m.tenantId}
         userId={user?.id ?? ''}

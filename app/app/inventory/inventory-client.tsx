@@ -287,7 +287,7 @@ export function InventoryClient({
               {containers.length > 0 && (
                 <a href="/app/inventory/labels" target="_blank" rel="noreferrer"
                    className="btn-secondary t-sm">
-                  Друк QR-наліпок
+                  Друк листа на всі
                 </a>
               )}
               <button type="button" className="btn-primary t-sm"
@@ -389,6 +389,15 @@ export function InventoryClient({
                       до {fmtDate(c.useBy)}
                     </span>
                   )}
+                  {/* Наліпка на КОНКРЕТНУ банку. Роут принимал ids
+                      с самого начала, но передать их было неоткуда:
+                      единственная кнопка печати печатала лист на все
+                      двести ёмкостей. */}
+                  <a href={`/app/inventory/labels?ids=${c.id}`}
+                     target="_blank" rel="noreferrer"
+                     className="btn-ghost t-sm" title="Друк наліпки на цю ємність">
+                    Наліпка
+                  </a>
                   {c.status === 'sealed' && (
                     <button className="btn-secondary t-sm" disabled={busy === c.id}
                             onClick={() => void openContainer(c.id)}>

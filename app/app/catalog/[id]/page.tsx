@@ -52,7 +52,7 @@ export default async function OfferingPage({
   const row = offering as unknown as OfferingRow
 
   return (
-    <AppShell active="/app/catalog" title={row.title}>
+    <AppShell modules={m.modules} active="/app/catalog" title={row.title}>
       <OfferingForm
         tenantId={m.tenantId}
         categories={(categories ?? []) as CategoryRow[]}

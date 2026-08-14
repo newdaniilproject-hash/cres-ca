@@ -58,7 +58,7 @@ export default async function RecipesPage() {
   })
 
   return (
-    <AppShell active="/app/inventory" title="Рецептура">
+    <AppShell modules={m.modules} active="/app/inventory" title="Рецептура">
       <RecipesClient
         canWrite={can(m, 'catalog.write')}
         error={error?.message ?? ''}

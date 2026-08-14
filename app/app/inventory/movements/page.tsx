@@ -52,7 +52,7 @@ export default async function MovementsPage({
   ])
 
   return (
-    <AppShell active="/app/inventory" title="Рухи залишку">
+    <AppShell modules={m.modules} active="/app/inventory" title="Рухи залишку">
       <MovementsClient
         tenantId={m.tenantId}
         canWrite={can(m, 'stock.write')}

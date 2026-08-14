@@ -26,7 +26,7 @@ export default async function ReorderPage() {
     .limit(300)
 
   return (
-    <AppShell active="/app/inventory" title="Пора замовити">
+    <AppShell modules={m.modules} active="/app/inventory" title="Пора замовити">
       <ReorderClient
         error={error?.message ?? ''}
         items={(data ?? []).map((r) => ({
