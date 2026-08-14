@@ -34,18 +34,28 @@ type AndroidHaptics = {
   select?: () => void
 }
 
+// Сами ОПОЗНАНИЕ моста тоже под try, а не только вызов через safe().
+// isNativePlatform() — функция моста, и её бросок происходил бы ДО
+// safe(): наружу летело бы исключение из haptic.tap(), который зовут
+// из обработчиков касания и из эффектов корневого макета. Правило М6
+// звучит буквально «любой код, трогающий мост, живёт в try/catch» —
+// оно про опознание ровно так же, как про вызов.
 function ios(): IosHaptics | null {
   if (typeof window === 'undefined') return null
-  const w = window as unknown as {
-    Capacitor?: { isNativePlatform?: () => boolean; Plugins?: Record<string, unknown> }
-  }
-  if (!w.Capacitor?.isNativePlatform?.()) return null
-  return (w.Capacitor.Plugins?.Haptics as IosHaptics) ?? null
+  try {
+    const w = window as unknown as {
+      Capacitor?: { isNativePlatform?: () => boolean; Plugins?: Record<string, unknown> }
+    }
+    if (!w.Capacitor?.isNativePlatform?.()) return null
+    return (w.Capacitor.Plugins?.Haptics as IosHaptics) ?? null
+  } catch { return null }
 }
 
 function android(): AndroidHaptics | null {
   if (typeof window === 'undefined') return null
-  return (window as unknown as { AndroidHaptics?: AndroidHaptics }).AndroidHaptics ?? null
+  try {
+    return (window as unknown as { AndroidHaptics?: AndroidHaptics }).AndroidHaptics ?? null
+  } catch { return null }
 }
 
 // Тише, чем кажется: любой сбой моста глотаем. Отклик — украшение,
