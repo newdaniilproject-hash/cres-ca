@@ -245,7 +245,19 @@ async function send(supabase: SupabaseClient, rec: QueuedRecord): Promise<void> 
       registration: a.registration ?? null,
       concentration: a.concentration ?? null,
       volume: a.volume ?? null,
-      unit: a.unit ?? null,
+      // ⚠️ unit НЕ ставится в null. Колонка объявлена
+      // `unit text not null default 'л'` (0014_compliance.sql), а умолчание
+      // применяется только когда ключа НЕТ: явный null его не включает,
+      // а нарушает NOT NULL. Экран этот ключ не передаёт вовсе
+      // (journals-client.tsx), поэтому `unit: a.unit ?? null` означал
+      // гарантированный отказ КАЖДОЙ отложенной записи дезраствора —
+      // навсегда. Человек при этом видел «Розчин зʼявиться в журналі
+      // після синхронізації», запись висела в очереди и только копила
+      // tries. Онлайн-путь работал именно потому, что ключ не слал.
+      //
+      // Правило шире одного поля: в отложенной записи колонку с NOT NULL
+      // DEFAULT либо заполняем значением, либо НЕ УПОМИНАЕМ. Третьего нет.
+      ...(a.unit ? { unit: a.unit } : {}),
       expires_at: a.expiresAt ?? null,
       prepared_at: new Date(rec.at).toISOString(),
     })
