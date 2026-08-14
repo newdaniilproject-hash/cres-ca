@@ -29,7 +29,7 @@ export default async function CountPage({
 
   if (error) {
     return (
-      <AppShell active="/app/inventory" title="Інвентаризація">
+      <AppShell modules={m.modules} active="/app/inventory" title="Інвентаризація">
         <p className="field-error rise">Не вдалося відкрити інвентаризацію: {error.message}</p>
       </AppShell>
     )
@@ -43,7 +43,7 @@ export default async function CountPage({
     .eq('count_id', count.id)
 
   return (
-    <AppShell active="/app/inventory" title="Інвентаризація">
+    <AppShell modules={m.modules} active="/app/inventory" title="Інвентаризація">
       <CountDetail
         tenantId={m.tenantId}
         canWrite={can(m, 'stock.write')}

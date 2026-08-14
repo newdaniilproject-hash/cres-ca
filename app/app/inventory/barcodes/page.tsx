@@ -36,7 +36,7 @@ export default async function BarcodesPage() {
   const rows = (codes ?? []) as { material_id: string; barcode: string }[]
 
   return (
-    <AppShell active="/app/inventory" title="Заводські штрихкоди">
+    <AppShell modules={m.modules} active="/app/inventory" title="Заводські штрихкоди">
       <BarcodesClient
         tenantId={m.tenantId}
         canWrite={can(m, 'stock.write')}

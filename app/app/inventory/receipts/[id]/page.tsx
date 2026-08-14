@@ -29,7 +29,7 @@ export default async function ReceiptPage({
 
   if (error) {
     return (
-      <AppShell active="/app/inventory" title="Приймання">
+      <AppShell modules={m.modules} active="/app/inventory" title="Приймання">
         <p className="field-error rise">Не вдалося відкрити приймання: {error.message}</p>
       </AppShell>
     )
@@ -63,6 +63,7 @@ export default async function ReceiptPage({
 
   return (
     <AppShell
+      modules={m.modules}
       active="/app/inventory"
       title={receipt.document_number ? `Приймання №${receipt.document_number}` : 'Приймання'}
     >
