@@ -1,0 +1,190 @@
+// Иконки оболочки — инлайновым SVG, одним файлом.
+//
+// Почему не шрифт и не библиотека: пакетов в сборку не добавляем
+// (реестр закрыт, и лишние 300 КБ ради восьми картинок — плохая сделка),
+// а текстовые символы вроде «▦» рисуются в каждой системе по-своему
+// и на телефоне выглядят как сбой шрифта. Здесь линия толщиной 1.75
+// и currentColor, поэтому иконка красится тем же цветом, что и подпись,
+// и одинакова в светлой и тёмной теме.
+
+type P = { size?: number; className?: string }
+
+const base = (size: number) => ({
+  width: size, height: size, viewBox: '0 0 24 24',
+  fill: 'none', stroke: 'currentColor', strokeWidth: 1.75,
+  strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const,
+  'aria-hidden': true,
+})
+
+/** Коробка — склад. */
+export function IconBox({ size = 22, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M21 8l-9-5-9 5 9 5 9-5z" />
+      <path d="M3 8v8l9 5 9-5V8" />
+      <path d="M12 13v8" />
+    </svg>
+  )
+}
+
+/** Календарь — записи. */
+export function IconCalendar({ size = 22, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <rect x="3" y="5" width="18" height="16" rx="2.5" />
+      <path d="M3 10h18M8 3v4M16 3v4" />
+    </svg>
+  )
+}
+
+/** Ножницы — услуги. */
+export function IconScissors({ size = 22, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <circle cx="6" cy="6" r="2.6" />
+      <circle cx="6" cy="18" r="2.6" />
+      <path d="M8.1 7.9L20 20M20 4L8.1 16.1" />
+    </svg>
+  )
+}
+
+/** Человек — профиль. */
+export function IconUser({ size = 22, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <circle cx="12" cy="8" r="3.6" />
+      <path d="M4.5 20c1.4-3.4 4.2-5 7.5-5s6.1 1.6 7.5 5" />
+    </svg>
+  )
+}
+
+/** Лупа — поиск. */
+export function IconSearch({ size = 20, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="M16 16l4.5 4.5" />
+    </svg>
+  )
+}
+
+/** Рамка сканера — камера с прицелом. */
+export function IconScan({ size = 20, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M4 8.5V6.5A2.5 2.5 0 016.5 4h2M15.5 4h2A2.5 2.5 0 0120 6.5v2M20 15.5v2a2.5 2.5 0 01-2.5 2.5h-2M8.5 20h-2A2.5 2.5 0 014 17.5v-2" />
+      <path d="M7.5 12h9" />
+    </svg>
+  )
+}
+
+/** Домик — «Сьогодні». */
+export function IconHome({ size = 22, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M4 10.5L12 4l8 6.5" />
+      <path d="M5.5 9.8V19a1 1 0 001 1h11a1 1 0 001-1V9.8" />
+    </svg>
+  )
+}
+
+/** Галочка в круге — журналы. */
+export function IconCheck({ size = 22, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M8.5 12.3l2.4 2.4 4.6-4.9" />
+    </svg>
+  )
+}
+
+/** Лист — документы и техкарты. */
+export function IconDoc({ size = 22, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M6 3.5h7.5L18 8v12.5a1 1 0 01-1 1H6a1 1 0 01-1-1v-16a1 1 0 011-1z" />
+      <path d="M13.5 3.5V8H18M8.5 13h7M8.5 16.5h5" />
+    </svg>
+  )
+}
+
+/** Сетка — каталог. */
+export function IconGrid({ size = 22, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <rect x="4" y="4" width="7" height="7" rx="1.6" />
+      <rect x="13" y="4" width="7" height="7" rx="1.6" />
+      <rect x="4" y="13" width="7" height="7" rx="1.6" />
+      <rect x="13" y="13" width="7" height="7" rx="1.6" />
+    </svg>
+  )
+}
+
+/** Пакет — заказы. */
+export function IconBag({ size = 22, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M5 8h14l-1 12H6L5 8z" />
+      <path d="M9 8V6.5a3 3 0 016 0V8" />
+    </svg>
+  )
+}
+
+/** Два человека — клиенты. */
+export function IconUsers({ size = 22, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <circle cx="9.5" cy="8" r="3.2" />
+      <path d="M3.5 19c1.2-2.9 3.5-4.3 6-4.3s4.8 1.4 6 4.3" />
+      <path d="M16 5.2a3.2 3.2 0 010 5.6M17.5 14.9c1.5.6 2.7 1.9 3.4 3.6" />
+    </svg>
+  )
+}
+
+/** Купюра — финансы. */
+export function IconMoney({ size = 22, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <rect x="3" y="6" width="18" height="12" rx="2.5" />
+      <circle cx="12" cy="12" r="2.6" />
+    </svg>
+  )
+}
+
+/** Шестерня — магазин и настройки. */
+export function IconGear({ size = 22, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <circle cx="12" cy="12" r="3.2" />
+      <path d="M12 3.5v2.2M12 18.3v2.2M20.5 12h-2.2M5.7 12H3.5M18 6l-1.6 1.6M7.6 16.4L6 18M18 18l-1.6-1.6M7.6 7.6L6 6" />
+    </svg>
+  )
+}
+
+/** Стрелка назад. */
+export function IconBack({ size = 22, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M15 18l-6-6 6-6" />
+    </svg>
+  )
+}
+
+/** Выход. */
+export function IconExit({ size = 20, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M15 4.5h3a1 1 0 011 1v13a1 1 0 01-1 1h-3" />
+      <path d="M10 8l-4 4 4 4M6 12h9" />
+    </svg>
+  )
+}
+
+/** Крестик. */
+export function IconClose({ size = 20, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M6 6l12 12M18 6L6 18" />
+    </svg>
+  )
+}
