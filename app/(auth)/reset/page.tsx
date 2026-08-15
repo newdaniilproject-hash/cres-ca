@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { humanAuthError } from '@/lib/auth-errors'
+import { nextRoute } from '@/lib/where'
 import { AuthShell } from '../auth-shell'
 import { PasswordInput, PasswordStrength, SuccessScreen } from '@/components/auth-ui'
 
@@ -23,6 +24,9 @@ export default function ResetPage() {
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(false)
   const [error, setError] = useState('')
+  // Тот же принцип, что и на остальных экранах входа: куда вести,
+  // решает lib/where.ts, а не жёсткий '/account'.
+  const [target, setTarget] = useState('/app')
 
   useEffect(() => {
     let alive = true
@@ -43,6 +47,7 @@ export default function ResetPage() {
     const { error } = await supabase.auth.updateUser({ password })
     setBusy(false)
     if (error) { setError(humanAuthError(error.message)); return }
+    setTarget(await nextRoute(supabase, 'web'))
     setDone(true)
   }
 
@@ -52,8 +57,8 @@ export default function ResetPage() {
         <SuccessScreen
           title="Пароль змінено"
           subtitle="Ваш пароль успішно оновлено. Тепер можете увійти з новим паролем."
-          actionLabel="Увійти"
-          onAction={() => { window.location.href = '/account' }}
+          actionLabel="Продовжити"
+          onAction={() => { window.location.href = target }}
         />
       </AuthShell>
     )
