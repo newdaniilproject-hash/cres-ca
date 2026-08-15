@@ -4,12 +4,15 @@ import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { LEGAL_VERSION, LEGAL_DOCS } from '@/lib/legal'
+import { signupSource } from '@/lib/consent'
 import { CodeInput } from '../code-input'
 import { nextRoute } from '../where'
 import { AppScreen, Field, keepVisible } from '../ui'
+import { MailIcon, PasswordStrength, mmss } from '@/components/auth-ui'
 import { OAuthButtons } from '../oauth'
 
-const CODE_LENGTH = 8
+// Шесть цифр — как в вебе и в макетах владельца (было восемь).
+const CODE_LENGTH = 6
 const RESEND_SECONDS = 60
 
 // ── Телефон ────────────────────────────────────────────────────
@@ -43,20 +46,6 @@ function validDate(dd: string, mm: string, yyyy: string): Date | null {
   return dt
 }
 
-// Платформа для журнала согласий. Именно эти три значения разрешены
-// ограничением user_consents.source — «app» база не примет.
-function signupSource(): 'web' | 'ios' | 'android' {
-  if (typeof window === 'undefined') return 'web'
-  const w = window as unknown as { Capacitor?: { getPlatform?: () => string } }
-  const p = w.Capacitor?.getPlatform?.()
-  if (p === 'ios' || p === 'android') return p
-  // На Android при удалённом server.url моста Capacitor нет — опознаём
-  // приложение по интерфейсам, которые ставит MainActivity.
-  const a = window as unknown as { AndroidBiometric?: unknown; AndroidOneSignal?: unknown }
-  if (a.AndroidBiometric || a.AndroidOneSignal) return 'android'
-  return 'web'
-}
-
 function ageYears(dt: Date) {
   const now = new Date()
   let a = now.getUTCFullYear() - dt.getUTCFullYear()
@@ -80,7 +69,9 @@ export function MobileRegisterForm() {
   const [yyyy, setYyyy] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
   const [seePass, setSeePass] = useState(false)
+  const [seeConfirm, setSeeConfirm] = useState(false)
   const [agree, setAgree] = useState(false)
 
   const [busy, setBusy] = useState(false)
@@ -134,6 +125,7 @@ export function MobileRegisterForm() {
     !!birth && !birthBad &&
     email.trim().length >= 5 &&
     password.length >= 8 &&
+    confirm === password &&
     agree
 
   function tick() {
@@ -222,7 +214,7 @@ export function MobileRegisterForm() {
     return (
       <AppScreen
         title="Підтвердіть пошту"
-        subtitle={`Надіслали вісім цифр на ${email.trim()}`}
+        subtitle={`Ми надіслали 6-значний код на ${email.trim()}`}
         onBack={() => { setStep('form'); setCode(''); setCodeError('') }}
       >
         <CodeInput
@@ -241,24 +233,29 @@ export function MobileRegisterForm() {
           <p className="t-sm mt-3 text-center prose-muted">Перевіряємо…</p>
         )}
 
-        <div className="mt-7 text-center">
-          <button
-            type="button"
-            disabled={left > 0 || busy}
-            onClick={() => void resend()}
-            className="t-sm underline underline-offset-2"
-            style={{
-              color: left > 0 ? 'var(--color-faint)' : 'var(--color-accent)',
-              minHeight: 'var(--tap-min)',
-            }}
-          >
-            {left > 0 ? `Надіслати ще раз через ${left} с` : 'Надіслати код ще раз'}
+        <p className="code-countdown">
+          {left > 0 ? `Повторно надіслати код через ${mmss(left)}` : 'Код можна надіслати повторно'}
+        </p>
+
+        <div className="auth-result-actions">
+          <button type="button" className="btn-primary btn-tall"
+                  disabled={busy || code.length !== CODE_LENGTH}
+                  onClick={() => void verify(code)}>
+            {busy ? 'Перевіряємо…' : 'Підтвердити'}
+          </button>
+          <button type="button" className="link-quiet link-accent"
+                  disabled={left > 0 || busy} onClick={() => void resend()}>
+            Надіслати код повторно
           </button>
         </div>
 
-        <p className="t-xs mt-2 text-center" style={{ color: 'var(--color-faint)', lineHeight: 1.5 }}>
-          Код діє годину. Якщо листа немає — подивіться в «Спам».
-        </p>
+        <div className="note note-row">
+          <span style={{ color: 'var(--color-muted)' }}><MailIcon size={20} /></span>
+          <span>
+            Не отримали лист? Перевірте папку «Вхідні» та «Спам».
+            Або повторіть через хвилину. Код діє 10 хвилин.
+          </span>
+        </div>
       </AppScreen>
     )
   }
@@ -404,9 +401,35 @@ export function MobileRegisterForm() {
               {seePass ? <EyeOff /> : <Eye />}
             </button>
           </div>
-          <p className={password.length > 0 && password.length < 8 ? 'field-error' : 'field-hint'}>
-            Щонайменше 8 символів
-          </p>
+          <PasswordStrength value={password} />
+        </Field>
+
+        {/* Подтверждение пароля. Придуманный вслепую на телефоне пароль
+            с опечаткой человек обнаруживает только на следующем входе —
+            и уходит в восстановление, думая, что сломались мы. */}
+        <Field label="Підтвердіть пароль" htmlFor="f-pass2">
+          <div className="relative">
+            <input
+              id="f-pass2" required minLength={8} autoComplete="new-password"
+              type={seeConfirm ? 'text' : 'password'}
+              className={confirm.length > 0 && confirm !== password ? 'input input-error' : 'input'}
+              style={{ height: 52, fontSize: 16, paddingRight: 52 }}
+              value={confirm} onFocus={keepVisible}
+              onChange={(e) => setConfirm(e.target.value)}
+            />
+            <button
+              type="button"
+              onClick={() => setSeeConfirm((v) => !v)}
+              aria-label={seeConfirm ? 'Сховати пароль' : 'Показати пароль'}
+              className="absolute right-0 top-0 flex items-center justify-center"
+              style={{ width: 52, height: 52, color: 'var(--color-muted)' }}
+            >
+              {seeConfirm ? <EyeOff /> : <Eye />}
+            </button>
+          </div>
+          {confirm.length > 0 && confirm !== password && (
+            <p className="field-error">Паролі не збігаються</p>
+          )}
         </Field>
 
         {/* Согласие. Ссылки открываются, а не просто подчёркнуты:
