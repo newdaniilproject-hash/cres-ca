@@ -39,7 +39,7 @@ jobs:
       - name: Створити пару ключів
         env:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+          ALERT_EMAIL: ${{ vars.ALERT_EMAIL || 'daniilpadalko97@gmail.com' }}
         run: |
           set -euo pipefail
           [ -n "$RESEND_API_KEY" ] || { echo "нет секрета RESEND_API_KEY — закрытый ключ отправить нечем"; exit 1; }
