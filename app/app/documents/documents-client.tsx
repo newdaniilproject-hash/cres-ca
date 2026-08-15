@@ -5,24 +5,15 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
-// Значения перечисления material_doc_kind из миграции 0014.
-export type DocKind = 'msds' | 'quality_cert' | 'ses_conclusion' | 'notification' | 'other'
+import {
+  DOC_EXT_BY_MIME as EXT_BY_MIME,
+  DOC_KINDS as KINDS,
+  DOC_KIND_LABEL as KIND_LABEL,
+  DOC_MAX_BYTES as MAX_BYTES,
+  type DocKind,
+} from '@/lib/documents'
 
-const KINDS: { value: DocKind; label: string }[] = [
-  { value: 'msds', label: 'Паспорт безпеки (MSDS)' },
-  { value: 'quality_cert', label: 'Сертифікат якості' },
-  { value: 'ses_conclusion', label: 'Висновок СЕС' },
-  { value: 'notification', label: 'Нотифікація МОЗ' },
-  { value: 'other', label: 'Інше' },
-]
-
-const KIND_LABEL: Record<DocKind, string> = {
-  msds: 'MSDS',
-  quality_cert: 'Сертифікат якості',
-  ses_conclusion: 'Висновок СЕС',
-  notification: 'Нотифікація МОЗ',
-  other: 'Інше',
-}
+export type { DocKind }
 
 type Material = {
   id: string; name: string; unit: string
@@ -31,19 +22,6 @@ type Material = {
 type Doc = {
   id: string; materialId: string; kind: DocKind
   title: string; path: string; createdAt: string
-}
-
-// Повторяет ограничения бакета documents из 0019. Проверяем на клиенте
-// не вместо RLS, а чтобы вместо ответа хранилища «mime type not supported»
-// продавец увидел человеческую фразу.
-const MAX_BYTES = 20 * 1024 * 1024
-const EXT_BY_MIME: Record<string, string> = {
-  'application/pdf': 'pdf',
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/webp': 'webp',
-  'application/msword': 'doc',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
 }
 
 export function DocumentsClient({
@@ -104,6 +82,9 @@ export function DocumentsClient({
     const { error } = await supabase.from('material_documents').insert({
       tenant_id: tenantId, material_id: materialId,
       kind, title: title.trim(), path, uploaded_by: userId,
+      // Размер и тип пишет загрузчик (0059): иначе список документов
+      // ходил бы в хранилище за каждой строкой ради подписи «1,2 МБ».
+      size_bytes: file.size, mime: file.type,
     })
     if (error) {
       // Файл без учётной записи невидим и неудаляем через интерфейс —

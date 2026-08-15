@@ -12,15 +12,43 @@ export type RefItem = { id: string; name: string }
 // поставщика превратили из текста в таблицу.
 export const UNITS = ['мл', 'г', 'шт', 'уп']
 
-// Заведение расходника. Форма одна на весь материал: базовое сверху,
-// косметический паспорт — за галочкой, потому что обычной нитке
-// или фольге поля техрегламента не нужны и только пугают.
+/** Карточка засоба такой, какой её отдаёт база. Для правки — обязательна,
+    для заведения — не передаётся вовсе. */
+export type MaterialInit = {
+  id: string
+  name: string
+  unit: string
+  sku: string | null
+  category: string | null
+  threshold: number
+  cost: number | null
+  supplierId: string | null
+  locationId: string | null
+  isCosmetic: boolean
+  brand: string | null
+  country: string | null
+  inci: string | null
+  notificationCode: string | null
+  notificationUrl: string | null
+  notificationDate: string | null
+  paoMonths: number | null
+}
+
+// Заведение и правка расходника — одна форма.
+//
+// Почему одна, а не две: до этого правки не было вовсе — «в реестре
+// нельзя исправить ни одного поля». Вторая форма для тех же полей
+// разъезжается с первой на второй же правке; проверено на справочниках.
+// Базовое сверху, косметический паспорт — за галочкой, потому что
+// обычной нитке или фольге поля техрегламента не нужны и только пугают.
 export function MaterialForm({
-  tenantId, suppliers, locations, onDone,
+  tenantId, suppliers, locations, material, onDone,
 }: {
   tenantId: string
   suppliers: RefItem[]
   locations: RefItem[]
+  /** Задан — форма правит эту карточку. Не задан — заводит новую. */
+  material?: MaterialInit
   onDone: () => void
 }) {
   const supabase = useMemo(() => createClient(), [])
@@ -28,27 +56,38 @@ export function MaterialForm({
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
-  const [name, setName] = useState('')
-  const [unit, setUnit] = useState(UNITS[0])
-  const [sku, setSku] = useState('')
-  const [category, setCategory] = useState('')
-  const [threshold, setThreshold] = useState('0')
-  const [cost, setCost] = useState('')
-  const [supplierId, setSupplierId] = useState('')
-  const [locationId, setLocationId] = useState('')
+  const [name, setName] = useState(material?.name ?? '')
+  const [unit, setUnit] = useState(material?.unit ?? UNITS[0])
+  const [sku, setSku] = useState(material?.sku ?? '')
+  const [category, setCategory] = useState(material?.category ?? '')
+  const [threshold, setThreshold] = useState(String(material?.threshold ?? 0))
+  const [cost, setCost] = useState(material?.cost != null ? String(material.cost) : '')
+  const [supplierId, setSupplierId] = useState(material?.supplierId ?? '')
+  const [locationId, setLocationId] = useState(material?.locationId ?? '')
 
-  const [cosmetic, setCosmetic] = useState(false)
-  const [brand, setBrand] = useState('')
-  const [country, setCountry] = useState('')
-  const [inci, setInci] = useState('')
-  const [notification, setNotification] = useState('')
-  const [pao, setPao] = useState('')
+  const [cosmetic, setCosmetic] = useState(material?.isCosmetic ?? false)
+  const [brand, setBrand] = useState(material?.brand ?? '')
+  const [country, setCountry] = useState(material?.country ?? '')
+  const [inci, setInci] = useState(material?.inci ?? '')
+  const [notification, setNotification] = useState(material?.notificationCode ?? '')
+  const [notificationUrl, setNotificationUrl] = useState(material?.notificationUrl ?? '')
+  const [notificationDate, setNotificationDate] = useState(material?.notificationDate ?? '')
+  const [pao, setPao] = useState(material?.paoMonths != null ? String(material.paoMonths) : '')
 
   async function save(e: React.FormEvent) {
     e.preventDefault()
     setBusy(true); setErr('')
-    const { error } = await supabase.from('materials').insert({
-      tenant_id: tenantId,
+
+    const url = notificationUrl.trim()
+    // База отобьёт неправильную ссылку ограничением, но текст Postgres
+    // мастеру ничего не объясняет — проверяем здесь и говорим по-людски.
+    if (cosmetic && url && !/^https?:\/\//i.test(url)) {
+      setBusy(false)
+      setErr('Посилання на реєстр МОЗ має починатися з https://')
+      return
+    }
+
+    const row = {
       name: name.trim(),
       unit,
       // Артикул — прямой пункт ТЗ (3.1). Приводим к верхнему регистру:
@@ -68,8 +107,15 @@ export function MaterialForm({
       country_of_origin: cosmetic ? country.trim() || null : null,
       inci: cosmetic ? inci.trim() || null : null,
       notification_code: cosmetic ? notification.trim() || null : null,
+      notification_url: cosmetic ? url || null : null,
+      notification_date: cosmetic ? notificationDate || null : null,
       pao_months: cosmetic && Number(pao) > 0 ? Number(pao) : null,
-    })
+    }
+
+    const { error } = material
+      ? await supabase.from('materials').update(row).eq('id', material.id)
+      : await supabase.from('materials').insert({ tenant_id: tenantId, ...row })
+
     setBusy(false)
     // 23505 — нарушение уникальности (tenant_id, name). Текст Postgres
     // мастеру в салоне ничего не объясняет, поэтому переводим.
@@ -144,7 +190,8 @@ export function MaterialForm({
         </select>
       </div>
 
-      <label className="t-md flex items-center gap-2 sm:col-span-2">
+      <label className="t-md flex items-center gap-2 sm:col-span-2"
+             style={{ minHeight: 'var(--tap-min)' }}>
         <input type="checkbox" checked={cosmetic}
                onChange={(e) => setCosmetic(e.target.checked)} />
         Косметичний засіб — потрібно для перевірки Держпродспоживслужби
@@ -166,8 +213,23 @@ export function MaterialForm({
           </div>
           <div>
             <label className="field-label">Код нотифікації МОЗ</label>
-            <input className="input" placeholder="з упаковки або від постачальника"
+            <input className="input" placeholder="UA.TR.116.003-25"
                    value={notification} onChange={(e) => setNotification(e.target.value)} />
+          </div>
+          <div>
+            <label className="field-label">Дата внесення до реєстру</label>
+            <input type="date" className="input"
+                   value={notificationDate} onChange={(e) => setNotificationDate(e.target.value)} />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="field-label">Посилання на запис у реєстрі МОЗ</label>
+            <input type="url" inputMode="url" className="input"
+                   placeholder="https://…"
+                   value={notificationUrl} onChange={(e) => setNotificationUrl(e.target.value)} />
+            <p className="field-hint">
+              ТЗ вимагає саме посилання, а не тільки код: за кодом інспектор
+              нічого не перевірить, він відкриває запис у реєстрі.
+            </p>
           </div>
           <div>
             <label className="field-label">PAO, місяців</label>
@@ -186,7 +248,9 @@ export function MaterialForm({
       {err && <p className="field-error sm:col-span-2">{err}</p>}
 
       <div className="flex gap-2 sm:col-span-2">
-        <button className="btn-primary" disabled={busy || !name.trim()}>Зберегти</button>
+        <button className="btn-primary" disabled={busy || !name.trim()}>
+          {busy ? 'Зберігаємо…' : 'Зберегти'}
+        </button>
         <button type="button" className="btn-ghost" onClick={onDone}>Скасувати</button>
       </div>
     </form>

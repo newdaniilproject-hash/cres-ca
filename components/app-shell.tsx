@@ -6,7 +6,6 @@ import { Suspense, useCallback, useEffect, useState } from 'react'
 import { ThemeToggle } from '@/components/theme'
 import { Sheet } from '@/components/sheet'
 import { createClient } from '@/lib/supabase/client'
-import { Brand } from '@/components/auth-ui'
 import type { TenantModule } from '@/lib/tenant'
 
 // Навигация кабинета. Архитектура — решение директора 05.08.2026:
@@ -160,8 +159,8 @@ function AppShellInner({
       <div className="mx-auto flex max-w-6xl gap-8 px-4 pt-6 sm:px-6">
         {/* ── Десктоп: постоянный сайдбар, ничего не пряталось ── */}
         <aside className="hidden w-52 shrink-0 lg:block">
-          <Link href="/" className="brand-topbar mb-8 inline-block">
-            <Brand />
+          <Link href="/app" className="display mb-8 block t-xl">
+            CRES<span style={{ color: 'var(--color-accent)' }}>KO</span>
           </Link>
           <nav className="flex flex-col gap-1">
             {visible.map((s) => (
@@ -236,9 +235,9 @@ function AppShellInner({
         <div className="drawer-layer" onClick={() => setDrawer(false)}>
           <div className="drawer" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between" style={{ height: 56 }}>
-              <div className="brand-topbar">
-                <Brand />
-              </div>
+              <span className="display t-xl">
+                CRES<span style={{ color: 'var(--color-accent)' }}>KO</span>
+              </span>
               <button type="button" aria-label="Закрити" onClick={() => setDrawer(false)}
                       className="flex items-center justify-center"
                       style={{ width: 'var(--tap-min)', height: 'var(--tap-min)', marginRight: -8 }}>

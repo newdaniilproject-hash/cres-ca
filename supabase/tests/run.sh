@@ -106,6 +106,7 @@ psql -f "$ROOT/supabase/tests/05_compliance.sql"
 # 06 обёрнут в begin/rollback и после себя базу не меняет, поэтому стоит
 # последним и ничего за собой не тянет.
 psql -f "$ROOT/supabase/tests/06_isolation.sql"
+psql -f "$ROOT/supabase/tests/07_register_card.sql"
 
 echo
 echo "Готово. Ни одной строки «ПРОВАЛ» выше — значит все запреты сработали."
