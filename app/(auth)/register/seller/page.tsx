@@ -2,7 +2,6 @@
 
 import Link from 'next/link'
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { AuthShell } from '../../auth-shell'
 import { GoogleButton } from '../../google-button'
@@ -11,7 +10,6 @@ import { GoogleButton } from '../../google-button'
 // шаг 2 — заведение. После register_tenant ОБЯЗАТЕЛЕН refreshSession:
 // членство попадает в токен только при следующей его выдаче.
 export default function SellerRegisterPage() {
-  const router = useRouter()
   const supabase = createClient()
 
   const [step, setStep] = useState<0 | 1>(0)
@@ -57,8 +55,15 @@ export default function SellerRegisterPage() {
       p_name: shopName, p_kind: kind, p_city: city || null,
     })
     if (error) { setState('error'); setError(error.message); return }
+    // ⚠️ ОБЯЗАТЕЛЬНО. Членства читаются из полезной нагрузки токена
+    // (lib/tenant.ts), а не из базы, и попадают туда только при следующей
+    // его выдаче. Без refreshSession кабинет решит, что заведения нет,
+    // и погонит человека обратно на этот же экран — по кругу.
     await supabase.auth.refreshSession()   // членство → в токен
-    router.push('/app'); router.refresh()
+    // Переход полной навигацией, а не router.push: серверные компоненты
+    // кабинета читают сессию из кук, и мягкий переход гонится со свежей
+    // кукой — тот же грабль описан в app/(auth)/register/page.tsx.
+    window.location.href = '/app'
   }
 
   return (
