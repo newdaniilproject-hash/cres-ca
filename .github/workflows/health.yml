@@ -79,7 +79,9 @@ jobs:
         if: failure()
         env:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+          # Запасной адрес прямо здесь, чтобы письмо ушло даже когда
+          # ни одного секрета ещё не завели. Адрес не тайна.
+          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL || 'daniilpadalko97@gmail.com' }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -uo pipefail

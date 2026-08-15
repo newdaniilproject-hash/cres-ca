@@ -68,6 +68,20 @@ jobs:
           fi
           bash scripts/backup.sh "$MODE"
 
+      # Пока ключей R2 нет, скрипт оставляет зашифрованный архив в папке
+      # backup-out, и его забирает этот шаг. Как только R2 появится, папка
+      # будет пустой, шаг тихо пропустится — `if-no-files-found: ignore`.
+      #
+      # Срок хранения 30 суток выбран по нижней ступени в R2 (daily/30),
+      # чтобы переход на R2 не менял глубину доступного прошлого.
+      - name: Архів файлом складання (поки немає R2)
+        uses: actions/upload-artifact@v4
+        with:
+          name: kopiia-${{ github.run_id }}
+          path: backup-out/*.age
+          retention-days: 30
+          if-no-files-found: ignore
+
       # Оповещение о сбое — немедленно, а не в отчёте через неделю.
       # Пункт Д шага 1: молчаливо не сработавшая копия хуже отсутствующей,
       # потому что на неё рассчитывают.
@@ -75,7 +89,7 @@ jobs:
         if: failure()
         env:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-          ALERT_EMAIL: ${{ vars.ALERT_EMAIL || 'daniilpadalko97@gmail.com' }}
+          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL || 'daniilpadalko97@gmail.com' }}
         run: |
           [ -n "$RESEND_API_KEY" ] || { echo "нет RESEND_API_KEY, лист не уйдёт"; exit 0; }
           curl -sS -X POST https://api.resend.com/emails \

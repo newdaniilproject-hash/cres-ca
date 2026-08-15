@@ -53,6 +53,10 @@ jobs:
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          # Нужен для ОСЛАБЛЕННОГО пути: когда закрытого ключа и ключей R2
+          # ещё нет, проверка снимает свежий дамп и разворачивает его.
+          # Разбор, что при этом проверяется, а что нет, — в самом скрипте.
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           VERIFY_DB_URL: postgresql://postgres:verify@localhost:5432/verify
         run: bash scripts/backup-verify.sh
 
@@ -63,7 +67,7 @@ jobs:
         if: always()
         env:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-          ALERT_EMAIL: ${{ vars.ALERT_EMAIL || 'daniilpadalko97@gmail.com' }}
+          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL || 'daniilpadalko97@gmail.com' }}
           OK: ${{ job.status }}
         run: |
           [ -n "$RESEND_API_KEY" ] || exit 0
