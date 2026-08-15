@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { ThemeToggle } from '@/components/theme'
+import { Brand } from '@/components/auth-ui'
 
 // Публичная шапка. Ссылок мало сознательно: поиск — главный вход.
 //
@@ -9,13 +10,24 @@ import { ThemeToggle } from '@/components/theme'
 // больше нет (CLAUDE.md → «Мобильная версия»), поэтому остался один
 // хром — вебовый, а классы `.web-only` / `.native-only` удалены
 // по правилу 8 вместе с механизмом, который их различал.
-export function PublicHeader({ authed }: { authed: boolean }) {
+// cabinet — эта же шапка над личным кабинетом (/account). Отличается
+// одним: подписью. Кабинет — часть CRESKO и подписан им, как экраны
+// входа и шапка /app; публичная витрина остаётся «Маркет.» до отдельного
+// решения владельца о её имени. Пока имени два, флаг честнее, чем два
+// почти одинаковых компонента: разъедутся именно они, а не строка.
+export function PublicHeader({ authed, cabinet = false }: { authed: boolean; cabinet?: boolean }) {
   return (
     <header className="topbar">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
-        <Link href="/" className="display t-xl">
-          Маркет<span style={{ color: 'var(--color-gold)' }}>.</span>
-        </Link>
+        {cabinet ? (
+          <Link href="/app" className="brand-topbar">
+            <Brand />
+          </Link>
+        ) : (
+          <Link href="/" className="display t-xl">
+            Маркет<span style={{ color: 'var(--color-gold)' }}>.</span>
+          </Link>
+        )}
         <nav className="flex items-center gap-1 sm:gap-2">
           <Link href="/map" className="btn-ghost">Мапа</Link>
           <Link href="/search" className="btn-ghost hidden sm:inline-flex">Пошук</Link>

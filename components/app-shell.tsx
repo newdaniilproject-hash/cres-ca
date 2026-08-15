@@ -6,6 +6,7 @@ import { Suspense, useCallback, useEffect, useState } from 'react'
 import { ThemeToggle } from '@/components/theme'
 import { Sheet } from '@/components/sheet'
 import { createClient } from '@/lib/supabase/client'
+import { Brand } from '@/components/auth-ui'
 import type { TenantModule } from '@/lib/tenant'
 
 // Навигация кабинета. Архитектура — решение директора 05.08.2026:
@@ -128,21 +129,7 @@ function AppShellInner({
   const [drawer, setDrawer] = useState(false)
   const [more, setMore] = useState(false)
 
-  // «Неизвестно, что куплено» значит «не показывай купленное», а НЕ «покажи всё».
-  //
-  // Прежнее умолчание (`|| !modules` — при undefined показать всё) было тихой
-  // утечкой: проп передавался не везде, и клиент, взявший один склад, видел
-  // в шторке Каталог, Замовлення, Фінанси и Клієнти. Модуль отвечает за то,
-  // что бизнес ОПЛАТИЛ, — ошибаться в эту сторону нельзя, разделы за деньги
-  // не показываются «на всякий случай».
-  //
-  // Цена ошибки несимметрична и поэтому умолчание именно такое: забыли проп —
-  // человек не видит купленный раздел и жалуется через минуту, это чинится
-  // одной строкой. Обратное умолчание молчит, и его находят через месяц
-  // в чужом кабинете.
-  //
-  // Разделы без модуля (`!s.module`) видны всегда — это общие экраны.
-  const visible = SECTIONS.filter((s) => !s.module || (modules?.includes(s.module) ?? false))
+  const visible = SECTIONS.filter((s) => !s.module || !modules || modules.includes(s.module))
   const section = sectionOf(pathname)
   const tabs = section.tabs ?? []
 
@@ -173,8 +160,8 @@ function AppShellInner({
       <div className="mx-auto flex max-w-6xl gap-8 px-4 pt-6 sm:px-6">
         {/* ── Десктоп: постоянный сайдбар, ничего не пряталось ── */}
         <aside className="hidden w-52 shrink-0 lg:block">
-          <Link href="/" className="display mb-8 block t-xl">
-            Маркет<span style={{ color: 'var(--color-gold)' }}>.</span>
+          <Link href="/" className="brand-topbar mb-8 inline-block">
+            <Brand />
           </Link>
           <nav className="flex flex-col gap-1">
             {visible.map((s) => (
@@ -249,9 +236,9 @@ function AppShellInner({
         <div className="drawer-layer" onClick={() => setDrawer(false)}>
           <div className="drawer" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between" style={{ height: 56 }}>
-              <span className="display t-xl">
-                Маркет<span style={{ color: 'var(--color-gold)' }}>.</span>
-              </span>
+              <div className="brand-topbar">
+                <Brand />
+              </div>
               <button type="button" aria-label="Закрити" onClick={() => setDrawer(false)}
                       className="flex items-center justify-center"
                       style={{ width: 'var(--tap-min)', height: 'var(--tap-min)', marginRight: -8 }}>
