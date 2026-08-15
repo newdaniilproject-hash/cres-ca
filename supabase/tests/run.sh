@@ -98,16 +98,34 @@ for f in "$ROOT"/supabase/migrations/*.sql; do
 done
 
 echo "== тесты"
-psql -f "$ROOT/supabase/tests/01_permissions.sql"
-psql -f "$ROOT/supabase/tests/02_stock.sql"
-psql -f "$ROOT/supabase/tests/03_orders.sql"
-psql -f "$ROOT/supabase/tests/04_bookings.sql"
-psql -f "$ROOT/supabase/tests/05_compliance.sql"
-# 06 обёрнут в begin/rollback и после себя базу не меняет, поэтому стоит
-# последним и ничего за собой не тянет.
-psql -f "$ROOT/supabase/tests/06_isolation.sql"
-psql -f "$ROOT/supabase/tests/07_register_card.sql"
-psql -f "$ROOT/supabase/tests/08_stock_plus.sql"
+
+# ── Почему вывод собирается в файл ────────────────────────────────────────
+#
+# Тесты сообщают о провале СТРОКОЙ «ПРОВАЛ», а не кодом возврата: они
+# написаны на проверках внутри do-блоков, и psql про них не знает.
+# Пока итог читал человек, этого хватало. В задании GitHub читателя нет,
+# и прогон, который печатает «ПРОВАЛ» и завершается нулём, — это зелёная
+# метка на сломанном запрете. Поэтому вывод перехватывается и проверяется.
+LOG="$(mktemp)"
+{
+  psql -f "$ROOT/supabase/tests/01_permissions.sql"
+  psql -f "$ROOT/supabase/tests/02_stock.sql"
+  psql -f "$ROOT/supabase/tests/03_orders.sql"
+  psql -f "$ROOT/supabase/tests/04_bookings.sql"
+  psql -f "$ROOT/supabase/tests/05_compliance.sql"
+  # 06 обёрнут в begin/rollback и после себя базу не меняет, поэтому стоит
+  # последним и ничего за собой не тянет.
+  psql -f "$ROOT/supabase/tests/06_isolation.sql"
+  psql -f "$ROOT/supabase/tests/07_register_card.sql"
+  psql -f "$ROOT/supabase/tests/08_stock_plus.sql"
+} 2>&1 | tee "$LOG"
 
 echo
-echo "Готово. Ни одной строки «ПРОВАЛ» выше — значит все запреты сработали."
+if grep -q 'ПРОВАЛ' "$LOG"; then
+  echo "!! ПРОВАЛЫ:" >&2
+  grep -n 'ПРОВАЛ' "$LOG" >&2
+  rm -f "$LOG"
+  exit 1
+fi
+rm -f "$LOG"
+echo "Готово. Ни одной строки «ПРОВАЛ» — значит все запреты сработали."
