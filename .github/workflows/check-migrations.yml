@@ -1,0 +1,33 @@
+name: Звірка міграцій
+
+# Шаг 2, пункт Б. Падает, если миграция применена на базу, а файла
+# в репозитории нет. Разбор — в scripts/check-migrations.sh.
+#
+# Запускается на КАЖДЫЙ push в main и на каждый разбор изменений: находка
+# через неделю после потери стоит дороже, чем находка в тот же час.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Плюс раз в сутки: миграцию можно применить и без единого коммита,
+    # и тогда push-проверка не сработает вовсе. Именно так потерялись
+    # 0057 и 0058 — они уехали на базу инструментом, мимо репозитория.
+    - cron: '20 5 * * *'
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Клієнт Postgres
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+
+      - name: Звірити
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: bash scripts/check-migrations.sh
