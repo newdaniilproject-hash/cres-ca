@@ -1,11 +1,14 @@
-import { AppShell } from '@/components/shell'
-
+// Скелетон загрузки. Рисует ТОЛЬКО содержимое: шапка, заголовок
+// и нижняя панель приходят из `app/app/layout.tsx` и во время
+// загрузки уже стоят на экране. Раньше здесь была своя AppShell —
+// и при каждом переходе на экране оказывались две нижние панели
+// одна поверх другой. Не возвращать.
 // Форма повторяет InventoryClient: сканер сверху, ряд быстрых ссылок,
 // вкладки, список ёмкостей ниже — именно список меняет высоту от
 // данных, поэтому только он получает переменное число строк.
 export default function Loading() {
   return (
-    <AppShell active="/app/inventory" title="Склад">
+    <>
       <div className="flex flex-col gap-6">
         <section className="card rise-1">
           <div className="flex gap-2">
@@ -35,6 +38,6 @@ export default function Loading() {
           ))}
         </section>
       </div>
-    </AppShell>
+    </>
   )
 }
