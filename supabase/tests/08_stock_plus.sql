@@ -349,3 +349,55 @@ begin
   end if;
   raise notice 'ok — scan_container отдаёт material_id';
 end $$;
+
+reset role;
+
+\echo '--- 0075: tenant_id дочерних строк ВЫВОДИТСЯ, подделать его нельзя'
+--
+-- Решение шага 3 плана: четыре таблицы получили собственный tenant_id,
+-- и политики перестали ходить подзапросом к родителю. Опасность такого
+-- переноса в том, что колонка, ПРИНЯТАЯ снаружи, открыла бы новую дыру:
+-- строка со своим tenant_id и ЧУЖИМ receipt_id прошла бы политику
+-- и легла в чужой документ. Поэтому значение не принимается, а выводится
+-- триггером из родителя. Здесь это и проверяется — попыткой подделать.
+\set QUIET on
+select test.login('11111111-1111-1111-1111-111111111111');
+\set QUIET off
+set role authenticated;
+
+do $$
+declare
+  v_receipt uuid;
+  v_line    uuid;
+  v_tenant  uuid;
+begin
+  insert into public.stock_receipts (tenant_id, created_by)
+  values ('aaaaaaaa-0000-0000-0000-000000000001',
+          '11111111-1111-1111-1111-111111111111')
+  returning id into v_receipt;
+
+  -- Подсовываем ЗАВЕДОМО ЧУЖОЙ арендатор. Триггер обязан его перезаписать.
+  insert into public.stock_receipt_lines
+    (receipt_id, material_id, quantity, tenant_id)
+  values (v_receipt, 'dddddddd-0000-0000-0000-000000000001', 1,
+          '00000000-0000-0000-0000-0000000000ff')
+  returning id, tenant_id into v_line, v_tenant;
+
+  if v_tenant <> 'aaaaaaaa-0000-0000-0000-000000000001' then
+    raise exception 'ПРОВАЛ: підроблений tenant_id прийнято — %', v_tenant;
+  end if;
+  raise notice 'ok — tenant_id виведено з документа, підробку перезаписано';
+
+  -- И при изменении строки тоже: иначе подделку внесли бы вторым шагом.
+  update public.stock_receipt_lines
+     set tenant_id = '00000000-0000-0000-0000-0000000000ff'
+   where id = v_line;
+
+  select tenant_id into v_tenant from public.stock_receipt_lines where id = v_line;
+  if v_tenant <> 'aaaaaaaa-0000-0000-0000-000000000001' then
+    raise exception 'ПРОВАЛ: підробку внесли зміною рядка — %', v_tenant;
+  end if;
+  raise notice 'ok — зміна рядка теж не дає підробити орендаря';
+end $$;
+
+reset role;
