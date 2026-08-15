@@ -4,13 +4,21 @@ import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { nextRoute } from './where'
+import { Onboarding, onboardingSeen } from './onboarding'
+import { Brand } from '@/components/auth-ui'
 
 // Первый экран приложения. Канон мобильного онбординга: одна мысль,
 // два действия, юридические ссылки мелким шрифтом снизу — и ничего больше.
 // Никакого переключателя темы и никакой навигации сайта.
+//
+// 13.08.2026: перед приветствием — знакомство (карусель, согласие
+// с документами, три разрешения). Оно показывается один раз и живёт
+// в ./onboarding.tsx, без собственных маршрутов: новый адрес пришлось
+// бы учитывать и в proxy.ts, и в TWINS двух файлов сразу.
 export default function MobileWelcome() {
   const supabase = useMemo(() => createClient(), [])
   const [checking, setChecking] = useState(true)
+  const [onboarding, setOnboarding] = useState(false)
 
   // Уже вошедшего человека приветственный экран не должен встречать вовсе.
   useEffect(() => {
@@ -21,6 +29,7 @@ export default function MobileWelcome() {
         window.location.replace(await nextRoute(supabase))
         return
       }
+      setOnboarding(!onboardingSeen())
       setChecking(false)
     })
     return () => { alive = false }
@@ -28,47 +37,33 @@ export default function MobileWelcome() {
 
   if (checking) {
     return (
-      <main className="flex flex-1 items-center justify-center">
-        <div className="display t-2xl" style={{ opacity: 0.35 }}>
-          Маркет<span style={{ color: 'var(--color-gold)' }}>.</span>
-        </div>
+      <main className="flex flex-1 items-center justify-center" style={{ opacity: 0.35 }}>
+        <Brand />
       </main>
     )
   }
+
+  if (onboarding) return <Onboarding onDone={() => setOnboarding(false)} />
 
   return (
     <main className="flex flex-1 flex-col px-6 pb-6">
       {/* Верхняя треть — воздух. Логотип не в самом верху: на телефоне
           это выглядит прижатым к вырезу. */}
       <div className="flex flex-1 flex-col justify-center">
-        <div className="display t-3xl">
-          Маркет<span style={{ color: 'var(--color-gold)' }}>.</span>
-        </div>
-        <h1 className="display t-2xl mt-6" style={{ lineHeight: 1.15 }}>
+        <Brand tagline />
+        <h1 className="display t-2xl mt-8 text-center" style={{ lineHeight: 1.15 }}>
           Склад, терміни і журнали —<br />у телефоні
         </h1>
-        <p className="t-md mt-3" style={{ color: 'var(--color-muted)', lineHeight: 1.5 }}>
+        <p className="t-md mt-3 text-center" style={{ color: 'var(--color-muted)', lineHeight: 1.5 }}>
           Відкрили банку — термін порахує застосунок. Прийшла перевірка —
           звіт одним документом.
         </p>
       </div>
 
-      {/* Действия — внизу, под большой палец. Высота как у нативных кнопок. */}
+      {/* Действия — внизу, под большой палец. */}
       <div className="flex flex-col gap-3">
-        <Link
-          href="/m/register"
-          className="btn-primary flex items-center justify-center"
-          style={{ minHeight: 'var(--tap-min)', height: 52, fontSize: 16 }}
-        >
-          Створити акаунт
-        </Link>
-        <Link
-          href="/m/login"
-          className="btn-secondary flex items-center justify-center"
-          style={{ minHeight: 'var(--tap-min)', height: 52, fontSize: 16 }}
-        >
-          Увійти
-        </Link>
+        <Link href="/m/register" className="btn-primary btn-tall">Створити акаунт</Link>
+        <Link href="/m/login" className="btn-secondary btn-tall">Увійти</Link>
 
         {/* Согласие человек даёт галочкой в форме регистрации — здесь
             только ссылки, чтобы документы можно было прочитать

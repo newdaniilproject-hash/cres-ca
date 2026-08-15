@@ -2,11 +2,17 @@
 
 import { useEffect, useRef, useState } from 'react'
 
-// Поле кода из письма: восемь цифр, разбитые 4 + 4.
+// Поле кода из письма: шесть цифр одной группой.
 //
-// Почему не восемь отдельных <input>, как делают почти все: на телефоне
+// 13.08.2026: было восемь, разбитых 4 + 4. Шесть — решение владельца,
+// и оно же снимает главный сломанный путь: веб-регистрация ждала шесть
+// знаков, а Supabase слал восемь, поэтому кнопка «Підтвердити» не
+// разблокировалась никогда. Разделитель посередине убран: шесть клеток
+// читаются с одного взгляда и без него, а в макете их шесть подряд.
+//
+// Почему не шесть отдельных <input>, как делают почти все: на телефоне
 // это ломается сразу в трёх местах — Backspace на пустом поле не уводит
-// назад, вставка кода из буфера кладёт все восемь цифр в первую клетку,
+// назад, вставка кода из буфера кладёт все шесть цифр в первую клетку,
 // а автоподстановка iOS «Код із листа» вообще не срабатывает, потому что
 // не понимает, куда подставлять.
 //
@@ -16,7 +22,7 @@ import { useEffect, useRef, useState } from 'react'
 export function CodeInput({
   value,
   onChange,
-  length = 8,
+  length = 6,
   disabled,
   invalid,
 }: {
@@ -36,7 +42,6 @@ export function CodeInput({
     return () => clearTimeout(t)
   }, [])
 
-  const half = Math.ceil(length / 2)
   const cells = Array.from({ length }, (_, i) => i)
 
   return (
@@ -45,17 +50,20 @@ export function CodeInput({
       onClick={() => ref.current?.focus()}
       style={{ cursor: 'text' }}
     >
-      <div className="flex items-center justify-center gap-1.5">
+      <div className="flex items-center justify-center gap-2">
         {cells.map((i) => {
           const ch = value[i] ?? ''
           const active = focused && !disabled && i === Math.min(value.length, length - 1)
           return (
-            <span key={i} className="contents">
-              <span
+            <span
+                key={i}
                 className="tabular flex items-center justify-center"
                 style={{
-                  width: 34,
-                  height: 48,
+                  // Квадратные ячейки: в макете это шесть одинаковых
+                  // квадратов, а не узкие полоски. 44 — чтобы шесть
+                  // штук с зазорами влезли и на 360-пиксельный экран.
+                  width: 44,
+                  height: 52,
                   fontSize: 22,
                   fontWeight: 700,
                   borderRadius: 'var(--radius-control)',
@@ -73,15 +81,6 @@ export function CodeInput({
                 }}
               >
                 {ch || (active ? <Caret /> : '')}
-              </span>
-              {/* Разделитель ровно посередине: четыре и четыре читаются
-                  с одного взгляда, восемь подряд — нет. */}
-              {i === half - 1 && i !== length - 1 ? (
-                <span
-                  aria-hidden
-                  style={{ width: 10, height: 1, background: 'var(--color-border-strong)' }}
-                />
-              ) : null}
             </span>
           )
         })}
