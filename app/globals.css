@@ -577,6 +577,57 @@ html.light {
     background: var(--color-accent-soft);
   }
 
+  /* ── Верхняя строка кабинета: поиск, сканер, аватар ─────────
+     Появилась 15.08.2026 вместе с новой оболочкой по макетам.
+     Поле поиска — пилюля во всю оставшуюся ширину: это главный
+     элемент строки, а не украшение. Шрифт 16px обязателен: iOS
+     зумит страницу на любом поле мельче и обратно не отъезжает. */
+  .searchbar {
+    height: var(--h-input);
+    padding-inline: 14px;
+    border-radius: 999px;
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+    transition: border-color var(--dur-fast);
+  }
+  .searchbar:focus-within { border-color: var(--color-accent); }
+  .searchbar-input {
+    font-size: 16px;
+    background: transparent;
+    border: 0;
+    outline: none;
+    color: var(--color-text);
+  }
+  .searchbar-input::placeholder { color: var(--color-faint); }
+
+  /* Круглая кнопка-иконка строки. Размер задаётся кнопкой, а не
+     иконкой: зона нажатия обязана быть 44px даже у картинки 20px. */
+  .iconbtn, .avatarbtn {
+    @apply flex items-center justify-center;
+    width: var(--tap-min);
+    height: var(--tap-min);
+    border-radius: 999px;
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-muted);
+    transition: color var(--dur-fast), background var(--dur-fast), border-color var(--dur-fast);
+  }
+  .iconbtn:hover, .avatarbtn:hover {
+    color: var(--color-text);
+    border-color: var(--color-border-strong);
+  }
+  .iconbtn:active, .avatarbtn:active { transform: scale(0.94); }
+
+  /* Аватар — буква имени. Акцентная заливка, чтобы он читался как
+     «это про меня», а не как ещё одна кнопка. */
+  .avatarbtn {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--color-accent);
+    background: var(--color-accent-soft);
+    border-color: transparent;
+  }
+
   .sidebar-item {
     @apply flex items-center gap-3 h-10 px-3 text-sm font-medium;
     /* h-10 (40px) — ниже --tap-min; ссылка навигации, тач-цель тоже. */
