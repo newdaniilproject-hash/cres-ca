@@ -1,12 +1,15 @@
-import { AppShell } from '@/components/shell'
-
+// Скелетон загрузки. Рисует ТОЛЬКО содержимое: шапка, заголовок
+// и нижняя панель приходят из `app/app/layout.tsx` и во время
+// загрузки уже стоят на экране. Раньше здесь была своя AppShell —
+// и при каждом переходе на экране оказывались две нижние панели
+// одна поверх другой. Не возвращать.
 // BookingsClient групує записи підписами днів, під кожним — card
 // зі списком .row (час+ім'я зліва, бейдж+кнопки справа). Готової
 // сітки час×слот на цьому екрані немає — .skeleton-calendar тут
 // не підійде формою.
 export default function Loading() {
   return (
-    <AppShell active="/app/bookings" title="Записи">
+    <>
       <div className="flex flex-col gap-6">
         {Array.from({ length: 2 }).map((_, di) => (
           <section key={di}>
@@ -21,6 +24,6 @@ export default function Loading() {
           </section>
         ))}
       </div>
-    </AppShell>
+    </>
   )
 }
