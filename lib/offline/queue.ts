@@ -40,6 +40,28 @@ export type QueuedAction =
       materialId?: string | null
       variantId?: string | null
       note?: string | null
+      /**
+       * Ключ, СГЕНЕРИРОВАННЫЙ ЭКРАНОМ до первой попытки отправки.
+       *
+       * Без него офлайн-путь ломает ровно ту гарантию, ради которой
+       * очередь существует. Сеть рвётся и ПОСЛЕ того, как база записала
+       * движение: транзакция прошла, ответ не доехал. Экран видит
+       * «ошибку сети», кладёт действие в очередь — и если ключ здесь
+       * новый, досылка спишет остаток второй раз. Тот же ключ, что
+       * ушёл в неудавшемся вызове, делает повтор безвредным.
+       */
+      idempotencyKey?: string
+      /** Откуда пришло движение. По умолчанию 'offline'. */
+      referenceType?: string
+    }
+  | {
+      // Факт с полки в документе инвентаризации. Пересчёт ведут в том
+      // самом подвале, где сети нет, и потерянная строка означает поход
+      // к полке заново. Повтор безвреден: это не движение, а одно поле,
+      // и последняя запись побеждает.
+      kind: 'count.line'
+      lineId: string
+      countedQty: number | null
     }
   | {
       kind: 'journal.cleaning'
@@ -199,14 +221,21 @@ async function send(supabase: SupabaseClient, rec: QueuedRecord): Promise<void> 
       p_quantity: a.quantity,
       p_variant_id: a.variantId ?? null,
       p_material_id: a.materialId ?? null,
-      p_reference_type: 'offline',
+      p_reference_type: a.referenceType ?? 'offline',
       p_reference_id: null,
       p_receipt_id: null,
       p_count_id: null,
       p_note: a.note ?? null,
-      // Тот самый ключ: повтор не спишет второй раз.
-      p_idempotency_key: rec.id,
+      // Тот самый ключ: повтор не спишет второй раз. Берём ключ экрана,
+      // если он есть — см. комментарий у поля idempotencyKey.
+      p_idempotency_key: a.idempotencyKey ?? rec.id,
     })
+    if (error) throw new Error(error.message)
+    return
+  }
+  if (a.kind === 'count.line') {
+    const { error } = await supabase.from('stock_count_lines')
+      .update({ counted_qty: a.countedQty }).eq('id', a.lineId)
     if (error) throw new Error(error.message)
     return
   }
@@ -245,19 +274,7 @@ async function send(supabase: SupabaseClient, rec: QueuedRecord): Promise<void> 
       registration: a.registration ?? null,
       concentration: a.concentration ?? null,
       volume: a.volume ?? null,
-      // ⚠️ unit НЕ ставится в null. Колонка объявлена
-      // `unit text not null default 'л'` (0014_compliance.sql), а умолчание
-      // применяется только когда ключа НЕТ: явный null его не включает,
-      // а нарушает NOT NULL. Экран этот ключ не передаёт вовсе
-      // (journals-client.tsx), поэтому `unit: a.unit ?? null` означал
-      // гарантированный отказ КАЖДОЙ отложенной записи дезраствора —
-      // навсегда. Человек при этом видел «Розчин зʼявиться в журналі
-      // після синхронізації», запись висела в очереди и только копила
-      // tries. Онлайн-путь работал именно потому, что ключ не слал.
-      //
-      // Правило шире одного поля: в отложенной записи колонку с NOT NULL
-      // DEFAULT либо заполняем значением, либо НЕ УПОМИНАЕМ. Третьего нет.
-      ...(a.unit ? { unit: a.unit } : {}),
+      unit: a.unit ?? null,
       expires_at: a.expiresAt ?? null,
       prepared_at: new Date(rec.at).toISOString(),
     })
