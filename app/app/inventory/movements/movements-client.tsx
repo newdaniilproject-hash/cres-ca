@@ -139,7 +139,7 @@ export function MovementsClient({
     const amount = Math.abs(Number(qty))
     const signed = type === 'write_off' ? -amount : amount
     const label = `${type === 'write_off' ? 'Списання' : 'Повернення'} · ${
-      options.find((o) => o.id === itemId)?.title ?? ''}`
+      options.find((o) => o.id === itemId)?.name ?? ''}`
 
     try {
       const { error: rpcError } = await supabase.rpc('record_stock_movement', {
