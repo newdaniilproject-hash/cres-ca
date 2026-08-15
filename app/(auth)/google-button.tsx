@@ -24,18 +24,27 @@ function GoogleMark() {
   )
 }
 
-export function GoogleButton({ next, hint = 'або продовжити з' }: { next: string; hint?: string }) {
+// next — куда вернуть человека ПОСЛЕ входа, если он шёл на конкретную
+// страницу. Если не шёл никуда конкретно, next не задаём вовсе: тогда
+// /auth/finish спросит lib/where.ts, и человек без заведения попадёт
+// на его создание, а не в покупательский кабинет. Раньше здесь стояло
+// жёсткое next="/account", и вход через Google всегда вёл туда.
+//
+// s=web — поверхность. /auth/finish обслуживает и веб, и /m, а адреса
+// «нет заведения» у них разные (/register/seller против /m/shop).
+export function GoogleButton({ next, hint = 'або продовжити з' }: { next?: string; hint?: string }) {
   const supabase = createClient()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
   async function signIn() {
     setBusy(true); setError('')
+    const callback = new URL('/auth/callback', window.location.origin)
+    callback.searchParams.set('s', 'web')
+    if (next) callback.searchParams.set('next', next)
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
-      },
+      options: { redirectTo: callback.toString() },
     })
     // Успех — браузер уже уходит на Google, снимать busy незачем.
     if (error) { setBusy(false); setError(authErrorText(error.message)) }
