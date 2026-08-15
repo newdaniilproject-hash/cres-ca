@@ -7,7 +7,18 @@ export async function sendEmail(to: string, subject: string, text: string) {
   const key = process.env.RESEND_API_KEY
   if (!key) throw new Error('канал email не настроен: нет RESEND_API_KEY')
 
-  const from = process.env.RESEND_FROM_EMAIL ?? 'Маркетплейс <noreply@cres-ca.com>'
+  // Отправитель по умолчанию совпадает с тем, чем УЖЕ шлёт Supabase Auth
+  // (код подтверждения почты): `CRESKO <no-reply@cres-ca.com>`. Проверено
+  // на живом письме 15.08.2026.
+  //
+  // Здесь стояло `Маркетплейс <noreply@cres-ca.com>` — и это расходилось
+  // с реальностью дважды. Имя: клиент получал код входа от «CRESKO»,
+  // а письмо о заказе от «Маркетплейс», и это выглядит как два разных
+  // сервиса. Адрес: `noreply` без дефиса — другой ящик, чем `no-reply`,
+  // и почтовики считают репутацию отправителя ПО АДРЕСУ. Два адреса
+  // на одном домене — это две репутации, каждая вдвое слабее, и обе
+  // ближе к спаму. Меняем на один.
+  const from = process.env.RESEND_FROM_EMAIL ?? 'CRESKO <no-reply@cres-ca.com>'
 
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
