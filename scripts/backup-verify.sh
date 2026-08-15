@@ -27,7 +27,7 @@ set -euo pipefail
 : "${R2_ACCOUNT_ID:?нет R2_ACCOUNT_ID}"
 : "${R2_ACCESS_KEY_ID:?нет R2_ACCESS_KEY_ID}"
 : "${R2_SECRET_ACCESS_KEY:?нет R2_SECRET_ACCESS_KEY}"
-: "${R2_BUCKET:?нет R2_BUCKET}"
+R2_BUCKET="${R2_BUCKET:-cresca-backups}"
 : "${VERIFY_DB_URL:?нет VERIFY_DB_URL — чистая база для разворачивания}"
 
 export AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID"

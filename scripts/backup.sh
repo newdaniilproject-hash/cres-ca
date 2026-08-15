@@ -49,7 +49,12 @@ set -euo pipefail
 : "${R2_ACCOUNT_ID:?нет R2_ACCOUNT_ID}"
 : "${R2_ACCESS_KEY_ID:?нет R2_ACCESS_KEY_ID}"
 : "${R2_SECRET_ACCESS_KEY:?нет R2_SECRET_ACCESS_KEY}"
-: "${R2_BUCKET:?нет R2_BUCKET}"
+# Не секреты — значения по умолчанию прямо здесь, чтобы владельцу не
+# приходилось заводить лишние строки в настройках. Переменной окружения
+# по-прежнему перебиваются.
+R2_BUCKET="${R2_BUCKET:-cresca-backups}"
+SUPABASE_S3_ENDPOINT="${SUPABASE_S3_ENDPOINT:-https://jobvstdwoyifspaiwazn.storage.supabase.co/storage/v1/s3}"
+SUPABASE_S3_REGION="${SUPABASE_S3_REGION:-eu-west-1}"
 
 MODE="${1:-full}"            # full | hot
 STAMP="$(date -u +%Y%m%d-%H%M)"
@@ -232,8 +237,8 @@ if [ "$MODE" = "full" ]; then
   export RCLONE_CONFIG_SB_PROVIDER=Other
   export RCLONE_CONFIG_SB_ACCESS_KEY_ID="$SUPABASE_S3_ACCESS_KEY_ID"
   export RCLONE_CONFIG_SB_SECRET_ACCESS_KEY="$SUPABASE_S3_SECRET_ACCESS_KEY"
-  export RCLONE_CONFIG_SB_ENDPOINT="${SUPABASE_S3_ENDPOINT:?нет SUPABASE_S3_ENDPOINT}"
-  export RCLONE_CONFIG_SB_REGION="${SUPABASE_S3_REGION:-eu-west-1}"
+  export RCLONE_CONFIG_SB_ENDPOINT="$SUPABASE_S3_ENDPOINT"
+  export RCLONE_CONFIG_SB_REGION="$SUPABASE_S3_REGION"
 
   export RCLONE_CONFIG_R2_TYPE=s3
   export RCLONE_CONFIG_R2_PROVIDER=Cloudflare
