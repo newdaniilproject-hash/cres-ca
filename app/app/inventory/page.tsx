@@ -9,7 +9,15 @@ export const metadata = { title: 'Склад' }
 
 // Склад: счётчики сверху, быстрые действия, сканер и поиск, ниже —
 // расходники, ёмкости и товары. Все данные грузим на сервере параллельно.
-export default async function InventoryPage() {
+export default async function InventoryPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; scan?: string }>
+}) {
+  // Поиск и сканер живут в верхней строке оболочки и приходят сюда
+  // адресом: ?q= из поля, ?scan=1 из кнопки камеры. Так строка работает
+  // с любого экрана, а склад открывается уже в нужном состоянии.
+  const sp = await searchParams
   const m = await currentMembership()
   if (!m) redirect('/register/seller')
   const supabase = await createClient()
@@ -70,8 +78,11 @@ export default async function InventoryPage() {
   }
 
   return (
-    <AppShell modules={m.modules} active="/app/inventory" title="Склад">
+    <AppShell modules={m.modules} active="/app/inventory" title="Склад"
+              subtitle="Огляд запасів та матеріалів">
       <InventoryClient
+        initialQuery={sp.q ?? ''}
+        initialScan={sp.scan === '1'}
         tenantId={m.tenantId}
         userId={user!.id}
         containers={(containers ?? []).map((c) => ({
