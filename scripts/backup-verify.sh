@@ -20,58 +20,95 @@
 # В ежедневной выгрузке её нет и быть не должно: там достаточно открытой.
 # Разделение сделано ради того, чтобы утечка секретов сборки не означала
 # утечку всех прошлых копий.
+#
+# ── Два пути, и второй честно назван слабее ───────────────────────────────
+#
+# ПОЛНЫЙ путь (есть закрытый ключ и ключи R2): берём из хранилища самый
+# свежий архив — тот самый, который взяли бы в аварии, — расшифровываем,
+# сверяем контрольную сумму и разворачиваем. Проверяется вся цепочка,
+# включая шифрование, хранилище и целостность объекта.
+#
+# ОСЛАБЛЕННЫЙ путь (ключей ещё нет): снимаем свежий дамп и разворачиваем
+# его. Проверяется, что дамп в принципе снимается и разворачивается
+# в работающую базу с целыми связями и сходящимся остатком. НЕ проверяется
+# то, ради чего существует хранилище: доехал ли архив, читается ли он
+# ключом, не испортился ли лежащий объект.
+#
+# Ослабленный путь введён не для красоты отчёта. Без него проверка
+# не запускалась вовсе, и класс отказов «дамп не разворачивается» никто
+# не ловил месяцами. Половина проверки, которая работает, ловит больше,
+# чем полная, которая ждёт секретов.
 
 set -euo pipefail
 
-: "${BACKUP_AGE_PRIVATE_KEY:?нет BACKUP_AGE_PRIVATE_KEY — закрытый ключ}"
-: "${R2_ACCOUNT_ID:?нет R2_ACCOUNT_ID}"
-: "${R2_ACCESS_KEY_ID:?нет R2_ACCESS_KEY_ID}"
-: "${R2_SECRET_ACCESS_KEY:?нет R2_SECRET_ACCESS_KEY}"
-R2_BUCKET="${R2_BUCKET:-cresca-backups}"
 : "${VERIFY_DB_URL:?нет VERIFY_DB_URL — чистая база для разворачивания}"
+R2_BUCKET="${R2_BUCKET:-cresca-backups}"
 
-export AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID"
-export AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
-export AWS_DEFAULT_REGION=auto
-R2_ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+if [ -n "${BACKUP_AGE_PRIVATE_KEY:-}" ] && [ -n "${R2_ACCOUNT_ID:-}" ] \
+   && [ -n "${R2_ACCESS_KEY_ID:-}" ] && [ -n "${R2_SECRET_ACCESS_KEY:-}" ]; then
+  ROUTE=full
+else
+  ROUTE=weak
+  : "${SUPABASE_DB_URL:?нет ни ключей хранилища, ни SUPABASE_DB_URL — проверять нечего}"
+fi
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-# ── Берём САМУЮ СВЕЖУЮ полную копию ───────────────────────────────────────
-# Именно ту, которую взяли бы в аварии. Проверять заведомо старую и заведомо
-# целую — значит проверять не то.
-LATEST="$(aws s3api list-objects-v2 \
-  --bucket "$R2_BUCKET" --prefix daily/full- \
-  --endpoint-url "$R2_ENDPOINT" \
-  --query 'sort_by(Contents,&LastModified)[-1].Key' --output text)"
+if [ "$ROUTE" = "full" ]; then
+  export AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID"
+  export AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
+  export AWS_DEFAULT_REGION=auto
+  R2_ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
 
-if [ -z "$LATEST" ] || [ "$LATEST" = "None" ]; then
-  echo "!! в хранилище нет ни одной полной копии" >&2
-  exit 1
+  # ── Берём САМУЮ СВЕЖУЮ полную копию ─────────────────────────────────────
+  # Именно ту, которую взяли бы в аварии. Проверять заведомо старую
+  # и заведомо целую — значит проверять не то.
+  LATEST="$(aws s3api list-objects-v2 \
+    --bucket "$R2_BUCKET" --prefix daily/full- \
+    --endpoint-url "$R2_ENDPOINT" \
+    --query 'sort_by(Contents,&LastModified)[-1].Key' --output text)"
+
+  if [ -z "$LATEST" ] || [ "$LATEST" = "None" ]; then
+    echo "!! в хранилище нет ни одной полной копии" >&2
+    exit 1
+  fi
+  echo "▸ повний шлях, перевіряю: $LATEST"
+
+  aws s3 cp "s3://${R2_BUCKET}/${LATEST}" "$WORK/backup.age" \
+    --endpoint-url "$R2_ENDPOINT" --only-show-errors
+
+  # ── Расшифровка ─────────────────────────────────────────────────────────
+  printf '%s' "$BACKUP_AGE_PRIVATE_KEY" > "$WORK/key.txt"
+  chmod 600 "$WORK/key.txt"
+  age --decrypt --identity "$WORK/key.txt" \
+      --output "$WORK/backup.sql" "$WORK/backup.age"
+
+  # ── Контрольная сумма из имени должна сойтись ───────────────────────────
+  # Имя содержит первые 16 знаков суммы исходного дампа. Расхождение
+  # означает, что архив испортился в пути или в хранилище, — и заметить
+  # это надо здесь, а не в день аварии.
+  EXPECTED="$(printf '%s' "$LATEST" | sed -n 's/.*-\([0-9a-f]\{16\}\)\.sql\.age$/\1/p')"
+  ACTUAL="$(sha256sum "$WORK/backup.sql" | cut -c1-16)"
+  if [ "$EXPECTED" != "$ACTUAL" ]; then
+    echo "!! контрольная сумма не сошлась: в имени $EXPECTED, у файла $ACTUAL" >&2
+    exit 1
+  fi
+  echo "▸ сумма сошлась: $ACTUAL"
+else
+  echo "::warning::Ослаблена перевірка: немає закритого ключа або ключів R2 — перевіряється свіжий дамп, а не архів зі сховища"
+  echo "▸ ослаблений шлях: знімаю свіжий дамп"
+  LATEST="(свіжий дамп, не архів)"
+  pg_dump "$SUPABASE_DB_URL" \
+    --schema=public --schema=storage \
+    --no-owner --no-privileges \
+    --format=plain --file="$WORK/backup.sql"
+
+  if ! tail -c 4096 "$WORK/backup.sql" | grep -q "PostgreSQL database dump complete"; then
+    echo "!! дамп оборван: нет завершающей строки" >&2
+    exit 1
+  fi
 fi
-echo "▸ проверяю: $LATEST"
-
-aws s3 cp "s3://${R2_BUCKET}/${LATEST}" "$WORK/backup.age" \
-  --endpoint-url "$R2_ENDPOINT" --only-show-errors
-
-# ── Расшифровка ───────────────────────────────────────────────────────────
-printf '%s' "$BACKUP_AGE_PRIVATE_KEY" > "$WORK/key.txt"
-chmod 600 "$WORK/key.txt"
-age --decrypt --identity "$WORK/key.txt" \
-    --output "$WORK/backup.sql" "$WORK/backup.age"
-
-# ── Контрольная сумма из имени должна сойтись ─────────────────────────────
-# Имя содержит первые 16 знаков суммы исходного дампа. Расхождение означает,
-# что архив испортился в пути или в хранилище, — и заметить это надо здесь,
-# а не в день аварии.
-EXPECTED="$(printf '%s' "$LATEST" | sed -n 's/.*-\([0-9a-f]\{16\}\)\.sql\.age$/\1/p')"
-ACTUAL="$(sha256sum "$WORK/backup.sql" | cut -c1-16)"
-if [ "$EXPECTED" != "$ACTUAL" ]; then
-  echo "!! контрольная сумма не сошлась: в имени $EXPECTED, у файла $ACTUAL" >&2
-  exit 1
-fi
-echo "▸ сумма сошлась: $ACTUAL"
 
 # ── Разворачивание в чистую базу ──────────────────────────────────────────
 psql "$VERIFY_DB_URL" -v ON_ERROR_STOP=1 -q \
@@ -188,7 +225,9 @@ SQL
 DOC_PATH="$(psql "$VERIFY_DB_URL" -tAc \
   "select path from public.material_documents order by random() limit 1" || true)"
 
-if [ -n "$DOC_PATH" ]; then
+if [ "$ROUTE" != "full" ]; then
+  echo "-- копію файлів не перевіряю: немає ключів R2, самої копії файлів теж немає"
+elif [ -n "$DOC_PATH" ]; then
   if aws s3api head-object --bucket "$R2_BUCKET" \
        --key "files/documents/${DOC_PATH}" \
        --endpoint-url "$R2_ENDPOINT" >/dev/null 2>&1; then
