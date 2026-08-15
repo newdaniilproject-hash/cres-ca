@@ -1,0 +1,90 @@
+name: Резервне копіювання
+
+# Шаг 1 плана. Разбор «почему именно так» — в самом scripts/backup.sh,
+# здесь только расписание и подготовка окружения.
+#
+# Расписание в UTC. 02:40 по Киеву — это 23:40 UTC предыдущих суток летом.
+# Время выбрано мимо круглого часа намеренно: в :00 запускается половина
+# расписаний мира, и очередь бесплатных исполнителей GitHub там длиннее.
+
+on:
+  schedule:
+    # Полный дамп раз в двое суток. Cron не умеет «каждые два дня»
+    # календарно, поэтому по нечётным числам — 15 или 16 запусков в месяц.
+    - cron: '40 23 1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31 * *'
+    # Горячие таблицы — ежесуточно.
+    - cron: '40 1 * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'full або hot'
+        required: true
+        default: full
+
+concurrency:
+  # Две копии разом порождают гонку в уборке старого: один запуск удаляет
+  # объект, который другой только что перечислил.
+  group: backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Клієнт Postgres 17
+        # У исполнителя стоит клиент 16, а база — 17.6. pg_dump старшей
+        # версии отказывается выгружать младшую и падает с «server version
+        # mismatch». Ставим ровно 17 из официального репозитория PGDG.
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
+            https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17 age rclone
+          pg_dump --version
+
+      - name: Виконати копіювання
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          BACKUP_AGE_PUBLIC_KEY: ${{ secrets.BACKUP_AGE_PUBLIC_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          GDRIVE_SERVICE_ACCOUNT_JSON: ${{ secrets.GDRIVE_SERVICE_ACCOUNT_JSON }}
+          GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+          SUPABASE_S3_ACCESS_KEY_ID: ${{ secrets.SUPABASE_S3_ACCESS_KEY_ID }}
+          SUPABASE_S3_SECRET_ACCESS_KEY: ${{ secrets.SUPABASE_S3_SECRET_ACCESS_KEY }}
+          SUPABASE_S3_ENDPOINT: ${{ secrets.SUPABASE_S3_ENDPOINT }}
+          SUPABASE_S3_REGION: ${{ secrets.SUPABASE_S3_REGION }}
+        run: |
+          MODE="${{ github.event.inputs.mode }}"
+          if [ -z "$MODE" ]; then
+            # Различаем два расписания по времени запуска: полный идёт
+            # в 23:40, горячий — в 01:40.
+            if [ "$(date -u +%H)" = "23" ]; then MODE=full; else MODE=hot; fi
+          fi
+          bash scripts/backup.sh "$MODE"
+
+      # Оповещение о сбое — немедленно, а не в отчёте через неделю.
+      # Пункт Д шага 1: молчаливо не сработавшая копия хуже отсутствующей,
+      # потому что на неё рассчитывают.
+      - name: Повідомити про збій
+        if: failure()
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+        run: |
+          [ -n "$RESEND_API_KEY" ] || { echo "нет RESEND_API_KEY, лист не уйдёт"; exit 0; }
+          curl -sS -X POST https://api.resend.com/emails \
+            -H "Authorization: Bearer $RESEND_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$(printf '{"from":"CRESKO <no-reply@cres-ca.com>","to":"%s","subject":"Резервна копія НЕ створена","text":"Запуск: %s/%s/actions/runs/%s\n\nКопія не створилась або не відправилась. Це треба подивитись сьогодні: наступна спроба буде тільки завтра, і доти актуальної копії немає."}' \
+              "$ALERT_EMAIL" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")" \
+            >/dev/null

@@ -1,0 +1,83 @@
+name: Перевірка копії відновленням
+
+# Шаг 1, пункт Г. Раз в месяц копия РАЗВОРАЧИВАЕТСЯ и проверяется —
+# иначе она не копия, а надежда. Разбор проверок — в scripts/backup-verify.sh.
+#
+# Отдельный процесс, а не шаг внутри копирования, по одной причине:
+# здесь нужна ЗАКРЫТАЯ половина ключа шифрования, а в ежедневном
+# копировании её быть не должно. Так утечка секретов ежедневного процесса
+# не означает утечку всех прошлых копий.
+
+on:
+  schedule:
+    - cron: '0 4 2 * *'   # второе число месяца, после месячной копии первого
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      # Чистая база живёт в самом запуске и умирает вместе с ним. Разворачивать
+      # копию в боевую или проверочную базу нельзя категорически: проверка
+      # начинается с `drop schema public cascade`.
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: verify
+          POSTGRES_DB: verify
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Інструменти
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
+            https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17 age
+
+      - name: Розгорнути й перевірити
+        env:
+          BACKUP_AGE_PRIVATE_KEY: ${{ secrets.BACKUP_AGE_PRIVATE_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          VERIFY_DB_URL: postgresql://postgres:verify@localhost:5432/verify
+        run: bash scripts/backup-verify.sh
+
+      # Результат письмом — и когда сошлось, и когда нет. Отчёт только
+      # об отказах приучает считать тишину хорошей новостью, а тишина
+      # бывает и оттого, что процесс перестал запускаться вовсе.
+      - name: Лист про результат
+        if: always()
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+          OK: ${{ job.status }}
+        run: |
+          [ -n "$RESEND_API_KEY" ] || exit 0
+          if [ "$OK" = "success" ]; then
+            SUBJ="Копія перевірена відновленням — усе гаразд"
+            BODY="Місячна перевірка пройшла: копія розгортається, дані на місці, залишок сходиться з журналом."
+          else
+            SUBJ="УВАГА: копія НЕ відновлюється"
+            BODY="Місячна перевірка провалилась. Це означає, що відновитись із копії зараз НЕ вийде. Дивитись сьогодні."
+          fi
+          curl -sS -X POST https://api.resend.com/emails \
+            -H "Authorization: Bearer $RESEND_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$(printf '{"from":"CRESKO <no-reply@cres-ca.com>","to":"%s","subject":"%s","text":"%s\n\n%s/%s/actions/runs/%s"}' \
+              "$ALERT_EMAIL" "$SUBJ" "$BODY" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")" \
+            >/dev/null
