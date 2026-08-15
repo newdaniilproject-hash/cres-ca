@@ -1,10 +1,11 @@
 'use client'
 
 import Link from 'next/link'
-import { useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/toast'
+import { enqueue, isNetworkError, list as queueList, onQueueChange } from '@/lib/offline/queue'
 import { COUNT_STATUS_LABEL, countBadge, humanizeCount, qty } from '../counts-client'
 
 export type CountCard = {
@@ -60,6 +61,22 @@ export function CountDetail({
   const [draft, setDraft] = useState<Record<string, string>>({})
   const inputs = useRef(new Map<string, HTMLInputElement | null>())
 
+  // Сколько строк ЭТОГО документа ещё лежит в офлайн-очереди. Число нужно
+  // не для красоты: пока оно не ноль, проводить пересчёт нельзя.
+  const lineIds = useMemo(() => new Set(lines.map((l) => l.id)), [lines])
+  const pendingLines = useCallback(async () => {
+    const all = await queueList()
+    return all.filter((r) => r.action.kind === 'count.line'
+      && lineIds.has(r.action.lineId))
+  }, [lineIds])
+
+  const [pending, setPending] = useState(0)
+  useEffect(() => {
+    const refresh = () => { void pendingLines().then((p) => setPending(p.length)) }
+    refresh()
+    return onQueueChange(refresh)
+  }, [pendingLines])
+
   const shownValue = (l: CountLine) => draft[l.id] ?? (l.counted != null ? String(l.counted) : '')
   const num = (s: string) => {
     // Запятая — то, что реально набирают на украинской раскладке телефона,
@@ -104,10 +121,28 @@ export function CountDetail({
     }
 
     setBusy(line.id); setErr('')
-    const { error } = await supabase.from('stock_count_lines')
-      .update({ counted_qty: next }).eq('id', line.id)
+    try {
+      const { error } = await supabase.from('stock_count_lines')
+        .update({ counted_qty: next }).eq('id', line.id)
+      if (error) throw new Error(error.message)
+    } catch (e) {
+      setBusy(null)
+      // Пересчёт ведут у полок, где сети нет. Потерянная строка означает
+      // поход к той же полке заново — а мастер уже ушёл дальше по ряду.
+      // Повтор досылки безвреден: это одно поле, последняя запись
+      // побеждает; движений отсюда не рождается — их сделает проведение.
+      if (isNetworkError(e)) {
+        await enqueue(`Факт · ${line.title}`, {
+          kind: 'count.line', lineId: line.id, countedQty: next,
+        })
+        setDraft((d) => ({ ...d, [line.id]: next == null ? '' : String(next) }))
+        toast.info('Збережено офлайн', 'Надішлеться само, щойно зʼявиться мережа.')
+        return
+      }
+      setErr(humanizeCount(e instanceof Error ? e.message : String(e)))
+      return
+    }
     setBusy(null)
-    if (error) { setErr(humanizeCount(error.message)); return }
     setDraft((d) => ({ ...d, [line.id]: next == null ? '' : String(next) }))
     router.refresh()
   }
@@ -193,6 +228,20 @@ export function CountDetail({
   }
 
   async function apply() {
+    // Проведение — единственное действие этого экрана, которое НЕЛЬЗЯ
+    // откладывать в очередь. Оно рождает движения по остатку и закрывает
+    // документ навсегда; отложить его значит провести пересчёт по данным,
+    // которые к моменту досылки успели устареть. И если часть фактов ещё
+    // лежит в очереди, база проведёт документ без них — то есть разнесёт
+    // недостачу там, где мастер всё посчитал.
+    const waiting = (await pendingLines()).length
+    if (waiting > 0) {
+      setErr(`Ще ${waiting} рядків не надіслані — вони чекають мережі. `
+        + 'Проведення зараз рознесе нестачу там, де ви все порахували. '
+        + 'Дочекайтесь надсилання.')
+      return
+    }
+
     const unfilled = lines.length - filled
     const warn = unfilled > 0
       ? `Не заповнено позицій: ${unfilled}. Вони лишаться без змін. `
@@ -205,7 +254,13 @@ export function CountDetail({
     // сделать нельзя — триггер-охранник не даст (CLAUDE.md, правило 5).
     const { error } = await supabase.rpc('apply_stock_count', { p_count_id: count.id })
     setBusy(null)
-    if (error) { setErr(humanizeCount(error.message)); return }
+    if (error) {
+      setErr(isNetworkError(new Error(error.message))
+        ? 'Немає мережі. Факт з полиці збережеться офлайн, а провести '
+          + 'інвентаризацію можна лише онлайн: рухи по залишку робить база.'
+        : humanizeCount(error.message))
+      return
+    }
     toast.success('Інвентаризацію проведено',
       mismatches > 0
         ? `Розбіжностей рознесено: ${mismatches}. Дивіться їх у журналі рухів.`
@@ -240,6 +295,9 @@ export function CountDetail({
           </span>
           {mismatches > 0 && (
             <span className="badge-warn tabular">розбіжностей: {mismatches}</span>
+          )}
+          {pending > 0 && (
+            <span className="badge-warn tabular">чекають мережі: {pending}</span>
           )}
         </div>
       </section>
@@ -372,9 +430,11 @@ export function CountDetail({
         <div className="flex flex-wrap items-center gap-2 px-5 pb-5 pt-4">
           {editable ? (
             <button type="button" className="btn-primary"
-                    disabled={busy !== null || lines.length === 0}
+                    disabled={busy !== null || lines.length === 0 || pending > 0}
                     onClick={() => void apply()}>
-              {busy === 'apply' ? 'Проводимо…' : 'Провести інвентаризацію'}
+              {busy === 'apply' ? 'Проводимо…'
+                : pending > 0 ? `Чекаємо надсилання (${pending})`
+                  : 'Провести інвентаризацію'}
             </button>
           ) : (
             <p className="t-md prose-muted">
