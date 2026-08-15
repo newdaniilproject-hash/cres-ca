@@ -45,6 +45,10 @@ concurrency:
   group: health
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   watch:
     runs-on: ubuntu-latest
@@ -67,6 +71,37 @@ jobs:
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: bash scripts/health.sh | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # ── Задача в репозитории. Работает без единого секрета ────────────────
+      #
+      # ОДНА задача на одну аварию, а не по одной каждые пятнадцать минут:
+      # перед созданием ищется уже открытая с тем же заголовком. Поток
+      # одинаковых задач читается как шум и через час перестаёт читаться
+      # вовсе — а именно в этот момент и нужен.
+      #
+      # Письмо каждые пятнадцать минут при этом остаётся: письмо гаснет
+      # само, задача висит до закрытия. Это разные роли, и они не спорят.
+      - name: Задача про відмову
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -uo pipefail
+          TITLE="Сторож: сайт або база не відповідають"
+          OPEN="$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number' 2>/dev/null || true)"
+          REPORT="$(cat health-report.txt 2>/dev/null || echo 'звіт не сформувався')"
+          if [ -n "${OPEN:-}" ]; then
+            gh issue comment "$OPEN" --body "Ще одна невдала перевірка.
+
+          $REPORT
+
+          Запуск: $RUN_URL"
+          else
+            gh issue create --title "$TITLE" --body "$REPORT
+
+          Запуск: $RUN_URL"
+          fi
 
       - name: Лист про відмову
         # Проверка ключей — внутри шага, а не в условии: контекст `secrets`

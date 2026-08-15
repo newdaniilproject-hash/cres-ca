@@ -27,6 +27,11 @@ concurrency:
   group: backup
   cancel-in-progress: false
 
+permissions:
+  contents: read
+  # Для оповещения задачей в репозитории — см. последний шаг.
+  issues: write
+
 jobs:
   backup:
     runs-on: ubuntu-latest
@@ -101,19 +106,46 @@ jobs:
           retention-days: 30
           if-no-files-found: ignore
 
-      # Оповещение о сбое — немедленно, а не в отчёте через неделю.
-      # Пункт Д шага 1: молчаливо не сработавшая копия хуже отсутствующей,
-      # потому что на неё рассчитывают.
+      # ── Оповещение о сбое. Пункт Д шага 1 ─────────────────────────────────
+      #
+      # Молчаливо не сработавшая копия хуже отсутствующей: на неё
+      # рассчитывают. Поэтому оповещение идёт ДВУМЯ путями, и первый
+      # не требует ни одного секрета.
+      #
+      # ЗАДАЧА В РЕПОЗИТОРИИ — основной путь. GitHub сам шлёт владельцу
+      # письмо и уведомление в приложение, а задача остаётся висеть,
+      # пока её не закроют: письмо теряется в почте, открытая задача — нет.
+      # Раньше здесь был только Resend, и без ключа оповещения не было
+      # вообще — то есть ровно в том состоянии, ради которого пункт Д
+      # и написан.
       - name: Повідомити про збій
         if: failure()
         env:
+          GH_TOKEN: ${{ github.token }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           ALERT_EMAIL: ${{ secrets.ALERT_EMAIL || 'daniilpadalko97@gmail.com' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          [ -n "$RESEND_API_KEY" ] || { echo "нет RESEND_API_KEY, лист не уйдёт"; exit 0; }
-          curl -sS -X POST https://api.resend.com/emails \
-            -H "Authorization: Bearer $RESEND_API_KEY" \
-            -H "Content-Type: application/json" \
-            -d "$(printf '{"from":"CRESKO <no-reply@cres-ca.com>","to":"%s","subject":"Резервна копія НЕ створена","text":"Запуск: %s/%s/actions/runs/%s\n\nКопія не створилась або не відправилась. Це треба подивитись сьогодні: наступна спроба буде тільки завтра, і доти актуальної копії немає."}' \
-              "$ALERT_EMAIL" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")" \
-            >/dev/null
+          set -uo pipefail
+          BODY="Копія не створилась або не відправилась.
+
+          Це треба подивитись сьогодні: наступна спроба буде тільки за розкладом,
+          і доти актуальної копії немає.
+
+          Запуск: $RUN_URL"
+
+          gh issue create \
+            --title "Резервна копія НЕ створена" \
+            --body "$BODY" \
+            --label "копії" 2>/dev/null \
+          || gh issue create --title "Резервна копія НЕ створена" --body "$BODY"
+
+          # Письмо — дополнительный путь, только если ключ заведён.
+          [ -n "${RESEND_API_KEY:-}" ] || exit 0
+          jq -n --arg to "$ALERT_EMAIL" --arg text "$BODY" \
+            '{from:"CRESKO <no-reply@cres-ca.com>", to:[$to],
+              subject:"Резервна копія НЕ створена", text:$text}' \
+          | curl -sS -X POST https://api.resend.com/emails \
+              -H "Authorization: Bearer $RESEND_API_KEY" \
+              -H "Content-Type: application/json" \
+              --data-binary @- >/dev/null
