@@ -1,0 +1,33 @@
+name: Права на бойовій базі
+
+# Шаг 3, «проверка попыткой». Смотрит НА ПРОД, а не на стенд.
+# Разбор, почему без этого не обойтись, — в scripts/check-grants.sh.
+#
+# Коротко: `alter default privileges` живёт только в облаке Supabase,
+# и на чистом Postgres, где гоняется 06_isolation.sql, его нет. Поэтому
+# локальный прогон зелёный, а на проде у anon появляются права, которых
+# никто не выдавал. Так уже было трижды: 0036, 0060→0061, 0072→0073.
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # Ежедневно: право может появиться и без коммита — от любой миграции,
+    # применённой инструментом, и от любого пересоздания представления.
+    - cron: '40 5 * * *'
+  workflow_dispatch:
+
+jobs:
+  grants:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Клієнт Postgres
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+
+      - name: Перевірити права
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: bash scripts/check-grants.sh
