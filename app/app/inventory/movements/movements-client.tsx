@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { enqueue, isNetworkError } from '@/lib/offline/queue'
+import { useToast } from '@/components/toast'
 
 // Значения enum stock_movement_type из 0003_inventory.sql, в том же порядке.
 export const MOVEMENT_TYPES: string[] = [
@@ -100,6 +102,7 @@ export function MovementsClient({
 }) {
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
+  const toast = useToast()
 
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -134,19 +137,55 @@ export function MovementsClient({
     // обязан быть отрицательным, 'return' — положительным. Функция просто
     // прибавляет это число к остатку, поэтому знак ставим здесь и явно.
     const amount = Math.abs(Number(qty))
-    const { error: rpcError } = await supabase.rpc('record_stock_movement', {
-      p_tenant_id: tenantId,
-      p_movement_type: type,
-      p_quantity: type === 'write_off' ? -amount : amount,
-      ...(kind === 'goods' ? { p_variant_id: itemId } : { p_material_id: itemId }),
-      p_reference_type: 'manual',
-      p_note: note.trim(),
-      p_idempotency_key: opKey.current,
-    })
+    const signed = type === 'write_off' ? -amount : amount
+    const label = `${type === 'write_off' ? 'Списання' : 'Повернення'} · ${
+      options.find((o) => o.id === itemId)?.title ?? ''}`
+
+    try {
+      const { error: rpcError } = await supabase.rpc('record_stock_movement', {
+        p_tenant_id: tenantId,
+        p_movement_type: type,
+        p_quantity: signed,
+        ...(kind === 'goods' ? { p_variant_id: itemId } : { p_material_id: itemId }),
+        p_reference_type: 'manual',
+        p_note: note.trim(),
+        p_idempotency_key: opKey.current,
+      })
+      if (rpcError) throw new Error(rpcError.message)
+    } catch (e) {
+      setBusy(false)
+      // Пункт ТЗ про офлайн. Склад салона — подвал за железной дверью,
+      // и «списать банку» там не должно упираться в одну палку связи.
+      // Ключ идемпотентности УЖЕ сгенерирован выше и уходит в очередь
+      // тем же самым: если база успела записать движение, а ответ
+      // не доехал, досылка ничего не спишет второй раз.
+      if (isNetworkError(e)) {
+        await enqueue(label, {
+          kind: 'stock.movement',
+          tenantId,
+          movementType: type,
+          quantity: signed,
+          materialId: kind === 'material' ? itemId : null,
+          variantId: kind === 'goods' ? itemId : null,
+          note: note.trim() || null,
+          idempotencyKey: opKey.current,
+          referenceType: 'manual',
+        })
+        opKey.current = ''
+        setItemId(''); setQty(''); setNote('')
+        toast.info('Збережено офлайн', 'Рух надішлеться сам, щойно зʼявиться мережа.')
+        return
+      }
+      // Ошибка данных в очередь не кладётся: она не отправится никогда,
+      // а мастер будет думать, что списание ждёт сети.
+      setErr(humanize(e instanceof Error ? e.message : String(e)))
+      return
+    }
+
     setBusy(false)
-    if (rpcError) { setErr(humanize(rpcError.message)); return }
     opKey.current = ''
     setItemId(''); setQty(''); setNote('')
+    toast.success('Рух записано', `${label} · ${amount} ${unit}`)
     router.refresh()
   }
 
