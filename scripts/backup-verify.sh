@@ -115,11 +115,43 @@ psql "$VERIFY_DB_URL" -v ON_ERROR_STOP=1 -q \
   -c 'drop schema if exists public cascade; create schema public;' \
   -c 'drop schema if exists storage cascade;'
 
+# ── Подпорки платформы, без которых дамп разворачивается НЕ ВЕСЬ ──────────
+#
+# Найдено первым же боевым прогоном: проверка объявила «у копії немає
+# таблиць: tenants, profiles», хотя копия была цела. Причина не в копии,
+# а в чистом Postgres, куда её разворачивают:
+#
+#   • `tenants.slug` имеет тип `extensions.citext`. Схемы `extensions`
+#     в голом Postgres нет, расширения тоже — CREATE TABLE падает,
+#     таблица не появляется.
+#   • `profiles.id` ссылается на `auth.users`. Схему `auth` держит сам
+#     Supabase, в дамп она не входит намеренно (иначе ломает вход при
+#     настоящем восстановлении) — и ссылка не на что опереться.
+#
+# Значит стенд обязан воспроизвести то, что при НАСТОЯЩЕМ восстановлении
+# даёт платформа. Иначе проверка объявляет провалом собственную
+# недостроенность, а это худший вид ложной тревоги: на неё перестают
+# смотреть, и настоящий провал проходит незамеченным.
+psql "$VERIFY_DB_URL" -v ON_ERROR_STOP=1 -q \
+  -c 'create schema if not exists extensions;' \
+  -c 'create extension if not exists citext    schema extensions;' \
+  -c 'create extension if not exists pgcrypto  schema extensions;' \
+  -c 'create extension if not exists "uuid-ossp" schema extensions;' \
+  -c 'create schema if not exists auth;' \
+  -c 'create table if not exists auth.users (id uuid primary key);'
+
 # Дамп содержит объекты, которых в чистом Postgres нет (роли Supabase,
 # расширения в своих схемах). Это ожидаемо и не является отказом:
 # отказом является невозможность получить ДАННЫЕ. Поэтому здесь
 # ON_ERROR_STOP выключен намеренно, а вердикт выносят проверки ниже.
 psql "$VERIFY_DB_URL" -q -f "$WORK/backup.sql" > "$WORK/restore.log" 2>&1 || true
+
+# Ошибки разворачивания печатаем ВСЕГДА, а не только при провале.
+# Первый боевой прогон упал с «немає таблиць», а причина — отсутствие типа
+# `citext` — лежала в этом файле и никуда не выводилась; на её поиск ушёл
+# лишний круг. Двадцать строк в журнале дешевле одного такого круга.
+echo "▸ помилки розгортання (перші 20, якщо є)"
+grep -i '^ERROR' "$WORK/restore.log" | head -20 | sed 's/^/   /' || true
 
 # ── Что именно проверяем ──────────────────────────────────────────────────
 #
