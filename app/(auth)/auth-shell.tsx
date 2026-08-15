@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { ThemeToggle } from '@/components/theme'
+import { Brand } from '@/components/auth-ui'
 
 // Раскладка входа взята из первой крес-ки: тонкая верхняя полоса,
 // форма справа, градиентная панель слева. Панель не украшение —
@@ -17,14 +18,16 @@ const PANEL_FEATURES = [
   'База клієнтів — ваша, з вивантаженням',
 ]
 
+// title необязателен: экраны-результаты (успех, блокировка) рисуют
+// собственный заголовок под знаком, и второй сверху был бы повтором.
 export function AuthShell({ title, subtitle, children }: {
-  title: string; subtitle?: string; children: React.ReactNode
+  title?: string; subtitle?: string; children: React.ReactNode
 }) {
   return (
     <div className="auth-page">
       <div className="auth-topbar">
-        <Link href="/" className="display t-xl">
-          Маркет<span style={{ color: 'var(--color-gold)' }}>.</span>
+        <Link href="/" className="brand-topbar">
+          <Brand />
         </Link>
         <div className="flex items-center gap-1 sm:gap-2">
           <ThemeToggle />
@@ -35,16 +38,16 @@ export function AuthShell({ title, subtitle, children }: {
       <div className="auth-split">
         <section className="auth-form-col">
           <div className="auth-form">
-            <h1 className="display rise t-3xl">{title}</h1>
+            {title && <h1 className="display rise t-3xl">{title}</h1>}
             {subtitle && <p className="rise-1 t-md mt-2 prose-muted">{subtitle}</p>}
-            <div className="rise-2 mt-7">{children}</div>
+            <div className={title ? 'rise-2 mt-7' : 'rise-2'}>{children}</div>
           </div>
         </section>
 
         <aside className="auth-panel rise-1">
           <div className="auth-panel-title">
             <span aria-hidden>◈</span>
-            Маркет
+            CRESKO
           </div>
           <p className="auth-panel-tagline">
             Одна підписка замість чотирьох сервісів. Без комісії за замовлення,
@@ -58,7 +61,7 @@ export function AuthShell({ title, subtitle, children }: {
               </div>
             ))}
           </div>
-          <p className="auth-panel-foot">Товари та послуги від українських підприємців</p>
+          <p className="auth-panel-foot">Склад для майстрів — облік, терміни, журнали</p>
         </aside>
       </div>
     </div>

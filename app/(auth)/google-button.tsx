@@ -2,27 +2,16 @@
 
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { authErrorText } from '@/lib/auth-errors'
 
-// Вход через Google. Кнопка сознательно второстепенная: почта остаётся
-// главным путём, пока провайдер не подключён в Supabase (нет Client ID).
-// Пока он выключен, GoTrue отвечает «provider is not enabled» — и синхронно
-// (ошибка signInWithOAuth), и возвратом на /auth/callback с error в адресе.
-// Оба пути сводятся к одной человеческой фразе через authErrorText.
-
-const PROVIDER_OFF = 'Вхід через Google ще налаштовується — скористайтеся поштою'
-
-export function authErrorText(raw: string): string {
-  const m = raw.toLowerCase()
-  if (
-    m.includes('provider is not enabled') ||
-    m.includes('unsupported provider') ||
-    m.includes('provider_disabled') ||
-    m.includes('validation_failed')
-  ) return PROVIDER_OFF
-  if (m.includes('access_denied') || m.includes('cancel')) return 'Вхід скасовано'
-  if (m.includes('expired') || m.includes('otp_expired')) return 'Посилання вже недійсне — надішліть новий лист'
-  return 'Не вдалося завершити вхід. Спробуйте ще раз або увійдіть поштою'
-}
+// Вход через Google. Единственный провайдер, который включён в Supabase:
+// Apple выключен и ключей нет, поэтому его кнопки в интерфейсе нет
+// вовсе (правило 8 — выключено значит удалено).
+//
+// Словарь ошибок переехал в lib/auth-errors.ts: его импортируют
+// и экраны /m, и /auth/finish, и ходить за строкой в кнопку было
+// странно. Ре-экспорт оставлен, чтобы старые импорты работали.
+export { authErrorText } from '@/lib/auth-errors'
 
 function GoogleMark() {
   return (
@@ -35,7 +24,7 @@ function GoogleMark() {
   )
 }
 
-export function GoogleButton({ next }: { next: string }) {
+export function GoogleButton({ next, hint = 'або продовжити з' }: { next: string; hint?: string }) {
   const supabase = createClient()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -56,7 +45,7 @@ export function GoogleButton({ next }: { next: string }) {
     <>
       <div className="t-xs my-5 flex items-center gap-3 prose-muted">
         <span aria-hidden className="divider flex-1" />
-        або
+        {hint}
         <span aria-hidden className="divider flex-1" />
       </div>
 
