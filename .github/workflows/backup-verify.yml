@@ -47,6 +47,19 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq postgresql-client-17 age
 
+          # Каталог 17 — первым в PATH. Разбор, почему обёртки `/usr/bin/pg_dump`
+          # недостаточно, — в backup.yml: она отдаёт 16 и роняет дамп базы 17.6.
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+
+      - name: Перевірити версію pg_dump
+        run: |
+          set -euo pipefail
+          pg_dump --version
+          pg_dump --version | grep -q ' 17\.' || {
+            echo "::error::pg_dump не 17"
+            exit 1
+          }
+
       - name: Розгорнути й перевірити
         env:
           BACKUP_AGE_PRIVATE_KEY: ${{ secrets.BACKUP_AGE_PRIVATE_KEY }}
