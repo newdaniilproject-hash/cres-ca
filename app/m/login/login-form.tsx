@@ -7,10 +7,14 @@ import { createClient } from '@/lib/supabase/client'
 import { CodeInput } from '../code-input'
 import { nextRoute } from '../where'
 import { AppScreen, Field, keepVisible } from '../ui'
+import { MailIcon, PasswordStrength, mmss } from '@/components/auth-ui'
 import { OAuthButtons } from '../oauth'
 import { authErrorText } from '@/app/(auth)/google-button'
 
-const CODE_LENGTH = 8
+// Шесть цифр — столько же, сколько в вебе и в макетах владельца.
+// Было восемь; расхождение с настройкой Supabase (MAILER_OTP_LENGTH)
+// и было причиной, по которой веб-регистрация не проходила вовсе.
+const CODE_LENGTH = 6
 const RESEND_SECONDS = 60
 
 // Вход. Основной способ — пароль: человек его только что придумал
@@ -135,9 +139,7 @@ export function MobileLoginForm() {
               id="l-newpass" value={password} onChange={setPassword}
               see={seePass} onSee={() => setSeePass((v) => !v)} autoComplete="new-password"
             />
-            <p className={password.length > 0 && password.length < 8 ? 'field-error' : 'field-hint'}>
-              Щонайменше 8 символів
-            </p>
+            <PasswordStrength value={password} />
           </Field>
           {error && <p className="field-error">{error}</p>}
           <button className="btn-primary flex items-center justify-center"
@@ -155,7 +157,7 @@ export function MobileLoginForm() {
     return (
       <AppScreen
         title={mode === 'reset' ? 'Код для відновлення' : 'Введіть код'}
-        subtitle={`Надіслали вісім цифр на ${email.trim()}`}
+        subtitle={`Ми надіслали 6-значний код на ${email.trim()}`}
         onBack={() => { setStep('form'); setCode(''); setCodeError('') }}
       >
         <CodeInput
@@ -168,17 +170,29 @@ export function MobileLoginForm() {
         {codeError && <p className="field-error text-center">{codeError}</p>}
         {busy && !codeError && <p className="t-sm mt-3 text-center prose-muted">Перевіряємо…</p>}
 
-        <div className="mt-7 text-center">
-          <button type="button" disabled={left > 0 || busy} onClick={() => void sendCode()}
-                  className="t-sm underline underline-offset-2"
-                  style={{ color: left > 0 ? 'var(--color-faint)' : 'var(--color-accent)',
-                           minHeight: 'var(--tap-min)' }}>
-            {left > 0 ? `Надіслати ще раз через ${left} с` : 'Надіслати код ще раз'}
+        <p className="code-countdown">
+          {left > 0 ? `Повторно надіслати код через ${mmss(left)}` : 'Код можна надіслати повторно'}
+        </p>
+
+        <div className="auth-result-actions">
+          <button type="button" className="btn-primary btn-tall"
+                  disabled={busy || code.length !== CODE_LENGTH}
+                  onClick={() => void verify(code)}>
+            {busy ? 'Перевіряємо…' : 'Підтвердити'}
+          </button>
+          <button type="button" className="link-quiet link-accent"
+                  disabled={left > 0 || busy} onClick={() => void sendCode()}>
+            Надіслати код повторно
           </button>
         </div>
-        <p className="t-xs mt-2 text-center" style={{ color: 'var(--color-faint)', lineHeight: 1.5 }}>
-          Код діє годину. Якщо листа немає — подивіться в «Спам».
-        </p>
+
+        <div className="note note-row">
+          <span style={{ color: 'var(--color-muted)' }}><MailIcon size={20} /></span>
+          <span>
+            Не отримали лист? Перевірте папку «Вхідні» та «Спам».
+            Або повторіть через хвилину. Код діє 10 хвилин.
+          </span>
+        </div>
       </AppScreen>
     )
   }

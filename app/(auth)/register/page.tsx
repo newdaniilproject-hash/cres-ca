@@ -1,13 +1,18 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { LEGAL_VERSION, LEGAL_DOCS } from '@/lib/legal'
+import { signupSource } from '@/lib/consent'
+import { humanAuthError, codeErrorText } from '@/lib/auth-errors'
 import { AuthShell } from '../auth-shell'
 import { GoogleButton } from '../google-button'
+import { CodeInput } from '@/app/m/code-input'
+import { MailIcon, PasswordInput, SuccessScreen, mmss } from '@/components/auth-ui'
 
-// Регистрация покупателя: имя, почта, пароль. Телефон попросим тогда,
-// когда он реально понадобится — при первом заказе (create_order).
+// Регистрация покупателя. Четыре экрана одного потока: анкета →
+// «перевірте пошту» → код → успех.
 //
 // Подтверждение почты — КОДОМ, а не ссылкой. Ссылку ломают почтовые
 // клиенты, которые открывают её во встроенном браузере без сессии,
@@ -15,31 +20,39 @@ import { GoogleButton } from '../google-button'
 // окне, человек возвращается — а подтверждать нечего. Код переносится
 // глазами и работает везде одинаково.
 //
-// Условие на стороне Supabase (миграцией не делается):
+// ⚠️ ГЛАВНОЕ, ЧТО ЗДЕСЬ БЫЛО СЛОМАНО (починено 13.08.2026):
+// форма ждала 6 знаков, а Supabase был настроен на 8 (MAILER_OTP_LENGTH),
+// поэтому кнопка «Підтвердити» не разблокировалась НИКОГДА и веб-регистрацию
+// нельзя было пройти физически. Решение владельца — шесть цифр везде;
+// длина кода теперь одна константа на весь проект, и та же, что в /m.
+//
+// Условия на стороне Supabase (миграцией не делаются):
 //   1. Authentication → Emails → Templates → Confirm signup:
-//      в шаблоне должен стоять {{ .Token }}, а не {{ .ConfirmationURL }}.
-//      Пока стоит ссылка — кода в письме не будет.
+//      в шаблоне {{ .Token }}, а не {{ .ConfirmationURL }}.
 //   2. Sign In / Providers → Email → Email OTP length = 6,
 //      Email OTP expiration = 600 (10 минут).
-//
-// Три грабли, на которые уже наступили в первой крес-ке и которые
-// здесь обойдены сознательно — см. комментарии по коду.
 const CODE_LENGTH = 6
 const RESEND_SECONDS = 60
+
+type Step = 'form' | 'sent' | 'code' | 'done'
 
 export default function RegisterPage() {
   const supabase = createClient()
 
-  const [step, setStep] = useState<'form' | 'code'>('form')
-  const [name, setName] = useState('')
+  const [step, setStep] = useState<Step>('form')
+  const [first, setFirst] = useState('')
+  const [last, setLast] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [agree, setAgree] = useState(false)
+
   const [code, setCode] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [codeError, setCodeError] = useState('')
   const [note, setNote] = useState('')
   const [left, setLeft] = useState(0)
-  const codeRef = useRef<HTMLInputElement>(null)
 
   // Отсчёт до повторной отправки. Без него человек жмёт «надіслати ще раз»
   // трижды подряд, упирается в лимит почтовика и решает, что сломалось.
@@ -49,29 +62,43 @@ export default function RegisterPage() {
     return () => clearTimeout(id)
   }, [left])
 
-  useEffect(() => {
-    if (step === 'code') codeRef.current?.focus()
-  }, [step])
+  const mismatch = confirm.length > 0 && confirm !== password
+  const ready =
+    first.trim().length >= 2 &&
+    last.trim().length >= 2 &&
+    email.trim().length >= 5 &&
+    password.length >= 8 &&
+    confirm === password &&
+    agree
 
   async function submitForm(e: React.FormEvent) {
     e.preventDefault()
+    if (!ready || busy) return
     setBusy(true); setError(''); setNote('')
 
     const { data, error } = await supabase.auth.signUp({
-      email, password,
+      email: email.trim(),
+      password,
       options: {
         data: {
-          full_name: name,
+          first_name: first.trim(),
+          last_name: last.trim(),
+          full_name: `${first.trim()} ${last.trim()}`,
           locale: 'uk',
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          // Версия документов уходит вместе с регистрацией: триггер
+          // handle_new_user кладёт её в журнал согласий. Галочка без
+          // этой строки — картинка, а не согласие.
+          terms_version: LEGAL_VERSION,
+          signup_source: signupSource(),
         },
       },
     })
 
     setBusy(false)
-    if (error) { setError(humanError(error.message)); return }
+    if (error) { setError(humanAuthError(error.message)); return }
 
-    // ГРАБЛИ №1. Здесь напрашивается проверка data.user.identities.length === 0
+    // ГРАБЛИ. Здесь напрашивается проверка data.user.identities.length === 0
     // как признак «такой уже есть». Делать её нельзя: Supabase намеренно
     // возвращает пустой список ВСЕМ, чтобы по форме регистрации нельзя было
     // перебором узнать, кто зарегистрирован. В первой крес-ке эта проверка
@@ -82,158 +109,211 @@ export default function RegisterPage() {
     // Подтверждение отключено в настройках — сессия выдана сразу.
     if (data.session) { window.location.href = '/account'; return }
 
-    setStep('code')
+    setStep('sent')
     setLeft(RESEND_SECONDS)
   }
 
-  async function submitCode(e: React.FormEvent) {
-    e.preventDefault()
-    if (code.length !== CODE_LENGTH || busy) return
-    setBusy(true); setError(''); setNote('')
-
+  async function verify(v: string) {
+    if (busy) return
+    setBusy(true); setCodeError('')
     const { error } = await supabase.auth.verifyOtp({
-      email, token: code, type: 'signup',
+      email: email.trim(), token: v, type: 'signup',
     })
-
     if (error) {
       setBusy(false)
-      setError(codeError(error.message))
+      setCodeError(codeErrorText(error.message))
       setCode('')
       return
     }
-
-    // ГРАБЛИ №2. Переход только полной навигацией, а не router.push:
-    // серверная проверка сессии на следующей странице должна увидеть
-    // свежие куки. При мягком переходе она гонится с ними и выбрасывает
-    // человека обратно на вход — ровно после успешного подтверждения.
-    window.location.href = '/account'
+    setBusy(false)
+    setStep('done')
   }
 
   async function resend() {
     if (left > 0 || busy) return
-    setBusy(true); setError(''); setNote('')
-    const { error } = await supabase.auth.resend({ type: 'signup', email })
+    setBusy(true); setError(''); setNote(''); setCodeError('')
+    const { error } = await supabase.auth.resend({ type: 'signup', email: email.trim() })
     setBusy(false)
-    if (error) { setError(humanError(error.message)); return }
+    if (error) { setError(humanAuthError(error.message)); return }
     setNote('Надіслали новий код.')
     setLeft(RESEND_SECONDS)
   }
 
-  if (step === 'code') {
+  // ── Успех ────────────────────────────────────────────────────
+  // ГРАБЛИ. Переход только полной навигацией, а не router.push:
+  // серверная проверка сессии на следующей странице должна увидеть
+  // свежие куки. При мягком переходе она гонится с ними и выбрасывает
+  // человека обратно на вход — ровно после успешного подтверждения.
+  if (step === 'done') {
     return (
-      <AuthShell title="Код із листа" subtitle={`Надіслали ${CODE_LENGTH} цифр на ${email}`}>
-        <form onSubmit={submitCode} className="flex flex-col gap-4">
-          <div>
-            <label className="field-label" htmlFor="code">Код підтвердження</label>
-            {/* autoComplete="one-time-code" — iOS и Android сами подставят
-                код из уведомления, и его не придётся переписывать руками. */}
-            <input
-              id="code"
-              ref={codeRef}
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={CODE_LENGTH}
-              required
-              className="input text-center tabular"
-              style={{ fontSize: 24, letterSpacing: '0.35em' }}
-              value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, CODE_LENGTH))}
-              placeholder="000000"
-            />
-            <p className="field-hint">Код діє 10 хвилин і спрацьовує один раз.</p>
-          </div>
-
-          {error && <p className="field-error">{error}</p>}
-          {note && <p className="t-sm" style={{ color: 'var(--color-success)' }}>{note}</p>}
-
-          <button className="btn-primary" disabled={busy || code.length !== CODE_LENGTH}>
-            {busy ? 'Перевіряємо…' : 'Підтвердити'}
-          </button>
-        </form>
-
-        <div className="t-md mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 prose-muted">
-          <button type="button" onClick={resend} disabled={left > 0 || busy}
-                  className="underline underline-offset-2 disabled:no-underline disabled:opacity-60">
-            {left > 0 ? `Надіслати ще раз через ${left} с` : 'Надіслати ще раз'}
-          </button>
-          <button type="button"
-                  onClick={() => { setStep('form'); setCode(''); setError(''); setNote('') }}
-                  className="underline underline-offset-2">
-            Змінити пошту
-          </button>
-        </div>
-
-        <p className="t-sm mt-4 prose-muted">
-          Листа немає? Перевірте «Спам» і «Промоакції».
-        </p>
+      <AuthShell>
+        <SuccessScreen
+          title="Email підтверджено!"
+          subtitle="Ваш акаунт успішно активовано. Тепер ви можете увійти."
+          actionLabel="Увійти"
+          onAction={() => { window.location.href = '/account' }}
+        />
       </AuthShell>
     )
   }
 
+  // ── Перевірте пошту ──────────────────────────────────────────
+  if (step === 'sent') {
+    // Кнопку «Відкрити Gmail» показываем только тем, у кого почта
+    // действительно на gmail.com: остальным она обещает не то.
+    const gmail = /@gmail\.com$/i.test(email.trim())
+    return (
+      <AuthShell>
+        <div className="auth-result">
+          <span className="hero-circle rise" aria-hidden><MailIcon size={36} /></span>
+          <h1 className="display rise-1 t-2xl mt-6 text-center">Перевірте свою пошту</h1>
+          <p className="rise-2 t-md mt-2 text-center prose-muted" style={{ lineHeight: 1.5 }}>
+            Ми надіслали лист для підтвердження на {email.trim()}
+          </p>
+          <p className="rise-2 t-sm mt-2 text-center" style={{ color: 'var(--color-faint)' }}>
+            Введіть код із листа, щоб активувати акаунт
+          </p>
+
+          {error && <p className="field-error">{error}</p>}
+          {note && <p className="t-sm mt-3" style={{ color: 'var(--color-success)' }}>{note}</p>}
+
+          <div className="rise-3 auth-result-actions">
+            <button type="button" className="btn-primary btn-tall"
+                    onClick={() => { setCode(''); setCodeError(''); setStep('code') }}>
+              Ввести код із листа
+            </button>
+            {gmail && (
+              <a className="btn-secondary btn-tall" href="https://mail.google.com/"
+                 target="_blank" rel="noopener noreferrer">
+                Відкрити Gmail
+              </a>
+            )}
+            <button type="button" className="link-quiet" onClick={() => void resend()}
+                    disabled={left > 0 || busy}>
+              {left > 0 ? `Надіслати лист повторно через ${left} с` : 'Надіслати лист повторно'}
+            </button>
+            <Link href="/login" className="link-quiet">Повернутися до входу</Link>
+          </div>
+        </div>
+      </AuthShell>
+    )
+  }
+
+  // ── Код ──────────────────────────────────────────────────────
+  if (step === 'code') {
+    return (
+      <AuthShell title="Підтвердження входу"
+                 subtitle={`Ми надіслали 6-значний код на ${email.trim()}`}>
+        <CodeInput
+          value={code}
+          disabled={busy}
+          invalid={!!codeError}
+          length={CODE_LENGTH}
+          onChange={(v) => {
+            setCode(v); setCodeError('')
+            if (v.length === CODE_LENGTH) void verify(v)
+          }}
+        />
+
+        {codeError && <p className="field-error text-center">{codeError}</p>}
+        {busy && !codeError && <p className="t-sm mt-3 text-center prose-muted">Перевіряємо…</p>}
+
+        <p className="code-countdown">
+          {left > 0 ? `Повторно надіслати код через ${mmss(left)}` : 'Код можна надіслати повторно'}
+        </p>
+
+        <div className="auth-result-actions">
+          <button type="button" className="btn-primary btn-tall"
+                  disabled={busy || code.length !== CODE_LENGTH}
+                  onClick={() => void verify(code)}>
+            {busy ? 'Перевіряємо…' : 'Підтвердити'}
+          </button>
+          <button type="button" className="link-quiet link-accent"
+                  disabled={left > 0 || busy} onClick={() => void resend()}>
+            Надіслати код повторно
+          </button>
+        </div>
+
+        <div className="note note-row">
+          <span style={{ color: 'var(--color-muted)' }}><MailIcon size={20} /></span>
+          <span>
+            Не отримали лист? Перевірте папку «Вхідні» та «Спам».
+            Або повторіть через хвилину.
+          </span>
+        </div>
+      </AuthShell>
+    )
+  }
+
+  // ── Анкета ───────────────────────────────────────────────────
   return (
-    <AuthShell title="Реєстрація" subtitle="Замовлення й записи в одному місці">
+    <AuthShell title="Реєстрація"
+               subtitle="Створіть акаунт, щоб користуватися всіма можливостями CRESKO">
       <form onSubmit={submitForm} className="flex flex-col gap-4">
         <div>
-          <label className="field-label" htmlFor="name">Імʼя</label>
-          <input id="name" required className="input" autoComplete="name"
-                 value={name} onChange={(e) => setName(e.target.value)} placeholder="Марія" />
+          <label className="field-label" htmlFor="first">Імʼя</label>
+          <input id="first" required className="input" autoComplete="given-name"
+                 autoCapitalize="words"
+                 value={first} onChange={(e) => setFirst(e.target.value)} placeholder="Марія" />
         </div>
         <div>
-          <label className="field-label" htmlFor="email">Пошта</label>
+          <label className="field-label" htmlFor="last">Прізвище</label>
+          <input id="last" required className="input" autoComplete="family-name"
+                 autoCapitalize="words"
+                 value={last} onChange={(e) => setLast(e.target.value)} placeholder="Коваленко" />
+        </div>
+        <div>
+          <label className="field-label" htmlFor="email">Email</label>
           <input id="email" type="email" required className="input" autoComplete="email"
+                 inputMode="email" autoCapitalize="none" spellCheck={false}
                  value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
         </div>
         <div>
           <label className="field-label" htmlFor="pass">Пароль</label>
-          <input id="pass" type="password" required minLength={8} className="input"
-                 autoComplete="new-password"
-                 value={password} onChange={(e) => setPassword(e.target.value)} />
-          <p className="field-hint">Щонайменше 8 символів</p>
+          <PasswordInput id="pass" value={password} onChange={setPassword}
+                         autoComplete="new-password" />
+          <p className={password.length > 0 && password.length < 8 ? 'field-error' : 'field-hint'}>
+            Мінімум 8 символів
+          </p>
         </div>
+        <div>
+          <label className="field-label" htmlFor="pass2">Підтвердіть пароль</label>
+          <PasswordInput id="pass2" value={confirm} onChange={setConfirm}
+                         autoComplete="new-password" invalid={mismatch} />
+          {mismatch && <p className="field-error">Паролі не збігаються</p>}
+        </div>
+
+        {/* Согласие с версией: без terms_version запись в журнале
+            согласий не значит ничего. Ссылки открываются — галочка
+            над нечитаемым текстом это повод для отказа и в App Store,
+            и у Meta при верификации бизнеса. */}
+        <label className="checkline">
+          <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
+          <span>
+            Я ознайомився(-лась) та погоджуюсь з{' '}
+            {LEGAL_DOCS.map((d, i) => (
+              <span key={d.href}>
+                <Link href={d.href}>{d.label.toLowerCase()}</Link>
+                {i < LEGAL_DOCS.length - 2 ? ', ' : i === LEGAL_DOCS.length - 2 ? ' і ' : ''}
+              </span>
+            ))}
+            .
+          </span>
+        </label>
 
         {error && <p className="field-error">{error}</p>}
 
-        <button className="btn-primary" disabled={busy}>
-          {busy ? 'Створюємо…' : 'Створити акаунт'}
+        <button className="btn-primary btn-tall" disabled={busy || !ready}>
+          {busy ? 'Створюємо…' : 'Зареєструватися'}
         </button>
       </form>
 
       <GoogleButton next="/account" />
 
-      <p className="t-md mt-6 prose-muted">
-        Вже з нами? <Link href="/login" className="underline underline-offset-2">Увійти</Link>
-      </p>
-      <p className="t-xs mt-4 prose-muted">
-        Створюючи акаунт, ви погоджуєтесь із{' '}
-        <Link href="/privacy" className="underline underline-offset-2">політикою конфіденційності</Link>.
+      <p className="t-md mt-6 text-center prose-muted">
+        Вже є акаунт?{' '}
+        <Link href="/login" className="underline underline-offset-2">Увійти</Link>
       </p>
     </AuthShell>
   )
-}
-
-// ГРАБЛИ №3. Общий переводчик ошибок на экране кода не годится: его
-// правила мапят «token expired» на «сеанс истёк, войдите заново», что
-// по смыслу неверно — истёк код, а не сеанс, и человек шёл регистрироваться,
-// а не входить. Поэтому для кода отдельная функция.
-function codeError(message: string): string {
-  const m = message.toLowerCase()
-  if (m.includes('expired')) return 'Код застарів. Надішліть новий — кнопка нижче.'
-  if (m.includes('already') && (m.includes('registered') || m.includes('confirmed')))
-    return 'Ця пошта вже підтверджена. Увійдіть зі своїм паролем.'
-  return 'Невірний код. Якщо запитували кілька разів — введіть останній.'
-}
-
-// Сообщения Supabase приходят по-английски и техническим языком.
-// Показывать их человеку — значит показывать чужую внутреннюю кухню.
-function humanError(message: string): string {
-  const m = message.toLowerCase()
-  if (m.includes('rate limit') || m.includes('too many'))
-    return 'Забагато спроб. Зачекайте хвилину й спробуйте ще раз.'
-  if (m.includes('already registered') || m.includes('already exists'))
-    return 'Такий акаунт уже існує. Спробуйте увійти або відновити пароль.'
-  if (m.includes('password'))
-    return 'Пароль закороткий або надто простий.'
-  if (m.includes('email') && m.includes('invalid'))
-    return 'Перевірте адресу пошти.'
-  return message
 }

@@ -17,6 +17,28 @@ import { LEGAL_VERSION } from '@/lib/legal'
 
 const DOCS = ['terms', 'privacy', 'cookies'] as const
 
+// Платформа для журнала согласий при регистрации почтой.
+// Именно эти три значения разрешены ограничением user_consents.source —
+// «app» база не примет.
+//
+// 13.08.2026: переехало из app/m/register/register-form.tsx. Форм
+// регистрации стало две (веб и приложение), и обе обязаны слать
+// одно и то же значение — иначе журнал согласий начнёт врать
+// в зависимости от того, откуда человек пришёл.
+export function signupSource(): 'web' | 'ios' | 'android' {
+  if (typeof window === 'undefined') return 'web'
+  const w = window as unknown as { Capacitor?: { getPlatform?: () => string } }
+  try {
+    const p = w.Capacitor?.getPlatform?.()
+    if (p === 'ios' || p === 'android') return p
+  } catch { /* мост чудит — опознаём приложение ниже */ }
+  // На Android при удалённом server.url моста Capacitor нет — опознаём
+  // приложение по интерфейсам, которые ставит MainActivity.
+  const a = window as unknown as { AndroidBiometric?: unknown; AndroidOneSignal?: unknown }
+  if (a.AndroidBiometric || a.AndroidOneSignal) return 'android'
+  return 'web'
+}
+
 export function consentSource(): 'web' | 'ios' | 'android' {
   if (typeof navigator === 'undefined') return 'web'
   if (/iPhone|iPad|iPod/.test(navigator.userAgent)) return 'ios'
