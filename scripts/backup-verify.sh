@@ -79,7 +79,24 @@ if [ "$ROUTE" = "full" ]; then
     --endpoint-url "$R2_ENDPOINT" --only-show-errors
 
   # ── Расшифровка ─────────────────────────────────────────────────────────
-  printf '%s' "$BACKUP_AGE_PRIVATE_KEY" > "$WORK/key.txt"
+  #
+  # Ключ НЕ пишется в файл как есть, а из него ВЫРЕЗАЕТСЯ сама строка
+  # `AGE-SECRET-KEY-…`. Причина в том, как ключ попадает в секрет: человек
+  # копирует файл `key.txt`, а в нём три строки — две с решёткой и одна
+  # с ключом. По дороге через блокнот и веб-форму к ним прилипают возвраты
+  # каретки от Windows, лишние пробелы, а иногда переносы теряются вовсе
+  # и всё склеивается в одну строку. Первый же боевой прогон упал на
+  # `unknown identity type` именно из-за этого — при полностью верном ключе.
+  #
+  # Вырезание снимает весь этот класс отказов разом: неважно, вставили
+  # файл целиком, одну строку или склеенную кашу — ключ найдётся.
+  printf '%s' "$BACKUP_AGE_PRIVATE_KEY" | tr -d '\r' \
+    | grep -o 'AGE-SECRET-KEY-[A-Z0-9]*' | head -1 > "$WORK/key.txt" || true
+  if ! grep -q '^AGE-SECRET-KEY-' "$WORK/key.txt"; then
+    echo "!! у секреті BACKUP_AGE_PRIVATE_KEY немає рядка AGE-SECRET-KEY-…" >&2
+    echo "   Вставте вміст файлу key.txt із запуску «Ключ шифрування копій»." >&2
+    exit 1
+  fi
   chmod 600 "$WORK/key.txt"
   age --decrypt --identity "$WORK/key.txt" \
       --output "$WORK/backup.sql" "$WORK/backup.age"
