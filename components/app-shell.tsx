@@ -9,7 +9,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { TenantModule } from '@/lib/tenant'
 import {
   IconBack, IconBag, IconBox, IconCalendar, IconCheck, IconDoc,
-  IconExit, IconGear, IconGrid, IconHome, IconMoney, IconScan, IconScissors,
+  IconExit, IconGear, IconHome, IconMoney, IconScan, IconScissors,
   IconSearch, IconUser, IconUsers,
 } from '@/components/icons'
 
@@ -49,7 +49,7 @@ const TABS: Item[] = [
   { href: '/app/inventory', label: 'Склад', icon: IconBox, module: 'inventory' },
   { href: '/app/bookings', label: 'Записи', icon: IconCalendar, module: 'bookings' },
   { href: '/app/catalog', label: 'Послуги', icon: IconScissors, module: 'catalog' },
-  { href: '/account', label: 'Профіль', icon: IconUser },
+  { href: '/app/profile', label: 'Профіль', icon: IconUser },
 ]
 
 // ── Под аватаром: всё остальное ─────────────────────────────────
@@ -58,12 +58,36 @@ const MENU: Item[] = [
   { href: '/app/journals', label: 'Журнали', icon: IconCheck, module: 'compliance' },
   { href: '/app/documents', label: 'Документи', icon: IconDoc, module: 'compliance' },
   { href: '/app/techcards', label: 'Техкарти', icon: IconDoc, module: 'compliance' },
-  { href: '/app/catalog', label: 'Каталог', icon: IconGrid, module: 'catalog' },
   { href: '/app/orders', label: 'Замовлення', icon: IconBag, module: 'orders' },
   { href: '/app/customers', label: 'Клієнти', icon: IconUsers, module: 'customers' },
   { href: '/app/finance', label: 'Фінанси', icon: IconMoney, module: 'finance' },
   { href: '/app/settings', label: 'Магазин', icon: IconGear },
 ]
+
+// ── Подписи разделов ────────────────────────────────────────────
+//
+// Заголовок и строка под ним — часть НАВИГАЦИИ, а не страницы: они
+// отвечают на вопрос «где я», и ответ обязан быть одинаковым, с какого
+// бы экрана человек сюда ни пришёл. Держать их в каждой странице значит
+// собирать одиннадцать источников правды и ловить «Каталог» в заголовке
+// там, где в панели написано «Послуги».
+//
+// Страница всё же может перебить оба: у «Сьогодні» заголовок — имя
+// заведения, и словарь его не знает.
+const HEADINGS: Record<string, { title?: string; subtitle: string }> = {
+  '/app': { subtitle: 'Що потребує уваги сьогодні' },
+  '/app/inventory': { title: 'Склад', subtitle: 'Огляд запасів та матеріалів' },
+  '/app/bookings': { title: 'Записи', subtitle: 'Розклад і клієнти на сьогодні' },
+  '/app/catalog': { title: 'Послуги', subtitle: 'Каталог послуг і товарів' },
+  '/app/profile': { title: 'Профіль', subtitle: 'Обліковий запис, безпека та вихід' },
+  '/app/journals': { title: 'Журнали', subtitle: 'Прибирання, розчини, стерилізація' },
+  '/app/documents': { title: 'Документи', subtitle: 'MSDS, сертифікати, висновки СЕС' },
+  '/app/techcards': { title: 'Техкарти', subtitle: 'Регламенти обробки канекалону' },
+  '/app/orders': { title: 'Замовлення', subtitle: 'Статуси, склад і оплати' },
+  '/app/customers': { title: 'Клієнти', subtitle: 'База клієнтів та історія візитів' },
+  '/app/finance': { title: 'Фінанси', subtitle: 'Доходи, витрати та підсумки' },
+  '/app/settings': { title: 'Налаштування закладу', subtitle: 'Інформація, публікація та команда' },
+}
 
 export function AppShell(props: {
   active: string
@@ -129,6 +153,15 @@ function AppShellInner({
   const active = (i: Item) =>
     i.exact ? pathname === i.href : pathname.startsWith(i.href)
 
+  // Подэкран карточки берёт заголовок у страницы: «Картка засобу»
+  // не должна называться «Склад». Поэтому словарь смотрит на точное
+  // совпадение адреса, а не на префикс.
+  const preset = HEADINGS[pathname]
+  const heading = {
+    title: preset?.title ?? title,
+    subtitle: subtitle ?? preset?.subtitle ?? '',
+  }
+
   async function signOut() {
     await createClient().auth.signOut()
     window.location.href = '/'
@@ -153,7 +186,7 @@ function AppShellInner({
             CRES<span style={{ color: 'var(--color-accent)' }}>KO</span>
           </Link>
           <nav className="flex flex-col gap-1">
-            {[...tabs.filter((t) => t.href !== '/account'), ...menuItems].map((s) => (
+            {[...menuItems.slice(0, 1), ...tabs, ...menuItems.slice(1)].map((s) => (
               <Link key={s.href + s.label} href={s.href} className="sidebar-item"
                     data-active={active(s)}>
                 <span aria-hidden className="flex w-5 justify-center">
@@ -206,10 +239,10 @@ function AppShellInner({
           {/* ── Заголовок раздела ─────────────────────────────── */}
           <div className="mb-5 flex items-end gap-3">
             <div className="min-w-0 flex-1">
-              <h1 className="display rise t-3xl truncate">{title}</h1>
-              {subtitle && (
+              <h1 className="display rise t-3xl truncate">{heading.title}</h1>
+              {heading.subtitle && (
                 <p className="t-sm mt-0.5 truncate" style={{ color: 'var(--color-muted)' }}>
-                  {subtitle}
+                  {heading.subtitle}
                 </p>
               )}
             </div>
