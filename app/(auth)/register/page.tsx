@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { LEGAL_VERSION, LEGAL_DOCS } from '@/lib/legal'
 import { signupSource } from '@/lib/consent'
 import { humanAuthError, codeErrorText } from '@/lib/auth-errors'
+import { nextRoute } from '@/lib/where'
 import { AuthShell } from '../auth-shell'
 import { GoogleButton } from '../google-button'
 import { CodeInput } from '@/app/m/code-input'
@@ -53,6 +54,12 @@ export default function RegisterPage() {
   const [codeError, setCodeError] = useState('')
   const [note, setNote] = useState('')
   const [left, setLeft] = useState(0)
+  // Куда уходим после подтверждения. Раньше здесь жёстко стояло
+  // '/account' — покупательский кабинет. Но CRESKO это склад для
+  // мастеров: кто регистрируется, регистрируется как бизнес, и человек
+  // без заведения обязан попасть на его создание. Решает lib/where.ts,
+  // одна на веб и на приложение.
+  const [target, setTarget] = useState('/app')
 
   // Отсчёт до повторной отправки. Без него человек жмёт «надіслати ще раз»
   // трижды подряд, упирается в лимит почтовика и решает, что сломалось.
@@ -107,7 +114,7 @@ export default function RegisterPage() {
     void data
 
     // Подтверждение отключено в настройках — сессия выдана сразу.
-    if (data.session) { window.location.href = '/account'; return }
+    if (data.session) { window.location.href = await nextRoute(supabase, 'web'); return }
 
     setStep('sent')
     setLeft(RESEND_SECONDS)
@@ -126,6 +133,8 @@ export default function RegisterPage() {
       return
     }
     setBusy(false)
+    // verifyOtp с type:'signup' уже выдал сессию — членства читаемы.
+    setTarget(await nextRoute(supabase, 'web'))
     setStep('done')
   }
 
@@ -149,10 +158,11 @@ export default function RegisterPage() {
       <AuthShell>
         <SuccessScreen
           title="Email підтверджено!"
-          subtitle="Ваш акаунт успішно активовано. Тепер ви можете увійти."
-          actionLabel="Увійти"
-          onAction={() => { window.location.href = '/account' }}
+          subtitle="Акаунт активовано. Залишився останній крок — ваш заклад."
+          actionLabel="Продовжити"
+          onAction={() => { window.location.href = target }}
         />
+        <Redirect to={target} />
       </AuthShell>
     )
   }
@@ -308,7 +318,7 @@ export default function RegisterPage() {
         </button>
       </form>
 
-      <GoogleButton next="/account" />
+      <GoogleButton />
 
       <p className="t-md mt-6 text-center prose-muted">
         Вже є акаунт?{' '}
@@ -316,4 +326,15 @@ export default function RegisterPage() {
       </p>
     </AuthShell>
   )
+}
+
+// Экран успеха живёт секунду и уходит сам — так же, как на входе.
+// Отдельным компонентом, чтобы эффект не висел на всей регистрации
+// и не срабатывал раньше времени.
+function Redirect({ to }: { to: string }) {
+  useEffect(() => {
+    const id = setTimeout(() => { window.location.href = to }, 1400)
+    return () => clearTimeout(id)
+  }, [to])
+  return null
 }
