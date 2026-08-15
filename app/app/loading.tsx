@@ -1,44 +1,38 @@
-import { AppShell } from '@/components/shell'
-
-// Три карточки дашборда: записи сьогодні, спливає термін, що закуповувати.
-// Кількість рядків — правдоподібна, не точна: реальна залежить від дня.
+// Скелетон загрузки кабинета — общий для всех экранов сегмента.
+//
+// Рисует ТОЛЬКО содержимое: шапка, заголовок и нижняя панель приходят
+// из `app/app/layout.tsx` и во время загрузки уже стоят на экране.
+// Раньше здесь была своя AppShell — и при каждом переходе на экране
+// оказывались две нижние панели одна поверх другой. Не возвращать.
+//
+// И он НЕЙТРАЛЬНЫЙ, без заголовков вроде «Записи сьогодні». Этот файл
+// подставляется при переходе на любой экран кабинета, у которого нет
+// своего скелетона: на «Послугах» и «Профілі» подписи дашборда читались
+// как содержимое чужого раздела. Пустые полосы честнее — они говорят
+// «идёт загрузка», а не называют то, чего здесь не будет.
 export default function Loading() {
   return (
-    <AppShell active="/app" title="Кабінет">
-      <div className="grid gap-4 lg:grid-cols-2">
-        <section className="card rise-1">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="t-lg">Записи сьогодні</h2>
+    <div className="flex flex-col gap-4" aria-busy aria-label="Завантаження">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="card-flat !p-3">
+            <span className="skeleton mx-auto block h-7 w-12" />
+            <span className="skeleton mx-auto mt-2 block h-3 w-16" />
           </div>
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="skeleton-row">
-              <span /><span /><span /><span />
-            </div>
-          ))}
-        </section>
-
-        <section className="card rise-2">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="t-lg">Спливає термін</h2>
-          </div>
-          {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="skeleton-row">
-              <span /><span /><span /><span />
-            </div>
-          ))}
-        </section>
-
-        <section className="card rise-3 lg:col-span-2">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="t-lg">Що закуповувати</h2>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <span key={i} className="skeleton h-6 w-28" />
-            ))}
-          </div>
-        </section>
+        ))}
       </div>
-    </AppShell>
+
+      <section className="card !p-0">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="row px-5">
+            <span className="min-w-0 flex-1">
+              <span className="skeleton block h-4 w-1/2" />
+              <span className="skeleton mt-2 block h-3 w-1/3" />
+            </span>
+            <span className="skeleton h-6 w-16 shrink-0" />
+          </div>
+        ))}
+      </section>
+    </div>
   )
 }
