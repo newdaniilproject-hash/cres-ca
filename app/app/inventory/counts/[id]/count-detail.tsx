@@ -4,7 +4,8 @@ import Link from 'next/link'
 import { useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { COUNT_STATUS_LABEL, countBadge, humanizeCount } from '../counts-client'
+import { useToast } from '@/components/toast'
+import { COUNT_STATUS_LABEL, countBadge, humanizeCount, qty } from '../counts-client'
 
 export type CountCard = {
   id: string
@@ -16,8 +17,12 @@ export type CountCard = {
 
 export type CountLine = {
   id: string
-  variantId: string
+  /** Товар считается штуками, засіб — граммами и миллилитрами. */
+  kind: 'variant' | 'material'
+  /** Вариант товара или расходник — то, чем строка ищется сканером. */
+  targetId: string
   title: string
+  subtitle: string
   unit: string
   expected: number
   counted: number | null
@@ -34,6 +39,7 @@ export function CountDetail({
 }) {
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
+  const toast = useToast()
   const counting = count.status === 'counting'
   const editable = counting && canWrite
 
@@ -41,6 +47,9 @@ export function CountDetail({
   const [err, setErr] = useState('')
   const [code, setCode] = useState('')
   const [scanMiss, setScanMiss] = useState('')
+  // Фильтр по состоянию строки. «Не пораховані» — то, ради чего экран
+  // открывают во второй раз: список на сто позиций глазами не отфильтруешь.
+  const [filter, setFilter] = useState<'all' | 'todo' | 'diff'>('all')
   // Подсвеченная строка держится до следующего скана: мастер отводит глаза
   // на полку и возвращается — строка должна остаться найденной.
   const [hit, setHit] = useState<string | null>(null)
@@ -51,28 +60,48 @@ export function CountDetail({
   const [draft, setDraft] = useState<Record<string, string>>({})
   const inputs = useRef(new Map<string, HTMLInputElement | null>())
 
-  const shown = (l: CountLine) => draft[l.id] ?? (l.counted != null ? String(l.counted) : '')
+  const shownValue = (l: CountLine) => draft[l.id] ?? (l.counted != null ? String(l.counted) : '')
   const num = (s: string) => {
-    const t = s.trim()
+    // Запятая — то, что реально набирают на украинской раскладке телефона,
+    // и Number('0,5') это NaN. Приводим до разбора, а не после.
+    const t = s.trim().replace(',', '.')
     if (t === '') return null
     const n = Number(t)
     return Number.isFinite(n) ? n : null
   }
 
-  const filled = lines.filter((l) => num(shown(l)) != null).length
-  const diffs = lines
-    .map((l) => {
-      const c = num(shown(l))
-      return c == null ? null : c - l.expected
-    })
-  const mismatches = diffs.filter((d) => d != null && d !== 0).length
+  // Округление зависит от того, что считаем. У товара остаток целый
+  // (offering_variants.stock_qty int) — дробь там ничего не значит.
+  // У расходника остаток numeric, и «0.5 л» это законное значение;
+  // округлив его до 1, экран сам породил бы расхождение на пол-литра.
+  const normalize = (l: CountLine, v: number) =>
+    l.kind === 'variant' ? Math.round(v) : Math.round(v * 1000) / 1000
+
+  const diffOf = (l: CountLine) => {
+    const c = num(shownValue(l))
+    return c == null ? null : normalize(l, c) - l.expected
+  }
+
+  const filled = lines.filter((l) => num(shownValue(l)) != null).length
+  const mismatches = lines.filter((l) => {
+    const d = diffOf(l)
+    return d != null && d !== 0
+  }).length
+
+  const visible = lines.filter((l) => {
+    if (filter === 'todo') return num(shownValue(l)) == null
+    if (filter === 'diff') { const d = diffOf(l); return d != null && d !== 0 }
+    return true
+  })
 
   async function saveLine(line: CountLine) {
-    const value = num(shown(line))
-    // counted_qty в базе целое: остаток товара считается штуками. Дробь
-    // молча округлилась бы в Postgres — округляем здесь и видимо.
-    const next = value == null ? null : Math.round(value)
+    const value = num(shownValue(line))
+    const next = value == null ? null : normalize(line, value)
     if (next === line.counted) return
+    if (next != null && next < 0) {
+      setErr('Залишок не буває відʼємним — перевірте введене число.')
+      return
+    }
 
     setBusy(line.id); setErr('')
     const { error } = await supabase.from('stock_count_lines')
@@ -84,29 +113,49 @@ export function CountDetail({
   }
 
   // Пересчёт удобно вести со сканером: код в руке, а не палец в списке
-  // из ста строк. Ищем тем же вызовом, что и главный экран склада.
+  // из ста строк. Ищем двумя вызовами сразу — наклейкой ёмкости и кодом
+  // товара: на полке у салона наклеена именно ёмкость, а её QR ни один
+  // штрихкодовый справочник не знает.
   async function lookup(raw: string) {
     const q = raw.trim()
     if (!q) return
     setCode(''); setScanMiss('')
-    const { data } = await supabase.rpc('scan_lookup', { p_tenant_id: tenantId, p_code: q })
-    const found = (data ?? []) as { kind: string; id: string; title: string }[]
-    const line = found
-      .map((f) => lines.find((l) => l.variantId === f.id))
-      .find((l): l is CountLine => l != null)
+
+    const [{ data: cont }, { data: items }] = await Promise.all([
+      supabase.rpc('scan_container', { p_tenant_id: tenantId, p_code: q }),
+      supabase.rpc('scan_lookup', { p_tenant_id: tenantId, p_code: q }),
+    ])
+
+    const container = (cont ?? [])[0] as { material_id?: string; material?: string } | undefined
+    const found = (items ?? []) as { kind: string; id: string; title: string }[]
+
+    const line = container?.material_id
+      ? lines.find((l) => l.kind === 'material' && l.targetId === container.material_id)
+      : found
+        .map((f) => lines.find((l) => l.targetId === f.id
+          && l.kind === (f.kind === 'material' ? 'material' : 'variant')))
+        .find((l): l is CountLine => l != null)
 
     if (!line) {
       setHit(null)
-      setScanMiss(found.length > 0
-        ? `«${q}» — це не позиція цього перерахунку`
+      const known = container?.material ?? found[0]?.title
+      setScanMiss(known
+        ? `«${known}» не входить у цей перерахунок`
         : `Код «${q}» не знайдено`)
       return
     }
+    // Найденная строка обязана быть видимой: при включённом фильтре
+    // «не пораховані» она могла оказаться скрытой, и скан выглядел бы
+    // как «ничего не нашлось».
+    setFilter('all')
     setHit(line.id)
-    const el = inputs.current.get(line.id)
-    el?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-    el?.focus()
-    el?.select()
+    // Прокрутка и фокус — после перерисовки со снятым фильтром.
+    setTimeout(() => {
+      const el = inputs.current.get(line.id)
+      el?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      el?.focus()
+      el?.select()
+    }, 30)
   }
 
   async function scanCamera() {
@@ -114,7 +163,8 @@ export function CountDetail({
     type BD = { detect(source: ImageBitmap): Promise<{ rawValue: string }[]> }
     const W = window as unknown as { BarcodeDetector?: new (o?: object) => BD }
     if (!W.BarcodeDetector) {
-      alert('Камера-сканер працює у Chrome на Android. Введіть код вручну.')
+      toast.warn('Камера-сканер недоступний',
+        'Працює у Chrome на Android. Введіть код вручну — поле поруч.')
       return
     }
     try {
@@ -127,17 +177,18 @@ export function CountDetail({
         formats: ['qr_code', 'ean_13', 'code_128'],
       })
       const deadline = Date.now() + 15000
-      let code: string | null = null
-      while (!code && Date.now() < deadline) {
+      let found: string | null = null
+      while (!found && Date.now() < deadline) {
         const frame = await capture.grabFrame()
         const codes = await detector.detect(frame)
-        if (codes.length > 0) code = codes[0].rawValue
+        if (codes.length > 0) found = codes[0].rawValue
         await new Promise((r) => setTimeout(r, 180))
       }
       track.stop()
-      if (code) await lookup(code)
+      if (found) await lookup(found)
+      else toast.info('Код не зчитано', 'Спробуйте ще раз або введіть вручну.')
     } catch {
-      alert('Не вдалося відкрити камеру — введіть код вручну.')
+      toast.error('Камера не відкрилась', 'Введіть код вручну — поле поруч.')
     }
   }
 
@@ -155,6 +206,10 @@ export function CountDetail({
     const { error } = await supabase.rpc('apply_stock_count', { p_count_id: count.id })
     setBusy(null)
     if (error) { setErr(humanizeCount(error.message)); return }
+    toast.success('Інвентаризацію проведено',
+      mismatches > 0
+        ? `Розбіжностей рознесено: ${mismatches}. Дивіться їх у журналі рухів.`
+        : 'Розбіжностей не було — залишок не змінився.')
     router.refresh()
   }
 
@@ -164,24 +219,21 @@ export function CountDetail({
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="rise flex flex-wrap items-center gap-2">
-        <Link href="/app/inventory/counts" className="btn-ghost">← Усі перерахунки</Link>
-        <Link href="/app/inventory" className="btn-ghost">Склад</Link>
-        <span className={`${countBadge(count.status)} ml-auto`}>
-          {COUNT_STATUS_LABEL[count.status] ?? count.status}
-        </span>
-      </div>
 
-      {loadError && <p className="field-error rise">Рядки не завантажились: {loadError}</p>}
-      {err && <p className="field-error rise">{err}</p>}
-
-      {/* Шапка документа: где мы находимся и сколько ещё идти */}
+      {/* ── Шапка документа: где мы и сколько ещё идти ───────── */}
       <section className="card rise-1">
-        <p className="tabular t-lg">Перерахунок від {fmt(count.startedAt)}</p>
-        <p className="tabular t-xs mt-0.5 prose-muted">
-          {count.appliedAt ? `проведено ${fmt(count.appliedAt)}` : 'триває'}
-          {count.note ? ` · ${count.note}` : ''}
-        </p>
+        <div className="flex flex-wrap items-start gap-2">
+          <div className="min-w-0">
+            <p className="tabular t-lg">Перерахунок від {fmt(count.startedAt)}</p>
+            <p className="tabular t-xs mt-0.5 prose-muted">
+              {count.appliedAt ? `проведено ${fmt(count.appliedAt)}` : 'триває'}
+              {count.note ? ` · ${count.note}` : ''}
+            </p>
+          </div>
+          <span className={`${countBadge(count.status)} ml-auto`}>
+            {COUNT_STATUS_LABEL[count.status] ?? count.status}
+          </span>
+        </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <span className="badge-accent tabular">
             заповнено {filled} з {lines.length}
@@ -192,13 +244,16 @@ export function CountDetail({
         </div>
       </section>
 
-      {/* Сканер: пересчёт ведут с кодом в руке */}
+      {loadError && <p className="field-error rise">Рядки не завантажились: {loadError}</p>}
+      {err && <p className="field-error rise">{err}</p>}
+
+      {/* ── Сканер: пересчёт ведут с кодом в руке ────────────── */}
       {editable && (
         <section className="card rise-2">
           <div className="flex gap-2">
             <input
               className="input"
-              placeholder="Сканувати або ввести код…"
+              placeholder="Сканувати наліпку або ввести код…"
               value={code}
               onChange={(e) => setCode(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void lookup(code) } }}
@@ -210,27 +265,52 @@ export function CountDetail({
               Знайти
             </button>
             <button type="button" onClick={() => void scanCamera()}
-                    className="btn-primary shrink-0" title="Сканувати камерою">
+                    className="btn-primary shrink-0" title="Сканувати камерою"
+                    aria-label="Сканувати камерою">
               ⌗
             </button>
           </div>
           {scanMiss && <p className="field-error">{scanMiss}</p>}
           <p className="field-hint">
-            Знайдений рядок підсвітиться і сам стане під курсор — лишиться
-            вписати те, що бачите на полиці.
+            Годиться і QR наліпки з банки, і заводський штрихкод. Знайдений
+            рядок підсвітиться і сам стане під курсор — лишиться вписати те,
+            що бачите на полиці.
           </p>
         </section>
       )}
 
-      {/* Строки */}
+      {/* ── Фильтр состояния ─────────────────────────────────── */}
+      {lines.length > 0 && (
+        <div className="rise-2 flex flex-wrap gap-2">
+          {([
+            ['all', `Усі · ${lines.length}`],
+            ['todo', `Не пораховані · ${lines.length - filled}`],
+            ['diff', `Розбіжності · ${mismatches}`],
+          ] as const).map(([key, label]) => (
+            <button key={key} type="button"
+                    className={filter === key ? 'chip-active' : 'chip'}
+                    onClick={() => setFilter(key)}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Строки ───────────────────────────────────────────── */}
       <section className="card rise-3 !p-0">
         <div className="px-5">
           {lines.length === 0 ? (
             <div className="empty">
               У цьому документі немає жодної позиції — проводити нічого.
             </div>
-          ) : lines.map((l, i) => {
-            const diff = diffs[i]
+          ) : visible.length === 0 ? (
+            <div className="empty">
+              {filter === 'todo'
+                ? 'Усі позиції пораховані — можна проводити.'
+                : 'Розбіжностей немає: факт збігся з обліком скрізь.'}
+            </div>
+          ) : visible.map((l) => {
+            const diff = diffOf(l)
             // Подсветка найденной строки — тенью с переменной темы, а не
             // подобранным цветом: иначе она разъедется при правке палитры.
             const found = hit === l.id
@@ -240,22 +320,28 @@ export function CountDetail({
                      ? { boxShadow: '0 0 0 2px var(--color-accent)', borderRadius: 'var(--radius-control)' }
                      : undefined}>
                 <div className="min-w-0">
-                  <p className="t-md truncate">{l.title}</p>
+                  <p className="t-md truncate">
+                    {l.title}
+                    {l.kind === 'material' && (
+                      <span className="prose-muted"> · засіб</span>
+                    )}
+                  </p>
                   <p className="tabular t-xs mt-0.5 prose-muted">
-                    очікується {l.expected} {l.unit}
+                    очікується {qty(l.expected)} {l.unit}
+                    {l.subtitle ? ` · ${l.subtitle}` : ''}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   {editable ? (
                     <input
                       ref={(el) => { inputs.current.set(l.id, el) }}
-                      type="number"
-                      step="1"
-                      min="0"
-                      inputMode="numeric"
+                      type="text"
+                      // Дробь у расходника законна, поэтому тип поля не
+                      // number со step=1: он на телефоне режет ввод «0,5».
+                      inputMode="decimal"
                       className="input w-24"
                       placeholder="факт"
-                      value={shown(l)}
+                      value={shownValue(l)}
                       disabled={busy === l.id}
                       onFocus={() => setHit(l.id)}
                       onChange={(e) => setDraft((d) => ({ ...d, [l.id]: e.target.value }))}
@@ -264,7 +350,7 @@ export function CountDetail({
                     />
                   ) : (
                     <span className="badge tabular">
-                      {l.counted != null ? `${l.counted} ${l.unit}` : 'не рахували'}
+                      {l.counted != null ? `${qty(l.counted)} ${l.unit}` : 'не рахували'}
                     </span>
                   )}
                   {diff == null ? (
@@ -272,9 +358,9 @@ export function CountDetail({
                   ) : diff === 0 ? (
                     <span className="badge-success">збіглось</span>
                   ) : diff < 0 ? (
-                    <span className="badge-danger tabular">нестача {Math.abs(diff)}</span>
+                    <span className="badge-danger tabular">нестача {qty(Math.abs(diff))}</span>
                   ) : (
-                    <span className="badge-warn tabular">надлишок +{diff}</span>
+                    <span className="badge-warn tabular">надлишок +{qty(diff)}</span>
                   )}
                 </div>
               </div>
@@ -288,7 +374,7 @@ export function CountDetail({
             <button type="button" className="btn-primary"
                     disabled={busy !== null || lines.length === 0}
                     onClick={() => void apply()}>
-              Провести інвентаризацію
+              {busy === 'apply' ? 'Проводимо…' : 'Провести інвентаризацію'}
             </button>
           ) : (
             <p className="t-md prose-muted">
@@ -299,6 +385,9 @@ export function CountDetail({
                   : 'Немає права змінювати склад, тому документ доступний лише для перегляду.'}
             </p>
           )}
+          <Link href="/app/inventory/movements" className="btn-ghost ml-auto">
+            Журнал рухів
+          </Link>
         </div>
       </section>
 

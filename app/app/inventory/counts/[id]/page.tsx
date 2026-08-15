@@ -1,7 +1,6 @@
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { currentMembership, can } from '@/lib/tenant'
-import { AppShell } from '@/components/shell'
 import { CountDetail } from './count-detail'
 
 export const dynamic = 'force-dynamic'
@@ -28,50 +27,61 @@ export default async function CountPage({
     .maybeSingle()
 
   if (error) {
-    return (
-      <AppShell modules={m.modules} active="/app/inventory" title="Інвентаризація">
-        <p className="field-error rise">Не вдалося відкрити інвентаризацію: {error.message}</p>
-      </AppShell>
-    )
+    return <p className="field-error rise">Не вдалося відкрити інвентаризацію: {error.message}</p>
   }
   if (!count) notFound()
 
+  // Строка документа целится ровно в одно: либо товар, либо расходник
+  // (ограничение stock_count_lines_one_target). Тянем обе связи разом
+  // и разбираем на месте — второй запрос ради второго вида позиций
+  // удвоил бы время экрана, который открывают у полки.
   const { data: lines, error: linesError } = await supabase
     .from('stock_count_lines')
-    .select(`id, variant_id, expected_qty, counted_qty,
-             offering_variants(name, unit, offerings(title))`)
+    .select(`id, variant_id, material_id, expected_qty, counted_qty,
+             offering_variants(name, unit, offerings(title)),
+             materials(name, unit, category)`)
     .eq('count_id', count.id)
 
   return (
-    <AppShell modules={m.modules} active="/app/inventory" title="Інвентаризація">
-      <CountDetail
-        tenantId={m.tenantId}
-        canWrite={can(m, 'stock.write')}
-        loadError={linesError?.message ?? ''}
-        count={{
-          id: count.id as string,
-          status: count.status as string,
-          note: (count.note as string | null) ?? null,
-          startedAt: count.started_at as string,
-          appliedAt: (count.applied_at as string | null) ?? null,
-        }}
-        lines={(lines ?? []).map((l) => {
-          const v = l.offering_variants as unknown as
-            { name: string; unit: string; offerings: { title: string } | null } | null
-          return {
-            id: l.id as string,
-            variantId: l.variant_id as string,
-            title: `${v?.offerings?.title ?? ''} · ${v?.name ?? ''}`,
-            unit: v?.unit ?? '',
-            expected: Number(l.expected_qty),
-            counted: l.counted_qty != null ? Number(l.counted_qty) : null,
-          }
-        })
-          // Порядок строк — как на полке ищут глазами: по названию.
-          // База отдаёт их одной вставкой, то есть с одинаковым created_at,
-          // и без явной сортировки порядок был бы случайным.
-          .sort((a, b) => a.title.localeCompare(b.title, 'uk'))}
-      />
-    </AppShell>
+    <CountDetail
+      tenantId={m.tenantId}
+      canWrite={can(m, 'stock.write')}
+      loadError={linesError?.message ?? ''}
+      count={{
+        id: count.id as string,
+        status: count.status as string,
+        note: (count.note as string | null) ?? null,
+        startedAt: count.started_at as string,
+        appliedAt: (count.applied_at as string | null) ?? null,
+      }}
+      lines={(lines ?? []).map((l) => {
+        const v = l.offering_variants as unknown as
+          { name: string; unit: string; offerings: { title: string } | null } | null
+        const mat = l.materials as unknown as
+          { name: string; unit: string; category: string | null } | null
+        const isMaterial = l.material_id != null
+        return {
+          id: l.id as string,
+          kind: (isMaterial ? 'material' : 'variant') as 'material' | 'variant',
+          // targetId — то, чем строка ищется сканером: у товара это вариант,
+          // у расходника — сам расходник. Одно поле вместо двух развилок.
+          targetId: (isMaterial ? l.material_id : l.variant_id) as string,
+          title: isMaterial
+            ? (mat?.name ?? '')
+            : `${v?.offerings?.title ?? ''} · ${v?.name ?? ''}`,
+          subtitle: isMaterial ? (mat?.category ?? '') : '',
+          unit: (isMaterial ? mat?.unit : v?.unit) ?? '',
+          expected: Number(l.expected_qty),
+          counted: l.counted_qty != null ? Number(l.counted_qty) : null,
+        }
+      })
+        // Порядок строк — как на полке ищут глазами: сначала расходники
+        // (у салона это весь склад), внутри — по названию. База отдаёт их
+        // одной вставкой, то есть с одинаковым created_at, и без явной
+        // сортировки порядок был бы случайным.
+        .sort((a, b) => (a.kind === b.kind
+          ? a.title.localeCompare(b.title, 'uk')
+          : a.kind === 'material' ? -1 : 1))}
+    />
   )
 }
