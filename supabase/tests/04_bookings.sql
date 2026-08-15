@@ -134,6 +134,44 @@ select count(*) as слот_снова_свободен_ожид_1
     (current_date + 1), (current_date + 1)) s
  where s.starts_at = (current_date + 1 + time '10:00') at time zone 'Europe/Kyiv';
 
+\echo '--- 0039: запись клиента оператор ВЕДЁТ ДО КОНЦА — orders.write у него остались'
+-- Вторая половина разделения прав из 0039 (первая — в 02_stock.sql).
+-- У оператора забрали склад-приёмку, но не работу с клиентом: мастер обязан
+-- сам провести запись booked → arrived → completed. Если это когда-нибудь
+-- сломают заодно с правкой прав, упадёт здесь, а не в бою.
+\set QUIET on
+select set_config('request.jwt.claims', '{}', false);
+\set QUIET off
+set role anon;
+select b.number as номер_ожид_2, b.status as статус_ожид_booked
+  from public.create_booking(
+    'aaaaaaaa-0000-0000-0000-000000000001','cccccccc-0000-0000-0000-000000000002',
+    'eeeeeeee-0000-0000-0000-000000000001',
+    (current_date + 1 + time '13:00') at time zone 'Europe/Kyiv',
+    'Оксана Клієнт','+380671230000') b;
+reset role;
+
+\set QUIET on
+select test.login('22222222-2222-2222-2222-222222222222');
+\set QUIET off
+do $$ declare v_id uuid; v_st public.booking_status; begin
+  select id into v_id from public.bookings where number = 2;
+  perform public.set_booking_status(v_id, 'arrived');
+  perform public.set_booking_status(v_id, 'completed');
+  select status into v_st from public.bookings where id = v_id;
+  if v_st <> 'completed' then
+    raise exception 'ПРОВАЛ: запись осталась в статусе % вместо completed', v_st; end if;
+  raise notice 'ok — оператор довёл запись клиента до completed без stock.write';
+exception when others then
+  if sqlerrm like 'ПРОВАЛ%' then raise; end if;
+  raise exception 'ПРОВАЛ: оператор не смог закрыть запись клиента — %', sqlerrm;
+end $$;
+
+-- Возвращаемся под владельца: дальше идут склад и ключи интеграций.
+\set QUIET on
+select test.login('11111111-1111-1111-1111-111111111111');
+\set QUIET off
+
 \echo '--- склад: порог, поставщик, сканер'
 insert into public.storage_locations (id, tenant_id, name)
 values ('ffffffff-0000-0000-0000-000000000001','aaaaaaaa-0000-0000-0000-000000000001','Полиця А1');

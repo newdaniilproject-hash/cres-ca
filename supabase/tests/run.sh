@@ -57,7 +57,7 @@ create table cron.job (
   active   boolean not null default true
 );
 create function cron.schedule(job_name text, schedule text, command text)
-  returns bigint language sql as $$
+returns bigint language sql as $$
   insert into cron.job (jobname, schedule, command) values (job_name, schedule, command)
   on conflict (jobname) do update set schedule = excluded.schedule, command = excluded.command
   returning jobid;
@@ -74,10 +74,10 @@ create schema if not exists net;
 -- Ничего никуда не шлёт: на стенде наружу ходить нельзя, да и незачем —
 -- проверяется, что задание СОЗДАНО и разбирается, а не что оно долетело.
 create function net.http_get(
-  url text,
-  params jsonb default '{}'::jsonb,
-  headers jsonb default '{}'::jsonb,
-  timeout_milliseconds int default 5000
+  url                  text,
+  params               jsonb default '{}'::jsonb,
+  headers              jsonb default '{}'::jsonb,
+  timeout_milliseconds int   default 5000
 ) returns bigint language sql as $$ select 1::bigint $$;
 SQL
 fi
@@ -103,6 +103,9 @@ psql -f "$ROOT/supabase/tests/02_stock.sql"
 psql -f "$ROOT/supabase/tests/03_orders.sql"
 psql -f "$ROOT/supabase/tests/04_bookings.sql"
 psql -f "$ROOT/supabase/tests/05_compliance.sql"
+# 06 обёрнут в begin/rollback и после себя базу не меняет, поэтому стоит
+# последним и ничего за собой не тянет.
+psql -f "$ROOT/supabase/tests/06_isolation.sql"
 
 echo
 echo "Готово. Ни одной строки «ПРОВАЛ» выше — значит все запреты сработали."

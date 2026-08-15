@@ -70,11 +70,18 @@ $$;
 select test.login('11111111-1111-1111-1111-111111111111') is not null as вошли;
 select public.jwt_perms() -> 'aaaaaaaa-0000-0000-0000-000000000001' as owner_perms;
 
-\echo '--- оператор: склад можно, финансы нельзя, чужой арендатор нельзя'
+\echo '--- оператор после 0039: расход можно, приёмка нельзя, финансы нельзя, чужой арендатор нельзя'
+-- 0039_operator_scope_split забрала у оператора stock.write и compliance.write
+-- и оставила stock.consume и compliance.journal.write. До этой правки строка
+-- ниже ждала stock.write = t и продолжала так подписывать колонку даже после
+-- миграции — то есть контрактный тест матрицы прав описывал матрицу,
+-- которой уже нет. Ожидания приведены к действующей модели.
 select test.login('22222222-2222-2222-2222-222222222222') is not null as вошли;
-select public.tenant_can('aaaaaaaa-0000-0000-0000-000000000001','stock.write')   as stock_write_ожид_t,
+select public.tenant_can('aaaaaaaa-0000-0000-0000-000000000001','stock.consume') as stock_consume_ожид_t,
+       public.tenant_can('aaaaaaaa-0000-0000-0000-000000000001','stock.read')    as stock_read_ожид_t,
+       public.tenant_can('aaaaaaaa-0000-0000-0000-000000000001','stock.write')   as stock_write_ожид_f,
        public.tenant_can('aaaaaaaa-0000-0000-0000-000000000001','finances.read') as finances_read_ожид_f,
-       public.tenant_can('aaaaaaaa-0000-0000-0000-000000000002','stock.write')   as чужой_ожид_f;
+       public.tenant_can('aaaaaaaa-0000-0000-0000-000000000002','stock.consume') as чужой_ожид_f;
 
 \echo '--- план запроса: проверка прав один раз на запрос (hashed SubPlan / InitPlan), а не на строку'
 set role authenticated;

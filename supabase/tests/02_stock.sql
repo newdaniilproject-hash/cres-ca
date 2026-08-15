@@ -1,6 +1,20 @@
 -- 02_stock.sql — склад. Проверяются в первую очередь запреты:
 -- сценарий, который ДОЛЖЕН упасть, обязан упасть.
 -- Продолжает данные из 01_permissions.sql.
+--
+-- РАЗДЕЛЕНИЕ ПРАВ НА СКЛАДЕ (0039_operator_scope_split). Раньше весь файл
+-- шёл под оператором (2222), потому что у оператора было stock.write.
+-- Миграция 0039 ОСОЗНАННО забрала у оператора stock.write и compliance.write:
+-- мастер не делает приёмку и не проводит инвентаризацию — это работа
+-- владельца/администратора/управляющего. Мастеру оставлены stock.consume
+-- (списать расход по рецептуре) и compliance.journal.write (закрыть журнал).
+--
+-- Поэтому тест теперь двухголосый:
+--   • приёмка, приход и инвентаризация — под ВЛАДЕЛЬЦЕМ (1111);
+--   • расход по рецептуре и списание — под ОПЕРАТОРОМ (2222).
+-- И отдельно зафиксировано, что оператору приёмка и приход ЗАПРЕЩЕНЫ, —
+-- чтобы «починка» прав обратно немедленно роняла прогон, а не проходила
+-- незамеченной.
 
 \set ON_ERROR_STOP on
 \set QUIET on
@@ -16,17 +30,44 @@ exception when others then
   if sqlerrm like 'ПРОВАЛ%' then raise; end if;
   raise notice 'ok — %', sqlerrm; end $$;
 
-\echo '--- приёмка документом: 10 шт товара и 20 катушек ниток одной транзакцией'
+\echo '--- документ приёмки готовит оператор: 10 шт товара и 20 катушек ниток'
+-- Сам документ — это черновик, его заведение прав на склад не требует.
 do $$ declare r uuid; sup uuid; begin
   insert into public.suppliers (tenant_id, name)
-       values ('aaaaaaaa-0000-0000-0000-000000000001','Постачальник ТОВ')
-    returning id into sup;
+  values ('aaaaaaaa-0000-0000-0000-000000000001','Постачальник ТОВ')
+  returning id into sup;
   insert into public.stock_receipts (tenant_id, supplier_id, created_by)
   values ('aaaaaaaa-0000-0000-0000-000000000001', sup,
           '22222222-2222-2222-2222-222222222222')
   returning id into r;
-  insert into public.stock_receipt_lines (receipt_id, variant_id,  quantity) values (r,'cccccccc-0000-0000-0000-000000000001',10);
+  insert into public.stock_receipt_lines (receipt_id, variant_id, quantity) values (r,'cccccccc-0000-0000-0000-000000000001',10);
   insert into public.stock_receipt_lines (receipt_id, material_id, quantity) values (r,'dddddddd-0000-0000-0000-000000000001',20);
+end $$;
+
+\echo '--- 0039: ПРОВОДКА приёмки оператором обязана упасть — у него нет stock.write'
+do $$ declare r uuid; begin
+  select id into r from public.stock_receipts limit 1;
+  perform public.apply_stock_receipt(r);
+  raise exception 'ПРОВАЛ: оператор провёл приёмку — 0039 отменена?';
+exception when others then
+  if sqlerrm like 'ПРОВАЛ%' then raise; end if;
+  raise notice 'ok — %', sqlerrm; end $$;
+
+\echo '--- 0039: прямой ПРИХОД оператором тоже обязан упасть'
+do $$ begin
+  perform public.record_stock_movement('aaaaaaaa-0000-0000-0000-000000000001','receipt',5,
+    'cccccccc-0000-0000-0000-000000000001');
+  raise exception 'ПРОВАЛ: оператор сделал приход — 0039 отменена?';
+exception when others then
+  if sqlerrm like 'ПРОВАЛ%' then raise; end if;
+  raise notice 'ok — %', sqlerrm; end $$;
+
+\echo '--- приёмку проводит ВЛАДЕЛЕЦ: 10 шт товара и 20 катушек одной транзакцией'
+\set QUIET on
+select test.login('11111111-1111-1111-1111-111111111111');
+\set QUIET off
+do $$ declare r uuid; begin
+  select id into r from public.stock_receipts limit 1;
   perform public.apply_stock_receipt(r);
 end $$;
 
@@ -40,6 +81,11 @@ do $$ declare r uuid; begin
 exception when others then
   if sqlerrm like 'ПРОВАЛ%' then raise; end if;
   raise notice 'ok — %', sqlerrm; end $$;
+
+-- Резерв под заказ — это orders.write, оно у оператора осталось.
+\set QUIET on
+select test.login('22222222-2222-2222-2222-222222222222');
+\set QUIET off
 
 \echo '--- резерв 8 из 10, затем попытка забрать ещё 5 обязана упасть'
 select (public.reserve_stock('aaaaaaaa-0000-0000-0000-000000000001',
@@ -63,6 +109,22 @@ select count(*) as движений from public.consume_materials_for_variant(
   2, 'order', '99999999-0000-0000-0000-000000000001');
 select current_stock as ниток_ожид_14 from public.materials;
 
+\echo '--- 0039: а списание расхода оператору РАЗРЕШЕНО — это его stock.consume'
+-- Обратная половина запрета выше. Если 0039 когда-нибудь «починят» в другую
+-- сторону и снимут с оператора ещё и stock.consume, упадёт этот блок.
+do $$ declare m public.stock_movements; begin
+  m := public.record_stock_movement('aaaaaaaa-0000-0000-0000-000000000001','write_off',-1,
+        null,'dddddddd-0000-0000-0000-000000000001',null,null,null,null,'бій катушки');
+  if m.id is null then raise exception 'ПРОВАЛ: списание не создало движения'; end if;
+  raise notice 'ok — оператор списал расход без stock.write (движение %)', m.id;
+exception when others then
+  if sqlerrm like 'ПРОВАЛ%' then raise; end if;
+  raise exception 'ПРОВАЛ: оператору закрыли законное списание по stock.consume — %', sqlerrm;
+end $$;
+
+select current_stock as ниток_ожид_13 from public.materials
+ where id = 'dddddddd-0000-0000-0000-000000000001';
+
 \echo '--- повтор с тем же ключом идемпотентности не двигает остаток дважды'
 select (public.record_stock_movement('aaaaaaaa-0000-0000-0000-000000000001','write_off',-1,
   'cccccccc-0000-0000-0000-000000000001',null,null,null,null,null,'брак','webhook-42')).id as первый;
@@ -71,6 +133,13 @@ select (public.record_stock_movement('aaaaaaaa-0000-0000-0000-000000000001','wri
 select count(*) as движений_ожид_1 from public.stock_movements where idempotency_key = 'webhook-42';
 select * from test.check_ledger('после повтора');
 
+-- Дальше — приход с минусом и инвентаризация. И то и другое требует
+-- stock.write, поэтому работаем ВЛАДЕЛЬЦЕМ: под оператором оба сценария
+-- упали бы на проверке прав, то есть проверяли бы не то, ради чего написаны.
+\set QUIET on
+select test.login('11111111-1111-1111-1111-111111111111');
+\set QUIET off
+
 \echo '--- приёмка с отрицательным количеством обязана упасть'
 do $$ begin
   perform public.record_stock_movement('aaaaaaaa-0000-0000-0000-000000000001','receipt',-5,
@@ -78,9 +147,26 @@ do $$ begin
   raise exception 'ПРОВАЛ: приёмка с минусом прошла';
 exception when others then
   if sqlerrm like 'ПРОВАЛ%' then raise; end if;
+  if sqlerrm like '%недостаточно прав%' then
+    raise exception 'ПРОВАЛ: упало по правам, а не по знаку количества — % ', sqlerrm; end if;
   raise notice 'ok — %', sqlerrm; end $$;
 
-\echo '--- инвентаризация: по факту 8 вместо 9, расхождение закрывается движением'
+\echo '--- 0039: инвентаризацию оператору начинать нельзя'
+\set QUIET on
+select test.login('22222222-2222-2222-2222-222222222222');
+\set QUIET off
+do $$ begin
+  perform public.start_stock_count('aaaaaaaa-0000-0000-0000-000000000001',
+    array['cccccccc-0000-0000-0000-000000000001']::uuid[]);
+  raise exception 'ПРОВАЛ: оператор начал инвентаризацию — 0039 отменена?';
+exception when others then
+  if sqlerrm like 'ПРОВАЛ%' then raise; end if;
+  raise notice 'ok — %', sqlerrm; end $$;
+
+\echo '--- инвентаризация владельцем: по факту 8 вместо 9, расхождение закрывается движением'
+\set QUIET on
+select test.login('11111111-1111-1111-1111-111111111111');
+\set QUIET off
 do $$ declare c record; begin
   c := public.start_stock_count('aaaaaaaa-0000-0000-0000-000000000001',
         array['cccccccc-0000-0000-0000-000000000001']::uuid[]);
@@ -92,8 +178,8 @@ select * from test.check_ledger('после инвентаризации');
 
 \echo '--- ЗАДАНИЕ 01: consume_materials_for_variant не берёт чужую рецептуру (0030)'
 -- Второй арендатор — чтобы «чужой вариант» был настоящим чужим, а не выдумкой.
--- Оператор 2222 состоит только в первом и имеет там stock.write; во втором
--- у него прав нет вовсе.
+-- Оператор 2222 состоит только в первом и имеет там stock.consume (после
+-- 0039 — вместо stock.write); во втором у него прав нет вовсе.
 insert into public.tenants (id, slug, name, status)
 values ('aaaaaaaa-0000-0000-0000-000000000091','shop-guard','Магазин 2','active')
 on conflict (id) do nothing;
@@ -118,7 +204,7 @@ on conflict (id) do nothing;
 
 select test.login('22222222-2222-2222-2222-222222222222');
 
-\echo '    1) свой вариант со своей рецептурой — списывает как раньше'
+\echo '  1) свой вариант со своей рецептурой — списывает как раньше'
 do $$ declare n int; begin
   select count(*) into n from public.consume_materials_for_variant(
     'aaaaaaaa-0000-0000-0000-000000000001','cccccccc-0000-0000-0000-000000000001',
@@ -127,7 +213,7 @@ do $$ declare n int; begin
   raise notice 'ok — своя рецептура списалась (% рух)', n;
 end $$;
 
-\echo '    2) ЧУЖОЙ вариант обязан упасть (до 0030 — молча списывал своё)'
+\echo '  2) ЧУЖОЙ вариант обязан упасть (до 0030 — молча списывал своё)'
 do $$ begin
   perform public.consume_materials_for_variant(
     'aaaaaaaa-0000-0000-0000-000000000001','cccccccc-0000-0000-0000-000000000091',
@@ -137,7 +223,7 @@ exception when others then
   if sqlerrm like 'ПРОВАЛ%' then raise; end if;
   raise notice 'ok — %', sqlerrm; end $$;
 
-\echo '    3) без stock.write и с пустой рецептурой обязано упасть (до 0030 — тихий успех)'
+\echo '  3) посторонний (ни stock.write, ни stock.consume) и с пустой рецептурой обязано упасть (до 0030 — тихий успех)'
 select test.login('33333333-3333-3333-3333-333333333333');
 do $$ begin
   perform public.consume_materials_for_variant(
