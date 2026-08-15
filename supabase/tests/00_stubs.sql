@@ -13,6 +13,22 @@ create or replace function auth.uid() returns uuid language sql stable as $$
   select nullif(current_setting('request.jwt.claims', true)::jsonb ->> 'sub', '')::uuid;
 $$;
 
+-- Сеансы. Настоящую `auth.sessions` держит Supabase; на стенде её не было,
+-- и миграция 0076 (принудительный выход, список активных сеансов) на нём
+-- не применялась вовсе. Колонки повторяют боевые ровно в той части,
+-- которую читает и чистит наш код, — чтобы проверялся тот же текст
+-- миграции, а не его пересказ.
+create table if not exists auth.sessions (
+  id           uuid primary key default gen_random_uuid(),
+  user_id      uuid not null,
+  created_at   timestamptz default now(),
+  updated_at   timestamptz default now(),
+  not_after    timestamptz,
+  refreshed_at timestamp,
+  user_agent   text,
+  ip           inet
+);
+
 -- Заглушка Supabase Vault: в чистом Postgres расширения нет, а миграция
 -- 0012 хранит в нём ключи продавцов. Интерфейс совпадает с настоящим —
 -- create_secret() и представление decrypted_secrets, — поэтому код
