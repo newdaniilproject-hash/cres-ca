@@ -1349,7 +1349,6 @@ body.kb-open .m-sticky {
   background: var(--color-border);
 }
 
-.btn-apple,
 .btn-google {
   display: flex;
   align-items: center;
@@ -1365,25 +1364,13 @@ body.kb-open .m-sticky {
   transition: transform var(--dur-fast) var(--ease-out-soft),
               border-color var(--dur-fast) var(--ease-out-soft);
 }
-.btn-apple:active,
 .btn-google:active { transform: scale(0.98); }
-.btn-apple:disabled,
 .btn-google:disabled { opacity: 0.5; pointer-events: none; }
 
-/* Apple рисуется по их гайдлайну: сплошной фон, знак и текст одного
-   цвета, никаких рамок и градиентов. На тёмном фоне — белая кнопка,
-   на светлом — чёрная. Отклонение от гайдлайна — повод для отказа
-   в ревью, поэтому цвета тут не из палитры проекта. */
-.btn-apple {
-  background: #ffffff;
-  color: #000000;
-  border: 1px solid #ffffff;
-}
-html.light .btn-apple {
-  background: #000000;
-  color: #ffffff;
-  border-color: #000000;
-}
+/* Кнопки Apple здесь нет намеренно (13.08.2026): провайдер в Supabase
+   выключен, ключей нет, и нажатие возвращало «provider is not enabled».
+   Правило 8 проекта — выключено значит удалено. Вернётся вместе
+   с ключами, вместе со своим набором правил по гайдлайну Apple. */
 
 /* Google: нейтральная кнопка поверхности с их разноцветным знаком —
    вариант, который они разрешают для тёмных интерфейсов. */
@@ -1397,36 +1384,6 @@ html.light .btn-apple {
    перед формой. Зеркалить отступы нельзя, иначе «або» прилипает
    к первому полю. */
 .oauth-sep.below { margin: 18px 0 6px; }
-
-/* ── Биометрический замок ────────────────────────────────────────
-   Вне @layer и ВЫШЕ ВСЕГО остального, включая шторку разделов (90).
-   Причина не косметическая: это защитный экран. Он обязан закрывать
-   кабинет целиком, и любой слой, оказавшийся поверх него, — это дыра,
-   через которую видно то, что замок прячет.
-
-   ГРАБЛЯ 14.08.2026. Экран замка рендерился внутри нижнего стека
-   оверлеев (toast.tsx, z-index 60, pointer-events: none) и получал
-   от него две беды разом:
-     • z-index 80 у ребёнка НЕ выигрывает у соседа родителя с 90 —
-       контекст наложения создаёт родитель, и шторка разделов рисовалась
-       ПОВЕРХ замка;
-     • pointer-events: none наследуется — кнопки «Розблокувати»
-       и «Вимкнути замок» не нажимались вовсе, и отказ Face ID запирал
-       человека в приложении намертво до принудительного закрытия.
-   Поэтому замок теперь уходит порталом в body (components/native.tsx),
-   а высоту слоя задаёт этот класс, а не число в компоненте. */
-.biolock-layer {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 20px;
-  padding: 0 32px;
-  background: var(--color-bg);
-}
 
 /* ── Шторка разделов (бургер-меню кабинета) ──────────────────────
    Вне @layer: обязана выигрывать у утилит. Слева, как принято
@@ -1495,3 +1452,324 @@ html.light .btn-apple {
 .tab-fade { animation: fade var(--dur-fast) var(--ease-out-soft) both; }
 .content-swap { animation: fade var(--dur-fast) var(--ease-out-soft) both; }
 .drawer-item:active { background: var(--color-surface-2); }
+
+/* ============================================================
+   Вход, онбординг и разрешения (13.08.2026)
+
+   Классы для экранов приветствия, онбординга, запроса разрешений,
+   согласия с документами, кода из письма, успеха и блокировки.
+   Вне @layer по тому же принципу, что и остальной хром экранов:
+   они обязаны выигрывать у утилит раскладки.
+
+   Ни одного цвета, радиуса и отступа мимо переменных — обе темы
+   работают без второго набора правил.
+   ============================================================ */
+
+/* ── Марка ──────────────────────────────────────────────────── */
+.brand-lockup {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+}
+.brand-word {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: var(--text-3xl);
+  line-height: 1;
+  letter-spacing: 0.14em;
+  text-indent: 0.14em;
+  color: var(--color-text);
+}
+.brand-tagline {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-indent: 0.22em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+/* В верхней полосе веба марка мельче — там это ссылка, а не герой. */
+.brand-topbar .brand-word { font-size: var(--text-lg); }
+
+/* ── Высокая кнопка ─────────────────────────────────────────────
+   52px — та же высота, что у кнопок провайдеров. Три кнопки подряд
+   разной высоты читаются как три разных по важности действия. */
+.btn-tall {
+  width: 100%;
+  min-height: var(--tap-min);
+  height: 52px;
+  font-size: var(--text-base);
+}
+
+/* Спокойная текстовая ссылка-действие под главной кнопкой. */
+.link-quiet {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap-min);
+  font-size: var(--text-sm);
+  font-weight: 550;
+  color: var(--color-muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.link-quiet:hover { color: var(--color-text); }
+.link-quiet:disabled { opacity: 0.5; text-decoration: none; pointer-events: none; }
+.link-accent { color: var(--color-accent); }
+
+/* ── Экран-результат: успех, блокировка ─────────────────────── */
+.auth-result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-block: var(--space-5);
+}
+.auth-result-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  margin-top: var(--space-6);
+}
+
+/* Знак успеха: зелёный круг с галочкой и конфетти вокруг. */
+.success-mark { position: relative; }
+.success-circle {
+  display: grid;
+  place-items: center;
+  width: 96px;
+  height: 96px;
+  border-radius: 999px;
+  background: var(--color-success-soft);
+  color: var(--color-success);
+}
+.confetti { position: absolute; inset: calc(var(--space-6) * -1); pointer-events: none; }
+.confetti i {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  animation: fade var(--dur-slow) var(--ease-out-soft) both;
+}
+.confetti i:nth-child(1) { top: 6%;  left: 10%; background: var(--color-accent); }
+.confetti i:nth-child(2) { top: 0;   right: 22%; background: var(--color-warn); animation-delay: 60ms; }
+.confetti i:nth-child(3) { top: 34%; right: 2%; background: var(--color-success); animation-delay: 120ms; }
+.confetti i:nth-child(4) { bottom: 12%; right: 12%; background: var(--color-accent); animation-delay: 180ms; }
+.confetti i:nth-child(5) { bottom: 4%;  left: 24%; background: var(--color-warn); animation-delay: 240ms; }
+.confetti i:nth-child(6) { top: 44%; left: 0;   background: var(--color-success); animation-delay: 300ms; }
+
+/* Крупный знак экрана: разрешения, блокировка, «перевірте пошту». */
+.hero-circle {
+  display: grid;
+  place-items: center;
+  width: 84px;
+  height: 84px;
+  border-radius: 999px;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+.hero-circle-danger { background: var(--color-danger-soft); color: var(--color-danger); }
+.hero-circle-success { background: var(--color-success-soft); color: var(--color-success); }
+
+/* Заметка-карточка под заголовком: подсказка либо предупреждение. */
+.note {
+  width: 100%;
+  margin-top: var(--space-5);
+  padding: var(--space-4);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-2);
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  line-height: var(--lh-sm);
+}
+.note-danger { background: var(--color-danger-soft); color: var(--color-danger); }
+.note-row { display: flex; align-items: flex-start; gap: var(--space-3); text-align: left; }
+
+/* ── Поле пароля ────────────────────────────────────────────── */
+.pw-wrap { position: relative; }
+.pw-input { padding-right: 52px; }
+.pw-eye {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 100%;
+  min-height: var(--tap-min);
+  color: var(--color-muted);
+  border-radius: var(--radius-control);
+}
+.pw-eye:hover { color: var(--color-text); }
+
+/* Мера надёжности: четыре сегмента и подпись. */
+.pw-meter-wrap { margin-top: var(--space-3); }
+.pw-meter { display: flex; gap: var(--space-1); }
+.pw-seg {
+  flex: 1;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--color-border-strong);
+  transition: background var(--dur-fast) var(--ease-out-soft);
+}
+.pw-seg[data-on='1'][data-tone='weak'] { background: var(--color-danger); }
+.pw-seg[data-on='1'][data-tone='ok']   { background: var(--color-warn); }
+.pw-seg[data-on='1'][data-tone='good'] { background: var(--color-success); }
+.pw-meter-label {
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+  color: var(--color-muted);
+}
+.pw-meter-label[data-tone='weak'] { color: var(--color-danger); }
+.pw-meter-label[data-tone='ok']   { color: var(--color-warn); }
+.pw-meter-label[data-tone='good'] { color: var(--color-success); }
+
+/* ── Пункт с иконкой ────────────────────────────────────────── */
+.bullet { display: flex; align-items: flex-start; gap: var(--space-4); text-align: left; }
+.bullet + .bullet { margin-top: var(--space-5); }
+.bullet-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: var(--h-lg);
+  height: var(--h-lg);
+  border-radius: var(--radius-control);
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+.bullet-body { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.bullet-title {
+  font-size: var(--text-base);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--color-text);
+}
+.bullet-desc { font-size: var(--text-sm); line-height: var(--lh-sm); color: var(--color-muted); }
+
+/* Тот же пункт карточкой — для экранов онбординга 3 и 4. */
+.bullet-card {
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+}
+.bullet-card + .bullet-card { margin-top: var(--space-3); }
+
+/* ── Онбординг ──────────────────────────────────────────────── */
+.onb {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  padding: 0 var(--space-5) var(--space-5);
+}
+.onb-top {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 56px;
+}
+.onb-body { display: flex; flex: 1; flex-direction: column; justify-content: center; }
+.onb-foot { display: flex; flex-direction: column; gap: var(--space-3); }
+
+/* Точки-указатель. Активная шире — так видно и число шагов,
+   и место в них, без цифр «Крок 2 із 4». */
+.dots { display: flex; justify-content: center; gap: var(--space-2); padding-block: var(--space-5); }
+.dots i {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--color-border-strong);
+  transition: width var(--dur-base) var(--ease-out-soft),
+              background var(--dur-base) var(--ease-out-soft);
+}
+.dots i[data-active='true'] { width: 22px; background: var(--color-accent); }
+
+/* ── Имитация системного окна разрешения ────────────────────── */
+/* Показываем, что именно спросит система, ДО того как спросит:
+   человек, увидевший чужое окно без предупреждения, жмёт
+   «Не дозволяти» рефлекторно, и вернуть это можно только
+   в настройках телефона. */
+.sysdlg {
+  width: 100%;
+  margin-top: var(--space-6);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-2);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+.sysdlg-text {
+  padding: var(--space-5) var(--space-4);
+  text-align: center;
+  font-size: var(--text-sm);
+  line-height: var(--lh-sm);
+  color: var(--color-text);
+}
+.sysdlg-actions { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--color-border); }
+.sysdlg-actions > * {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap-min);
+  padding: var(--space-3);
+  font-size: var(--text-base);
+  color: var(--color-accent);
+}
+.sysdlg-actions > :first-child { border-right: 1px solid var(--color-border); color: var(--color-muted); }
+.sysdlg-actions > :last-child { font-weight: 650; }
+
+/* ── Строка-ссылка на документ ──────────────────────────────── */
+.doc-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  width: 100%;
+  min-height: 56px;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--text-base);
+  font-weight: 550;
+}
+.doc-row + .doc-row { margin-top: var(--space-3); }
+.doc-row:hover { border-color: var(--color-accent); }
+.doc-row svg { color: var(--color-faint); flex-shrink: 0; }
+
+/* ── Строка согласия ────────────────────────────────────────── */
+.checkline {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  min-height: var(--tap-min);
+  cursor: pointer;
+}
+.checkline input {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  margin-top: 2px;
+  accent-color: var(--color-accent);
+}
+.checkline span {
+  font-size: var(--text-sm);
+  line-height: var(--lh-sm);
+  color: var(--color-muted);
+}
+.checkline a { color: var(--color-text); text-decoration: underline; text-underline-offset: 2px; }
+
+/* ── Обратный отсчёт под кодом ──────────────────────────────── */
+.code-countdown {
+  margin-top: var(--space-5);
+  text-align: center;
+  font-size: var(--text-sm);
+  line-height: var(--lh-sm);
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+}
