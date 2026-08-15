@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { ensureConsent } from '@/lib/consent'
-import { nextRoute } from '@/lib/where'
+import { nextRoute, type Surface } from '@/lib/where'
 import { authErrorText } from '@/app/(auth)/google-button'
 
 // Завершение входа через провайдера.
@@ -38,7 +38,12 @@ export default function AuthFinishPage() {
       const { error } = await supabase.auth.exchangeCodeForSession(code)
       if (error) { setError(authErrorText(error.message)); setRaw(error.message); return }
       await ensureConsent(supabase)
-      window.location.replace(params.get('next') || (await nextRoute(supabase)))
+      // Шёл на конкретную страницу — туда и ведём (контракт next).
+      // Не шёл — решает lib/where.ts, но адреса у поверхностей разные,
+      // поэтому её проносит сюда параметр s (по умолчанию — приложение,
+      // как было до появления этого экрана в вебе).
+      const surface: Surface = params.get('s') === 'web' ? 'web' : 'm'
+      window.location.replace(params.get('next') || (await nextRoute(supabase, surface)))
     })()
   }, [])
 
