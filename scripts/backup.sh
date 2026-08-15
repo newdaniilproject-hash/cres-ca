@@ -215,31 +215,48 @@ if [ "$DEST" = "r2" ]; then
   fi
 
   # ── Уборка старого ──────────────────────────────────────────────────────
+  #
+  # ⚠️ ЗДЕСЬ БЫЛА ОШИБКА, И ОНА СТОИЛА ЦЕЛОГО ЗАПУСКА. Прежняя редакция
+  # перечисляла объекты конвейером `aws … | tr | grep -v '^None$' | while`.
+  # На ПУСТОМ разделе (`weekly/`, `monthly/` — их ещё не существует) aws
+  # отдаёт строку `None`, `grep -v` её отбрасывает и завершается ЕДИНИЦЕЙ.
+  # При `set -o pipefail` единица становится кодом всего конвейера, `set -e`
+  # роняет скрипт — молча, без единой строки в журнале. Копия при этом уже
+  # лежала в R2 и была сверена по размеру, то есть задание краснело после
+  # успешно снятой копии.
+  #
+  # Поэтому: никакого grep в конвейере, список забирается в переменную,
+  # а сама уборка НЕ ВАЛИТ задание. Разрастание хранилища — беда медленная
+  # и заметная по счёту; потерянная копия — быстрая и незаметная. Между
+  # ними выбор очевиден, и он сделан здесь явно, а не по недосмотру.
   prune() {
-    local class="$1" days="$2"
-    local cutoff
+    local class="$1" days="$2" cutoff keys key d
     cutoff="$(date -u -d "-${days} days" +%Y%m%d)"
 
-    aws s3api list-objects-v2 --bucket "$R2_BUCKET" --prefix "${class}/" \
-      --endpoint-url "$R2_ENDPOINT" --query 'Contents[].Key' --output text 2>/dev/null \
-    | tr '\t' '\n' | grep -v '^None$' | while read -r key; do
-        [ -n "$key" ] || continue
-        # Дата берётся ИЗ ИМЕНИ, а не из времени изменения объекта:
-        # перезалив архива обновил бы дату и продлил ему жизнь навсегда.
-        local d
-        d="$(printf '%s' "$key" | sed -n 's/.*-\([0-9]\{8\}\)-[0-9]\{4\}-.*/\1/p')"
-        [ -n "$d" ] || continue
-        if [ "$d" -lt "$cutoff" ]; then
-          aws s3 rm "s3://${R2_BUCKET}/${key}" --endpoint-url "$R2_ENDPOINT" --only-show-errors
-          echo "  удалено: $key"
-        fi
-      done
+    keys="$(aws s3api list-objects-v2 --bucket "$R2_BUCKET" --prefix "${class}/" \
+              --endpoint-url "$R2_ENDPOINT" --query 'Contents[].Key' --output text 2>/dev/null || true)"
+    [ -n "$keys" ] || return 0
+    [ "$keys" != "None" ] || return 0
+
+    for key in $(printf '%s' "$keys" | tr '\t' '\n'); do
+      [ "$key" != "None" ] || continue
+      # Дата берётся ИЗ ИМЕНИ, а не из времени изменения объекта:
+      # перезалив архива обновил бы дату и продлил ему жизнь навсегда.
+      d="$(printf '%s' "$key" | sed -n 's/.*-\([0-9]\{8\}\)-[0-9]\{4\}-.*/\1/p')"
+      [ -n "$d" ] || continue
+      if [ "$d" -lt "$cutoff" ]; then
+        aws s3 rm "s3://${R2_BUCKET}/${key}" --endpoint-url "$R2_ENDPOINT" --only-show-errors \
+          && echo "  удалено: $key"
+      fi
+    done
+    return 0
   }
 
   echo "▸ уборка старого"
-  prune daily 30
-  prune weekly 92
-  prune monthly 366
+  if ! { prune daily 30 && prune weekly 92 && prune monthly 366; }; then
+    echo "::warning::Прибирання старих копій не відпрацювало — сховище зростатиме"
+    echo "!! уборка старого не отработала. Копия снята и лежит в R2 — это главное." >&2
+  fi
 else
   mkdir -p "$OUT_DIR"
   cp "$WORK/$NAME" "$OUT_DIR/$NAME"
