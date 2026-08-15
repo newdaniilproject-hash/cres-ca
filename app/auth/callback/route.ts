@@ -27,12 +27,17 @@ export async function GET(request: Request) {
     null
   const native = url.searchParams.get('native') === '1'
   const next = url.searchParams.get('next') || ''
+  // s — поверхность, с которой начали вход: 'web' или 'm'. Нужна там,
+  // где next не задан и куда вести решает lib/where.ts: у веба и /m
+  // разные адреса «заведения ещё нет». Просто проносим её насквозь.
+  const surface = url.searchParams.get('s') || ''
 
   if (native) {
     const target = new URL('cresca://auth')
     if (code) target.searchParams.set('code', code)
     if (err) target.searchParams.set('error', err)
     if (next) target.searchParams.set('next', next)
+    if (surface) target.searchParams.set('s', surface)
     return new NextResponse(handoff(target.toString()), {
       headers: {
         'content-type': 'text/html; charset=utf-8',
@@ -45,6 +50,7 @@ export async function GET(request: Request) {
   if (code) finish.searchParams.set('code', code)
   if (err) finish.searchParams.set('error', err)
   if (next) finish.searchParams.set('next', next)
+  if (surface) finish.searchParams.set('s', surface)
   return NextResponse.redirect(finish)
 }
 
