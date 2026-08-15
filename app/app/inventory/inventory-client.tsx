@@ -43,8 +43,12 @@ type ContainerHit = {
 // без прокрутки.
 export function InventoryClient({
   tenantId, userId, containers, materials, variants, totals,
-  suppliers, locations, batches,
+  suppliers, locations, batches, initialQuery, initialScan,
 }: {
+  /** Пришло из строки поиска в шапке (?q=). */
+  initialQuery: string
+  /** Пришло с кнопки сканера в шапке (?scan=1). */
+  initialScan: boolean
   tenantId: string
   userId: string
   containers: Container[]
@@ -59,13 +63,13 @@ export function InventoryClient({
   const router = useRouter()
   const toast = useToast()
   const [tab, setTab] = useState<'all' | 'containers' | 'materials' | 'goods'>('all')
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useState(initialQuery)
   // Формы раскрываются шторкой снизу, а не блоком на странице: на телефоне
   // раздвигающийся блок уводит список вниз, и мастер теряет место, где был.
   const [adding, setAdding] = useState<'material' | 'container' | 'refs' | null>(null)
   const [code, setCode] = useState('')
   const [scan, setScan] = useState<{ item?: ScanHit; container?: ContainerHit; miss?: string } | null>(null)
-  const [scanOpen, setScanOpen] = useState(false)
+  const [scanOpen, setScanOpen] = useState(initialScan)
   const [busy, setBusy] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 

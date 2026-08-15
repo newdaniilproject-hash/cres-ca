@@ -1,103 +1,75 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname, useSearchParams } from 'next/navigation'
-import { Suspense, useCallback, useEffect, useState } from 'react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { Suspense, useEffect, useState } from 'react'
 import { ThemeToggle } from '@/components/theme'
 import { Sheet } from '@/components/sheet'
 import { createClient } from '@/lib/supabase/client'
 import type { TenantModule } from '@/lib/tenant'
+import {
+  IconBack, IconBag, IconBox, IconCalendar, IconCheck, IconDoc,
+  IconExit, IconGear, IconGrid, IconHome, IconMoney, IconScan, IconScissors,
+  IconSearch, IconUser, IconUsers,
+} from '@/components/icons'
 
-// Навигация кабинета. Архитектура — решение директора 05.08.2026:
+// Навигация кабинета. Переписана 15.08.2026 по макетам CRESKO,
+// решение владельца: единый стиль, снизу — Склад, Записи, Послуги,
+// Профіль, всё остальное под аватаром.
 //
-//   РАЗДЕЛЫ живут в боковой шторке за бургером — как в инстаграме.
-//   НИЖНЯЯ ПАНЕЛЬ показывает табы ТЕКУЩЕГО раздела.
+// Что изменилось против прежней схемы и почему:
 //
-// Почему так, а не «разделы снизу», как раньше: разделов одиннадцать,
-// снизу помещается пять — и внутри каждого раздела есть свои экраны
-// (у склада семь). Прятать экраны склада в глубину — значит заставить
-// мастера искать «Приймання» по ссылкам. А так большой палец всегда
-// на экранах того раздела, в котором человек работает, — и это тот же
-// приём, что у рабочих приложений вроде Slack.
+//   БЫЛО: снизу — экраны ТЕКУЩЕГО раздела, разделы — за бургером слева.
+//   СТАЛО: снизу — сами разделы, четыре главных. Экраны раздела живут
+//   внутри экрана (быстрые действия и вкладки), а не в панели.
 //
-// Правило одной структуры: с любого экрана видно, где ты (заголовок),
-// куда можно отсюда (нижние табы), и как попасть в другой раздел
-// (бургер). Стрелка «назад» появляется только на подэкранах карточек.
+// Причина не вкусовая. Мастер за смену переключается между складом,
+// записями и услугами десятки раз, а внутрь одного раздела заходит
+// подряд. Панель обязана держать то, между чем прыгают, а не то, что
+// открывают один раз. Бургер слева при этом исчез: путь к остальным
+// разделам — аватар справа, там же тема и выход.
+//
+// Правило одной структуры сохранено: с любого экрана видно, где ты
+// (заголовок), куда можно отсюда (панель снизу), и как попасть
+// в остальное (аватар). Стрелка «назад» — только на подэкранах.
 
-// ── Разделы ──────────────────────────────────────────────────────
-// module: раздел виден, только если арендатор его купил. Первый клиент
-// (только склад и журналы) увидит в шторке пять пунктов из одиннадцати.
-type SectionTab = {
+type Item = {
   href: string
   label: string
-  icon: string
-  /** exact: таб активен только при точном совпадении пути — для «Огляд»,
-      иначе он горит на каждом подэкране раздела. */
-  exact?: boolean
-  /** tab: значение ?tab= — для экранов, где табы живут в одном адресе. */
-  tab?: string
-}
-
-type Section = {
-  href: string
-  label: string
-  icon: string
+  icon: (p: { size?: number }) => React.ReactElement
   module?: TenantModule
-  tabs?: SectionTab[]
-  /** Экраны, не поместившиеся в панель, — уезжают в шторку «Ще». */
-  more?: { href: string; label: string; hint: string }[]
+  /** exact: пункт активен только при точном совпадении пути. */
+  exact?: boolean
 }
 
-const SECTIONS: Section[] = [
-  { href: '/app', label: 'Сьогодні', icon: '◐' },
-  {
-    href: '/app/inventory', label: 'Склад', icon: '▦', module: 'inventory',
-    tabs: [
-      { href: '/app/inventory', label: 'Огляд', icon: '▦', exact: true },
-      { href: '/app/inventory/receipts', label: 'Приймання', icon: '⬓' },
-      { href: '/app/inventory/movements', label: 'Рухи', icon: '⇅' },
-      { href: '/app/inventory/counts', label: 'Інвентар', icon: '☰' },
-    ],
-    more: [
-      { href: '/app/inventory/recipes', label: 'Рецептури', hint: 'Автосписання матеріалів за послугу' },
-      { href: '/app/inventory/barcodes', label: 'Штрихкоди', hint: 'Заводські коди EAN на засобах' },
-      { href: '/app/inventory/reorder', label: 'Пора замовити', hint: 'Що закінчується і скільки докупити' },
-    ],
-  },
-  { href: '/app/bookings', label: 'Записи', icon: '◷', module: 'bookings' },
-  {
-    href: '/app/journals', label: 'Журнали', icon: '✓', module: 'compliance',
-    tabs: [
-      { href: '/app/journals', label: 'Прибирання', icon: '✓', tab: 'cleaning' },
-      { href: '/app/journals?tab=solutions', label: 'Розчини', icon: '◍', tab: 'solutions' },
-      { href: '/app/journals?tab=sterilization', label: 'Стериліз.', icon: '♨', tab: 'sterilization' },
-      { href: '/app/journals?tab=actions', label: 'Дії', icon: '≡', tab: 'actions' },
-    ],
-  },
-  { href: '/app/catalog', label: 'Каталог', icon: '◫', module: 'catalog' },
-  { href: '/app/orders', label: 'Замовлення', icon: '⬒', module: 'orders' },
-  { href: '/app/documents', label: 'Документи', icon: '⎘', module: 'compliance' },
-  { href: '/app/techcards', label: 'Техкарти', icon: '❑', module: 'compliance' },
-  { href: '/app/customers', label: 'Клієнти', icon: '◎', module: 'customers' },
-  { href: '/app/finance', label: 'Фінанси', icon: '₴', module: 'finance' },
-  { href: '/app/settings', label: 'Магазин', icon: '⚙' },
+// ── Нижняя панель: четыре пункта ────────────────────────────────
+// Больше четырёх сюда не поместится так, чтобы подпись читалась
+// на 390px и зона нажатия осталась 44px.
+const TABS: Item[] = [
+  { href: '/app/inventory', label: 'Склад', icon: IconBox, module: 'inventory' },
+  { href: '/app/bookings', label: 'Записи', icon: IconCalendar, module: 'bookings' },
+  { href: '/app/catalog', label: 'Послуги', icon: IconScissors, module: 'catalog' },
+  { href: '/account', label: 'Профіль', icon: IconUser },
 ]
 
-// Раздел определяется по началу пути, самый длинный префикс побеждает:
-// /app/inventory/receipts/17 — это Склад, а не Сьогодні.
-function sectionOf(pathname: string): Section {
-  let best = SECTIONS[0]
-  for (const s of SECTIONS) {
-    if (s.href === '/app' ? pathname === '/app' : pathname.startsWith(s.href)) {
-      if (s.href.length > best.href.length) best = s
-    }
-  }
-  return best
-}
+// ── Под аватаром: всё остальное ─────────────────────────────────
+const MENU: Item[] = [
+  { href: '/app', label: 'Сьогодні', icon: IconHome, exact: true },
+  { href: '/app/journals', label: 'Журнали', icon: IconCheck, module: 'compliance' },
+  { href: '/app/documents', label: 'Документи', icon: IconDoc, module: 'compliance' },
+  { href: '/app/techcards', label: 'Техкарти', icon: IconDoc, module: 'compliance' },
+  { href: '/app/catalog', label: 'Каталог', icon: IconGrid, module: 'catalog' },
+  { href: '/app/orders', label: 'Замовлення', icon: IconBag, module: 'orders' },
+  { href: '/app/customers', label: 'Клієнти', icon: IconUsers, module: 'customers' },
+  { href: '/app/finance', label: 'Фінанси', icon: IconMoney, module: 'finance' },
+  { href: '/app/settings', label: 'Магазин', icon: IconGear },
+]
 
 export function AppShell(props: {
   active: string
   title: string
+  /** Строка под заголовком — как на макетах: «Огляд запасів та матеріалів». */
+  subtitle?: string
   modules?: TenantModule[]
   back?: string
   action?: React.ReactNode
@@ -114,10 +86,11 @@ export function AppShell(props: {
 }
 
 function AppShellInner({
-  active, title, modules, back, action, children,
+  title, subtitle, modules, back, action, children,
 }: {
   active: string
   title: string
+  subtitle?: string
   modules?: TenantModule[]
   back?: string
   action?: React.ReactNode
@@ -125,48 +98,67 @@ function AppShellInner({
 }) {
   const pathname = usePathname()
   const params = useSearchParams()
-  const [drawer, setDrawer] = useState(false)
-  const [more, setMore] = useState(false)
+  const router = useRouter()
+  const [menu, setMenu] = useState(false)
+  const [query, setQuery] = useState('')
+  const [initial, setInitial] = useState('')
 
-  const visible = SECTIONS.filter((s) => !s.module || !modules || modules.includes(s.module))
-  const section = sectionOf(pathname)
-  const tabs = section.tabs ?? []
+  const has = (i: Item) => !i.module || !modules || modules.includes(i.module)
+  const tabs = TABS.filter(has)
+  const menuItems = MENU.filter(has)
 
-  // Смена экрана закрывает и шторку разделов, и «Ще»: навигация
-  // произошла — навигационная мебель обязана уйти с дороги сама.
-  useEffect(() => { setDrawer(false); setMore(false) }, [pathname, params])
+  // Смена экрана закрывает меню: навигация произошла — мебель обязана
+  // уйти с дороги сама.
+  useEffect(() => { setMenu(false) }, [pathname, params])
 
-  const openDrawer = useCallback(() => setDrawer(true), [])
+  // Буква на аватаре. Имя берём из профиля токена, а не запросом
+  // к базе: аватар не стоит похода в сеть на каждом экране.
+  useEffect(() => {
+    let alive = true
+    void createClient().auth.getUser().then(({ data }) => {
+      if (!alive) return
+      const u = data.user
+      const name = (u?.user_metadata?.full_name as string | undefined)
+        ?? (u?.user_metadata?.first_name as string | undefined)
+        ?? u?.email ?? ''
+      setInitial(name.trim().charAt(0).toUpperCase())
+    })
+    return () => { alive = false }
+  }, [])
 
-  const tabActive = (t: SectionTab): boolean => {
-    if (t.tab !== undefined) {
-      const current = params.get('tab') ?? (section.tabs?.[0]?.tab ?? '')
-      return pathname === section.href.split('?')[0] && current === t.tab
-    }
-    if (t.exact) return pathname === t.href
-    return pathname.startsWith(t.href)
-  }
+  const active = (i: Item) =>
+    i.exact ? pathname === i.href : pathname.startsWith(i.href)
 
   async function signOut() {
     await createClient().auth.signOut()
-    // Раньше здесь была развилка по `data-native`: из обёртки уводили
-    // на /m, из браузера — на главную. Обёртки нет, развилка удалена.
     window.location.href = '/'
+  }
+
+  // Поиск сверху ведёт на склад. Подпись честная: глобального поиска
+  // по кабинету нет, и обещать его строкой «Пошук у CRESKO» значит
+  // соврать на первом же запросе.
+  function search(e: React.FormEvent) {
+    e.preventDefault()
+    const q = query.trim()
+    router.push(q ? `/app/inventory?q=${encodeURIComponent(q)}` : '/app/inventory')
   }
 
   return (
     <div className="appshell min-h-dvh pb-32 lg:pb-0">
-      <div className="mx-auto flex max-w-6xl gap-8 px-4 pt-6 sm:px-6">
-        {/* ── Десктоп: постоянный сайдбар, ничего не пряталось ── */}
+      <div className="mx-auto flex max-w-6xl gap-8 px-4 pt-3 sm:px-6">
+
+        {/* ── Десктоп: постоянный сайдбар ─────────────────────── */}
         <aside className="hidden w-52 shrink-0 lg:block">
           <Link href="/app" className="display mb-8 block t-xl">
             CRES<span style={{ color: 'var(--color-accent)' }}>KO</span>
           </Link>
           <nav className="flex flex-col gap-1">
-            {visible.map((s) => (
-              <Link key={s.href} href={s.href} className="sidebar-item"
-                    data-active={active === s.href || section.href === s.href}>
-                <span aria-hidden className="w-4 text-center">{s.icon}</span>
+            {[...tabs.filter((t) => t.href !== '/account'), ...menuItems].map((s) => (
+              <Link key={s.href + s.label} href={s.href} className="sidebar-item"
+                    data-active={active(s)}>
+                <span aria-hidden className="flex w-5 justify-center">
+                  <s.icon size={18} />
+                </span>
                 {s.label}
               </Link>
             ))}
@@ -177,116 +169,91 @@ function AppShellInner({
         </aside>
 
         <main className="min-w-0 flex-1 pb-12">
-          <div className="apphead mb-6 flex items-center gap-3">
-            {back ? (
+
+          {/* ── Верхняя строка: назад, поиск, сканер, аватар ──── */}
+          <div className="apphead mb-4 flex items-center gap-2">
+            {back && (
               <Link href={back} aria-label="Назад"
                     className="apphead-back flex shrink-0 items-center justify-center">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
-                     stroke="currentColor" strokeWidth="2"
-                     strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M15 18l-6-6 6-6" />
-                </svg>
+                <IconBack />
               </Link>
-            ) : (
-              // Бургер — только на корневых экранах и только на телефоне:
-              // на десктопе разделы всегда на виду слева, а на подэкране
-              // это место занимает «назад» — два навигационных начала
-              // в одной шапке путают.
-              <button type="button" onClick={openDrawer} aria-label="Розділи"
-                      className="apphead-back flex shrink-0 items-center justify-center lg:hidden">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
-                     stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <path d="M4 7h16M4 12h16M4 17h16" />
-                </svg>
-              </button>
             )}
-            <h1 className="display rise t-2xl min-w-0 flex-1 truncate">{title}</h1>
-            {action}
-            <ThemeToggle className="lg:hidden" />
+
+            <form onSubmit={search} className="min-w-0 flex-1">
+              <label className="searchbar flex items-center gap-2">
+                <span aria-hidden style={{ color: 'var(--color-faint)' }}><IconSearch /></span>
+                <input
+                  className="searchbar-input min-w-0 flex-1"
+                  placeholder="Пошук на складі…"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  aria-label="Пошук на складі"
+                />
+              </label>
+            </form>
+
+            <Link href="/app/inventory?scan=1" aria-label="Сканувати код"
+                  className="iconbtn shrink-0">
+              <IconScan />
+            </Link>
+
+            <button type="button" onClick={() => setMenu(true)}
+                    aria-label="Розділи та профіль" className="avatarbtn shrink-0">
+              {initial || <IconUser size={18} />}
+            </button>
           </div>
+
+          {/* ── Заголовок раздела ─────────────────────────────── */}
+          <div className="mb-5 flex items-end gap-3">
+            <div className="min-w-0 flex-1">
+              <h1 className="display rise t-3xl truncate">{title}</h1>
+              {subtitle && (
+                <p className="t-sm mt-0.5 truncate" style={{ color: 'var(--color-muted)' }}>
+                  {subtitle}
+                </p>
+              )}
+            </div>
+            {action}
+          </div>
+
           {children}
         </main>
       </div>
 
-      {/* ── Нижняя панель: табы ТЕКУЩЕГО раздела ─────────────── */}
-      {/* У раздела один экран — панели нет: пустая полоса снизу это
-          мебель ради мебели. Разделы всегда в бургере. */}
-      {tabs.length > 0 && (
+      {/* ── Нижняя панель: разделы ──────────────────────────── */}
+      {tabs.length > 1 && (
         <nav className="bottomnav flex justify-around gap-1 p-1 lg:hidden">
           {tabs.map((t) => (
             <Link key={t.href} href={t.href} className="bottomnav-item flex-1"
-                  data-active={tabActive(t)}>
-              <span aria-hidden className="t-lg leading-none">{t.icon}</span>
+                  data-active={active(t)}>
+              <span aria-hidden><t.icon size={22} /></span>
               {t.label}
             </Link>
           ))}
-          {section.more && section.more.length > 0 && (
-            <button type="button" className="bottomnav-item flex-1"
-                    onClick={() => setMore(true)}>
-              <span aria-hidden className="t-lg leading-none">⋯</span>
-              Ще
-            </button>
-          )}
         </nav>
       )}
 
-      {/* ── Шторка разделов ──────────────────────────────────── */}
-      {drawer && (
-        <div className="drawer-layer" onClick={() => setDrawer(false)}>
-          <div className="drawer" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between" style={{ height: 56 }}>
-              <span className="display t-xl">
-                CRES<span style={{ color: 'var(--color-accent)' }}>KO</span>
+      {/* ── Под аватаром: остальные разделы, тема, выход ─────── */}
+      <Sheet open={menu} onClose={() => setMenu(false)} title="Розділи">
+        <div className="flex flex-col gap-1">
+          {menuItems.map((s) => (
+            <Link key={s.href + s.label} href={s.href} className="drawer-item"
+                  data-active={active(s)}>
+              <span aria-hidden className="flex w-6 justify-center">
+                <s.icon size={20} />
               </span>
-              <button type="button" aria-label="Закрити" onClick={() => setDrawer(false)}
-                      className="flex items-center justify-center"
-                      style={{ width: 'var(--tap-min)', height: 'var(--tap-min)', marginRight: -8 }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                     stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <path d="M6 6l12 12M18 6L6 18" />
-                </svg>
-              </button>
-            </div>
-
-            <nav className="mt-2 flex flex-col gap-1">
-              {visible.map((s) => (
-                <Link key={s.href} href={s.href} className="drawer-item"
-                      data-active={section.href === s.href}
-                      >
-                  <span aria-hidden className="w-5 text-center t-lg">{s.icon}</span>
-                  {s.label}
-                </Link>
-              ))}
-            </nav>
-
-            <div className="mt-auto border-t pt-3" style={{ borderColor: 'var(--color-border)' }}>
-              <ThemeToggle />
-              <button type="button" onClick={() => void signOut()}
-                      className="drawer-item mt-1 w-full text-left"
-                      style={{ color: 'var(--color-muted)' }}>
-                <span aria-hidden className="w-5 text-center t-lg">→</span>
-                Вийти
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── «Ще»: экраны раздела, не поместившиеся в панель ──── */}
-      <Sheet open={more} onClose={() => setMore(false)} title={`${section.label} — ще`}>
-        <div className="flex flex-col gap-2">
-          {(section.more ?? []).map((m) => (
-            <Link key={m.href} href={m.href}
-                  className="card-flat flex items-center justify-between gap-3"
-                  style={{ minHeight: 'var(--tap-min)' }}
-                  >
-              <span>
-                <span className="t-md block">{m.label}</span>
-                <span className="t-xs block" style={{ color: 'var(--color-faint)' }}>{m.hint}</span>
-              </span>
-              <span aria-hidden style={{ color: 'var(--color-faint)' }}>›</span>
+              {s.label}
             </Link>
           ))}
+        </div>
+        <div className="mt-4 border-t pt-3" style={{ borderColor: 'var(--color-border)' }}>
+          <ThemeToggle />
+          <button type="button" onClick={() => void signOut()}
+                  className="drawer-item mt-1 w-full text-left"
+                  style={{ color: 'var(--color-muted)' }}>
+            <span aria-hidden className="flex w-6 justify-center"><IconExit /></span>
+            Вийти
+          </button>
         </div>
       </Sheet>
     </div>
