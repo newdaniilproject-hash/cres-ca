@@ -22,12 +22,16 @@ const inter = Inter({
   display: 'swap',
 })
 
+// Тайтлы вкладок: имя продукта — CRESKO. Шаблон «%s — CRESKO» подставляется
+// ко всем экранам кабинета, у которых свой title («Склад — CRESKO»).
+// Заголовок публичной витрины задан у неё absolute (app/page.tsx) и это
+// изменение его не касается: имя витрины — отдельное решение владельца.
 export const metadata: Metadata = {
-  title: { default: 'Маркетплейс товарів і послуг', template: '%s — Маркетплейс' },
+  title: { default: 'CRESKO — склад для майстрів', template: '%s — CRESKO' },
   description:
     'Товари та послуги від українських підприємців: запис до майстрів, замовлення з доставкою, облік для продавця.',
   manifest: '/manifest.webmanifest',
-  appleWebApp: { capable: true, statusBarStyle: 'default', title: 'Маркетплейс' },
+  appleWebApp: { capable: true, statusBarStyle: 'default', title: 'CRESKO' },
 }
 
 export const viewport: Viewport = {
