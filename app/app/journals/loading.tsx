@@ -1,10 +1,13 @@
-import { AppShell } from '@/components/shell'
-
+// Скелетон загрузки. Рисует ТОЛЬКО содержимое: шапка, заголовок
+// и нижняя панель приходят из `app/app/layout.tsx` и во время
+// загрузки уже стоят на экране. Раньше здесь была своя AppShell —
+// и при каждом переходе на экране оказывались две нижние панели
+// одна поверх другой. Не возвращать.
 // JournalsClient открывается на вкладке «Прибирання» — чек-лист
 // задач построчно, тем же .row, что и в реальному контенті.
 export default function Loading() {
   return (
-    <AppShell active="/app/journals" title="Санітарні журнали">
+    <>
       <div className="flex flex-col gap-5">
         <div className="rise flex flex-wrap items-center gap-2">
           <span className="skeleton h-11 w-48" />
@@ -20,6 +23,6 @@ export default function Loading() {
           </div>
         </section>
       </div>
-    </AppShell>
+    </>
   )
 }
