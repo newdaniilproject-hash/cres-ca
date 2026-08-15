@@ -239,3 +239,113 @@ begin
   end if;
   raise notice 'ok — повторный проход не добавил ни одной строки';
 end $$;
+
+\echo '--- 0070: полбанки остаётся полбанкой, а не превращается в расхождение'
+--
+-- Главная проверка миграции 0070. До неё expected_qty и counted_qty были
+-- целыми: остаток 0.5 л снимался в документ как 0, мастер вписывал 0.5,
+-- и база рождала «коригування» на пустом месте — в журнале, который
+-- предъявляют инспектору. Здесь весь цикл на дробном остатке: снимок,
+-- факт, проведение, сходимость кэша с журналом.
+\set QUIET on
+select test.login('11111111-1111-1111-1111-111111111111');
+\set QUIET off
+set role authenticated;
+
+-- Отдельный засіб, чтобы не мешать предыдущим утверждениям этого файла.
+insert into public.materials (id, tenant_id, name, unit, cost_per_unit)
+values ('dddddddd-0000-0000-0000-0000000000f0',
+        'aaaaaaaa-0000-0000-0000-000000000001', 'Оксид 6% (дробный)', 'л', 40);
+
+-- Остаток движется только журналом (правило 5), и кэш пересчитывает сама
+-- record_stock_movement — триггера на вставке в журнал нет намеренно.
+-- Прямая вставка в stock_movements оставила бы кэш нулевым: это не обход,
+-- это отсутствие второго пути.
+select (public.record_stock_movement(
+  p_tenant_id     => 'aaaaaaaa-0000-0000-0000-000000000001',
+  p_movement_type => 'receipt',
+  p_quantity      => 2.5,
+  p_material_id   => 'dddddddd-0000-0000-0000-0000000000f0'
+)).id is not null as прихід_пройшов_ожид_t;
+
+select current_stock as залишок_ожид_2_5
+  from public.materials where id = 'dddddddd-0000-0000-0000-0000000000f0';
+
+do $$
+declare v_count uuid; v_expected numeric; v_line uuid;
+begin
+  v_count := (public.start_stock_count(
+    'aaaaaaaa-0000-0000-0000-000000000001', null,
+    array['dddddddd-0000-0000-0000-0000000000f0'::uuid]
+  )).id;
+
+  select id, expected_qty into v_line, v_expected
+    from public.stock_count_lines
+   where count_id = v_count
+     and material_id = 'dddddddd-0000-0000-0000-0000000000f0';
+
+  if v_expected <> 2.5 then
+    raise exception 'ПРОВАЛ: снимок остатка округлился — в документе % замість 2.5', v_expected;
+  end if;
+
+  -- На полке нашлось меньше: 2.25 л. Разница ровно четверть литра.
+  update public.stock_count_lines set counted_qty = 2.25 where id = v_line;
+  perform public.apply_stock_count(v_count);
+
+  raise notice 'ok — дробный пересчёт прошёл без округления';
+end $$;
+
+\echo '--- дробное расхождение разнесено движением ровно на 0.25'
+select quantity as кількість_ожид_мінус_0_25
+  from public.stock_movements
+ where material_id = 'dddddddd-0000-0000-0000-0000000000f0'
+   and reference_type = 'stock_count'
+ order by created_at desc limit 1;
+
+\echo '--- и кэш остатка сошёлся с журналом на дробях'
+select (m.current_stock = 2.25) as залишок_ожид_t,
+       (m.current_stock = (select coalesce(sum(quantity), 0)
+                             from public.stock_movements sm
+                            where sm.material_id = m.id)) as кеш_дорівнює_журналу_ожид_t
+  from public.materials m where m.id = 'dddddddd-0000-0000-0000-0000000000f0';
+
+\echo '--- 0070: отрицательный факт не заводится'
+do $$
+declare v_count uuid; v_line uuid;
+begin
+  v_count := (public.start_stock_count(
+    'aaaaaaaa-0000-0000-0000-000000000001', null,
+    array['dddddddd-0000-0000-0000-0000000000f0'::uuid]
+  )).id;
+  select id into v_line from public.stock_count_lines where count_id = v_count;
+  update public.stock_count_lines set counted_qty = -1 where id = v_line;
+  raise exception 'ПРОВАЛ: минус на полке приняли за факт';
+exception when others then
+  if sqlerrm like 'ПРОВАЛ%' then raise; end if;
+  raise notice 'ok — %', sqlerrm; end $$;
+
+\echo '--- 0071: сканер наліпки отдаёт material_id для сопоставления'
+--
+-- Экран инвентаризации сопоставляет отсканированную наклейку со строкой
+-- документа по идентификатору. Пока функция отдавала одно название,
+-- сопоставление было бы по строке — а имена засобів различаются одним словом.
+do $$
+declare v_has boolean;
+begin
+  select exists (
+    select 1 from information_schema.columns
+     where table_schema = 'public' and table_name = 'scan_container'
+  ) into v_has;
+  -- Функция, а не таблица: спрашиваем у самой сигнатуры.
+  select exists (
+    select 1
+      from pg_proc p
+      join unnest(p.proargnames, p.proargmodes) as a(nm, md) on true
+     where p.proname = 'scan_container'
+       and a.nm = 'material_id' and a.md = 't'
+  ) into v_has;
+  if not v_has then
+    raise exception 'ПРОВАЛ: scan_container не повертає material_id';
+  end if;
+  raise notice 'ok — scan_container отдаёт material_id';
+end $$;
