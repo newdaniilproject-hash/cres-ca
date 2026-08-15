@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { Suspense, useEffect, useState } from 'react'
+import { Suspense, createContext, useContext, useEffect, useState } from 'react'
 import { ThemeToggle } from '@/components/theme'
 import { Sheet } from '@/components/sheet'
 import { createClient } from '@/lib/supabase/client'
@@ -17,7 +17,19 @@ import {
 // решение владельца: единый стиль, снизу — Склад, Записи, Послуги,
 // Профіль, всё остальное под аватаром.
 //
-// Что изменилось против прежней схемы и почему:
+// ГДЕ ЖИВЁТ ОБОЛОЧКА. В `app/app/layout.tsx`, один раз на весь кабинет.
+// Раньше её рисовала каждая страница, и это дало дефект, который владелец
+// увидел глазами: при переходе Next показывает `loading.tsx` сегмента,
+// а тот рисовал ВТОРУЮ оболочку — на экране оказывались две нижние панели
+// одна поверх другой («навбар со всеми иконками») плюс скелетон чужого
+// экрана под правильным заголовком.
+//
+// Поэтому AppShell теперь идемпотентен: вызванный внутри уже отрисованной
+// оболочки, он не рисует ничего своего и отдаёт только содержимое.
+// Двадцать шесть страниц кабинета продолжают звать его как звали —
+// переписывать их не пришлось, и второй панели больше не появится.
+//
+// ЧТО ИЗМЕНИЛОСЬ В САМОЙ НАВИГАЦИИ:
 //
 //   БЫЛО: снизу — экраны ТЕКУЩЕГО раздела, разделы — за бургером слева.
 //   СТАЛО: снизу — сами разделы, четыре главных. Экраны раздела живут
@@ -28,10 +40,6 @@ import {
 // подряд. Панель обязана держать то, между чем прыгают, а не то, что
 // открывают один раз. Бургер слева при этом исчез: путь к остальным
 // разделам — аватар справа, там же тема и выход.
-//
-// Правило одной структуры сохранено: с любого экрана видно, где ты
-// (заголовок), куда можно отсюда (панель снизу), и как попасть
-// в остальное (аватар). Стрелка «назад» — только на подэкранах.
 
 type Item = {
   href: string
@@ -64,59 +72,100 @@ const MENU: Item[] = [
   { href: '/app/settings', label: 'Магазин', icon: IconGear },
 ]
 
-// ── Подписи разделов ────────────────────────────────────────────
+// ── Подписи экранов ─────────────────────────────────────────────
 //
 // Заголовок и строка под ним — часть НАВИГАЦИИ, а не страницы: они
 // отвечают на вопрос «где я», и ответ обязан быть одинаковым, с какого
-// бы экрана человек сюда ни пришёл. Держать их в каждой странице значит
-// собирать одиннадцать источников правды и ловить «Каталог» в заголовке
-// там, где в панели написано «Послуги».
+// бы экрана человек сюда ни пришёл. Держать их в двадцати шести
+// страницах значит завести двадцать шесть источников правды и получить
+// «Каталог» в заголовке там, где в панели написано «Послуги».
 //
-// Страница всё же может перебить оба: у «Сьогодні» заголовок — имя
-// заведения, и словарь его не знает.
-const HEADINGS: Record<string, { title?: string; subtitle: string }> = {
-  '/app': { subtitle: 'Що потребує уваги сьогодні' },
-  '/app/inventory': { title: 'Склад', subtitle: 'Огляд запасів та матеріалів' },
-  '/app/bookings': { title: 'Записи', subtitle: 'Розклад і клієнти на сьогодні' },
-  '/app/catalog': { title: 'Послуги', subtitle: 'Каталог послуг і товарів' },
-  '/app/profile': { title: 'Профіль', subtitle: 'Обліковий запис, безпека та вихід' },
-  '/app/journals': { title: 'Журнали', subtitle: 'Прибирання, розчини, стерилізація' },
-  '/app/documents': { title: 'Документи', subtitle: 'MSDS, сертифікати, висновки СЕС' },
-  '/app/techcards': { title: 'Техкарти', subtitle: 'Регламенти обробки канекалону' },
-  '/app/orders': { title: 'Замовлення', subtitle: 'Статуси, склад і оплати' },
-  '/app/customers': { title: 'Клієнти', subtitle: 'База клієнтів та історія візитів' },
-  '/app/finance': { title: 'Фінанси', subtitle: 'Доходи, витрати та підсумки' },
-  '/app/settings': { title: 'Налаштування закладу', subtitle: 'Інформація, публікація та команда' },
+// `*` — любой один сегмент: под него попадают адреса карточек.
+const HEADINGS: [string, string, string][] = [
+  ['/app/inventory', 'Склад', 'Огляд запасів та матеріалів'],
+  ['/app/inventory/receipts', 'Приймання', 'Накладні та оприбуткування'],
+  ['/app/inventory/receipts/*', 'Приймання', 'Документ надходження'],
+  ['/app/inventory/movements', 'Рухи залишку', 'Журнал надходжень і списань'],
+  ['/app/inventory/counts', 'Інвентаризація', 'Перерахунок фактичних залишків'],
+  ['/app/inventory/counts/*', 'Інвентаризація', 'Документ перерахунку'],
+  ['/app/inventory/recipes', 'Рецептура', 'Автосписання матеріалів за послугу'],
+  ['/app/inventory/barcodes', 'Штрихкоди', 'Заводські коди EAN на засобах'],
+  ['/app/inventory/reorder', 'Пора замовити', 'Що закінчується і скільки докупити'],
+  ['/app/inventory/materials/*', 'Картка засобу', 'Паспорт, партія та терміни'],
+  ['/app/inventory/materials/*/docs', 'Документи засобу', 'MSDS, сертифікати, нотифікація'],
+  ['/app/inventory/materials/*/pao', 'Відкриття та фасування', 'PAO, розлив і наліпки'],
+  ['/app/bookings', 'Записи', 'Розклад і клієнти на сьогодні'],
+  ['/app/catalog', 'Послуги', 'Каталог послуг і товарів'],
+  ['/app/catalog/new', 'Нова позиція', 'Послуга або товар'],
+  ['/app/catalog/*', 'Позиція каталогу', 'Опис, ціна та наявність'],
+  ['/app/journals', 'Журнали', 'Прибирання, розчини, стерилізація'],
+  ['/app/journals/report', 'Звіт для перевірки', 'Вивантаження за період'],
+  ['/app/documents', 'Документи', 'MSDS, сертифікати, висновки СЕС'],
+  ['/app/techcards', 'Техкарти', 'Регламенти обробки канекалону'],
+  ['/app/orders', 'Замовлення', 'Статуси, склад і оплати'],
+  ['/app/orders/*', 'Замовлення', 'Склад, статус і оплата'],
+  ['/app/customers', 'Клієнти', 'База клієнтів та історія візитів'],
+  ['/app/finance', 'Фінанси', 'Доходи, витрати та підсумки'],
+  ['/app/profile', 'Профіль', 'Обліковий запис, безпека та вихід'],
+  ['/app/settings', 'Налаштування закладу', 'Інформація, публікація та команда'],
+]
+
+function matches(pattern: string, pathname: string): boolean {
+  const p = pattern.split('/')
+  const a = pathname.split('/')
+  if (p.length !== a.length) return false
+  return p.every((seg, i) => seg === '*' || seg === a[i])
 }
 
+/** Заголовок, подпись и адрес «назад» — из адреса, а не из страницы. */
+function headingOf(pathname: string, shopName: string) {
+  if (pathname === '/app') {
+    return { title: shopName || 'Кабінет', subtitle: 'Що потребує уваги сьогодні', back: '' }
+  }
+  // Сначала точное совпадение, потом шаблоны: «/app/catalog/new» обязан
+  // выиграть у «/app/catalog/*», иначе новая позиция назовётся карточкой.
+  const hit = HEADINGS.find(([p]) => p === pathname)
+    ?? HEADINGS.find(([p]) => p.includes('*') && matches(p, pathname))
+  const root = [...TABS, ...MENU].some((i) => i.href === pathname)
+  const back = root ? '' : pathname.split('/').slice(0, -1).join('/')
+  return { title: hit?.[1] ?? '', subtitle: hit?.[2] ?? '', back }
+}
+
+// Отрисована ли оболочка выше по дереву. Внутри неё AppShell прозрачен.
+const InsideShell = createContext(false)
+
 export function AppShell(props: {
-  active: string
-  title: string
-  /** Строка под заголовком — как на макетах: «Огляд запасів та матеріалів». */
+  active?: string
+  title?: string
   subtitle?: string
   modules?: TenantModule[]
+  /** Имя заведения — заголовок экрана «Сьогодні». */
+  shopName?: string
   back?: string
   action?: React.ReactNode
   children: React.ReactNode
 }) {
+  const inside = useContext(InsideShell)
+  // Страница вызвала AppShell внутри layout — отдаём только содержимое.
+  // Так двадцать шесть старых вызовов перестали плодить вторую панель.
+  if (inside) return <>{props.children}</>
+
   // useSearchParams обязан жить под Suspense — иначе статическая сборка
-  // страницы падает. Кабинет весь динамический, но правило дешевле
-  // соблюсти, чем однажды словить его на новом экране.
+  // страницы падает.
   return (
     <Suspense fallback={<div className="appshell min-h-dvh" />}>
-      <AppShellInner {...props} />
+      <InsideShell.Provider value>
+        <AppShellInner {...props} />
+      </InsideShell.Provider>
     </Suspense>
   )
 }
 
 function AppShellInner({
-  title, subtitle, modules, back, action, children,
+  modules, shopName = '', action, children,
 }: {
-  active: string
-  title: string
-  subtitle?: string
   modules?: TenantModule[]
-  back?: string
+  shopName?: string
   action?: React.ReactNode
   children: React.ReactNode
 }) {
@@ -130,6 +179,7 @@ function AppShellInner({
   const has = (i: Item) => !i.module || !modules || modules.includes(i.module)
   const tabs = TABS.filter(has)
   const menuItems = MENU.filter(has)
+  const heading = headingOf(pathname, shopName)
 
   // Смена экрана закрывает меню: навигация произошла — мебель обязана
   // уйти с дороги сама.
@@ -152,15 +202,6 @@ function AppShellInner({
 
   const active = (i: Item) =>
     i.exact ? pathname === i.href : pathname.startsWith(i.href)
-
-  // Подэкран карточки берёт заголовок у страницы: «Картка засобу»
-  // не должна называться «Склад». Поэтому словарь смотрит на точное
-  // совпадение адреса, а не на префикс.
-  const preset = HEADINGS[pathname]
-  const heading = {
-    title: preset?.title ?? title,
-    subtitle: subtitle ?? preset?.subtitle ?? '',
-  }
 
   async function signOut() {
     await createClient().auth.signOut()
@@ -205,8 +246,8 @@ function AppShellInner({
 
           {/* ── Верхняя строка: назад, поиск, сканер, аватар ──── */}
           <div className="apphead mb-4 flex items-center gap-2">
-            {back && (
-              <Link href={back} aria-label="Назад"
+            {heading.back && (
+              <Link href={heading.back} aria-label="Назад"
                     className="apphead-back flex shrink-0 items-center justify-center">
                 <IconBack />
               </Link>
@@ -236,7 +277,7 @@ function AppShellInner({
             </button>
           </div>
 
-          {/* ── Заголовок раздела ─────────────────────────────── */}
+          {/* ── Заголовок экрана ──────────────────────────────── */}
           <div className="mb-5 flex items-end gap-3">
             <div className="min-w-0 flex-1">
               <h1 className="display rise t-3xl truncate">{heading.title}</h1>
