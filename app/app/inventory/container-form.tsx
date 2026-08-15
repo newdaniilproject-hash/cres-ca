@@ -58,11 +58,11 @@ export function ContainerForm({
   const [unit, setUnit] = useState('')
   const [pao, setPao] = useState('')
   const [made, setMade] = useState<string | null>(null)
-  const [madeId, setMadeId] = useState<string | null>(null)
 
   // партия
   const [bMaterial, setBMaterial] = useState('')
   const [bNumber, setBNumber] = useState('')
+  const [bMade, setBMade] = useState('')
   const [bExpiry, setBExpiry] = useState('')
   const [bReceived, setBReceived] = useState(today)
   const [bSupplier, setBSupplier] = useState('')
@@ -89,9 +89,7 @@ export function ContainerForm({
   async function saveContainer(e: React.FormEvent) {
     e.preventDefault()
     setBusy(true); setErr(''); setMade(null)
-    // .select('id') нужен не «на всякий случай»: без него кнопка печати
-    // ниже не знает, какую банку печатать, и уходит на лист из всех 200.
-    const { data: row, error } = await supabase.from('material_containers').insert({
+    const { error } = await supabase.from('material_containers').insert({
       tenant_id: tenantId,
       material_id: material,
       batch_id: batchId || null,
@@ -103,7 +101,7 @@ export function ContainerForm({
       // status оставляем по умолчанию 'sealed': банку заводят закрытой,
       // а открывают сканером в момент, когда реально сорвали пломбу —
       // от этого мгновения база считает use_by.
-    }).select('id').single()
+    })
     setBusy(false)
     if (error) {
       setErr(error.code === '23505' ? 'Такий код вже є' : error.message)
@@ -111,7 +109,6 @@ export function ContainerForm({
     }
     const created = code.trim()
     setMade(created)
-    setMadeId(row?.id ?? null)
     // Следующая банка обычно из той же партии — сбрасываем только код.
     setCode(genCode(materials.find((m) => m.id === material)?.name ?? ''))
     router.refresh()
@@ -124,6 +121,9 @@ export function ContainerForm({
       tenant_id: tenantId,
       material_id: bMaterial,
       batch_number: bNumber.trim(),
+      // Дата изготовления не обязательна: на части упаковок её попросту
+      // нет. Но если она есть — без неё инспектору нечем сверить срок.
+      manufactured_date: bMade || null,
       expiry_date: bExpiry,
       // Поле даты можно очистить прямо в браузере — тогда ключ не
       // отправляем вовсе и срабатывает дефолт базы (сегодня).
@@ -138,7 +138,7 @@ export function ContainerForm({
         : error.message)
       return
     }
-    setBNumber(''); setBExpiry(''); setBDone(true)
+    setBNumber(''); setBMade(''); setBExpiry(''); setBDone(true)
     router.refresh()
   }
 
@@ -239,13 +239,9 @@ export function ContainerForm({
                 Роздрукуйте наліпку з QR і наклейте на банку — далі майстер
                 просто сканує її камерою.
               </p>
-              {/* ids ОБЯЗАТЕЛЕН. Роут этот параметр принимал с самого начала,
-                  но оба экрана слали голый адрес — и «наліпка на цю банку»
-                  печатала лист на все двести ёмкостей. */}
-              <a href={madeId ? `/app/inventory/labels?ids=${madeId}` : '/app/inventory/labels'}
-                 target="_blank" rel="noreferrer"
+              <a href="/app/inventory/labels" target="_blank" rel="noreferrer"
                  className="btn-secondary mt-3 t-sm">
-                Друк наліпки на цю банку
+                Друк QR-наліпок
               </a>
             </div>
           )}
@@ -276,8 +272,14 @@ export function ContainerForm({
           </div>
 
           <div>
+            <label className="field-label">Дата виготовлення</label>
+            <input type="date" className="input" max={bExpiry || undefined}
+                   value={bMade} onChange={(e) => setBMade(e.target.value)} />
+          </div>
+
+          <div>
             <label className="field-label">Придатна до</label>
-            <input required type="date" className="input"
+            <input required type="date" className="input" min={bMade || undefined}
                    value={bExpiry} onChange={(e) => setBExpiry(e.target.value)} />
           </div>
 

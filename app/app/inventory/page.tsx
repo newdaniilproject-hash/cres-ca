@@ -7,8 +7,8 @@ import { InventoryClient } from './inventory-client'
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Склад' }
 
-// Склад: сканер сверху (главный жест мастера), ниже — ёмкости,
-// расходники и товары. Все данные грузим на сервере параллельно.
+// Склад: счётчики сверху, быстрые действия, сканер и поиск, ниже —
+// расходники, ёмкости и товары. Все данные грузим на сервере параллельно.
 export default async function InventoryPage() {
   const m = await currentMembership()
   if (!m) redirect('/register/seller')
@@ -23,13 +23,13 @@ export default async function InventoryPage() {
   ] =
     await Promise.all([
       supabase.from('material_containers')
-        .select('id, code, status, use_by, opened_at, volume, unit, materials(name)')
+        .select('id, code, status, use_by, opened_at, volume, unit, material_id, materials(name)')
         .eq('tenant_id', m.tenantId)
         .in('status', ['sealed', 'opened'])
         .order('use_by', { ascending: true, nullsFirst: false })
         .limit(100),
       supabase.from('materials')
-        .select('id, name, unit, current_stock, min_stock_threshold, is_cosmetic, pao_months, brand')
+        .select('id, name, unit, current_stock, min_stock_threshold, is_cosmetic, pao_months, brand, sku')
         .eq('tenant_id', m.tenantId)
         .eq('is_active', true)
         .order('name').limit(200),
@@ -46,13 +46,28 @@ export default async function InventoryPage() {
       supabase.from('storage_locations')
         .select('id, name').eq('tenant_id', m.tenantId)
         .eq('is_active', true).order('position').limit(200),
-      // Партии нужны только чтобы привязать банку, поэтому берём самые
-      // свежие по сроку — просроченные в новую банку не наливают.
+      // По возрастанию срока: первая непросроченная партия материала —
+      // и есть действующая, её номер и дату показывает список и карточка.
       supabase.from('material_batches')
         .select('id, material_id, batch_number, expiry_date')
         .eq('tenant_id', m.tenantId)
-        .order('expiry_date', { ascending: false }).limit(200),
+        .order('expiry_date', { ascending: true }).limit(500),
     ])
+
+  // Действующая партия на материал. Считаем один раз здесь, а не на
+  // клиенте в каждой строке: иначе список из двухсот засобів перебирает
+  // пятьсот партий на каждую перерисовку поиска.
+  const today = new Date().toISOString().slice(0, 10)
+  const activeBatch = new Map<string, { number: string; expiry: string }>()
+  for (const b of batches ?? []) {
+    const cur = activeBatch.get(b.material_id)
+    // Партии уже отсортированы по возрастанию срока: первая подходящая
+    // и есть ближайшая. Непросроченная всегда вытесняет просроченную.
+    if (!cur) { activeBatch.set(b.material_id, { number: b.batch_number, expiry: b.expiry_date }) }
+    else if (cur.expiry < today && b.expiry_date >= today) {
+      activeBatch.set(b.material_id, { number: b.batch_number, expiry: b.expiry_date })
+    }
+  }
 
   return (
     <AppShell modules={m.modules} active="/app/inventory" title="Склад">
@@ -63,12 +78,15 @@ export default async function InventoryPage() {
           id: c.id, code: c.code, status: c.status,
           useBy: c.use_by, openedAt: c.opened_at,
           volume: c.volume != null ? Number(c.volume) : null, unit: c.unit,
+          materialId: c.material_id,
           material: (c.materials as unknown as { name: string })?.name ?? '',
         }))}
         materials={(materials ?? []).map((mt) => ({
           id: mt.id, name: mt.name, unit: mt.unit,
           stock: Number(mt.current_stock), threshold: Number(mt.min_stock_threshold),
-          cosmetic: mt.is_cosmetic, pao: mt.pao_months, brand: mt.brand,
+          cosmetic: mt.is_cosmetic, pao: mt.pao_months, brand: mt.brand, sku: mt.sku,
+          batch: activeBatch.get(mt.id)?.number ?? null,
+          expiry: activeBatch.get(mt.id)?.expiry ?? null,
         }))}
         variants={(variants ?? []).map((v) => ({
           id: v.id, name: v.name,
