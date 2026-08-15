@@ -107,6 +107,7 @@ psql -f "$ROOT/supabase/tests/05_compliance.sql"
 # последним и ничего за собой не тянет.
 psql -f "$ROOT/supabase/tests/06_isolation.sql"
 psql -f "$ROOT/supabase/tests/07_register_card.sql"
+psql -f "$ROOT/supabase/tests/08_stock_plus.sql"
 
 echo
 echo "Готово. Ни одной строки «ПРОВАЛ» выше — значит все запреты сработали."
