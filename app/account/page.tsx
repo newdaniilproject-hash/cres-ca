@@ -39,7 +39,7 @@ export default async function AccountPage() {
 
   return (
     <>
-      <PublicHeader authed />
+      <PublicHeader authed cabinet />
       <main className="mx-auto max-w-3xl px-4 pt-10 sm:px-6">
         <div className="rise flex items-center justify-between gap-4">
           <div>
