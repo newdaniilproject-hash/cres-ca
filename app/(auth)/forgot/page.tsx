@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { codeErrorText, humanAuthError } from '@/lib/auth-errors'
+import { nextRoute } from '@/lib/where'
 import { AuthShell } from '../auth-shell'
 import { CodeInput } from '@/app/m/code-input'
 import {
@@ -38,6 +39,11 @@ export default function ForgotPage() {
   const [error, setError] = useState('')
   const [codeError, setCodeError] = useState('')
   const [left, setLeft] = useState(0)
+  // Куда уходим после смены пароля. Код 'recovery' уже выдал сессию,
+  // поэтому членства читаемы и решение принимает lib/where.ts:
+  // человек без заведения обязан попасть на его создание, а не
+  // в покупательский кабинет, куда вёл прежний жёсткий '/account'.
+  const [target, setTarget] = useState('/app')
 
   useEffect(() => {
     if (left <= 0) return
@@ -83,6 +89,7 @@ export default function ForgotPage() {
     const { error } = await supabase.auth.updateUser({ password })
     setBusy(false)
     if (error) { setError(humanAuthError(error.message)); return }
+    setTarget(await nextRoute(supabase, 'web'))
     setStep('done')
   }
 
@@ -93,8 +100,8 @@ export default function ForgotPage() {
         <SuccessScreen
           title="Пароль змінено"
           subtitle="Ваш пароль успішно оновлено. Тепер можете увійти з новим паролем."
-          actionLabel="Увійти"
-          onAction={() => { window.location.href = '/account' }}
+          actionLabel="Продовжити"
+          onAction={() => { window.location.href = target }}
         />
       </AuthShell>
     )
