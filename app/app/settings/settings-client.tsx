@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useT } from '@/lib/i18n/client'
+import type { T } from '@/lib/i18n/translate'
 
 type Shop = {
   id: string; name: string; slug: string; tagline: string | null
@@ -17,11 +19,16 @@ type Member = {
   blocked: boolean
 }
 
-const ROLE_LABEL: Record<string, string> = {
-  owner: 'власник', admin: 'адміністратор', manager: 'менеджер',
-  operator: 'майстер / склад', accountant: 'бухгалтер',
-  viewer: 'перегляд', inspector: 'інспектор',
-}
+// Подписи ролей — общий словарь `role.*`: одни и те же семь слов показывает
+// и этот экран, и `/app/team`. Само значение (`owner`) не переводится: это
+// служебное значение перечисления, по нему сверяется база. Неизвестная роль
+// выводится как есть — новая роль появится в базе раньше, чем в словаре.
+const ROLES = [
+  'owner', 'admin', 'manager', 'accountant', 'operator', 'viewer', 'inspector',
+] as const
+type Role = (typeof ROLES)[number]
+const roleLabel = (t: T, r: string): string =>
+  ((ROLES as readonly string[]).includes(r) ? t(`role.${r as Role}`) : r)
 
 // Витрина — отдельный модуль (`storefront`), а страница настроек модуля
 // не требует: в панели «Магазин» им не помечен, потому что здесь же
@@ -53,6 +60,7 @@ export function SettingsClient({
   canSeeTeam: boolean
   hasStorefront?: boolean
 }) {
+  const t = useT()
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
 
@@ -78,7 +86,7 @@ export function SettingsClient({
   // «сам заклад залишиться — у нього є інший власник» тому, кто владелец
   // один и снесёт заведение целиком. Три состояния, не два.
   const soleOwner: boolean | null =
-    canSeeTeam ? team.filter((t) => t.role === 'owner').length === 1 : null
+    canSeeTeam ? team.filter((x) => x.role === 'owner').length === 1 : null
 
   async function deleteAccount() {
     setKilling(true); setKillError('')
@@ -111,20 +119,19 @@ export function SettingsClient({
           и отметка «опубліковано / чернетка» — это состояние витрины. */}
       {hasStorefront && (
       <section className="card rise-1">
-        <h2 className="t-lg mb-1">Ваша сторінка</h2>
-        <p className="t-md mb-3 prose-muted">
-          Це посилання — у шапку Instagram: клієнти записуються самі.
-        </p>
+        <h2 className="t-lg mb-1">{t('settings.public.title')}</h2>
+        <p className="t-md mb-3 prose-muted">{t('settings.public.desc')}</p>
         <div className="flex flex-wrap items-center gap-2">
+          {/* Адрес витрины — данные, а не текст. */}
           <code className="card-flat t-md !px-3 !py-2">{publicUrl}</code>
           <button type="button" className="btn-secondary t-sm"
                   onClick={() => navigator.clipboard.writeText(publicUrl)}>
-            Скопіювати
+            {t('common.copy')}
           </button>
           {shop.storefront_enabled ? (
-            <span className="badge-success">опубліковано</span>
+            <span className="badge-success">{t('settings.public.published')}</span>
           ) : (
-            <span className="badge-warn">чернетка — відкриється після перевірки</span>
+            <span className="badge-warn">{t('settings.public.draft')}</span>
           )}
         </div>
       </section>
@@ -133,47 +140,51 @@ export function SettingsClient({
       {/* Данные заведения */}
       <form onSubmit={save} className="card rise-2 grid gap-4 sm:grid-cols-2">
         <div className="sm:col-span-2">
-          <label className="field-label">Назва</label>
+          <label className="field-label">{t('settings.shop.name.label')}</label>
           <input required className="input" value={name} disabled={!canWrite}
                  onChange={(e) => setName(e.target.value)} />
         </div>
         <div className="sm:col-span-2">
-          <label className="field-label">Підпис (одним рядком)</label>
+          <label className="field-label">{t('settings.shop.tagline.label')}</label>
           <input className="input" value={tagline} disabled={!canWrite}
                  onChange={(e) => setTagline(e.target.value)}
-                 placeholder="Брейди та афрокоси · центр міста" />
+                 placeholder={t('settings.shop.tagline.placeholder')} />
         </div>
         <div>
-          <label className="field-label">Місто</label>
+          <label className="field-label">{t('settings.shop.city.label')}</label>
           <input className="input" value={city} disabled={!canWrite}
                  onChange={(e) => setCity(e.target.value)} />
         </div>
         <div>
-          <label className="field-label">Адреса</label>
+          <label className="field-label">{t('settings.shop.address.label')}</label>
           <input className="input" value={address} disabled={!canWrite}
                  onChange={(e) => setAddress(e.target.value)}
-                 placeholder="вул. Сумська, 1" />
+                 placeholder={t('settings.shop.address.placeholder')} />
         </div>
         <div>
-          <label className="field-label">Телефон для клієнтів</label>
+          <label className="field-label">{t('settings.shop.phone.label')}</label>
           <input type="tel" className="input" value={phone} disabled={!canWrite}
                  onChange={(e) => setPhone(e.target.value)} />
         </div>
         <div className="sm:col-span-2">
-          <label className="field-label">Про заклад</label>
+          <label className="field-label">{t('settings.shop.about.label')}</label>
           <textarea className="textarea" value={description} disabled={!canWrite}
                     onChange={(e) => setDescription(e.target.value)} />
         </div>
 
+        {/* Отказ базы показывается как есть: это её текст, а не наш.
+            В словарь он не едет (CLAUDE.md → «Локализация»). */}
         {state === 'error' && <p className="field-error sm:col-span-2">{error}</p>}
 
         {canWrite && (
           <div className="flex items-center gap-3 sm:col-span-2">
             <button className="btn-primary" disabled={state === 'busy'}>
-              {state === 'busy' ? 'Зберігаємо…' : 'Зберегти'}
+              {state === 'busy' ? t('common.saving') : t('common.save')}
             </button>
             {state === 'saved' && (
-              <span className="t-md rise" style={{ color: 'var(--color-success)' }}>Збережено ✓</span>
+              <span className="t-md rise" style={{ color: 'var(--color-success)' }}>
+                {t('common.saved')}
+              </span>
             )}
           </div>
         )}
@@ -182,33 +193,37 @@ export function SettingsClient({
       {/* Команда */}
       <section className="card rise-3 !p-0">
         <div className="flex items-center justify-between p-5 pb-3">
-          <h2 className="t-lg">Команда</h2>
+          <h2 className="t-lg">{t('settings.team.title')}</h2>
         </div>
         {!canSeeTeam ? (
           // Не пустой список и не «Без імені» на всю команду. Человеку
           // говорят, ЧТО он смотрит и почему этого нет, — отсутствие
           // права не должно выглядеть как отсутствие коллег.
           <div className="empty">
-            <p>Склад команди тут не показано.</p>
-            <p className="prose-muted">
-              Для нього потрібне окреме право «Команда» — попросіть власника
-              або адміністратора його відкрити.
-            </p>
+            <p>{t('settings.team.hidden.title')}</p>
+            <p className="prose-muted">{t('settings.team.hidden.desc')}</p>
           </div>
-        ) : team.map((t) => (
-          <div key={t.userId} className="row px-5">
+        ) : team.map((member) => (
+          // Параметр назван `member`, а не `t`: `t` — переводчик.
+          <div key={member.userId} className="row px-5">
             <div className="min-w-0">
               {/* Имя и почта приходят из `team_overview` (0082) и есть
                   у всех строк. «Без імені» тут означает ровно то, что
                   человек не заполнил профиль, — а не то, что нам его
                   не показали, как было до перехода с `profiles`. */}
-              <p className="t-md truncate">{t.name ?? t.email ?? 'Без імені'}</p>
-              {t.name && t.email && <p className="t-xs prose-muted">{t.email}</p>}
+              <p className="t-md truncate">
+                {member.name ?? member.email ?? t('common.noName')}
+              </p>
+              {member.name && member.email && (
+                <p className="t-xs prose-muted">{member.email}</p>
+              )}
             </div>
             <span className="flex shrink-0 items-center gap-2">
-              {t.blocked && <span className="badge-danger">заблоковано</span>}
-              <span className={t.role === 'owner' ? 'badge-accent' : 'badge'}>
-                {ROLE_LABEL[t.role] ?? t.role}
+              {member.blocked && (
+                <span className="badge-danger">{t('settings.badge.blocked')}</span>
+              )}
+              <span className={member.role === 'owner' ? 'badge-accent' : 'badge'}>
+                {roleLabel(t, member.role)}
               </span>
             </span>
           </div>
@@ -225,7 +240,7 @@ export function SettingsClient({
         {canSeeTeam && (
           <div className="px-5 pb-4">
             <Link href="/app/team" className="btn-secondary t-sm">
-              Керувати доступами →
+              {t('settings.team.manage')}
             </Link>
           </div>
         )}
@@ -233,11 +248,8 @@ export function SettingsClient({
 
       {/* Безпека: видалення акаунта */}
       <section className="card rise-3">
-        <h2 className="t-lg mb-1">Безпека</h2>
-        <p className="t-md mb-3 prose-muted">
-          Ваші дані належать вам. Ви можете видалити акаунт у будь-який момент —
-          без листів, дзвінків і пояснень.
-        </p>
+        <h2 className="t-lg mb-1">{t('settings.security.title')}</h2>
+        <p className="t-md mb-3 prose-muted">{t('settings.security.desc')}</p>
 
         {/* Вход по Face ID / отпечатку жил на мосту нативной обёртки
             и ушёл вместе с ней (CLAUDE.md → «Мобильная версия»).
@@ -247,51 +259,60 @@ export function SettingsClient({
         {!danger ? (
           <button type="button" className="btn-secondary t-sm"
                   onClick={() => setDanger(true)}>
-            Видалити акаунт
+            {t('settings.delete.open')}
           </button>
         ) : (
           <div className="card-flat flex flex-col gap-3">
+            {/* Три развилки — три отдельные строки словаря целиком, а не
+                общее начало плюс хвост: в другом языке эти предложения
+                строятся по-разному, и склейка из кусков даёт неграмотную
+                фразу. Жирная часть вынесена своим ключом — разметки
+                в словаре не бывает. Имя заведения приходит подстановкой
+                `{shop}`: оно данные и не переводится. */}
             <p className="t-md">
-              Буде видалено:{' '}
+              {t('settings.delete.lead')}{' '}
               {soleOwner === true
-                ? <>ваш акаунт <b>і заклад «{shop.name}»</b> з усіма товарами,
-                    складом, замовленнями, записами та журналами</>
+                ? <>{t('settings.delete.sole.pre')}{' '}
+                    <b>{t('settings.delete.sole.bold', { shop: shop.name })}</b>{' '}
+                    {t('settings.delete.sole.post')}</>
                 : soleOwner === false
-                ? <>ваш акаунт і доступ до закладу «{shop.name}».
-                    Сам заклад залишиться — у нього є інший власник</>
+                ? <>{t('settings.delete.shared', { shop: shop.name })}</>
                 /* Состава команды не видно — значит неизвестно, есть ли
                    второй владелец. Обещать сохранность закладу наугад
                    нельзя: удаление необратимо. Называем обе развилки. */
-                : <>ваш акаунт і доступ до закладу «{shop.name}».
-                    <b> Якщо ви єдиний власник</b> — заклад буде видалено
-                    разом з товарами, складом, замовленнями, записами
-                    та журналами</>}
+                : <>{t('settings.delete.unknown.pre', { shop: shop.name })}{' '}
+                    <b>{t('settings.delete.unknown.bold')}</b>{' '}
+                    {t('settings.delete.unknown.post')}</>}
               .
             </p>
-            <p className="t-sm prose-muted">
-              Дію не можна скасувати. Якщо потрібні дані — спершу вивантажте їх.
-            </p>
+            <p className="t-sm prose-muted">{t('settings.delete.irreversible')}</p>
 
             <div>
               <label className="field-label">
-                Щоб підтвердити, надрукуйте <b>ВИДАЛИТИ</b>
+                {t('settings.delete.confirm.pre')}{' '}
+                <b>{t('settings.delete.confirm.word')}</b>
               </label>
               <input className="input" value={confirmWord} autoComplete="off"
                      onChange={(e) => setConfirmWord(e.target.value)} />
             </div>
 
+            {/* Отказ `delete_my_account` — текст базы, не наш. */}
             {killError && <p className="field-error">{killError}</p>}
 
             <div className="flex flex-wrap items-center gap-2">
+              {/* Слово-подтверждение сверяется С ТЕМ ЖЕ КЛЮЧОМ, которым
+                  оно показано. Захардкоженное «ВИДАЛИТИ» в проверке дало бы
+                  русский интерфейс с украинским словом в поле — кнопка
+                  не разблокировалась бы никогда. */}
               <button type="button" className="btn-danger"
-                      disabled={confirmWord.trim() !== 'ВИДАЛИТИ' || killing}
+                      disabled={confirmWord.trim() !== t('settings.delete.confirm.word') || killing}
                       onClick={deleteAccount}>
-                {killing ? 'Видаляємо…' : 'Видалити назавжди'}
+                {killing ? t('settings.delete.submitBusy') : t('settings.delete.submit')}
               </button>
               <button type="button" className="btn-secondary t-sm"
                       disabled={killing}
                       onClick={() => { setDanger(false); setConfirmWord(''); setKillError('') }}>
-                Скасувати
+                {t('common.cancel')}
               </button>
             </div>
           </div>

@@ -3,9 +3,16 @@ import { createClient } from '@/lib/supabase/server'
 import { currentMembership, can } from '@/lib/tenant'
 import { AppShell } from '@/components/shell'
 import { SettingsClient } from './settings-client'
+import { getT } from '@/lib/i18n/server'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Магазин' }
+
+// Заголовок вкладки браузера — строка интерфейса, поэтому из словаря.
+// Разбор решения — в `app/app/journals/page.tsx`.
+export async function generateMetadata() {
+  const t = await getT()
+  return { title: t('settings.meta.title') }
+}
 
 export default async function SettingsPage() {
   const m = await currentMembership()
@@ -56,7 +63,7 @@ export default async function SettingsPage() {
   }
 
   return (
-    <AppShell modules={m.modules} perms={m.perms} active="/app/settings" title="Магазин">
+    <AppShell modules={m.modules} perms={m.perms}>
       <SettingsClient
         shop={shop}
         canWrite={can(m, 'settings.write')}
