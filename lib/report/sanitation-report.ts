@@ -14,10 +14,30 @@ export type ReportData = {
   materials: Array<{
     name: string; brand: string | null; country_of_origin: string | null
     inci: string | null; notification_code: string | null; pao_months: number | null
-    unit: string; current_stock: number; is_cosmetic: boolean
+    unit: string
+    /**
+     * Остаток — СКЛАДСКОЕ сведение, а не санитарное: его отдаёт `materials`
+     * по праву `stock.read`, которого у роли `inspector` нет (0035),
+     * и в `compliance_materials` этой колонки нет намеренно.
+     *
+     * Поэтому здесь `null`, а не число, и НЕ ноль. Ноль в документе для
+     * проверки читается как «засобу немає на складі» — то есть отчёт
+     * с юридическим весом врал бы молча. Отсутствие значения означает
+     * ровно «показывать нечего», и колонка тогда не рисуется вовсе.
+     */
+    current_stock?: number | null
+    is_cosmetic: boolean
   }>
+  /**
+   * Рисовать ли колонку «Залишок». Не передан — выводится из данных:
+   * колонка появляется, только если остаток приехал хоть по одной
+   * позиции. Умолчание выбрано так, что забытый флаг даёт документ
+   * БЕЗ пустой колонки, а не с ней: пустая ячейка в отчёте для проверки
+   * хуже отсутствующей.
+   */
+  showStock?: boolean
   batches: Array<{
-    batch_number: string; expiry_date: string; received_at: string
+    batch_number: string; expiry_date: string; received_at: string | null
     materials: Named; suppliers: Named
   }>
   containers: Array<{
@@ -48,7 +68,54 @@ const dt = (s: string | null) =>
     day: '2-digit', month: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   }) : '—'
-const who = (p: Person) => esc(p?.full_name ?? '—')
+
+// Прочерк вместо пустой ячейки. Пустая ячейка в напечатанном документе
+// неотличима от типографского брака: проверяющий не знает, «нет данных»
+// это или «строка обрезалась». Прочерк — заявление, а не пропуск.
+const or = (s: string | null | undefined) =>
+  s != null && String(s).trim() !== '' ? esc(s) : '—'
+
+// Имя исполнителя. ТРИ разных состояния, и склеивать их нельзя —
+// подвал документа обещает, что у каждой записи зафиксирован исполнитель.
+//
+//   имя есть           → печатаем имя;
+//   исполнитель есть,  → «імʼя недоступне»: `compliance_actors` (0083)
+//   имени нет            строится от `tenant_members`, и у того, кого
+//                        вывели из состава команды, имя перестаёт
+//                        доставаться. Сама запись и её автор в базе целы;
+//   исполнителя нет    → «не зафіксовано». В базе колонки `prepared_by`
+//                        и `performed_by` объявлены `not null`, поэтому
+//                        такого быть не должно; если случилось — это
+//                        обязано БРОСАТЬСЯ В ГЛАЗА, а не выглядеть
+//                        прочерком «данных нет».
+const who = (p: Person) => {
+  if (p == null) return '<span class="warn">не зафіксовано</span>'
+  const name = p.full_name?.trim()
+  return name ? esc(name) : '<span class="warn">імʼя недоступне</span>'
+}
+const namePending = (p: Person) => p == null || !p.full_name?.trim()
+
+// Шаги техкарты пишутся ДВУМЯ наборами ключей, и читать надо оба.
+// Карты первых салонов заведены по образцу из 0014 (`step`, `solution`,
+// `proportion`, `note`), а экран `app/app/techcards` сохраняет `title`,
+// `detail`, `minutes`. Отчёт читал только первый набор — и всякая карта,
+// созданная на экране, печаталась списком пустых пунктов: заголовок шага
+// пуст, описание пропало, осталось «, 15 хв». Документ, ради которого
+// техкарты и ведутся, показывал проверяющему пустой регламент.
+function stepLine(raw: unknown): string {
+  const o = (raw ?? {}) as Record<string, unknown>
+  const title = String(o.title ?? o.step ?? '').trim()
+  const detail = String(o.detail ?? o.solution ?? '').trim()
+  const proportion = String(o.proportion ?? '').trim()
+  const note = String(o.note ?? '').trim()
+  const minutes = o.minutes == null || String(o.minutes).trim() === ''
+    ? '' : String(o.minutes).trim()
+  return `<b>${title ? esc(title) : '<span class="warn">крок без назви</span>'}</b>${
+    detail ? ` — ${esc(detail)}` : ''}${
+    proportion ? `, пропорція ${esc(proportion)}` : ''}${
+    minutes ? `, ${esc(minutes)} хв` : ''}${
+    note && note !== detail ? `. ${esc(note)}` : ''}`
+}
 
 function table(head: string[], rows: string[][]) {
   if (rows.length === 0) return '<p class="empty">Записів за період немає.</p>'
@@ -62,18 +129,38 @@ export function reportHtml(x: ReportData): string {
   const now = new Date()
   const s = x.shop
 
+  // Колонка «Залишок» — единственная складская во всём документе.
+  // Тому, кто пришёл с проверкой, её не показывают вовсе: у роли
+  // `inspector` нет `stock.read`, значения не будет, а пустая ячейка
+  // в шести строках подряд читается как «склад пуст».
+  const showStock = x.showStock ?? x.materials.some((m) => m.current_stock != null)
+
+  // Сколько записей журналов напечатается без имени исполнителя.
+  // Считается ДО вёрстки, потому что от этого зависит текст подвала:
+  // обещание «у кожного запису зафіксовано час та виконавця» не должно
+  // стоять рядом с прочерком без объяснения.
+  const unnamed =
+    x.solutions.filter((r) => namePending(r.profiles)).length +
+    x.cleaning.filter((r) => namePending(r.profiles)).length +
+    x.cycles.filter((r) => namePending(r.profiles)).length
+
   const sections = [
     {
       n: '1', title: 'Реєстр косметичних засобів і матеріалів',
       note: 'Відповідно до Технічного регламенту на косметичну продукцію (постанова КМУ № 65).',
       body: table(
-        ['Назва', 'Бренд', 'Країна', 'Код нотифікації МОЗ', 'PAO, міс', 'Залишок'],
+        ['Назва', 'Бренд', 'Країна', 'Код нотифікації МОЗ', 'PAO, міс',
+         ...(showStock ? ['Залишок'] : [])],
         x.materials.map((m) => [
           esc(m.name) + (m.is_cosmetic ? ' <span class="tag">косметика</span>' : ''),
-          esc(m.brand ?? '—'), esc(m.country_of_origin ?? '—'),
+          or(m.brand), or(m.country_of_origin),
           m.notification_code ? esc(m.notification_code) : '<span class="warn">не вказано</span>',
-          m.pao_months ? String(m.pao_months) : '—',
-          `${Number(m.current_stock)} ${esc(m.unit)}`,
+          m.pao_months != null ? String(m.pao_months) : '—',
+          // Ноль вместо отсутствующего остатка не подставляется нигде:
+          // см. объяснение у поля `current_stock`.
+          ...(showStock
+            ? [m.current_stock != null ? `${Number(m.current_stock)} ${esc(m.unit)}` : '—']
+            : []),
         ]),
       ),
     },
@@ -85,8 +172,8 @@ export function reportHtml(x: ReportData): string {
         x.batches.map((b) => {
           const expired = new Date(b.expiry_date) < now
           return [
-            esc(b.materials?.name), esc(b.batch_number),
-            esc(b.suppliers?.name ?? '—'), d(b.received_at),
+            or(b.materials?.name), esc(b.batch_number),
+            or(b.suppliers?.name), d(b.received_at),
             expired ? `<span class="warn">${d(b.expiry_date)}</span>` : d(b.expiry_date),
           ]
         }),
@@ -99,11 +186,17 @@ export function reportHtml(x: ReportData): string {
         ['Засіб', 'Код ємності', 'Стан', 'Відкрито', 'Використати до', 'Обʼєм'],
         x.containers.map((c) => {
           const expired = c.use_by ? new Date(c.use_by) < now : false
-          const st = { sealed: 'запечатана', opened: 'відкрита', finished: 'використана' }[c.status] ?? c.status
+          // `disposed` — четвёртое состояние ёмкости (`container_status`).
+          // Без него в украинском документе печаталось английское слово
+          // из enum: списанная банка выглядела как сбой вёрстки.
+          const st = {
+            sealed: 'запечатана', opened: 'відкрита',
+            finished: 'використана', disposed: 'списана',
+          }[c.status] ?? c.status
           return [
-            esc(c.materials?.name), esc(c.code), esc(st), dt(c.opened_at),
+            or(c.materials?.name), esc(c.code), esc(st), dt(c.opened_at),
             expired ? `<span class="warn">${d(c.use_by)}</span>` : d(c.use_by),
-            c.volume ? `${Number(c.volume)} ${esc(c.unit ?? '')}` : '—',
+            c.volume != null ? `${Number(c.volume)} ${esc(c.unit ?? '')}` : '—',
           ]
         }),
       ),
@@ -114,7 +207,7 @@ export function reportHtml(x: ReportData): string {
       body: table(
         ['Засіб', 'Реєстрація', 'Концентрація', 'Обʼєм', 'Приготовано', 'Придатний до', 'Виконавець'],
         x.solutions.map((r) => [
-          esc(r.agent_name), esc(r.registration ?? '—'), esc(r.concentration),
+          esc(r.agent_name), or(r.registration), or(r.concentration),
           `${Number(r.volume)} ${esc(r.unit)}`, dt(r.prepared_at), dt(r.expires_at), who(r.profiles),
         ]),
       ),
@@ -124,7 +217,7 @@ export function reportHtml(x: ReportData): string {
       note: '',
       body: table(
         ['Захід', 'Виконано', 'Виконавець'],
-        x.cleaning.map((r) => [esc(r.cleaning_tasks?.name), dt(r.performed_at), who(r.profiles)]),
+        x.cleaning.map((r) => [or(r.cleaning_tasks?.name), dt(r.performed_at), who(r.profiles)]),
       ),
     },
     {
@@ -133,7 +226,7 @@ export function reportHtml(x: ReportData): string {
       body: table(
         ['Пристрій', 'Температура', 'Тривалість', 'Індикатор', 'Дата', 'Виконавець'],
         x.cycles.map((r) => [
-          esc(r.device), `${r.temperature_c} °C`, `${r.duration_minutes} хв`,
+          or(r.device), `${r.temperature_c} °C`, `${r.duration_minutes} хв`,
           r.indicator_ok ? 'успішно' : '<span class="warn">провал</span>',
           dt(r.performed_at), who(r.profiles),
         ]),
@@ -144,17 +237,16 @@ export function reportHtml(x: ReportData): string {
       note: 'Затверджена версія карти незмінна; зміна регламенту створює нову версію.',
       body: x.cards.length === 0
         ? '<p class="empty">Карток немає.</p>'
-        : x.cards.map((c) => `
+        : x.cards.map((c) => {
+            const steps = Array.isArray(c.steps) ? c.steps : []
+            return `
           <div class="card">
-            <h3>${esc(c.title)} <span class="tag">версія ${c.version}</span></h3>
-            <ol>${(Array.isArray(c.steps) ? c.steps : []).map((st) => {
-              const o = st as Record<string, unknown>
-              return `<li><b>${esc(o.step)}</b>${o.solution ? ` — ${esc(o.solution)}` : ''}${
-                o.proportion ? `, пропорція ${esc(o.proportion)}` : ''}${
-                o.minutes ? `, ${esc(o.minutes)} хв` : ''}${
-                o.note ? `. ${esc(o.note)}` : ''}</li>`
-            }).join('')}</ol>
-          </div>`).join(''),
+            <h3>${or(c.title)} <span class="tag">версія ${c.version}</span></h3>
+            ${steps.length === 0
+              ? '<p class="empty">Кроків у цій версії не записано.</p>'
+              : `<ol>${steps.map((st) => `<li>${stepLine(st)}</li>`).join('')}</ol>`}
+          </div>`
+          }).join(''),
     },
   ]
 
@@ -162,7 +254,7 @@ export function reportHtml(x: ReportData): string {
 <html lang="uk"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Звіт для перевірки — ${esc(s?.name ?? '')}</title>
+<title>Звіт для перевірки — ${s?.name ? esc(s.name) : 'заклад не визначено'}</title>
 <style>
   @page { size: A4; margin: 14mm 12mm; }
   * { box-sizing: border-box; }
@@ -201,9 +293,13 @@ export function reportHtml(x: ReportData): string {
 <header>
   <h1>Звіт із санітарного обліку та обліку косметичної продукції</h1>
   <p class="meta">
-    <b>${esc(s?.name ?? '')}</b>${s?.legal_name ? ` · ${esc(s.legal_name)}` : ''}${
+    <!-- Шапка без названия заклада — это не «поле пустое», а документ,
+         который нельзя предъявить: непонятно, чей он. Пустая строка это
+         прятала, поэтому здесь прямое предупреждение. -->
+    <b>${s?.name ? esc(s.name) : '<span class="warn">заклад не визначено</span>'}</b>${
+      s?.legal_name ? ` · ${esc(s.legal_name)}` : ''}${
       s?.tax_id ? ` · ЄДРПОУ/ІПН ${esc(s.tax_id)}` : ''}<br>
-    ${[s?.address, s?.city].filter(Boolean).map(esc).join(', ')}${
+    ${[s?.address, s?.city].filter(Boolean).map(esc).join(', ') || 'Адресу не вказано'}${
       s?.contact_phone ? ` · ${esc(s.contact_phone)}` : ''}<br>
     Сформовано: <b>${dt(now.toISOString())}</b> · Період журналів: останні <b>${x.days}</b> днів
   </p>
@@ -220,7 +316,11 @@ ${sections.map((sec) => `
   Документ сформовано автоматично з облікової системи. Записи журналів
   (розділи 4–6) незмінні: система не дозволяє редагувати або видаляти їх
   після внесення — виправлення вносяться окремим новим записом. У кожного
-  запису зафіксовано час та виконавця.
+  запису зафіксовано час та виконавця.${unnamed > 0 ? `
+  <br><span class="warn">У ${unnamed} ${unnamed === 1 ? 'записі' : 'записах'}
+  імʼя виконавця не відображається</span>: людину вилучено зі складу команди
+  або вона не вказала імені. Сам запис і його автор збережені в базі
+  незмінними — не показане лише імʼя.` : ''}
 </footer>
 
 </body></html>`
