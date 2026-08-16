@@ -3,10 +3,17 @@ import { createClient } from '@/lib/supabase/server'
 import { currentMembership, can, hasModule } from '@/lib/tenant'
 import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
+import { getT } from '@/lib/i18n/server'
 import { DocumentsClient, type DocKind } from './documents-client'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Документи на матеріали' }
+
+// Заголовок вкладки браузера — строка интерфейса, поэтому из словаря.
+// Разбор решения — в `app/app/journals/page.tsx`.
+export async function generateMetadata() {
+  const t = await getT()
+  return { title: t('documents.meta.title') }
+}
 
 // Документальный блок Техрегламента №65: MSDS, сертификаты качества,
 // заключения СЭС. Пункт «Документи» стоит в меню под `compliance.read`,
@@ -56,7 +63,7 @@ export default async function DocumentsPage() {
     ])
 
   return (
-    <AppShell modules={m.modules} perms={m.perms} active="/app/journals" title="Документи на матеріали">
+    <AppShell modules={m.modules} perms={m.perms}>
       <DocumentsClient
         tenantId={m.tenantId}
         userId={user!.id}
