@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useT } from '@/lib/i18n/client'
+import type { T } from '@/lib/i18n/translate'
 
 export type MaterialCodes = {
   id: string
@@ -14,16 +16,17 @@ export type MaterialCodes = {
 }
 
 // База отвечает кодами Postgres — переводим известные, незнакомое
-// показываем как есть.
-function humanize(message: string, code?: string): string {
+// показываем как есть. Подстроки, по которым разбирается отказ, — это
+// текст базы, а не строка интерфейса: в словарь едет только ответ.
+function humanize(t: T, message: string, code?: string): string {
   if (code === '23505') {
-    return 'Цей штрихкод уже закріплений — за цим засобом або за іншим. Один код може вказувати лише на одну позицію.'
+    return t('inventory.barcodes.error.duplicate')
   }
   if (code === '23503') {
-    return 'Засіб видалили — оновіть сторінку.'
+    return t('inventory.barcodes.error.missing')
   }
   if (message.includes('row-level security') || message.includes('policy')) {
-    return 'Немає права змінювати склад (stock.write). Попросіть власника магазину видати його.'
+    return t('inventory.error.stockWrite')
   }
   return message
 }
@@ -37,6 +40,7 @@ export function BarcodesClient({
   error: string
   loadError: string
 }) {
+  const t = useT()
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
 
@@ -74,7 +78,7 @@ export function BarcodesClient({
       tenant_id: tenantId,
     })
     setBusy(null)
-    if (insertError) { setErr(humanize(insertError.message, insertError.code)); return }
+    if (insertError) { setErr(humanize(t, insertError.message, insertError.code)); return }
     setCode('')
     router.refresh()
   }
@@ -86,7 +90,7 @@ export function BarcodesClient({
       .eq('material_id', materialId)
       .eq('barcode', barcode)
     setBusy(null)
-    if (deleteError) { setErr(humanize(deleteError.message, deleteError.code)); return }
+    if (deleteError) { setErr(humanize(t, deleteError.message, deleteError.code)); return }
     router.refresh()
   }
 
@@ -96,7 +100,7 @@ export function BarcodesClient({
     type BD = { detect(source: ImageBitmap): Promise<{ rawValue: string }[]> }
     const W = window as unknown as { BarcodeDetector?: new (o?: object) => BD }
     if (!W.BarcodeDetector) {
-      alert('Камера-сканер працює у Chrome на Android. Введіть код вручну.')
+      alert(t('inventory.barcodes.camera.unavailable'))
       return
     }
     try {
@@ -121,41 +125,45 @@ export function BarcodesClient({
       track.stop()
       if (found) setCode(found)
     } catch {
-      alert('Не вдалося відкрити камеру — введіть код вручну.')
+      alert(t('inventory.barcodes.camera.failed'))
     }
   }
 
   return (
     <div className="flex flex-col gap-5">
       <div className="rise flex flex-wrap items-center gap-2">
-        <Link href="/app/inventory" className="btn-ghost">← Склад</Link>
+        <Link href="/app/inventory" className="btn-ghost">← {t('inventory.link.stock')}</Link>
       </div>
 
-      {error && <p className="field-error rise">Не вдалося завантажити засоби: {error}</p>}
-      {loadError && <p className="field-error rise">Не вдалося завантажити штрихкоди: {loadError}</p>}
+      {/* Текст отказа базы показывается как есть — это её слова, не наши. */}
+      {error && (
+        <p className="field-error rise">{t('inventory.barcodes.materialsError')}: {error}</p>
+      )}
+      {loadError && (
+        <p className="field-error rise">{t('inventory.barcodes.codesError')}: {loadError}</p>
+      )}
       {err && <p className="field-error rise">{err}</p>}
 
       <section className="card rise">
-        <p className="eyebrow">Два різні коди</p>
+        <p className="eyebrow">{t('inventory.barcodes.about.eyebrow')}</p>
         <p className="t-md mt-2 prose-muted">
-          <strong>Заводський штрихкод</strong> уже надрукований на упаковці —
-          його не друкують, його зчитують. Одному засобу можна прописати
-          кілька: на коробці й на банці всередині коди різні, а засіб той самий.
+          <strong>{t('inventory.barcodes.about.factory.title')}</strong>{' '}
+          {t('inventory.barcodes.about.factory.desc')}
           <br />
-          <strong>Свій QR</strong> ми друкуємо тільки на розлив — на банку,
-          у якій вже немає заводської етикетки. Він живе окремо, у наліпках ємностей.
+          <strong>{t('inventory.barcodes.about.own.title')}</strong>{' '}
+          {t('inventory.barcodes.about.own.desc')}
         </p>
       </section>
 
-      <input className="input rise-1" placeholder="Пошук за назвою або кодом…"
+      <input className="input rise-1" placeholder={t('inventory.barcodes.search.placeholder')}
              value={query} onChange={(e) => setQuery(e.target.value)} />
 
       <section className="card rise-2 !p-0">
         {shown.length === 0 ? (
           <div className="empty">
             {materials.length === 0
-              ? 'Витратних засобів ще немає — заведіть їх на складі, і тоді прив’яжете коди.'
-              : 'За цим запитом нічого не знайшлося.'}
+              ? t('inventory.barcodes.empty.noMaterials')
+              : t('inventory.barcodes.empty.search')}
           </div>
         ) : shown.map((mt) => {
           const open = openId === mt.id
@@ -168,16 +176,16 @@ export function BarcodesClient({
                   <p className="tabular t-xs mt-0.5 prose-muted">
                     {mt.category ? `${mt.category} · ` : ''}
                     {mt.codes.length === 0
-                      ? 'кодів немає — сканер його не знайде'
-                      : `кодів: ${mt.codes.length}`}
+                      ? t('inventory.barcodes.noCodes')
+                      : t('inventory.barcodes.count', { n: t.number(mt.codes.length) })}
                   </p>
                 </button>
                 <div className="flex shrink-0 items-center gap-2">
                   <span className={`tabular ${mt.codes.length === 0 ? 'badge' : 'badge-success'}`}>
-                    {mt.codes.length}
+                    {t.number(mt.codes.length)}
                   </span>
                   <button type="button" className="btn-icon" onClick={() => toggle(mt.id)}
-                          title={open ? 'Згорнути' : 'Показати коди'}>
+                          title={open ? t('inventory.collapse') : t('inventory.barcodes.expand')}>
                     {open ? '−' : '+'}
                   </button>
                 </div>
@@ -191,7 +199,9 @@ export function BarcodesClient({
                         <div key={c} className="row">
                           <p className="tabular t-md min-w-0 truncate">{c}</p>
                           {canWrite && (
-                            <button type="button" className="btn-icon" title="Відв’язати код"
+                            <button type="button" className="btn-icon"
+                                    title={t('inventory.barcodes.unlink.aria')}
+                                    aria-label={t('inventory.barcodes.unlink.aria')}
                                     disabled={busy !== null}
                                     onClick={() => void remove(mt.id, c)}>
                               ✕
@@ -204,20 +214,20 @@ export function BarcodesClient({
 
                   {canWrite && (
                     <form onSubmit={(e) => void add(e, mt.id)} className="mt-3 flex flex-col gap-2">
-                      <label className="field-label !mb-0">Новий штрихкод з упаковки</label>
+                      <label className="field-label !mb-0">{t('inventory.barcodes.new.label')}</label>
                       <div className="flex gap-2">
-                        <input className="input" placeholder="4820000000000"
+                        <input className="input" placeholder={t('inventory.barcodes.new.placeholder')}
                                value={code} onChange={(e) => setCode(e.target.value)}
                                autoComplete="off" inputMode="text" />
                         <button type="button" className="btn-secondary shrink-0"
                                 onClick={() => void scanCamera()}>
-                          Сканувати камерою
+                          {t('inventory.barcodes.scan')}
                         </button>
                       </div>
                       <div>
                         <button className="btn-primary"
                                 disabled={busy !== null || !code.trim()}>
-                          Прив’язати код
+                          {t('inventory.barcodes.submit')}
                         </button>
                       </div>
                     </form>
@@ -230,16 +240,10 @@ export function BarcodesClient({
       </section>
 
       {!canWrite && (
-        <p className="field-hint">
-          Немає права змінювати склад, тому коди доступні лише для перегляду.
-        </p>
+        <p className="field-hint">{t('inventory.barcodes.readonly')}</p>
       )}
 
-      <p className="field-hint">
-        Один код — один засіб: та сама цифра не може вказувати на дві позиції,
-        інакше сканер не знав би, що показати. Якщо код «уже закріплений» —
-        його вже прив’язали до чогось іншого.
-      </p>
+      <p className="field-hint">{t('inventory.barcodes.hint')}</p>
     </div>
   )
 }

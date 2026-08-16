@@ -4,9 +4,15 @@ import { currentMembership, can, hasModule } from '@/lib/tenant'
 import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { BarcodesClient } from './barcodes-client'
+import { getT } from '@/lib/i18n/server'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Заводські штрихкоди' }
+// Заголовок вкладки — тем же ключом, что и заголовок экрана
+// в оболочке (`components/app-shell.tsx`).
+export async function generateMetadata() {
+  const t = await getT()
+  return { title: t('app.screen.inventory.barcodes.title') }
+}
 
 // Заводской штрихкод — это то, что уже напечатано на упаковке. Их у одного
 // расходника бывает несколько: один на коробке, другой на банке внутри.
@@ -42,7 +48,7 @@ export default async function BarcodesPage() {
   const rows = (codes ?? []) as { material_id: string; barcode: string }[]
 
   return (
-    <AppShell active="/app/inventory" title="Заводські штрихкоди">
+    <AppShell>
       <BarcodesClient
         tenantId={m.tenantId}
         canWrite={can(m, 'stock.write')}
