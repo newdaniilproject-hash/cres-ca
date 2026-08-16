@@ -23,7 +23,7 @@ export default async function OrderPage({
   // ещё и покупателя к своим заказам, а это кабинет продавца — сюда
   // чужой заказ не должен попасть даже случайно.
   const { data: order, error } = await supabase
-    .from('orders')
+    .from('v_orders')
     .select(
       `id, number, status, contact_name, contact_phone, contact_email, buyer_user_id,
        delivery_method, delivery_city, delivery_branch, delivery_address, tracking_number,
@@ -35,7 +35,7 @@ export default async function OrderPage({
 
   if (error) {
     return (
-      <AppShell modules={m.modules} active="/app/orders" title="Замовлення">
+      <AppShell active="/app/orders" title="Замовлення">
         <p className="field-error rise">Не вдалося відкрити замовлення: {error.message}</p>
       </AppShell>
     )
@@ -65,7 +65,7 @@ export default async function OrderPage({
   ])
 
   return (
-    <AppShell modules={m.modules} active="/app/orders" title={`Замовлення №${order.number}`}>
+    <AppShell active="/app/orders" title={`Замовлення №${order.number}`}>
       <OrderDetail
         canWrite={can(m, 'orders.write')}
         userId={user?.id ?? ''}
