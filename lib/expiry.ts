@@ -34,14 +34,11 @@ export function expiryState(useBy: string | null | undefined, now = new Date()):
   return 'ok'
 }
 
-/** Подпись состояния на украинском — ровно как на макете карточки. */
-export const EXPIRY_LABEL: Record<ExpiryState, string> = {
-  none: 'Термін не вказано',
-  ok: 'Дійсний',
-  soon: 'Скоро закінчується',
-  urgent: 'Закінчується',
-  expired: 'Прострочений',
-}
+// Подписи состояний здесь больше нет. Она была украинской строкой
+// (`EXPIRY_LABEL`), и после перевода склада экраны берут её из словаря
+// по `EXPIRY_KEY` — иначе рядом с переведённой карточкой стоял бы
+// украинский значок. Второй список подписей не заводим: правило 8,
+// «выключено — значит удалено».
 
 /** Класс значка. Оттенки из токенов темы, свои цвета не заводим. */
 export const EXPIRY_BADGE: Record<ExpiryState, string> = {
@@ -52,18 +49,8 @@ export const EXPIRY_BADGE: Record<ExpiryState, string> = {
   expired: 'badge-danger',
 }
 
-/** Дата человеку: «20.05.2026». Пусто — прочерк, а не пустое место. */
-export function fmtDate(d: string | null | undefined): string {
-  if (!d) return '—'
-  const dt = new Date(d.length <= 10 ? `${d}T00:00:00` : d)
-  return Number.isNaN(dt.getTime()) ? '—' : dt.toLocaleDateString('uk-UA')
-}
-
-/** Короткая дата для плотных списков: «20 трав.». */
-export function fmtShort(d: string | null | undefined): string {
-  if (!d) return '—'
-  const dt = new Date(d.length <= 10 ? `${d}T00:00:00` : d)
-  return Number.isNaN(dt.getTime())
-    ? '—'
-    : dt.toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' })
-}
+// Своих `fmtDate` и `fmtShort` здесь тоже больше нет. Они звали
+// `toLocaleDateString('uk-UA')` с зашитой локалью, то есть при русском
+// интерфейсе давали украинский месяц, — а экраны склада уже форматируют
+// даты через `t.date`, где локаль приходит из языка. Две реализации
+// одного и того же не оставляем: разъедутся на первой правке.
