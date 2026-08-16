@@ -4,9 +4,15 @@ import { currentMembership, can, hasModule } from '@/lib/tenant'
 import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { ReorderClient } from './reorder-client'
+import { getT } from '@/lib/i18n/server'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Пора замовити' }
+// Заголовок вкладки — тем же ключом, что и заголовок экрана
+// в оболочке (`components/app-shell.tsx`).
+export async function generateMetadata() {
+  const t = await getT()
+  return { title: t('app.screen.inventory.reorder.title') }
+}
 
 // Экран отвечает на один вопрос: что заканчивается и у кого это брать.
 // Считает представление stock_low_view (0009_warehouse_plus.sql) —
@@ -34,7 +40,7 @@ export default async function ReorderPage() {
     .limit(300)
 
   return (
-    <AppShell active="/app/inventory" title="Пора замовити">
+    <AppShell>
       <ReorderClient
         error={error?.message ?? ''}
         items={(data ?? []).map((r) => ({
