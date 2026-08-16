@@ -1,6 +1,7 @@
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { currentMembership, can } from '@/lib/tenant'
+import { currentMembership, can, hasModule } from '@/lib/tenant'
+import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { MaterialDocs } from './material-docs'
 
@@ -20,12 +21,28 @@ export default async function MaterialDocsPage({
 }) {
   const m = await currentMembership()
   if (!m) redirect('/register/seller')
+  // Экран целиком компланс-овый: и документы (`material_documents_read`,
+  // 0014), и шапка засоба с нотификацией МОЗ. Одно право — `compliance.read`.
+  //
+  // Раньше здесь требовался ещё и `stock.read`, и это разворачивало
+  // единственного читателя, ради которого экран описан в комментарии
+  // выше, — инспектора: после 0035 у него `stock.read` нет. Шапка теперь
+  // берётся из `compliance_materials` (см. развёрнутое объяснение
+  // в `app/app/inventory/materials/[id]/page.tsx`), поэтому складское
+  // право здесь больше ничего не открывает.
+  if (!can(m, 'compliance.read')) redirect('/app')
+  // Модуль здесь `compliance`, а не `inventory`, хотя адрес складской:
+  // MSDS, сертификат и нотификация — это ровно то, что перечислено
+  // в `compliance` (0020), и тот же материал, что на /app/documents.
+  // Складского модуля экран не требует по той же причине, по которой
+  // не требует `stock.read`: его читает инспектор.
+  if (!hasModule(m, 'compliance')) return <ModuleOff m={m} module="compliance" />
 
   const { id } = await params
   const supabase = await createClient()
 
   const { data: material } = await supabase
-    .from('materials')
+    .from('compliance_materials')
     .select(`id, name, brand, is_cosmetic,
              notification_code, notification_url, notification_date`)
     .eq('id', id).eq('tenant_id', m.tenantId).maybeSingle()
@@ -47,6 +64,7 @@ export default async function MaterialDocsPage({
         tenantId={m.tenantId}
         userId={user!.id}
         canWrite={can(m, 'compliance.write')}
+        canEditMoz={can(m, 'stock.write')}
         material={{
           id: material.id, name: material.name, brand: material.brand,
           isCosmetic: material.is_cosmetic,
