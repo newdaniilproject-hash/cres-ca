@@ -13,7 +13,7 @@ export default async function BookingsPage() {
   const supabase = await createClient()
 
   const { data } = await supabase
-    .from('bookings')
+    .from('v_bookings')
     .select('id, number, title, variant_name, period, status, contact_name, contact_phone, price, deposit_due, staff(name)')
     .eq('tenant_id', m.tenantId)
     .gte('period', `[${new Date(Date.now() - 864e5).toISOString()},)`)
