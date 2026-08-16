@@ -1,6 +1,7 @@
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { currentMembership, can } from '@/lib/tenant'
+import { currentMembership, can, hasModule } from '@/lib/tenant'
+import { ModuleOff } from '@/components/module-gate'
 import { CountDetail } from './count-detail'
 
 export const dynamic = 'force-dynamic'
@@ -13,6 +14,11 @@ export default async function CountPage({
 }) {
   const m = await currentMembership()
   if (!m) redirect('/register/seller')
+  // Документ перерахунку — `stock_counts_read` (0003), то же
+  // `stock.read`, что и перечень. Без него страница отдавала notFound,
+  // и человек искал «пропавший» документ вместо ответа про доступ.
+  if (!can(m, 'stock.read')) redirect('/app')
+  if (!hasModule(m, 'inventory')) return <ModuleOff m={m} module="inventory" />
 
   const { id } = await params
   const supabase = await createClient()
