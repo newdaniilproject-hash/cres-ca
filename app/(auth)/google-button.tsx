@@ -28,7 +28,14 @@ function GoogleMark() {
 // `hint` остаётся пропом: экран регистрации подставляет свою подводку.
 // Умолчания в сигнатуре больше нет — строку берём из словаря внутри,
 // потому что `useT` в списке параметров не позовёшь.
-export function GoogleButton({ next, hint }: { next: string; hint?: string }) {
+//
+// `next` НЕОБЯЗАТЕЛЕН, и это не послабление типа. После восстановления
+// `nextRoute` (main, 16.08.2026) на /login и /register адрес возврата —
+// `string | null`: null значит «человек никуда конкретно не шёл», и куда
+// его вести, решает lib/where.ts уже после входа. Оба экрана поэтому
+// зовут кнопку как `next={next ?? undefined}`. Требовать здесь `string`
+// значит требовать от них выдумать адрес, которого нет.
+export function GoogleButton({ next, hint }: { next?: string; hint?: string }) {
   const t = useT()
   const supabase = createClient()
   const [busy, setBusy] = useState(false)
@@ -39,7 +46,15 @@ export function GoogleButton({ next, hint }: { next: string; hint?: string }) {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
+        // Когда `next` не задан, параметр не подставляем ВОВСЕ, а не пустой.
+        // `encodeURIComponent(undefined)` даёт строку "undefined", и человек
+        // после входа через Google уезжал бы на несуществующий путь. Роут
+        // /auth/callback уже умеет пустоту: он читает `next` как
+        // `searchParams.get('next') || ''` и без него отдаёт решение
+        // в lib/where.ts — тот же контракт, что у /auth/finish.
+        redirectTo: `${window.location.origin}/auth/callback${
+          next ? `?next=${encodeURIComponent(next)}` : ''
+        }`,
       },
     })
     // Успех — браузер уже уходит на Google, снимать busy незачем.
