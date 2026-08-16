@@ -1,7 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { AuthShell } from '../../auth-shell'
 import { GoogleButton } from '../../google-button'
@@ -9,8 +10,23 @@ import { GoogleButton } from '../../google-button'
 // Онбординг продавца: два шага. Шаг 1 — аккаунт (или уже вошли),
 // шаг 2 — заведение. После register_tenant ОБЯЗАТЕЛЕН refreshSession:
 // членство попадает в токен только при следующей его выдаче.
-export default function SellerRegisterPage() {
+function SellerRegisterInner() {
+  const router = useRouter()
   const supabase = createClient()
+
+  // Адрес возврата — тот же приём, что на /login и /register: принимаем
+  // только внутренний путь с одним ведущим слэшем, иначе форма становится
+  // открытым перенаправлением (`//evil.com` — это чужой сайт, а не путь).
+  //
+  // Здесь он нужен по двум причинам. Во-первых, шаг 1 уводит человека
+  // наружу — в Google и на вход, — и без проброса он возвращается на этот
+  // экран уже без цели. Во-вторых, конец потока перестаёт быть жёстко
+  // прибитым к /app: сюда попадают и по ссылке с адресом возврата.
+  const params = useSearchParams()
+  const rawNext = params.get('next')
+  const next = rawNext && rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/app'
+  const query = rawNext === next ? `?next=${encodeURIComponent(next)}` : ''
+  const selfHref = `/register/seller${query}`
 
   const [step, setStep] = useState<0 | 1>(0)
   const [checked, setChecked] = useState(false)
@@ -55,15 +71,8 @@ export default function SellerRegisterPage() {
       p_name: shopName, p_kind: kind, p_city: city || null,
     })
     if (error) { setState('error'); setError(error.message); return }
-    // ⚠️ ОБЯЗАТЕЛЬНО. Членства читаются из полезной нагрузки токена
-    // (lib/tenant.ts), а не из базы, и попадают туда только при следующей
-    // его выдаче. Без refreshSession кабинет решит, что заведения нет,
-    // и погонит человека обратно на этот же экран — по кругу.
     await supabase.auth.refreshSession()   // членство → в токен
-    // Переход полной навигацией, а не router.push: серверные компоненты
-    // кабинета читают сессию из кук, и мягкий переход гонится со свежей
-    // кукой — тот же грабль описан в app/(auth)/register/page.tsx.
-    window.location.href = '/app'
+    router.push(next); router.refresh()
   }
 
   return (
@@ -93,11 +102,16 @@ export default function SellerRegisterPage() {
           </button>
         </form>
 
-        {/* Только шаг 1: на шаге заведения человек уже вошёл */}
-        <GoogleButton next="/register/seller" />
+        {/* Только шаг 1: на шаге заведения человек уже вошёл.
+            Возвращаемся на СЕБЯ вместе с адресом возврата — иначе
+            после Google или входа человек попадает на чистый экран
+            продавца и теряет то, ради чего пришёл. */}
+        <GoogleButton next={selfHref} />
 
         <p className="t-md mt-6 prose-muted">
-          Вже є акаунт? <Link href="/login?next=/register/seller" className="underline underline-offset-2">Увійти</Link>
+          Вже є акаунт?{' '}
+          <Link href={`/login?next=${encodeURIComponent(selfHref)}`}
+                className="underline underline-offset-2">Увійти</Link>
         </p>
         </>
       ) : (
@@ -141,4 +155,10 @@ export default function SellerRegisterPage() {
       )}
     </AuthShell>
   )
+}
+
+export default function SellerRegisterPage() {
+  // useSearchParams требует границы Suspense, иначе прод-сборка Next
+  // падает на пререндере. В этом проекте уже ловилось — см. /login.
+  return <Suspense><SellerRegisterInner /></Suspense>
 }
