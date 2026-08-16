@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import { LEGAL_DOCS } from '@/lib/legal'
 import { nativeish, setBioLockEnabled } from '@/components/native'
 import { Brand, Bullet } from '@/components/auth-ui'
+import { useT } from '@/lib/i18n/client'
 
 // Первое знакомство с приложением: карусель из четырёх экранов,
 // согласие с документами и три запроса разрешений.
@@ -44,43 +45,48 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
    Четыре экрана: заставка и три обещания. Точки внизу показывают,
    сколько осталось, — без них человек не знает, сколько терпеть. */
 
+// В таблице лежат КЛЮЧИ, а не строки: порядок экранов, вид значка
+// и карточная ли раскладка — это вёрстка, а текст приходит из словаря.
+// `as const` здесь не украшение: без него ключ теряет точный тип,
+// и опечатку в нём перестал бы ловить `tsc`.
 const SLIDES = [
   {
-    title: 'Вітаємо в CRESKO!',
-    subtitle: 'Ваш надійний помічник для контролю матеріалів, термінів придатності та безпеки в салоні',
+    title: 'm.onb.slide.welcome.title',
+    subtitle: 'm.onb.slide.welcome.subtitle',
     items: [
-      { icon: <ShieldIcon />, title: 'Відповідність стандартам', desc: 'Техрегламент №65 КМУ та норми Держпродспоживслужби' },
-      { icon: <ClockIcon />, title: 'Повний контроль термінів', desc: 'Автоматичні нагадування та розрахунки PAO' },
-      { icon: <DocIcon />, title: 'Готові звіти для перевірок', desc: 'Paperless подача даних в один клік' },
+      { icon: <ShieldIcon />, title: 'm.onb.slide.welcome.item.standards.title', desc: 'm.onb.slide.welcome.item.standards.desc' },
+      { icon: <ClockIcon />, title: 'm.onb.slide.welcome.item.expiry.title', desc: 'm.onb.slide.welcome.item.expiry.desc' },
+      { icon: <DocIcon />, title: 'm.onb.slide.welcome.item.reports.title', desc: 'm.onb.slide.welcome.item.reports.desc' },
     ],
     card: false,
-    action: 'Далі',
+    action: 'm.onb.next',
   },
   {
-    title: 'Будьте в курсі важливого',
-    subtitle: 'Миттєві сповіщення про замовлення, терміни придатності, події та акції',
+    title: 'm.onb.slide.notify.title',
+    subtitle: 'm.onb.slide.notify.subtitle',
     items: [
-      { icon: <ClockIcon />, title: 'Нагадування про терміни', desc: 'За 14 та 7 днів до закінчення' },
-      { icon: <BoxIcon />, title: 'Статуси замовлень', desc: 'Нічого не пропустите' },
-      { icon: <BellIcon />, title: 'Акції та новини', desc: 'Тільки важливе' },
+      { icon: <ClockIcon />, title: 'm.onb.slide.notify.item.expiry.title', desc: 'm.onb.slide.notify.item.expiry.desc' },
+      { icon: <BoxIcon />, title: 'm.onb.slide.notify.item.orders.title', desc: 'm.onb.slide.notify.item.orders.desc' },
+      { icon: <BellIcon />, title: 'm.onb.slide.notify.item.promos.title', desc: 'm.onb.slide.notify.item.promos.desc' },
     ],
     card: true,
-    action: 'Далі',
+    action: 'm.onb.next',
   },
   {
-    title: 'Економте час і гроші',
-    subtitle: 'Менше втрат, більше порядку та прозорості у вашому бізнесі',
+    title: 'm.onb.slide.save.title',
+    subtitle: 'm.onb.slide.save.subtitle',
     items: [
-      { icon: <BoxIcon />, title: 'Контроль залишків', desc: 'Оптимальні закупівлі' },
-      { icon: <ChartIcon />, title: 'Аналітика та звіти', desc: 'Розумні рішення на основі даних' },
-      { icon: <DocIcon />, title: 'Менше паперу', desc: 'Всі журнали в цифровому вигляді' },
+      { icon: <BoxIcon />, title: 'm.onb.slide.save.item.stock.title', desc: 'm.onb.slide.save.item.stock.desc' },
+      { icon: <ChartIcon />, title: 'm.onb.slide.save.item.analytics.title', desc: 'm.onb.slide.save.item.analytics.desc' },
+      { icon: <DocIcon />, title: 'm.onb.slide.save.item.paperless.title', desc: 'm.onb.slide.save.item.paperless.desc' },
     ],
     card: true,
-    action: 'Почати',
+    action: 'm.onb.start',
   },
-]
+] as const
 
 function Slides({ onDone, onSkip }: { onDone: () => void; onSkip: () => void }) {
+  const t = useT()
   // 0 — заставка, дальше три экрана обещаний.
   const [i, setI] = useState(0)
   const slide = i === 0 ? null : SLIDES[i - 1]
@@ -89,7 +95,7 @@ function Slides({ onDone, onSkip }: { onDone: () => void; onSkip: () => void }) 
     <main className="m-scroll onb screen-enter">
       <div className="onb-top">
         {i > 0 && (
-          <button type="button" className="link-quiet" onClick={onSkip}>Пропустити</button>
+          <button type="button" className="link-quiet" onClick={onSkip}>{t('m.onb.skip')}</button>
         )}
       </div>
 
@@ -98,22 +104,23 @@ function Slides({ onDone, onSkip }: { onDone: () => void; onSkip: () => void }) 
           <div className="tab-fade flex flex-col items-center text-center">
             <Brand tagline />
             <p className="t-md mt-6 prose-muted" style={{ lineHeight: 1.5 }}>
-              Професійний облік косметики, матеріалів та санітарних процедур
-              у вашому салоні
+              {t('m.onb.intro.desc')}
             </p>
           </div>
         ) : (
           <div className="tab-fade">
-            <h1 className="display t-2xl">{slide.title}</h1>
-            <p className="t-md mt-2 prose-muted" style={{ lineHeight: 1.5 }}>{slide.subtitle}</p>
+            <h1 className="display t-2xl">{t(slide.title)}</h1>
+            <p className="t-md mt-2 prose-muted" style={{ lineHeight: 1.5 }}>
+              {t(slide.subtitle)}
+            </p>
             <div className="mt-7">
               {slide.items.map((it) => (
                 slide.card ? (
                   <div key={it.title} className="bullet-card">
-                    <Bullet icon={it.icon} title={it.title} desc={it.desc} />
+                    <Bullet icon={it.icon} title={t(it.title)} desc={t(it.desc)} />
                   </div>
                 ) : (
-                  <Bullet key={it.title} icon={it.icon} title={it.title} desc={it.desc} />
+                  <Bullet key={it.title} icon={it.icon} title={t(it.title)} desc={t(it.desc)} />
                 )
               ))}
             </div>
@@ -128,7 +135,7 @@ function Slides({ onDone, onSkip }: { onDone: () => void; onSkip: () => void }) 
       <div className="onb-foot">
         <button type="button" className="btn-primary btn-tall"
                 onClick={() => (i === 3 ? onDone() : setI(i + 1))}>
-          {i === 0 ? 'Далі' : SLIDES[i - 1].action}
+          {i === 0 ? t('m.onb.next') : t(SLIDES[i - 1].action)}
         </button>
       </div>
     </main>
@@ -143,14 +150,15 @@ function Slides({ onDone, onSkip }: { onDone: () => void; onSkip: () => void }) 
    только читает и подтверждает, что прочитал. */
 
 function LegalStep({ onDone }: { onDone: () => void }) {
+  const t = useT()
   const [agree, setAgree] = useState(false)
   return (
     <main className="m-scroll onb screen-enter">
       <div className="onb-top" />
       <div className="onb-body">
-        <h1 className="display t-2xl">Умови та політика</h1>
+        <h1 className="display t-2xl">{t('m.onb.legal.title')}</h1>
         <p className="t-md mt-2 prose-muted" style={{ lineHeight: 1.5 }}>
-          Будь ласка, ознайомтесь та підтвердіть згоду для продовження
+          {t('m.onb.legal.desc')}
         </p>
 
         <div className="mt-7">
@@ -166,16 +174,13 @@ function LegalStep({ onDone }: { onDone: () => void }) {
 
         <label className="checkline mt-7">
           <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
-          <span>
-            Я ознайомився(-лась) та погоджуюсь з умовами використання
-            і політикою конфіденційності
-          </span>
+          <span>{t('m.onb.legal.agree')}</span>
         </label>
       </div>
 
       <div className="onb-foot">
         <button type="button" className="btn-primary btn-tall" disabled={!agree} onClick={onDone}>
-          Продовжити
+          {t('common.continue')}
         </button>
       </div>
     </main>
@@ -254,7 +259,7 @@ async function askCamera(): Promise<PermState> {
     // Поток нужен ровно на то, чтобы система показала своё окно.
     // Дорожки гасим сразу — иначе на телефоне горит индикатор камеры.
     const stream = await navigator.mediaDevices.getUserMedia({ video: true })
-    stream.getTracks().forEach((t) => t.stop())
+    stream.getTracks().forEach((track) => track.stop())
     return 'granted'
   } catch {
     return 'denied'
@@ -273,6 +278,7 @@ function remember(key: string, value: string) {
 }
 
 function Permissions({ onDone }: { onDone: () => void }) {
+  const t = useT()
   const [screens, setScreens] = useState<string[] | null>(null)
   const [i, setI] = useState(0)
 
@@ -314,16 +320,16 @@ function Permissions({ onDone }: { onDone: () => void }) {
     return (
       <PermScreen
         icon={<BellIcon size={34} />}
-        title="Дозвіл на сповіщення"
-        subtitle="Ми надсилатимемо вам важливі нагадування та оновлення"
+        title={t('m.onb.perm.push.title')}
+        subtitle={t('m.onb.perm.push.subtitle')}
         items={[
-          { icon: <ClockIcon />, title: 'Нагадування про терміни', desc: 'За 14 та 7 днів до закінчення' },
-          { icon: <BoxIcon />, title: 'Статуси замовлень', desc: 'Нічого не пропустите' },
-          { icon: <BellIcon />, title: 'Важливі новини та акції', desc: 'Тільки те, що справді важливо' },
+          { icon: <ClockIcon />, title: t('m.onb.perm.push.item.expiry.title'), desc: t('m.onb.perm.push.item.expiry.desc') },
+          { icon: <BoxIcon />, title: t('m.onb.perm.push.item.orders.title'), desc: t('m.onb.perm.push.item.orders.desc') },
+          { icon: <BellIcon />, title: t('m.onb.perm.push.item.news.title'), desc: t('m.onb.perm.push.item.news.desc') },
         ]}
-        dialogText="«CRESKO» хоче надсилати вам сповіщення"
-        allowLabel="Дозволити"
-        denyLabel="Не дозволяти"
+        dialogText={t('m.onb.perm.push.dialog')}
+        allowLabel={t('m.onb.perm.allow')}
+        denyLabel={t('m.onb.perm.deny')}
         onAllow={async () => { const r = await askPush(); remember(PUSH_KEY, r === 'granted' ? '1' : '0'); next() }}
         onDeny={() => { remember(PUSH_KEY, '0'); next() }}
       />
@@ -334,16 +340,16 @@ function Permissions({ onDone }: { onDone: () => void }) {
     return (
       <PermScreen
         icon={<CameraIcon size={34} />}
-        title="Дозвіл на камеру"
-        subtitle="Потрібен для сканування QR- та штрихкодів товарів"
+        title={t('m.onb.perm.camera.title')}
+        subtitle={t('m.onb.perm.camera.subtitle')}
         items={[
-          { icon: <BoxIcon />, title: 'Швидке додавання товарів', desc: 'Сканування замість ручного вводу' },
-          { icon: <DocIcon />, title: 'Інвентаризація без помилок', desc: 'Кожна позиція звіряється кодом' },
-          { icon: <ChartIcon />, title: 'Списання та приймання', desc: 'Одним рухом, прямо зі складу' },
+          { icon: <BoxIcon />, title: t('m.onb.perm.camera.item.add.title'), desc: t('m.onb.perm.camera.item.add.desc') },
+          { icon: <DocIcon />, title: t('m.onb.perm.camera.item.count.title'), desc: t('m.onb.perm.camera.item.count.desc') },
+          { icon: <ChartIcon />, title: t('m.onb.perm.camera.item.moves.title'), desc: t('m.onb.perm.camera.item.moves.desc') },
         ]}
-        dialogText="«CRESKO» хоче отримати доступ до камери"
-        allowLabel="Дозволити"
-        denyLabel="Не дозволяти"
+        dialogText={t('m.onb.perm.camera.dialog')}
+        allowLabel={t('m.onb.perm.allow')}
+        denyLabel={t('m.onb.perm.deny')}
         onAllow={async () => { const r = await askCamera(); remember(CAM_KEY, r === 'granted' ? '1' : '0'); next() }}
         onDeny={() => { remember(CAM_KEY, '0'); next() }}
       />
@@ -353,16 +359,16 @@ function Permissions({ onDone }: { onDone: () => void }) {
   return (
     <PermScreen
       icon={<FaceIcon size={34} />}
-      title="Швидкий доступ за Face ID"
-      subtitle="Увімкніть Face ID для швидкого та безпечного входу в додаток"
+      title={t('m.onb.perm.faceid.title')}
+      subtitle={t('m.onb.perm.faceid.subtitle')}
       items={[
-        { icon: <ShieldIcon />, title: 'Безпечно', desc: 'Дані складу відкриваються тільки вам' },
-        { icon: <ClockIcon />, title: 'Швидко', desc: 'Без пароля на кожному відкритті' },
-        { icon: <FaceIcon />, title: 'Зручно', desc: 'Один погляд замість набору на телефоні' },
+        { icon: <ShieldIcon />, title: t('m.onb.perm.faceid.item.safe.title'), desc: t('m.onb.perm.faceid.item.safe.desc') },
+        { icon: <ClockIcon />, title: t('m.onb.perm.faceid.item.fast.title'), desc: t('m.onb.perm.faceid.item.fast.desc') },
+        { icon: <FaceIcon />, title: t('m.onb.perm.faceid.item.handy.title'), desc: t('m.onb.perm.faceid.item.handy.desc') },
       ]}
-      dialogText="«CRESKO» хоче використовувати Face ID"
-      allowLabel="Увімкнути Face ID"
-      denyLabel="Не зараз"
+      dialogText={t('m.onb.perm.faceid.dialog')}
+      allowLabel={t('m.onb.perm.faceid.allow')}
+      denyLabel={t('m.onb.perm.faceid.deny')}
       onAllow={async () => {
         // Сам замок ставит components/native.tsx при следующем запуске:
         // здесь только записываем решение, чтобы он больше не спрашивал.
@@ -387,6 +393,7 @@ function PermScreen({
   onAllow: () => void | Promise<void>
   onDeny: () => void
 }) {
+  const t = useT()
   const [busy, setBusy] = useState(false)
   return (
     <main className="m-scroll onb screen-enter">
@@ -422,7 +429,7 @@ function PermScreen({
       </div>
 
       <div className="onb-foot">
-        <button type="button" className="link-quiet" onClick={onDeny}>Пропустити</button>
+        <button type="button" className="link-quiet" onClick={onDeny}>{t('m.onb.skip')}</button>
       </div>
     </main>
   )

@@ -1,4 +1,5 @@
-import type { Metadata } from 'next'
+import { getLang, getT } from '@/lib/i18n/server'
+import { LangProvider } from '@/lib/i18n/client'
 
 // Оболочка мобильного приложения. Сюда указывает capacitor.config.ts,
 // и это НЕ страницы сайта: ни шапки, ни переключателя темы, ни ссылки
@@ -7,13 +8,18 @@ import type { Metadata } from 'next'
 // Общая логика (Supabase, права, серверные действия) та же самая, что в вебе.
 // Различается только раскладка — ровно как требует правило проекта
 // «общий слой вместо паритета».
-export const metadata: Metadata = {
-  title: 'Маркет',
-  // Приложение не масштабируется жестами: это не веб-страница.
-  // viewport-fit=cover нужен, чтобы контент уходил под вырез, а отступы
-  // задавались через env(safe-area-inset-*), а не гадались.
+
+// Заголовок вкладки — строка интерфейса, поэтому из словаря и через
+// `generateMetadata`: обёртка показывает его в списке недавних вкладок
+// и в переключателе приложений, и он обязан быть на языке человека.
+export async function generateMetadata() {
+  const t = await getT()
+  return { title: t('m.meta.title') }
 }
 
+// Приложение не масштабируется жестами: это не веб-страница.
+// viewport-fit=cover нужен, чтобы контент уходил под вырез, а отступы
+// задавались через env(safe-area-inset-*), а не гадались.
 export const viewport = {
   themeColor: '#141417',
   viewportFit: 'cover' as const,
@@ -22,48 +28,57 @@ export const viewport = {
   maximumScale: 1,
 }
 
-export default function MobileLayout({ children }: { children: React.ReactNode }) {
+// ЯЗЫК ОБЁРТКИ. Все экраны `/m` клиентские, и до 16.08.2026 провайдер
+// стоял только в макете кабинета — то есть приложение говорило
+// по-украински независимо от выбора человека. Куку читаем на сервере:
+// текст здесь есть в первом кадре, а клиентское значение приезжает
+// вторым и мигало бы. Кэшем не платим — `/m` закрыт в `robots.ts`
+// и живёт за входом.
+export default async function MobileLayout({ children }: { children: React.ReactNode }) {
+  const lang = await getLang()
   return (
-    <div
-      className="flex flex-col"
-      style={{
-        // ГРАБЛИ, дважды: сначала было minHeight: 100dvh — в веб-вью dvh
-        // про клавиатуру не знает, и нижние поля уходили под неё. Потом
-        // была поправка «100dvh минус вычисленная высота клавиатуры» —
-        // а вычисление в этом веб-вью даёт ноль, и не менялось ничего.
-        //
-        // Теперь высота берётся напрямую из visualViewport: это и есть
-        // видимая часть экрана, считать нечего. 100dvh — только запасной
-        // вариант для движков без visualViewport.
-        //
-        // ТРЕТЬЯ ГРАБЛЯ, 12.08.2026: здесь стояло
-        // transition: 'height var(--dur-fast) linear' — и это убивало
-        // процесс веб-вью. Кольцо: --vvh меняется → высота ЕДЕТ
-        // анимацией → пока едет, меняется область прокрутки →
-        // visualViewport стреляет 'scroll' → keyboard-fit пишет --vvh
-        // заново → transition перезапускается. Каждый кадр, вечно.
-        // Хватало колебания в один пиксель после Math.round.
-        // Снаружи это выглядело как «This page couldn't load» на всех
-        // сборках сразу, включая старые: причина ехала с сервера.
-        // В Safari не воспроизводилось — там visualViewport не дёргается,
-        // потому что нет Keyboard.resize:'native' и contentInset:'never'.
-        //
-        // Анимировать высоту нельзя и по правилу проекта (план, шаг 12):
-        // «ТОЛЬКО transform и opacity». Высота меняется мгновенно —
-        // клавиатура и так выезжает своей анимацией, и рывка не видно.
-        height: 'var(--vvh, 100dvh)',
-        background: 'var(--color-bg)',
-        paddingTop: 'env(safe-area-inset-top)',
-        paddingBottom: 'env(safe-area-inset-bottom)',
-        // Прокручивается содержимое внутри, а не сама рамка: иначе
-        // экран «уезжает» целиком и шапка с кнопкой «Вийти» пропадает.
-        overflow: 'hidden',
-        // Свайп-назад по краю экрана не должен выделять текст.
-        WebkitUserSelect: 'none',
-        WebkitTapHighlightColor: 'transparent',
-      }}
-    >
-      {children}
-    </div>
+    <LangProvider lang={lang}>
+      <div
+        className="flex flex-col"
+        style={{
+          // ГРАБЛИ, дважды: сначала было minHeight: 100dvh — в веб-вью dvh
+          // про клавиатуру не знает, и нижние поля уходили под неё. Потом
+          // была поправка «100dvh минус вычисленная высота клавиатуры» —
+          // а вычисление в этом веб-вью даёт ноль, и не менялось ничего.
+          //
+          // Теперь высота берётся напрямую из visualViewport: это и есть
+          // видимая часть экрана, считать нечего. 100dvh — только запасной
+          // вариант для движков без visualViewport.
+          //
+          // ТРЕТЬЯ ГРАБЛЯ, 12.08.2026: здесь стояло
+          // transition: 'height var(--dur-fast) linear' — и это убивало
+          // процесс веб-вью. Кольцо: --vvh меняется → высота ЕДЕТ
+          // анимацией → пока едет, меняется область прокрутки →
+          // visualViewport стреляет 'scroll' → keyboard-fit пишет --vvh
+          // заново → transition перезапускается. Каждый кадр, вечно.
+          // Хватало колебания в один пиксель после Math.round.
+          // Снаружи это выглядело как «This page couldn't load» на всех
+          // сборках сразу, включая старые: причина ехала с сервера.
+          // В Safari не воспроизводилось — там visualViewport не дёргается,
+          // потому что нет Keyboard.resize:'native' и contentInset:'never'.
+          //
+          // Анимировать высоту нельзя и по правилу проекта (план, шаг 12):
+          // «ТОЛЬКО transform и opacity». Высота меняется мгновенно —
+          // клавиатура и так выезжает своей анимацией, и рывка не видно.
+          height: 'var(--vvh, 100dvh)',
+          background: 'var(--color-bg)',
+          paddingTop: 'env(safe-area-inset-top)',
+          paddingBottom: 'env(safe-area-inset-bottom)',
+          // Прокручивается содержимое внутри, а не сама рамка: иначе
+          // экран «уезжает» целиком и шапка с кнопкой «Вийти» пропадает.
+          overflow: 'hidden',
+          // Свайп-назад по краю экрана не должен выделять текст.
+          WebkitUserSelect: 'none',
+          WebkitTapHighlightColor: 'transparent',
+        }}
+      >
+        {children}
+      </div>
+    </LangProvider>
   )
 }

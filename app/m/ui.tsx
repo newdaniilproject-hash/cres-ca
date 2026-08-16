@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useT } from '@/lib/i18n/client'
 
 // Каркас экрана приложения. Один на все экраны входа и регистрации,
 // потому что расхождение между ними человек замечает мгновенно:
@@ -25,6 +26,7 @@ export function AppScreen({
   backHref?: string
   children: React.ReactNode
 }) {
+  const t = useT()
   return (
     // m-scroll — прокручиваемая область экрана. Класс не косметический:
     // пока печатают, к нему снизу добавляется запас в три четверти
@@ -33,11 +35,11 @@ export function AppScreen({
     <main className="m-scroll flex flex-1 flex-col px-6 pb-8">
       <div className="flex items-center" style={{ height: 56, marginLeft: -10 }}>
         {onBack ? (
-          <button type="button" onClick={onBack} aria-label="Назад" className="navback">
+          <button type="button" onClick={onBack} aria-label={t('m.nav.back.aria')} className="navback">
             <BackArrow />
           </button>
         ) : backHref ? (
-          <Link href={backHref} aria-label="Назад" className="navback">
+          <Link href={backHref} aria-label={t('m.nav.back.aria')} className="navback">
             <BackArrow />
           </Link>
         ) : null}
