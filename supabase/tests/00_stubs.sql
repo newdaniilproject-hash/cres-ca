@@ -3,6 +3,26 @@ create role anon;
 create role authenticated;
 create role service_role;
 create role supabase_auth_admin;
+
+-- ⚠️ ГЛАВНАЯ ПОДПОРКА СТЕНДА, БЕЗ КОТОРОЙ ОН ВРЁТ.
+--
+-- В облаке Supabase действует `alter default privileges`: КАЖДЫЙ вновь
+-- созданный объект схемы public автоматически получает права для ролей
+-- `anon` и `authenticated`. Это источник целого класса дефектов — права,
+-- которых никто не выдавал (ловилось пять раз: 0036, 0060, 0072, 0073, 0076).
+--
+-- Раньше стенд изображал это иначе: тесты 01 и 06 делали
+-- `grant all on all tables` ПОСЛЕ накатывания миграций. Разница
+-- принципиальная: такой грант затирал ОСОЗНАННЫЕ отзывы прав, сделанные
+-- миграцией. Из-за этого 0078 (закрытие колонки с телефоном) на стенде
+-- выглядела нерабочей, хотя на бою работает.
+--
+-- Теперь права выдаются ТАК ЖЕ, КАК В ОБЛАКЕ — в момент создания объекта.
+-- Значит миграция, которая право отзывает, отзывает его по-настоящему.
+alter default privileges in schema public grant all on tables    to anon, authenticated;
+alter default privileges in schema public grant all on sequences to anon, authenticated;
+alter default privileges in schema public grant all on functions to anon, authenticated;
+
 create schema if not exists auth;
 create table auth.users (
   id uuid primary key default gen_random_uuid(),

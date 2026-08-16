@@ -119,6 +119,7 @@ LOG="$(mktemp)"
   psql -f "$ROOT/supabase/tests/07_register_card.sql"
   psql -f "$ROOT/supabase/tests/08_stock_plus.sql"
   psql -f "$ROOT/supabase/tests/09_team.sql"
+  psql -f "$ROOT/supabase/tests/10_contacts.sql"
 } 2>&1 | tee "$LOG"
 
 echo

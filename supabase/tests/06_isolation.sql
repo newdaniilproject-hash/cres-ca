@@ -23,8 +23,6 @@ begin;
 -- Оговорка оттуда же — скопом выданные права затирают адресные revoke
 -- из миграций, поэтому revoke переигрываем обратно.
 grant usage on schema public to anon, authenticated;
-grant all on all tables    in schema public to anon, authenticated;
-grant all on all sequences in schema public to anon, authenticated;
 revoke select on public.stock_low_view   from anon;
 revoke select on public.stock_value_view from anon;
 

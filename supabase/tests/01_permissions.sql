@@ -4,8 +4,6 @@
 \set ON_ERROR_STOP on
 
 grant usage on schema public to anon, authenticated;
-grant all on all tables    in schema public to anon, authenticated;
-grant all on all sequences in schema public to anon, authenticated;
 
 -- Оговорка про строку выше. В Supabase роли anon/authenticated получают
 -- права на новые объекты через default privileges — по одному объекту,
