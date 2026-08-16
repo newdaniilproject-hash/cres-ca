@@ -35,9 +35,16 @@ const STATUS_LABEL: Record<string, string> = {
 }
 
 export function PaoControl({
-  canOpen, material, containers, batches, loadError,
+  canOpen, canPrint, material, containers, batches, loadError,
 }: {
   canOpen: boolean
+  /**
+   * Право на лист наклеек. Роут `/app/inventory/labels` требует
+   * `stock.read` и осознанно отвечает 403 инспектору. Кнопка, которая
+   * гарантированно приводит к 403, — это не защита, а сломанная
+   * навигация, поэтому её просто нет.
+   */
+  canPrint: boolean
   material: { id: string; name: string; unit: string; paoMonths: number | null; isCosmetic: boolean }
   containers: Container[]
   batches: Batch[]
@@ -199,8 +206,10 @@ export function PaoControl({
                   </button>
                 </>
               )}
-              <a href={`/app/inventory/labels?ids=${c.id}`} target="_blank" rel="noreferrer"
-                 className="btn-ghost t-sm">Друк наліпки</a>
+              {canPrint && (
+                <a href={`/app/inventory/labels?ids=${c.id}`} target="_blank" rel="noreferrer"
+                   className="btn-ghost t-sm">Друк наліпки</a>
+              )}
             </div>
 
             {c.status === 'sealed' && (
