@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { LEGAL_VERSION, LEGAL_DOCS } from '@/lib/legal'
 import { signupSource } from '@/lib/consent'
 import { humanAuthError, codeErrorText } from '@/lib/auth-errors'
+import { nextRoute } from '@/lib/where'
 import { AuthShell } from '../auth-shell'
 import { GoogleButton } from '../google-button'
 import { CodeInput } from '@/app/m/code-input'
@@ -51,11 +52,21 @@ function RegisterInner() {
   // читает как протокол-относительный адрес, то есть чужой сайт, —
   // иначе форма регистрации становится открытым перенаправлением.
   const params = useSearchParams()
+  //
+  // Запасного адреса здесь нет. Раньше здесь жёстко стояло '/account' —
+  // покупательский кабинет. Но CRESKO это склад для мастеров: кто
+  // регистрируется, регистрируется как бизнес, и человек без заведения
+  // обязан попасть на его создание. Когда `next` не задан, решает
+  // lib/where.ts — одна на веб и на приложение.
   const rawNext = params.get('next')
-  const next = rawNext && rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/account'
+  const next = rawNext && rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : null
   // Адрес возврата тащим и во вход: человек с этого экрана часто уходит
   // туда, вспомнив, что аккаунт есть, — и терять цель на полпути нельзя.
-  const loginHref = next === '/account' ? '/login' : `/login?next=${encodeURIComponent(next)}`
+  const loginHref = next ? `/login?next=${encodeURIComponent(next)}` : '/login'
+
+  // Куда уходим после подтверждения. Считается один раз — в момент,
+  // когда сессия уже есть: до неё членства прочитать нечем.
+  const [target, setTarget] = useState('/app')
 
   const [step, setStep] = useState<Step>('form')
   const [first, setFirst] = useState('')
@@ -125,7 +136,10 @@ function RegisterInner() {
     void data
 
     // Подтверждение отключено в настройках — сессия выдана сразу.
-    if (data.session) { window.location.href = next; return }
+    if (data.session) {
+      window.location.href = next ?? await nextRoute(supabase, 'web')
+      return
+    }
 
     setStep('sent')
     setLeft(RESEND_SECONDS)
@@ -144,6 +158,8 @@ function RegisterInner() {
       return
     }
     setBusy(false)
+    // verifyOtp с type:'signup' уже выдал сессию — членства читаемы.
+    setTarget(next ?? await nextRoute(supabase, 'web'))
     setStep('done')
   }
 
@@ -167,12 +183,13 @@ function RegisterInner() {
       <AuthShell>
         <SuccessScreen
           title="Email підтверджено!"
-          subtitle={next === '/account'
-            ? 'Ваш акаунт успішно активовано. Тепер ви можете увійти.'
-            : 'Ваш акаунт активовано. Повертаємо вас туди, звідки ви прийшли.'}
+          subtitle={next
+            ? 'Ваш акаунт активовано. Повертаємо вас туди, звідки ви прийшли.'
+            : 'Акаунт активовано. Залишився останній крок — ваш заклад.'}
           actionLabel="Продовжити"
-          onAction={() => { window.location.href = next }}
+          onAction={() => { window.location.href = target }}
         />
+        <Redirect to={target} />
       </AuthShell>
     )
   }
@@ -328,7 +345,7 @@ function RegisterInner() {
         </button>
       </form>
 
-      <GoogleButton next={next} />
+      <GoogleButton next={next ?? undefined} />
 
       <p className="t-md mt-6 text-center prose-muted">
         Вже є акаунт?{' '}
@@ -336,6 +353,17 @@ function RegisterInner() {
       </p>
     </AuthShell>
   )
+}
+
+// Экран успеха живёт секунду и уходит сам — так же, как на входе.
+// Отдельным компонентом, чтобы эффект не висел на всей регистрации
+// и не срабатывал раньше времени.
+function Redirect({ to }: { to: string }) {
+  useEffect(() => {
+    const id = setTimeout(() => { window.location.href = to }, 1400)
+    return () => clearTimeout(id)
+  }, [to])
+  return null
 }
 
 export default function RegisterPage() {
