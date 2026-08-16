@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useT } from '@/lib/i18n/client'
+import type { T } from '@/lib/i18n/translate'
 
 export type RecipeLine = {
   variantId: string
@@ -26,19 +28,20 @@ export type VariantRecipe = {
 type MaterialOption = { id: string; name: string; unit: string; cost: number | null }
 
 // База отвечает по-русски и словами разработчика — переводим известное,
-// незнакомое показываем как есть.
-function humanize(message: string, code?: string): string {
+// незнакомое показываем как есть. Подстроки и коды, по которым разбирается
+// отказ, — текст базы: в словарь едет только наш ответ.
+function humanize(t: T, message: string, code?: string): string {
   if (code === '23505') {
-    return 'Цей засіб уже є в рецепті. Змініть кількість у наявному рядку.'
+    return t('inventory.recipes.error.duplicate')
   }
   if (code === '23503') {
-    return 'Засіб або позицію видалили — оновіть сторінку.'
+    return t('inventory.recipes.error.missing')
   }
   if (code === '23514' || message.includes('quantity_per_unit')) {
-    return 'Кількість має бути більшою за нуль.'
+    return t('inventory.recipes.error.qty')
   }
   if (message.includes('row-level security') || message.includes('policy')) {
-    return 'Немає права редагувати каталог (catalog.write). Попросіть власника магазину видати його.'
+    return t('inventory.recipes.error.catalogWrite')
   }
   return message
 }
@@ -55,6 +58,7 @@ export function RecipesClient({
   error: string
   loadError: string
 }) {
+  const t = useT()
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
 
@@ -74,8 +78,6 @@ export function RecipesClient({
   const lineCost = (l: RecipeLine) => (l.cost != null ? l.cost * l.quantity : null)
   const sum = (lines: RecipeLine[]) =>
     lines.reduce((acc, l) => acc + (lineCost(l) ?? 0), 0)
-  const money = (n: number) =>
-    n.toLocaleString('uk-UA', { maximumFractionDigits: 2 })
 
   function toggle(id: string) {
     setOpenId(openId === id ? null : id)
@@ -91,7 +93,7 @@ export function RecipesClient({
       quantity_per_unit: Number(qty),
     })
     setBusy(null)
-    if (insertError) { setErr(humanize(insertError.message, insertError.code)); return }
+    if (insertError) { setErr(humanize(t, insertError.message, insertError.code)); return }
     setMaterialId(''); setQty('')
     router.refresh()
   }
@@ -105,39 +107,38 @@ export function RecipesClient({
       .eq('variant_id', l.variantId)
       .eq('material_id', l.materialId)
     setBusy(null)
-    if (deleteError) { setErr(humanize(deleteError.message, deleteError.code)); return }
+    if (deleteError) { setErr(humanize(t, deleteError.message, deleteError.code)); return }
     router.refresh()
   }
 
   return (
     <div className="flex flex-col gap-5">
       <div className="rise flex flex-wrap items-center gap-2">
-        <Link href="/app/inventory" className="btn-ghost">← Склад</Link>
+        <Link href="/app/inventory" className="btn-ghost">← {t('inventory.link.stock')}</Link>
       </div>
 
-      {error && <p className="field-error rise">Не вдалося завантажити позиції: {error}</p>}
-      {loadError && <p className="field-error rise">Не вдалося завантажити склад рецептів: {loadError}</p>}
+      {/* Текст отказа базы показывается как есть — это её слова, не наши. */}
+      {error && (
+        <p className="field-error rise">{t('inventory.recipes.error.variants')}: {error}</p>
+      )}
+      {loadError && (
+        <p className="field-error rise">{t('inventory.recipes.error.lines')}: {loadError}</p>
+      )}
       {err && <p className="field-error rise">{err}</p>}
 
       <section className="card rise">
-        <p className="eyebrow">Списання за рецептом</p>
-        <p className="t-md mt-2 prose-muted">
-          Тут ви один раз описуєте, що йде на одну одиницю: на «Коси 60 см» —
-          4 упаковки канекалону і 30 мл засобу. Далі рахувати не треба:
-          коли запис переводять у статус «виконано», склад спишеться сам.
-          Редагування рецепта нічого не списує — воно лише змінює правило
-          на майбутнє.
-        </p>
+        <p className="eyebrow">{t('inventory.recipes.about.eyebrow')}</p>
+        <p className="t-md mt-2 prose-muted">{t('inventory.recipes.about.desc')}</p>
       </section>
 
       <div className="rise-1 flex flex-wrap items-center gap-2">
         <button type="button" onClick={() => { setTab('services'); setOpenId(null) }}
                 className={tab === 'services' ? 'chip-active' : 'chip'}>
-          Послуги
+          {t('inventory.recipes.tab.services')}
         </button>
         <button type="button" onClick={() => { setTab('goods'); setOpenId(null) }}
                 className={tab === 'goods' ? 'chip-active' : 'chip'}>
-          Товари
+          {t('inventory.recipes.tab.goods')}
         </button>
       </div>
 
@@ -145,8 +146,8 @@ export function RecipesClient({
         {shown.length === 0 ? (
           <div className="empty">
             {tab === 'services'
-              ? 'Послуг ще немає — їх заводять у каталозі.'
-              : 'Товарів ще немає — їх заводять у каталозі.'}
+              ? t('inventory.recipes.empty.services')
+              : t('inventory.recipes.empty.goods')}
           </div>
         ) : shown.map((v) => {
           const open = openId === v.id
@@ -162,17 +163,21 @@ export function RecipesClient({
                   </p>
                   <p className="tabular t-xs mt-0.5 prose-muted">
                     {v.lines.length === 0
-                      ? 'склад не описано'
-                      : `позицій у складі: ${v.lines.length}`}
+                      ? t('inventory.recipes.noComposition')
+                      : t('inventory.recipes.lines', { n: t.number(v.lines.length) })}
                     {v.lines.length > 0 && total > 0
-                      ? ` · ${partial ? 'від ' : ''}${money(total)} ₴ за 1 ${v.unit}`
+                      ? ` · ${partial
+                        ? t('inventory.recipes.costFrom', { money: t.money(total), unit: v.unit })
+                        : t('inventory.recipes.cost', { money: t.money(total), unit: v.unit })}`
                       : ''}
                   </p>
                 </button>
                 <div className="flex shrink-0 items-center gap-2">
-                  {v.lines.length > 0 && <span className="badge-accent tabular">{v.lines.length}</span>}
+                  {v.lines.length > 0 && (
+                    <span className="badge-accent tabular">{t.number(v.lines.length)}</span>
+                  )}
                   <button type="button" className="btn-icon" onClick={() => toggle(v.id)}
-                          title={open ? 'Згорнути' : 'Показати склад'}>
+                          title={open ? t('inventory.collapse') : t('inventory.recipes.expand')}>
                     {open ? '−' : '+'}
                   </button>
                 </div>
@@ -181,9 +186,7 @@ export function RecipesClient({
               {open && (
                 <div className="pb-5">
                   {v.lines.length === 0 ? (
-                    <p className="t-md prose-muted">
-                      Склад порожній — під час виконання нічого не спишеться.
-                    </p>
+                    <p className="t-md prose-muted">{t('inventory.recipes.empty.lines')}</p>
                   ) : (
                     <div className="card-flat !p-0 px-4">
                       {v.lines.map((l) => {
@@ -193,12 +196,18 @@ export function RecipesClient({
                             <div className="min-w-0">
                               <p className="t-md truncate">{l.name}</p>
                               <p className="tabular t-xs mt-0.5 prose-muted">
-                                {l.quantity} {l.unit} на 1 {v.unit}
-                                {c != null ? ` · ${money(c)} ₴` : ' · ціну засобу не вказано'}
+                                {t('inventory.recipes.line.per', {
+                                  qty: t.number(l.quantity), unit: l.unit, target: v.unit,
+                                })}
+                                {c != null
+                                  ? ` · ${t.money(c)}`
+                                  : ` · ${t('inventory.recipes.line.noCost')}`}
                               </p>
                             </div>
                             {canWrite && (
-                              <button type="button" className="btn-icon" title="Прибрати з рецепта"
+                              <button type="button" className="btn-icon"
+                                      title={t('inventory.recipes.remove.aria')}
+                                      aria-label={t('inventory.recipes.remove.aria')}
                                       disabled={busy !== null}
                                       onClick={() => void removeLine(l)}>
                                 ✕
@@ -214,10 +223,10 @@ export function RecipesClient({
                     <form onSubmit={(e) => void addLine(e, v.id)}
                           className="mt-3 grid gap-3 sm:grid-cols-2">
                       <div>
-                        <label className="field-label">Витратний засіб</label>
+                        <label className="field-label">{t('inventory.recipes.add.material.label')}</label>
                         <select required className="select" value={materialId}
                                 onChange={(e) => setMaterialId(e.target.value)}>
-                          <option value="">— оберіть —</option>
+                          <option value="">{t('inventory.common.choose')}</option>
                           {materials
                             .filter((mt) => !v.lines.some((l) => l.materialId === mt.id))
                             .map((mt) => (
@@ -225,14 +234,14 @@ export function RecipesClient({
                             ))}
                         </select>
                         {materials.length === 0 && (
-                          <p className="field-hint">
-                            Витратних засобів ще немає — заведіть їх на складі.
-                          </p>
+                          <p className="field-hint">{t('inventory.recipes.add.noMaterials')}</p>
                         )}
                       </div>
                       <div>
                         <label className="field-label">
-                          Скільки йде на 1 {v.unit}{unit ? `, ${unit}` : ''}
+                          {unit
+                            ? t('inventory.recipes.add.qty.labelUnit', { target: v.unit, unit })
+                            : t('inventory.recipes.add.qty.label', { target: v.unit })}
                         </label>
                         <input required type="number" min="0.001" step="any" className="input"
                                placeholder="4" value={qty}
@@ -241,7 +250,7 @@ export function RecipesClient({
                       <div className="sm:col-span-2">
                         <button className="btn-primary"
                                 disabled={busy !== null || !materialId || !qty}>
-                          Додати до рецепта
+                          {t('inventory.recipes.add.submit')}
                         </button>
                       </div>
                     </form>
@@ -253,15 +262,10 @@ export function RecipesClient({
         })}
       </section>
 
-      <p className="field-hint">
-        Собівартість рахується з ціни за одиницю витратного засобу. Якщо
-        її не вказано, засіб у суму не потрапляє — сума показується як «від».
-      </p>
+      <p className="field-hint">{t('inventory.recipes.hint')}</p>
 
       {!canWrite && (
-        <p className="field-hint">
-          Немає права редагувати каталог, тому рецепти доступні лише для перегляду.
-        </p>
+        <p className="field-hint">{t('inventory.recipes.readonly')}</p>
       )}
     </div>
   )
