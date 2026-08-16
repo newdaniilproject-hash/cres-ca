@@ -1,9 +1,13 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { PublicHeader, PublicFooter } from '@/components/shell'
+import { PublicHeader, PublicFooter, publicT as t } from '@/components/shell'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Пошук' }
+export const metadata = { title: t('public.search.meta.title') }
+
+// Минимальная длина запроса живёт одним числом: она стоит и в проверке,
+// и в подсказке под полем, и разъехаться им нельзя.
+const MIN_QUERY = 2
 
 type Result = {
   result_type: 'shop' | 'offering'
@@ -20,6 +24,12 @@ type Result = {
 }
 
 // Поиск: магазины и позиции в одной выдаче, одной функцией базы.
+//
+// Названия заведений и позиций, города и подзаголовки — данные продавца
+// и не переводятся. Переводятся подписи фильтров, бейджи типа результата
+// и пустые состояния. Язык страницы закреплён украинским вместе со всей
+// витриной (обоснование — `components/shell.tsx`): `/search` открыт
+// в `app/robots.ts` и стоит в карте сайта, то есть индексируется.
 export default async function SearchPage({
   searchParams,
 }: {
@@ -34,7 +44,7 @@ export default async function SearchPage({
   ])
 
   let results: Result[] = []
-  if (q.trim().length >= 2) {
+  if (q.trim().length >= MIN_QUERY) {
     const { data } = await supabase.rpc('search_all', {
       p_query: q.trim(),
       p_kind: kind === 'product' || kind === 'service' ? kind : null,
@@ -60,15 +70,21 @@ export default async function SearchPage({
           <span aria-hidden className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 t-xl"
                 style={{ color: 'var(--color-faint)' }}>⌕</span>
           <input name="q" defaultValue={q} className="search-hero" autoFocus
-                 placeholder="Що шукаєте?" autoComplete="off" />
+                 placeholder={t('public.search.placeholder')} autoComplete="off" />
           {kind && <input type="hidden" name="kind" value={kind} />}
           {city && <input type="hidden" name="city" value={city} />}
         </form>
 
         <div className="rise-1 mt-4 flex flex-wrap gap-2">
-          <Link href={qs({ kind: undefined })} className={!kind ? 'chip-active' : 'chip'}>Усе</Link>
-          <Link href={qs({ kind: 'service' })} className={kind === 'service' ? 'chip-active' : 'chip'}>Послуги</Link>
-          <Link href={qs({ kind: 'product' })} className={kind === 'product' ? 'chip-active' : 'chip'}>Товари</Link>
+          <Link href={qs({ kind: undefined })} className={!kind ? 'chip-active' : 'chip'}>
+            {t('public.search.filter.all')}
+          </Link>
+          <Link href={qs({ kind: 'service' })} className={kind === 'service' ? 'chip-active' : 'chip'}>
+            {t('public.search.filter.services')}
+          </Link>
+          <Link href={qs({ kind: 'product' })} className={kind === 'product' ? 'chip-active' : 'chip'}>
+            {t('public.search.filter.products')}
+          </Link>
           {(cities ?? []).slice(0, 5).map((c: { city: string }) => (
             <Link key={c.city} href={qs({ city: city === c.city ? undefined : c.city })}
                   className={city === c.city ? 'chip-active' : 'chip'}>
@@ -78,14 +94,14 @@ export default async function SearchPage({
         </div>
 
         <section className="mt-8 pb-10">
-          {q.trim().length < 2 ? (
-            <div className="empty">Введіть щонайменше дві літери</div>
+          {q.trim().length < MIN_QUERY ? (
+            <div className="empty">{t.plural('public.search.hint.min', MIN_QUERY)}</div>
           ) : results.length === 0 ? (
             <div className="empty card">
               <p className="display t-lg" style={{ color: 'var(--color-text)' }}>
-                Нічого не знайшли за «{q}»
+                {t('public.search.empty.title', { q })}
               </p>
-              <p>Спробуйте коротше слово або перевірте розкладку.</p>
+              <p>{t('public.search.empty.desc')}</p>
             </div>
           ) : (
             <div className="flex flex-col gap-3">
@@ -99,8 +115,9 @@ export default async function SearchPage({
                     <div className="flex items-center gap-2">
                       <p className="t-lg truncate">{r.title}</p>
                       <span className={r.result_type === 'shop' ? 'badge-accent' : 'badge'}>
-                        {r.result_type === 'shop' ? 'заклад'
-                          : r.kind === 'service' ? 'послуга' : 'товар'}
+                        {r.result_type === 'shop' ? t('public.search.badge.shop')
+                          : r.kind === 'service' ? t('public.search.badge.service')
+                          : t('public.search.badge.product')}
                       </span>
                     </div>
                     <p className="t-sm mt-0.5 truncate prose-muted">
@@ -111,7 +128,7 @@ export default async function SearchPage({
                   </div>
                   {r.price != null && (
                     <p className="tabular t-md shrink-0">
-                      {Number(r.price).toLocaleString('uk-UA')} ₴
+                      {t.money(Number(r.price), r.currency ?? undefined)}
                     </p>
                   )}
                 </Link>
