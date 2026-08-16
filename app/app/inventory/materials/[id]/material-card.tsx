@@ -6,8 +6,10 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Sheet } from '@/components/sheet'
 import { useToast } from '@/components/toast'
+import { useT } from '@/lib/i18n/client'
 import { MaterialForm, type MaterialInit, type RefItem } from '../../material-form'
-import { EXPIRY_BADGE, EXPIRY_LABEL, expiryState, fmtDate, fmtShort } from '@/lib/expiry'
+import { EXPIRY_KEY } from '../../inventory-client'
+import { EXPIRY_BADGE, expiryState } from '@/lib/expiry'
 
 export type Batch = {
   id: string; number: string
@@ -53,6 +55,7 @@ export function MaterialCard({
   suppliers: RefItem[]
   locations: RefItem[]
 }) {
+  const t = useT()
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
   const toast = useToast()
@@ -91,13 +94,13 @@ export function MaterialCard({
         })
     setBusy(false)
     if (error) {
-      toast.error('Партію не збережено', error.code === '23505'
-        ? 'Партія з таким номером у цього засобу вже є'
+      toast.error(t('inventory.material.batch.saveError'), error.code === '23505'
+        ? t('inventory.material.batch.duplicate')
         : error.message)
       return
     }
     setBatchEdit(null)
-    toast.success('Партію збережено')
+    toast.success(t('inventory.material.batch.saved'))
     router.refresh()
   }
 
@@ -107,41 +110,51 @@ export function MaterialCard({
       {/* ── Шапка карточки ───────────────────────────────────── */}
       <section className="card rise-1 flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <span className={EXPIRY_BADGE[state]}>{EXPIRY_LABEL[state]}</span>
-          {material.isCosmetic && <span className="badge-accent">косметика</span>}
-          {!canWrite && <span className="badge">лише перегляд</span>}
+          <span className={EXPIRY_BADGE[state]}>{t(EXPIRY_KEY[state])}</span>
+          {material.isCosmetic && (
+            <span className="badge-accent">{t('inventory.material.badge.cosmetic')}</span>
+          )}
+          {!canWrite && <span className="badge">{t('inventory.material.badge.readonly')}</span>}
         </div>
         <h2 className="display t-2xl">{material.name}</h2>
         <p className="t-sm" style={{ color: 'var(--color-muted)' }}>
-          {[material.brand, material.category].filter(Boolean).join(' · ') || 'без категорії'}
+          {/* Бренд и категория — данные арендатора. */}
+          {[material.brand, material.category].filter(Boolean).join(' · ')
+            || t('inventory.material.noCategory')}
         </p>
         {stock !== null && (
           <p className="tabular t-md">
-            В наявності: <b>{stock} {material.unit}</b>
+            {t('inventory.material.inStock')}: <b>{t.number(stock)} {material.unit}</b>
             {material.threshold > 0 && stock <= material.threshold && (
-              <span className="badge-warn ml-2">мінімум {material.threshold}</span>
+              <span className="badge-warn ml-2">
+                {t('inventory.material.minimum', { n: t.number(material.threshold) })}
+              </span>
             )}
           </p>
         )}
         {canWrite && (
           <button type="button" className="btn-secondary mt-2 self-start"
                   onClick={() => setEdit(true)}>
-            Редагувати картку
+            {t('inventory.material.edit')}
           </button>
         )}
       </section>
 
       {/* ── Паспорт засоба (ТЗ 3.1) ──────────────────────────── */}
       <section className="card rise-2">
-        <h3 className="t-sm mb-1" style={{ color: 'var(--color-faint)' }}>ПАСПОРТ ЗАСОБУ</h3>
-        <Row label="Бренд" value={material.brand ?? '—'} />
-        <Row label="Артикул" value={material.sku ?? '—'} mono />
-        <Row label="Категорія" value={material.category ?? '—'} />
-        <Row label="Країна-виробник" value={material.country ?? '—'} />
-        <Row label="Одиниця" value={material.unit} />
+        <h3 className="t-sm mb-1" style={{ color: 'var(--color-faint)' }}>
+          {t('inventory.material.passport.title')}
+        </h3>
+        <Row label={t('inventory.material.row.brand')} value={material.brand ?? '—'} />
+        <Row label={t('inventory.material.row.sku')} value={material.sku ?? '—'} mono />
+        <Row label={t('inventory.material.row.category')} value={material.category ?? '—'} />
+        <Row label={t('inventory.material.row.country')} value={material.country ?? '—'} />
+        <Row label={t('inventory.material.row.unit')} value={material.unit} />
         {material.inci && (
           <div style={{ paddingBlock: 'var(--space-2)' }}>
-            <p className="t-sm" style={{ color: 'var(--color-muted)' }}>Склад (INCI)</p>
+            <p className="t-sm" style={{ color: 'var(--color-muted)' }}>
+              {t('inventory.material.row.inci')}
+            </p>
             <p className="t-sm mt-1">{material.inci}</p>
           </div>
         )}
@@ -150,36 +163,42 @@ export function MaterialCard({
       {/* ── Партия и сроки ───────────────────────────────────── */}
       <section className="card rise-2">
         <div className="mb-1 flex items-center justify-between gap-3">
-          <h3 className="t-sm" style={{ color: 'var(--color-faint)' }}>ПАРТІЯ ТА ТЕРМІНИ</h3>
+          <h3 className="t-sm" style={{ color: 'var(--color-faint)' }}>
+            {t('inventory.material.batches.title')}
+          </h3>
           {canWrite && (
             <button type="button" className="btn-ghost t-sm"
-                    onClick={() => setBatchEdit('new')}>+ Партія</button>
+                    onClick={() => setBatchEdit('new')}>
+              {t('inventory.material.batches.add')}
+            </button>
           )}
         </div>
 
         {active ? (
           <>
-            <Row label="Номер партії (Batch)" value={active.number} mono />
-            <Row label="Дата виготовлення" value={fmtDate(active.made)} mono />
-            <Row label="Термін придатності" value={fmtDate(active.expiry)} mono />
-            <Row label="PAO (після відкриття)"
-                 value={material.paoMonths ? `${material.paoMonths}M` : '—'} mono />
-            <Row label="Статус"
-                 value={<span className={EXPIRY_BADGE[state]}>{EXPIRY_LABEL[state]}</span>} />
+            {/* Номер партии — данные арендатора, не переводится. */}
+            <Row label={t('inventory.material.row.batchNumber')} value={active.number} mono />
+            <Row label={t('inventory.material.row.made')} value={t.date(active.made)} mono />
+            <Row label={t('inventory.material.row.expiry')} value={t.date(active.expiry)} mono />
+            <Row label={t('inventory.material.row.pao')}
+                 value={material.paoMonths ? `${t.number(material.paoMonths)}M` : '—'} mono />
+            <Row label={t('inventory.material.row.status')}
+                 value={<span className={EXPIRY_BADGE[state]}>{t(EXPIRY_KEY[state])}</span>} />
             {canWrite && (
               <button type="button" className="btn-ghost mt-1 t-sm"
                       onClick={() => setBatchEdit(active)}>
-                Виправити партію {active.number}
+                {t('inventory.material.batch.fix', { number: active.number })}
               </button>
             )}
           </>
         ) : (
           <div className="empty !py-6">
-            Партій ще немає. Номер партії і термін придатності — обовʼязкові
-            поля реєстру за ТЗ: без них перевірка не приймає засіб.
+            {t('inventory.material.batch.empty')}
             {canWrite && (
               <button type="button" className="btn-primary"
-                      onClick={() => setBatchEdit('new')}>Завести партію</button>
+                      onClick={() => setBatchEdit('new')}>
+                {t('inventory.material.batch.create')}
+              </button>
             )}
           </div>
         )}
@@ -187,7 +206,7 @@ export function MaterialCard({
         {batches.length > 1 && (
           <div className="mt-3 border-t pt-2" style={{ borderColor: 'var(--color-border)' }}>
             <p className="t-xs mb-1" style={{ color: 'var(--color-faint)' }}>
-              Усі партії: {batches.length}
+              {t('inventory.material.batches.all', { n: t.number(batches.length) })}
             </p>
             {batches.map((b) => {
               const s = expiryState(b.expiry)
@@ -197,7 +216,11 @@ export function MaterialCard({
                         className="row w-full text-left"
                         style={{ minHeight: 'var(--tap-min)' }}>
                   <span className="tabular t-md">{b.number}</span>
-                  <span className={`tabular ${EXPIRY_BADGE[s]}`}>до {fmtShort(b.expiry)}</span>
+                  <span className={`tabular ${EXPIRY_BADGE[s]}`}>
+                    {t('inventory.material.batch.until', {
+                      date: t.date(b.expiry, { day: 'numeric', month: 'short' }),
+                    })}
+                  </span>
                 </button>
               )
             })}
@@ -210,17 +233,17 @@ export function MaterialCard({
         <Link href={`/app/inventory/materials/${material.id}/docs`}
               className="row px-5" style={{ minHeight: 'var(--tap-min)' }}>
           <span className="min-w-0">
-            <span className="t-md block">Документи та сертифікати</span>
+            <span className="t-md block">{t('inventory.material.docs.title')}</span>
             <span className="t-xs block" style={{ color: 'var(--color-faint)' }}>
               {docsCount > 0
-                ? `${docsCount} файлів · MSDS, сертифікати, висновок СЕС`
-                : 'MSDS, сертифікат якості, висновок СЕС — не завантажено'}
+                ? t.plural('inventory.material.docs.count', docsCount)
+                : t('inventory.material.docs.none')}
             </span>
           </span>
           <span className="flex shrink-0 items-center gap-2">
             {material.isCosmetic && docsCount === 0
-              ? <span className="badge-warn">потрібні</span>
-              : <span className="badge tabular">{docsCount}</span>}
+              ? <span className="badge-warn">{t('inventory.material.docs.needed')}</span>
+              : <span className="badge tabular">{t.number(docsCount)}</span>}
             <span aria-hidden style={{ color: 'var(--color-faint)' }}>›</span>
           </span>
         </Link>
@@ -228,13 +251,17 @@ export function MaterialCard({
         <Link href={`/app/inventory/materials/${material.id}/pao`}
               className="row px-5" style={{ minHeight: 'var(--tap-min)' }}>
           <span className="min-w-0">
-            <span className="t-md block">Контроль відкриття та фасування</span>
+            <span className="t-md block">{t('inventory.material.pao.title')}</span>
             <span className="t-xs block" style={{ color: 'var(--color-faint)' }}>
-              PAO, QR-коди, розлив у дозатор
+              {t('inventory.material.pao.desc')}
             </span>
           </span>
           <span className="flex shrink-0 items-center gap-2">
-            {opened.length > 0 && <span className="badge-accent tabular">відкрито {opened.length}</span>}
+            {opened.length > 0 && (
+              <span className="badge-accent tabular">
+                {t('inventory.material.pao.opened', { n: t.number(opened.length) })}
+              </span>
+            )}
             <span aria-hidden style={{ color: 'var(--color-faint)' }}>›</span>
           </span>
         </Link>
@@ -243,34 +270,33 @@ export function MaterialCard({
       {/* ── Нотификация МОЗ (ТЗ 3.1: посилання/код) ──────────── */}
       {material.isCosmetic && (
         <section className="card-flat rise-3">
-          <h3 className="t-sm mb-1" style={{ color: 'var(--color-faint)' }}>НОТИФІКАЦІЯ МОЗ</h3>
+          <h3 className="t-sm mb-1" style={{ color: 'var(--color-faint)' }}>
+            {t('inventory.material.moz.title')}
+          </h3>
           {material.notificationCode ? (
             <>
-              <Row label="Код нотифікації" value={material.notificationCode} mono />
-              <Row label="Дата реєстрації" value={fmtDate(material.notificationDate)} mono />
+              <Row label={t('inventory.material.row.mozCode')}
+                   value={material.notificationCode} mono />
+              <Row label={t('inventory.material.row.mozDate')}
+                   value={t.date(material.notificationDate)} mono />
               {material.notificationUrl ? (
                 <a href={material.notificationUrl} target="_blank" rel="noreferrer noopener"
                    className="btn-secondary mt-2 t-sm">
-                  Відкрити запис у реєстрі
+                  {t('inventory.material.moz.open')}
                 </a>
               ) : (
-                <p className="field-hint mt-2">
-                  Посилання не вказане. Інспектор перевіряє нотифікацію не за
-                  кодом, а за записом у реєстрі — додайте адресу в картці.
-                </p>
+                <p className="field-hint mt-2">{t('inventory.material.moz.noUrl')}</p>
               )}
             </>
           ) : (
-            <p className="field-hint">
-              Код нотифікації не вказаний. Для косметичного засобу це
-              обовʼязковий пункт перевірки — впишіть його в картці.
-            </p>
+            <p className="field-hint">{t('inventory.material.moz.noCode')}</p>
           )}
         </section>
       )}
 
       {/* ── Правка карточки ──────────────────────────────────── */}
-      <Sheet open={edit} onClose={() => setEdit(false)} title="Редагування картки">
+      <Sheet open={edit} onClose={() => setEdit(false)}
+             title={t('inventory.material.sheet.edit')}>
         <MaterialForm
           tenantId={tenantId} suppliers={suppliers} locations={locations}
           material={material} onDone={() => setEdit(false)}
@@ -279,7 +305,9 @@ export function MaterialCard({
 
       {/* ── Правка партии ────────────────────────────────────── */}
       <Sheet open={batchEdit !== null} onClose={() => setBatchEdit(null)}
-             title={batchEdit === 'new' ? 'Нова партія' : 'Партія'}>
+             title={batchEdit === 'new'
+               ? t('inventory.material.sheet.newBatch')
+               : t('inventory.material.sheet.batch')}>
         {batchEdit && (
           <BatchForm
             key={batchEdit === 'new' ? 'new' : batchEdit.id}
@@ -308,6 +336,7 @@ function BatchForm({
   onSave: (f: { number: string; made: string; expiry: string; supplierId: string }) => void
   onCancel: () => void
 }) {
+  const t = useT()
   const [number, setNumber] = useState(batch?.number ?? '')
   const [made, setMade] = useState(batch?.made ?? '')
   const [expiry, setExpiry] = useState(batch?.expiry ?? '')
@@ -317,38 +346,35 @@ function BatchForm({
     <form className="grid gap-3 sm:grid-cols-2"
           onSubmit={(e) => { e.preventDefault(); onSave({ number, made, expiry, supplierId }) }}>
       <div className="sm:col-span-2">
-        <label className="field-label">Номер партії</label>
-        <input required autoFocus className="input" placeholder="62XS03"
+        <label className="field-label">{t('inventory.material.batchForm.number.label')}</label>
+        <input required autoFocus className="input"
+               placeholder={t('inventory.material.batchForm.number.placeholder')}
                value={number} onChange={(e) => setNumber(e.target.value)} />
       </div>
       <div>
-        <label className="field-label">Дата виготовлення</label>
+        <label className="field-label">{t('inventory.material.batchForm.made.label')}</label>
         <input type="date" className="input" max={expiry || undefined}
                value={made} onChange={(e) => setMade(e.target.value)} />
       </div>
       <div>
-        <label className="field-label">Термін придатності</label>
+        <label className="field-label">{t('inventory.material.batchForm.expiry.label')}</label>
         <input required type="date" className="input" min={made || undefined}
                value={expiry} onChange={(e) => setExpiry(e.target.value)} />
       </div>
       <div className="sm:col-span-2">
-        <label className="field-label">Постачальник</label>
+        <label className="field-label">{t('inventory.material.batchForm.supplier.label')}</label>
         <select className="select" value={supplierId}
                 onChange={(e) => setSupplierId(e.target.value)}>
-          <option value="">— не вказано —</option>
+          <option value="">{t('inventory.common.notSet')}</option>
           {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
       </div>
-      <p className="field-hint sm:col-span-2">
-        Термін вскритої ємності перерахується сам: система бере менше з двох —
-        термін партії або день відкриття плюс PAO. «Омолодити» засіб правкою
-        партії не вийде, це заборонено в базі.
-      </p>
+      <p className="field-hint sm:col-span-2">{t('inventory.material.batchForm.hint')}</p>
       <div className="flex gap-2 sm:col-span-2">
         <button className="btn-primary" disabled={busy || !number.trim() || !expiry}>
-          {busy ? 'Зберігаємо…' : 'Зберегти'}
+          {busy ? t('common.saving') : t('common.save')}
         </button>
-        <button type="button" className="btn-ghost" onClick={onCancel}>Скасувати</button>
+        <button type="button" className="btn-ghost" onClick={onCancel}>{t('common.cancel')}</button>
       </div>
     </form>
   )
