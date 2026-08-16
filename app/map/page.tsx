@@ -1,9 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
-import { PublicHeader } from '@/components/shell'
+import { PublicHeader, publicT as t } from '@/components/shell'
 import { MapView } from './map-view'
 
 export const revalidate = 300
-export const metadata = { title: 'Мапа закладів' }
+export const metadata = { title: t('public.map.meta.title') }
 
 // Заведения на карте, как у Fresha: точки — продавцы и мастера,
 // клик — карточка со ссылкой на витрину.
