@@ -1,12 +1,12 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { LEGAL_VERSION, LEGAL_DOCS } from '@/lib/legal'
 import { signupSource } from '@/lib/consent'
 import { humanAuthError, codeErrorText } from '@/lib/auth-errors'
-import { nextRoute } from '@/lib/where'
 import { AuthShell } from '../auth-shell'
 import { GoogleButton } from '../google-button'
 import { CodeInput } from '@/app/m/code-input'
@@ -37,8 +37,25 @@ const RESEND_SECONDS = 60
 
 type Step = 'form' | 'sent' | 'code' | 'done'
 
-export default function RegisterPage() {
+function RegisterInner() {
   const supabase = createClient()
+
+  // Адрес возврата. Приходит из ссылки (`/register?next=/invite/<token>`)
+  // и означает «человек пришёл сюда с чужого экрана, вернуть его туда».
+  // Без этого приглашённый сотрудник регистрируется, попадает в общий
+  // кабинет без заведения и считает, что приглашение не сработало:
+  // ссылка из письма к тому моменту уже закрыта.
+  //
+  // Проверка ровно та же, что на /login, и она обязательна: принимаем
+  // ТОЛЬКО внутренний путь с одним ведущим слэшем. `//evil.com` браузер
+  // читает как протокол-относительный адрес, то есть чужой сайт, —
+  // иначе форма регистрации становится открытым перенаправлением.
+  const params = useSearchParams()
+  const rawNext = params.get('next')
+  const next = rawNext && rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/account'
+  // Адрес возврата тащим и во вход: человек с этого экрана часто уходит
+  // туда, вспомнив, что аккаунт есть, — и терять цель на полпути нельзя.
+  const loginHref = next === '/account' ? '/login' : `/login?next=${encodeURIComponent(next)}`
 
   const [step, setStep] = useState<Step>('form')
   const [first, setFirst] = useState('')
@@ -54,12 +71,6 @@ export default function RegisterPage() {
   const [codeError, setCodeError] = useState('')
   const [note, setNote] = useState('')
   const [left, setLeft] = useState(0)
-  // Куда уходим после подтверждения. Раньше здесь жёстко стояло
-  // '/account' — покупательский кабинет. Но CRESKO это склад для
-  // мастеров: кто регистрируется, регистрируется как бизнес, и человек
-  // без заведения обязан попасть на его создание. Решает lib/where.ts,
-  // одна на веб и на приложение.
-  const [target, setTarget] = useState('/app')
 
   // Отсчёт до повторной отправки. Без него человек жмёт «надіслати ще раз»
   // трижды подряд, упирается в лимит почтовика и решает, что сломалось.
@@ -114,7 +125,7 @@ export default function RegisterPage() {
     void data
 
     // Подтверждение отключено в настройках — сессия выдана сразу.
-    if (data.session) { window.location.href = await nextRoute(supabase, 'web'); return }
+    if (data.session) { window.location.href = next; return }
 
     setStep('sent')
     setLeft(RESEND_SECONDS)
@@ -133,8 +144,6 @@ export default function RegisterPage() {
       return
     }
     setBusy(false)
-    // verifyOtp с type:'signup' уже выдал сессию — членства читаемы.
-    setTarget(await nextRoute(supabase, 'web'))
     setStep('done')
   }
 
@@ -158,11 +167,12 @@ export default function RegisterPage() {
       <AuthShell>
         <SuccessScreen
           title="Email підтверджено!"
-          subtitle="Акаунт активовано. Залишився останній крок — ваш заклад."
+          subtitle={next === '/account'
+            ? 'Ваш акаунт успішно активовано. Тепер ви можете увійти.'
+            : 'Ваш акаунт активовано. Повертаємо вас туди, звідки ви прийшли.'}
           actionLabel="Продовжити"
-          onAction={() => { window.location.href = target }}
+          onAction={() => { window.location.href = next }}
         />
-        <Redirect to={target} />
       </AuthShell>
     )
   }
@@ -202,7 +212,7 @@ export default function RegisterPage() {
                     disabled={left > 0 || busy}>
               {left > 0 ? `Надіслати лист повторно через ${left} с` : 'Надіслати лист повторно'}
             </button>
-            <Link href="/login" className="link-quiet">Повернутися до входу</Link>
+            <Link href={loginHref} className="link-quiet">Повернутися до входу</Link>
           </div>
         </div>
       </AuthShell>
@@ -318,23 +328,18 @@ export default function RegisterPage() {
         </button>
       </form>
 
-      <GoogleButton />
+      <GoogleButton next={next} />
 
       <p className="t-md mt-6 text-center prose-muted">
         Вже є акаунт?{' '}
-        <Link href="/login" className="underline underline-offset-2">Увійти</Link>
+        <Link href={loginHref} className="underline underline-offset-2">Увійти</Link>
       </p>
     </AuthShell>
   )
 }
 
-// Экран успеха живёт секунду и уходит сам — так же, как на входе.
-// Отдельным компонентом, чтобы эффект не висел на всей регистрации
-// и не срабатывал раньше времени.
-function Redirect({ to }: { to: string }) {
-  useEffect(() => {
-    const id = setTimeout(() => { window.location.href = to }, 1400)
-    return () => clearTimeout(id)
-  }, [to])
-  return null
+export default function RegisterPage() {
+  // useSearchParams требует границы Suspense, иначе прод-сборка Next
+  // падает на пререндере. В этом проекте уже ловилось — см. /login.
+  return <Suspense><RegisterInner /></Suspense>
 }
