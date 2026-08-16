@@ -10,6 +10,7 @@ import { nextRoute } from '../where'
 import { AppScreen, Field, keepVisible } from '../ui'
 import { MailIcon, PasswordStrength, mmss } from '@/components/auth-ui'
 import { OAuthButtons } from '../oauth'
+import { useT } from '@/lib/i18n/client'
 
 // Шесть цифр — как в вебе и в макетах владельца (было восемь).
 const CODE_LENGTH = 6
@@ -57,6 +58,7 @@ function ageYears(dt: Date) {
 }
 
 export function MobileRegisterForm() {
+  const t = useT()
   const supabase = useMemo(() => createClient(), [])
 
   const [step, setStep] = useState<'form' | 'code'>('form')
@@ -194,7 +196,7 @@ export function MobileRegisterForm() {
     })
     if (error) {
       setBusy(false)
-      setCodeError('Код невірний або вже застарів')
+      setCodeError(t('m.register.code.invalid'))
       setCode('')
       return
     }
@@ -213,8 +215,8 @@ export function MobileRegisterForm() {
   if (step === 'code') {
     return (
       <AppScreen
-        title="Підтвердіть пошту"
-        subtitle={`Ми надіслали 6-значний код на ${email.trim()}`}
+        title={t('m.register.code.title')}
+        subtitle={t('auth.code.sentTo', { email: email.trim(), n: CODE_LENGTH })}
         onBack={() => { setStep('form'); setCode(''); setCodeError('') }}
       >
         <CodeInput
@@ -230,31 +232,30 @@ export function MobileRegisterForm() {
 
         {codeError && <p className="field-error text-center">{codeError}</p>}
         {busy && !codeError && (
-          <p className="t-sm mt-3 text-center prose-muted">Перевіряємо…</p>
+          <p className="t-sm mt-3 text-center prose-muted">{t('auth.code.checking')}</p>
         )}
 
         <p className="code-countdown">
-          {left > 0 ? `Повторно надіслати код через ${mmss(left)}` : 'Код можна надіслати повторно'}
+          {left > 0
+            ? t('auth.code.resendIn', { time: mmss(left) })
+            : t('auth.code.resendReady')}
         </p>
 
         <div className="auth-result-actions">
           <button type="button" className="btn-primary btn-tall"
                   disabled={busy || code.length !== CODE_LENGTH}
                   onClick={() => void verify(code)}>
-            {busy ? 'Перевіряємо…' : 'Підтвердити'}
+            {busy ? t('auth.code.checking') : t('auth.code.submit')}
           </button>
           <button type="button" className="link-quiet link-accent"
                   disabled={left > 0 || busy} onClick={() => void resend()}>
-            Надіслати код повторно
+            {t('auth.code.resend')}
           </button>
         </div>
 
         <div className="note note-row">
           <span style={{ color: 'var(--color-muted)' }}><MailIcon size={20} /></span>
-          <span>
-            Не отримали лист? Перевірте папку «Вхідні» та «Спам».
-            Або повторіть через хвилину. Код діє 10 хвилин.
-          </span>
+          <span>{t('m.login.code.noMail')}</span>
         </div>
       </AppScreen>
     )
@@ -263,37 +264,39 @@ export function MobileRegisterForm() {
   // ── Форма ────────────────────────────────────────────────────
   return (
     <AppScreen
-      title="Створити акаунт"
-      subtitle="Кілька полів — і склад ваш"
+      title={t('m.register.title')}
+      subtitle={t('m.register.subtitle')}
       backHref="/m"
     >
       {/* Провайдеры ПЕРЕД анкетой, а не под ней. Человеку, готовому
           войти одним тапом, незачем пролистывать семь полей, чтобы
           об этой возможности узнать. Согласие тут же строкой: галочки
           он не увидит, а запись в журнал уйдёт всё равно. */}
-      <OAuthButtons sep="below" hint="або заповніть анкету" legal disabled={busy} />
+      <OAuthButtons sep="below" hint={t('m.register.orForm')} legal disabled={busy} />
 
       <form onSubmit={submit} className="flex flex-col gap-5">
         <div className="flex gap-3">
-          <Field label="Імʼя" htmlFor="f-first" className="flex-1">
+          <Field label={t('auth.field.firstName')} htmlFor="f-first" className="flex-1">
             <input
               id="f-first" required autoComplete="given-name" autoCapitalize="words"
               className="input" style={{ height: 52, fontSize: 16 }}
               value={first} onFocus={keepVisible}
-              onChange={(e) => setFirst(e.target.value)} placeholder="Тая"
+              onChange={(e) => setFirst(e.target.value)}
+              placeholder={t('m.register.first.placeholder')}
             />
           </Field>
-          <Field label="Прізвище" htmlFor="f-last" className="flex-1">
+          <Field label={t('auth.field.lastName')} htmlFor="f-last" className="flex-1">
             <input
               id="f-last" required autoComplete="family-name" autoCapitalize="words"
               className="input" style={{ height: 52, fontSize: 16 }}
               value={last} onFocus={keepVisible}
-              onChange={(e) => setLast(e.target.value)} placeholder="Падалко"
+              onChange={(e) => setLast(e.target.value)}
+              placeholder={t('m.register.last.placeholder')}
             />
           </Field>
         </div>
 
-        <Field label="Телефон" htmlFor="f-phone">
+        <Field label={t('m.register.phone.label')} htmlFor="f-phone">
           <div
             className="input flex items-center gap-2"
             style={{ height: 52, paddingRight: 0 }}
@@ -311,18 +314,18 @@ export function MobileRegisterForm() {
               value={formatPhone(phone)}
               onFocus={keepVisible}
               onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 9))}
-              placeholder="50 123 45 67"
+              placeholder={t('m.register.phone.placeholder')}
             />
           </div>
           {phone.length > 0 && phone.length < 9 && (
-            <p className="field-hint">Ще {9 - phone.length} цифр</p>
+            <p className="field-hint">{t.plural('m.register.phone.more', 9 - phone.length)}</p>
           )}
         </Field>
 
-        <Field label="Дата народження" htmlFor="f-dd">
+        <Field label={t('m.register.birth.label')} htmlFor="f-dd">
           <div className="flex items-center gap-2">
             <input
-              id="f-dd" required inputMode="numeric" aria-label="День"
+              id="f-dd" required inputMode="numeric" aria-label={t('m.register.birth.day.aria')}
               className="input tabular text-center" style={{ height: 52, fontSize: 16, width: 68 }}
               value={dd} onFocus={keepVisible}
               onChange={(e) => {
@@ -332,11 +335,11 @@ export function MobileRegisterForm() {
                 // после «0» ждём вторую цифру, после «4» — нет.
                 if (v.length === 2 || (v.length === 1 && Number(v) > 3)) mmRef.current?.focus()
               }}
-              placeholder="дд"
+              placeholder={t('m.register.birth.day.placeholder')}
             />
             <span aria-hidden style={{ color: 'var(--color-faint)' }}>·</span>
             <input
-              ref={mmRef} required inputMode="numeric" aria-label="Місяць"
+              ref={mmRef} required inputMode="numeric" aria-label={t('m.register.birth.month.aria')}
               className="input tabular text-center" style={{ height: 52, fontSize: 16, width: 68 }}
               value={mm} onFocus={keepVisible}
               onChange={(e) => {
@@ -344,32 +347,32 @@ export function MobileRegisterForm() {
                 setMm(v)
                 if (v.length === 2 || (v.length === 1 && Number(v) > 1)) yRef.current?.focus()
               }}
-              placeholder="мм"
+              placeholder={t('m.register.birth.month.placeholder')}
             />
             <span aria-hidden style={{ color: 'var(--color-faint)' }}>·</span>
             <input
-              ref={yRef} required inputMode="numeric" aria-label="Рік"
+              ref={yRef} required inputMode="numeric" aria-label={t('m.register.birth.year.aria')}
               className="input tabular text-center" style={{ height: 52, fontSize: 16, flex: 1 }}
               value={yyyy} onFocus={keepVisible}
               onChange={(e) => setYyyy(e.target.value.replace(/\D/g, '').slice(0, 4))}
-              placeholder="рррр"
+              placeholder={t('m.register.birth.year.placeholder')}
             />
           </div>
           {birthBad && (
             <p className="field-error">
               {!birth
-                ? 'Такої дати не існує'
+                ? t('m.register.birth.error.noSuchDate')
                 : ageYears(birth) < 16
-                  ? 'Акаунт можна створити з 16 років'
-                  : 'Перевірте рік народження'}
+                  ? t('m.register.birth.error.tooYoung')
+                  : t('m.register.birth.error.year')}
             </p>
           )}
           {!birthBad && birthTouched && !birthReady && (
-            <p className="field-hint">Наприклад: 14 · 03 · 1997</p>
+            <p className="field-hint">{t('m.register.birth.example')}</p>
           )}
         </Field>
 
-        <Field label="Пошта" htmlFor="f-email">
+        <Field label={t('m.field.email')} htmlFor="f-email">
           <input
             id="f-email" required type="email" autoComplete="email" inputMode="email"
             autoCapitalize="none" spellCheck={false}
@@ -380,7 +383,7 @@ export function MobileRegisterForm() {
           />
         </Field>
 
-        <Field label="Пароль" htmlFor="f-pass">
+        <Field label={t('m.field.password')} htmlFor="f-pass">
           <div className="relative">
             <input
               id="f-pass" required minLength={8} autoComplete="new-password"
@@ -394,7 +397,7 @@ export function MobileRegisterForm() {
             <button
               type="button"
               onClick={() => setSeePass((v) => !v)}
-              aria-label={seePass ? 'Сховати пароль' : 'Показати пароль'}
+              aria-label={seePass ? t('auth.password.hide.aria') : t('auth.password.show.aria')}
               className="absolute right-0 top-0 flex items-center justify-center"
               style={{ width: 52, height: 52, color: 'var(--color-muted)' }}
             >
@@ -407,7 +410,7 @@ export function MobileRegisterForm() {
         {/* Подтверждение пароля. Придуманный вслепую на телефоне пароль
             с опечаткой человек обнаруживает только на следующем входе —
             и уходит в восстановление, думая, что сломались мы. */}
-        <Field label="Підтвердіть пароль" htmlFor="f-pass2">
+        <Field label={t('auth.field.confirmPassword')} htmlFor="f-pass2">
           <div className="relative">
             <input
               id="f-pass2" required minLength={8} autoComplete="new-password"
@@ -420,7 +423,7 @@ export function MobileRegisterForm() {
             <button
               type="button"
               onClick={() => setSeeConfirm((v) => !v)}
-              aria-label={seeConfirm ? 'Сховати пароль' : 'Показати пароль'}
+              aria-label={seeConfirm ? t('auth.password.hide.aria') : t('auth.password.show.aria')}
               className="absolute right-0 top-0 flex items-center justify-center"
               style={{ width: 52, height: 52, color: 'var(--color-muted)' }}
             >
@@ -428,7 +431,7 @@ export function MobileRegisterForm() {
             </button>
           </div>
           {confirm.length > 0 && confirm !== password && (
-            <p className="field-error">Паролі не збігаються</p>
+            <p className="field-error">{t('auth.field.mismatch')}</p>
           )}
         </Field>
 
@@ -444,7 +447,9 @@ export function MobileRegisterForm() {
             style={{ width: 22, height: 22, marginTop: 2, accentColor: 'var(--color-accent)' }}
           />
           <span className="t-sm" style={{ lineHeight: 1.5, color: 'var(--color-muted)' }}>
-            Я приймаю{' '}
+            {t('m.register.agree.lead')}{' '}
+            {/* Названия документов приходят из `lib/legal.ts`: это перечень
+                юридических документов, а не строки интерфейса. */}
             {LEGAL_DOCS.map((d, i) => (
               <span key={d.href}>
                 {/* Без target="_blank": в приложении новое окно веб-вью
@@ -455,7 +460,9 @@ export function MobileRegisterForm() {
                       style={{ color: 'var(--color-text)' }}>
                   {d.label}
                 </Link>
-                {i < LEGAL_DOCS.length - 2 ? ', ' : i === LEGAL_DOCS.length - 2 ? ' та ' : ''}
+                {i < LEGAL_DOCS.length - 2
+                  ? ', '
+                  : i === LEGAL_DOCS.length - 2 ? ` ${t('m.register.agree.and')} ` : ''}
               </span>
             ))}
             .
@@ -464,16 +471,14 @@ export function MobileRegisterForm() {
 
         {taken && (
           <div className="card-flat" style={{ borderColor: 'var(--color-accent)' }}>
-            <p className="t-md">Ця пошта вже зареєстрована</p>
-            <p className="t-sm mt-1 prose-muted">
-              Схоже, акаунт у вас уже є — увійдіть замість реєстрації.
-            </p>
+            <p className="t-md">{t('m.register.taken.title')}</p>
+            <p className="t-sm mt-1 prose-muted">{t('m.register.taken.desc')}</p>
             <Link
               href={`/m/login?email=${encodeURIComponent(email.trim())}`}
               className="btn-primary mt-3 flex items-center justify-center"
               style={{ height: 48, fontSize: 16 }}
             >
-              Увійти
+              {t('m.register.taken.action')}
             </Link>
           </div>
         )}
@@ -481,8 +486,10 @@ export function MobileRegisterForm() {
         {error && <p className="field-error">{error}</p>}
 
         <p className="t-sm text-center prose-muted">
-          Вже маєте акаунт?{' '}
-          <Link href="/m/login" className="underline underline-offset-2">Увійти</Link>
+          {t('m.register.haveAccount')}{' '}
+          <Link href="/m/login" className="underline underline-offset-2">
+            {t('m.register.login')}
+          </Link>
         </p>
 
         {/* Кнопка липнет к низу видимой области — над клавиатурой. */}
@@ -492,7 +499,7 @@ export function MobileRegisterForm() {
             style={{ height: 52, fontSize: 16 }}
             disabled={busy || !ready}
           >
-            {busy ? 'Створюємо…' : 'Створити акаунт'}
+            {busy ? t('m.register.busy') : t('m.register.submit')}
           </button>
         </div>
       </form>
