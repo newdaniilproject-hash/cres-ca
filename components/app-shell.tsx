@@ -69,6 +69,7 @@ const MENU: Item[] = [
   { href: '/app/orders', label: 'Замовлення', icon: IconBag, module: 'orders' },
   { href: '/app/customers', label: 'Клієнти', icon: IconUsers, module: 'customers' },
   { href: '/app/finance', label: 'Фінанси', icon: IconMoney, module: 'finance' },
+  { href: '/app/team', label: 'Команда', icon: IconUsers },
   { href: '/app/settings', label: 'Магазин', icon: IconGear },
 ]
 
@@ -107,7 +108,8 @@ const HEADINGS: [string, string, string][] = [
   ['/app/customers', 'Клієнти', 'База клієнтів та історія візитів'],
   ['/app/finance', 'Фінанси', 'Доходи, витрати та підсумки'],
   ['/app/profile', 'Профіль', 'Обліковий запис, безпека та вихід'],
-  ['/app/settings', 'Налаштування закладу', 'Інформація, публікація та команда'],
+  ['/app/team', 'Команда', 'Доступи, ролі, запрошення та сеанси'],
+  ['/app/settings', 'Налаштування закладу', 'Інформація та публікація'],
 ]
 
 function matches(pattern: string, pathname: string): boolean {
