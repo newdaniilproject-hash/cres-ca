@@ -41,7 +41,12 @@ export function MaterialCard({
   tenantId: string
   canWrite: boolean
   material: MaterialInit
-  stock: number
+  /**
+   * Остаток на складе. `null` — у читателя нет `stock.read` (инспектор):
+   * строка «В наявності» не показывается вовсе. Ноль и «нет права» —
+   * разные вещи, и подменять второе первым значит соврать в карточке.
+   */
+  stock: number | null
   batches: Batch[]
   containers: Container[]
   docsCount: number
@@ -110,12 +115,14 @@ export function MaterialCard({
         <p className="t-sm" style={{ color: 'var(--color-muted)' }}>
           {[material.brand, material.category].filter(Boolean).join(' · ') || 'без категорії'}
         </p>
-        <p className="tabular t-md">
-          В наявності: <b>{stock} {material.unit}</b>
-          {material.threshold > 0 && stock <= material.threshold && (
-            <span className="badge-warn ml-2">мінімум {material.threshold}</span>
-          )}
-        </p>
+        {stock !== null && (
+          <p className="tabular t-md">
+            В наявності: <b>{stock} {material.unit}</b>
+            {material.threshold > 0 && stock <= material.threshold && (
+              <span className="badge-warn ml-2">мінімум {material.threshold}</span>
+            )}
+          </p>
+        )}
         {canWrite && (
           <button type="button" className="btn-secondary mt-2 self-start"
                   onClick={() => setEdit(true)}>
