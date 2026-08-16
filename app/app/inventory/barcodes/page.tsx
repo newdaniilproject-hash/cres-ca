@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { currentMembership, can } from '@/lib/tenant'
+import { currentMembership, can, hasModule } from '@/lib/tenant'
+import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { BarcodesClient } from './barcodes-client'
 
@@ -14,6 +15,11 @@ export const metadata = { title: 'Заводські штрихкоди' }
 export default async function BarcodesPage() {
   const m = await currentMembership()
   if (!m) redirect('/register/seller')
+  // `material_barcodes_read` и `materials_member_read` — обе на
+  // `stock.read` (0009, 0003).
+  if (!can(m, 'stock.read')) redirect('/app')
+  if (!hasModule(m, 'inventory')) return <ModuleOff m={m} module="inventory" />
+
   const supabase = await createClient()
 
   // auth.getUser() здесь не нужен: в material_barcodes нет created_by —
@@ -36,7 +42,7 @@ export default async function BarcodesPage() {
   const rows = (codes ?? []) as { material_id: string; barcode: string }[]
 
   return (
-    <AppShell modules={m.modules} active="/app/inventory" title="Заводські штрихкоди">
+    <AppShell active="/app/inventory" title="Заводські штрихкоди">
       <BarcodesClient
         tenantId={m.tenantId}
         canWrite={can(m, 'stock.write')}
