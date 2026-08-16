@@ -4,9 +4,15 @@ import { currentMembership, can, hasModule } from '@/lib/tenant'
 import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { ReceiptsClient } from './receipts-client'
+import { getT } from '@/lib/i18n/server'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Приймання' }
+// Заголовок вкладки — тем же ключом, что и заголовок экрана
+// в оболочке (`components/app-shell.tsx`).
+export async function generateMetadata() {
+  const t = await getT()
+  return { title: t('app.screen.inventory.receipts.title') }
+}
 
 // Приход — единственный способ набрать остаток: материал создаётся с нулём,
 // и других дверей в базу у него нет (CLAUDE.md, правило 5).
@@ -47,7 +53,7 @@ export default async function ReceiptsPage() {
   const lines = (lineRows?.data ?? []) as { receipt_id: string }[]
 
   return (
-    <AppShell active="/app/inventory" title="Приймання">
+    <AppShell>
       <ReceiptsClient
         tenantId={m.tenantId}
         userId={user?.id ?? ''}
