@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { Suspense, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { AuthShell } from '../../auth-shell'
 import { GoogleButton } from '../../google-button'
@@ -11,7 +11,6 @@ import { GoogleButton } from '../../google-button'
 // шаг 2 — заведение. После register_tenant ОБЯЗАТЕЛЕН refreshSession:
 // членство попадает в токен только при следующей его выдаче.
 function SellerRegisterInner() {
-  const router = useRouter()
   const supabase = createClient()
 
   // Адрес возврата — тот же приём, что на /login и /register: принимаем
@@ -72,7 +71,10 @@ function SellerRegisterInner() {
     })
     if (error) { setState('error'); setError(error.message); return }
     await supabase.auth.refreshSession()   // членство → в токен
-    router.push(next); router.refresh()
+    // Переход полной навигацией, а не router.push: серверные компоненты
+    // кабинета читают сессию из кук, и мягкий переход гонится со свежей
+    // кукой — тот же грабль описан в app/(auth)/register/page.tsx.
+    window.location.href = next
   }
 
   return (
