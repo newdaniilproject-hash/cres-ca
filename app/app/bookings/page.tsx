@@ -4,9 +4,16 @@ import { currentMembership, can, hasModule } from '@/lib/tenant'
 import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { BookingsClient } from './bookings-client'
+import { getT } from '@/lib/i18n/server'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Записи' }
+
+// Заголовок вкладки браузера — строка интерфейса, поэтому из словаря.
+// Разбор решения — в `app/app/journals/page.tsx`.
+export async function generateMetadata() {
+  const t = await getT()
+  return { title: t('bookings.meta.title') }
+}
 
 export default async function BookingsPage() {
   const m = await currentMembership()
@@ -32,7 +39,7 @@ export default async function BookingsPage() {
     .limit(100)
 
   return (
-    <AppShell modules={m.modules} perms={m.perms} active="/app/bookings" title="Записи">
+    <AppShell modules={m.modules} perms={m.perms}>
       <BookingsClient
         bookings={(data ?? []).map((b) => ({
           id: b.id, number: b.number, title: b.title, variant: b.variant_name,
