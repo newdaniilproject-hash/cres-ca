@@ -111,7 +111,11 @@ declare
   v_definer_ok text[] := array[
     'compliance_materials', 'compliance_batches',
     'compliance_containers', 'compliance_batch_history',
-    'team_access_log'];
+    'team_access_log',
+    -- 0078: маскирование телефонов. Эти два ОБЯЗАНЫ быть definer —
+    -- они читают колонку, которую смотрящему читать нельзя. Изоляцию
+    -- арендатора каждое проверяет собственным WHERE с tenants_with().
+    'v_bookings', 'v_orders'];
 begin
   select string_agg(c.relname, ', ' order by c.relname) into v_bad
     from pg_class c
