@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import { themeBootScript } from '@/components/theme'
 import { nativeBootScript } from '@/components/native-boot'
+import { langBootScript } from '@/lib/i18n/cookie'
 import { ToastProvider } from '@/components/toast'
 import { OfflineBar } from '@/components/offline'
 import { KeyboardFit } from '@/components/keyboard-fit'
@@ -22,16 +23,20 @@ const inter = Inter({
   display: 'swap',
 })
 
-// Тайтлы вкладок: имя продукта — CRESKO. Шаблон «%s — CRESKO» подставляется
-// ко всем экранам кабинета, у которых свой title («Склад — CRESKO»).
-// Заголовок публичной витрины задан у неё absolute (app/page.tsx) и это
-// изменение его не касается: имя витрины — отдельное решение владельца.
+// Заголовок и описание витрины НЕ переведены сознательно, и это не забытое
+// место. Метаданные читает поисковик, а язык страницы для него определяется
+// адресом, а не кукой: витрине нужен сегмент (`/uk`, `/ru`, `/en`) и `hreflang`,
+// иначе один и тот же адрес отдаёт три разных описания и в индекс попадает
+// случайное. Сегмент приезжает вместе с переделкой витрины (CLAUDE.md →
+// «Внешний вид»), и вот тогда это становится `generateMetadata` с языком
+// из сегмента. До тех пор украинский — язык витрины, и он же честный
+// в выдаче.
 export const metadata: Metadata = {
-  title: { default: 'CRESKO — склад для майстрів', template: '%s — CRESKO' },
+  title: { default: 'Маркетплейс товарів і послуг', template: '%s — Маркетплейс' },
   description:
     'Товари та послуги від українських підприємців: запис до майстрів, замовлення з доставкою, облік для продавця.',
   manifest: '/manifest.webmanifest',
-  appleWebApp: { capable: true, statusBarStyle: 'default', title: 'CRESKO' },
+  appleWebApp: { capable: true, statusBarStyle: 'default', title: 'Маркетплейс' },
 }
 
 export const viewport: Viewport = {
@@ -56,12 +61,27 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* И признак приложения — тоже до первой отрисовки, иначе виден
             кадр с боковым меню и переключателем темы. */}
         <script dangerouslySetInnerHTML={{ __html: nativeBootScript }} />
+        {/* Атрибут `lang` на <html> — тем же приёмом и по той же причине.
+            Текст в кадре не мигает (кабинет рисуется на сервере, кука там
+            уже прочитана), но статический `lang="uk"` ниже остался бы
+            украинским при русском интерфейсе: по нему работают скринридер
+            и переносы слов. Куку здесь не читаем нарочно — `cookies()`
+            в корневом макете сделал бы динамической всю витрину. */}
+        <script dangerouslySetInnerHTML={{ __html: langBootScript }} />
       </head>
       <body>
         {/* Уведомления, состояние связи и предложение установки живут
             в одном нижнем стеке и доступны с любого экрана. Правило,
             ради которого это здесь: у любого действия виден исход,
-            непонятных состояний быть не должно. */}
+            непонятных состояний быть не должно.
+
+            ЯЗЫК этого стека приходит не отсюда: провайдер стоит внутри
+            `components/toast.tsx`, вокруг самого стека, и берёт язык
+            из `<html lang>`. Обернуть провайдером ВСЁ дерево здесь
+            нельзя — тогда за кукой поехали бы и клиентские части
+            витрины, а витрина закреплена на украинском до переезда
+            на сегмент адреса (`components/shell.tsx` → `publicT`).
+            Разбор решения целиком — в `lib/i18n/client.tsx`. */}
         <ToastProvider overlay={<><NativeProvider /><PwaProvider /><OfflineBar /></>}>
           {/* Сквозные, поэтому подключаются один раз в корне.
               KeyboardFit  — высота клавиатуры в переменную --kb;
