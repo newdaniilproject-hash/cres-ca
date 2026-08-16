@@ -3,6 +3,8 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { useT } from '@/lib/i18n/client'
+import type { T } from '@/lib/i18n/translate'
 
 export type CatalogItem = {
   id: string
@@ -18,12 +20,14 @@ export type CatalogItem = {
   cover: string | null
 }
 
-const STATUS_LABEL: Record<string, string> = {
-  draft: 'чернетка',
-  active: 'опубліковано',
-  hidden: 'прихована',
-  archived: 'в архіві',
-}
+// Подписи к состояниям позиции. Само значение (`draft`, `hidden`) —
+// служебное значение перечисления и не переводится: по нему сверяется база.
+// Переводится ПОДПИСЬ. Неизвестное состояние выводится как есть — новое
+// появится в базе раньше, чем в словаре.
+const STATUSES = ['draft', 'active', 'hidden', 'archived'] as const
+type Status = (typeof STATUSES)[number]
+const statusLabel = (t: T, s: string): string =>
+  ((STATUSES as readonly string[]).includes(s) ? t(`catalog.status.${s as Status}`) : s)
 
 type Filter = 'all' | 'product' | 'service' | 'draft'
 
@@ -43,6 +47,7 @@ export function CatalogClient({ items, error, canWrite, hasStorefront = false }:
    */
   hasStorefront?: boolean
 }) {
+  const t = useT()
   const supabase = useMemo(() => createClient(), [])
   const [filter, setFilter] = useState<Filter>('all')
   const [q, setQ] = useState('')
@@ -70,23 +75,23 @@ export function CatalogClient({ items, error, canWrite, hasStorefront = false }:
       <div className="rise flex flex-wrap items-center gap-2">
         <button onClick={() => setFilter('all')}
                 className={filter === 'all' ? 'chip-active' : 'chip'}>
-          Усі {items.length > 0 && `· ${items.length}`}
+          {t('catalog.filter.all')} {items.length > 0 && `· ${items.length}`}
         </button>
         <button onClick={() => setFilter('product')}
                 className={filter === 'product' ? 'chip-active' : 'chip'}>
-          Товари {counts.product > 0 && `· ${counts.product}`}
+          {t('catalog.filter.products')} {counts.product > 0 && `· ${counts.product}`}
         </button>
         <button onClick={() => setFilter('service')}
                 className={filter === 'service' ? 'chip-active' : 'chip'}>
-          Послуги {counts.service > 0 && `· ${counts.service}`}
+          {t('catalog.filter.services')} {counts.service > 0 && `· ${counts.service}`}
         </button>
         <button onClick={() => setFilter('draft')}
                 className={filter === 'draft' ? 'chip-active' : 'chip'}>
-          Чернетки {counts.draft > 0 && `· ${counts.draft}`}
+          {t('catalog.filter.drafts')} {counts.draft > 0 && `· ${counts.draft}`}
         </button>
         {canWrite && (
           <Link href="/app/catalog/new" className="btn-primary ml-auto t-sm">
-            Додати
+            {t('catalog.add')}
           </Link>
         )}
       </div>
@@ -94,7 +99,7 @@ export function CatalogClient({ items, error, canWrite, hasStorefront = false }:
       {error && <p className="field-error rise">{error}</p>}
 
       {items.length > 8 && (
-        <input className="input rise-1" placeholder="Пошук за назвою…"
+        <input className="input rise-1" placeholder={t('catalog.search.placeholder')}
                value={q} onChange={(e) => setQ(e.target.value)} />
       )}
 
@@ -107,17 +112,22 @@ export function CatalogClient({ items, error, canWrite, hasStorefront = false }:
               // за кнопкой, которой у него нет.
               canWrite ? (
                 <>
-                  <p>Каталог порожній. Заведіть перший товар або послугу
-                    {hasStorefront
-                      ? ' — без цього вітрина нічого не показує.'
-                      : ' — з них збираються записи, замовлення та ціни.'}</p>
-                  <Link href="/app/catalog/new" className="btn-primary">Додати позицію</Link>
+                  {/* Две развилки — две отдельные строки словаря целиком,
+                      а не общее начало плюс хвост: в другом языке
+                      предложение строится иначе, и склейка из кусков
+                      даёт неграмотную фразу. */}
+                  <p>{hasStorefront
+                    ? t('catalog.empty.write.storefront')
+                    : t('catalog.empty.write.plain')}</p>
+                  <Link href="/app/catalog/new" className="btn-primary">
+                    {t('catalog.empty.add')}
+                  </Link>
                 </>
               ) : (
-                <p>Каталог порожній. Позиції заводить власник або менеджер.</p>
+                <p>{t('catalog.empty.readonly')}</p>
               )
             ) : (
-              <p>За цим фільтром нічого немає</p>
+              <p>{t('catalog.empty.filter')}</p>
             )}
           </div>
         </div>
@@ -144,22 +154,29 @@ export function CatalogClient({ items, error, canWrite, hasStorefront = false }:
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                     <span className={i.status === 'active' ? 'badge-success'
                       : i.status === 'draft' ? 'badge-warn' : 'badge'}>
-                      {STATUS_LABEL[i.status] ?? i.status}
+                      {statusLabel(t, i.status)}
                     </span>
-                    <span className="badge">{i.kind === 'service' ? 'послуга' : 'товар'}</span>
-                    {i.variants > 1 && <span className="badge">{i.variants} варіанти</span>}
+                    <span className="badge">
+                      {i.kind === 'service' ? t('catalog.kind.service') : t('catalog.kind.product')}
+                    </span>
+                    {i.variants > 1 && (
+                      <span className="badge">{t.plural('catalog.variants.count', i.variants)}</span>
+                    )}
                     {/* «Поза каталогом» — про общий каталог маркетплейса,
                         то есть про витрину. Без модуля отметка сообщала бы
                         об отсутствии в списке, которого у заведения нет. */}
-                    {hasStorefront && !i.listed && <span className="badge">поза каталогом</span>}
+                    {hasStorefront && !i.listed && (
+                      <span className="badge">{t('catalog.badge.unlisted')}</span>
+                    )}
                   </div>
                 </div>
 
                 <div className="shrink-0 text-right">
                   <p className="tabular t-md">
-                    {i.price != null
-                      ? `${i.price.toLocaleString('uk-UA')} ${i.currency === 'UAH' ? '₴' : i.currency}`
-                      : '—'}
+                    {/* Символ валюты ставит Intl (`t.money`), а не мы:
+                        ручная подстановка «₴» ломается на второй валюте
+                        и ставит символ не с той стороны в английской. */}
+                    {i.price != null ? t.money(i.price, i.currency) : '—'}
                   </p>
                 </div>
               </div>
@@ -168,10 +185,7 @@ export function CatalogClient({ items, error, canWrite, hasStorefront = false }:
         </div>
       )}
 
-      <p className="field-hint">
-        Опублікована позиція одразу видно на вашій сторінці та в загальному
-        пошуку. Чернетку бачите тільки ви.
-      </p>
+      <p className="field-hint">{t('catalog.hint.published')}</p>
     </div>
   )
 }
