@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { authErrorText } from '@/lib/auth-errors'
+import { useT } from '@/lib/i18n/client'
 
 // Вход через Google. Единственный провайдер, который включён в Supabase:
 // Apple выключен и ключей нет, поэтому его кнопки в интерфейсе нет
@@ -24,43 +25,38 @@ function GoogleMark() {
   )
 }
 
-// next — куда вернуть человека ПОСЛЕ входа, если он шёл на конкретную
-// страницу. Если не шёл никуда конкретно, next не задаём вовсе: тогда
-// /auth/finish спросит lib/where.ts, и человек без заведения попадёт
-// на его создание, а не в покупательский кабинет. Раньше здесь стояло
-// жёсткое next="/account", и вход через Google всегда вёл туда.
-//
-// s=web — поверхность. /auth/finish обслуживает и веб, и /m, а адреса
-// «нет заведения» у них разные (/register/seller против /m/shop).
-export function GoogleButton({ next, hint = 'або продовжити з' }: { next?: string; hint?: string }) {
+// `hint` остаётся пропом: экран регистрации подставляет свою подводку.
+// Умолчания в сигнатуре больше нет — строку берём из словаря внутри,
+// потому что `useT` в списке параметров не позовёшь.
+export function GoogleButton({ next, hint }: { next: string; hint?: string }) {
+  const t = useT()
   const supabase = createClient()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
   async function signIn() {
     setBusy(true); setError('')
-    const callback = new URL('/auth/callback', window.location.origin)
-    callback.searchParams.set('s', 'web')
-    if (next) callback.searchParams.set('next', next)
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: callback.toString() },
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
+      },
     })
     // Успех — браузер уже уходит на Google, снимать busy незачем.
-    if (error) { setBusy(false); setError(authErrorText(error.message)) }
+    if (error) { setBusy(false); setError(authErrorText(t, error.message)) }
   }
 
   return (
     <>
       <div className="t-xs my-5 flex items-center gap-3 prose-muted">
         <span aria-hidden className="divider flex-1" />
-        {hint}
+        {hint ?? t('auth.google.or')}
         <span aria-hidden className="divider flex-1" />
       </div>
 
       <button type="button" onClick={signIn} disabled={busy} className="btn-secondary w-full">
         <GoogleMark />
-        {busy ? 'Переходимо…' : 'Продовжити з Google'}
+        {busy ? t('auth.google.busy') : t('auth.google.submit')}
       </button>
 
       {error && <p className="field-error">{error}</p>}
