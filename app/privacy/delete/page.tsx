@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { PublicHeader, PublicFooter } from '@/components/shell'
+import { PublicHeader, PublicFooter, publicT as t } from '@/components/shell'
 import { OWNER, POLICY_VERSION, POLICY_DATE, Legal, H2, P, Ul } from '../legal'
 
 export const metadata = {
@@ -17,6 +17,13 @@ export const metadata = {
 // Текст сознательно говорит и о том, что НЕ удаляется: журналы
 // соответствия и первичные документы закон велит хранить, и обещать
 // их стирание — значит обещать нарушение.
+//
+// Как и политика, это опубликованный документ с номером редакции, а не
+// экран: в словарь уехала только подпись под ним. Обоснование — в шапке
+// `../legal.tsx`. Отдельно: тема письма «Видалення акаунта» ЦИТИРУЕТСЯ
+// в самом тексте документа («з теми …»), поэтому она остаётся здесь,
+// а не в словаре — иначе тема и документ разъедутся на первом же
+// переводе, и человек напишет письмо с темой, которой в инструкции нет.
 export default async function DataDeletionPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -119,7 +126,11 @@ export default async function DataDeletionPage() {
         </P>
 
         <p className="t-sm mt-10 prose-muted">
-          Версія {POLICY_VERSION}. Чинна з {POLICY_DATE}. {OWNER.name}, {OWNER.address}.
+          {t('public.legal.version', {
+            version: POLICY_VERSION,
+            date: t.date(POLICY_DATE, { day: 'numeric', month: 'long', year: 'numeric' }),
+          })}{' '}
+          {t('public.legal.owner', { name: OWNER.name, address: OWNER.address })}
         </p>
       </Legal>
       <PublicFooter />
