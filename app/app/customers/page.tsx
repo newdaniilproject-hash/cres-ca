@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { currentMembership, can } from '@/lib/tenant'
+import { currentMembership, can, hasModule } from '@/lib/tenant'
+import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 
 export const dynamic = 'force-dynamic'
@@ -10,6 +11,7 @@ export default async function CustomersPage() {
   const m = await currentMembership()
   if (!m) redirect('/register/seller')
   if (!can(m, 'customers.read')) redirect('/app')
+  if (!hasModule(m, 'customers')) return <ModuleOff m={m} module="customers" />
 
   const supabase = await createClient()
   const [{ data: customers }, { data: reminders }] = await Promise.all([
@@ -25,7 +27,7 @@ export default async function CustomersPage() {
   ])
 
   return (
-    <AppShell modules={m.modules} active="/app/customers" title="Клієнти">
+    <AppShell modules={m.modules} perms={m.perms} active="/app/customers" title="Клієнти">
       {(reminders ?? []).length > 0 && (
         <section className="card-flat rise mb-5">
           <h2 className="t-md mb-2">Нагадування</h2>
