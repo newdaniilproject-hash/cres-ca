@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { currentMembership } from '@/lib/tenant'
+import { currentMembership, can, hasModule } from '@/lib/tenant'
+import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { ReorderClient } from './reorder-client'
 
@@ -14,6 +15,13 @@ export const metadata = { title: 'Пора замовити' }
 export default async function ReorderPage() {
   const m = await currentMembership()
   if (!m) redirect('/register/seller')
+  // `stock_low_view` идёт с security_invoker, то есть RLS применяется
+  // к смотрящему: без `stock.read` представление честно отдаёт ноль
+  // строк, и экран говорит «запасів достатньо» тому, кто просто
+  // не имеет права их видеть. Это худший вид пустого экрана — он врёт.
+  if (!can(m, 'stock.read')) redirect('/app')
+  if (!hasModule(m, 'inventory')) return <ModuleOff m={m} module="inventory" />
+
   const supabase = await createClient()
 
   // auth.getUser() здесь не нужен: экран ничего не пишет — только читает
@@ -26,7 +34,7 @@ export default async function ReorderPage() {
     .limit(300)
 
   return (
-    <AppShell modules={m.modules} active="/app/inventory" title="Пора замовити">
+    <AppShell active="/app/inventory" title="Пора замовити">
       <ReorderClient
         error={error?.message ?? ''}
         items={(data ?? []).map((r) => ({
