@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { currentMembership, can } from '@/lib/tenant'
+import { currentMembership, can, hasModule } from '@/lib/tenant'
+import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { RecipesClient } from './recipes-client'
 
@@ -13,6 +14,18 @@ export const metadata = { title: 'Рецептура' }
 export default async function RecipesPage() {
   const m = await currentMembership()
   if (!m) redirect('/register/seller')
+  // Экран стоит на ДВУХ зонах сразу и без любой из них наполовину пуст:
+  // варианты услуг читаются по `catalog.read` (`offerings_read`, 0004,
+  // на него же опирается `variant_materials_read` через владельца
+  // варианта), а список засобів — по `stock.read` (`materials_member_read`,
+  // 0003). У accountant есть только первое, и он видел услуги без единого
+  // матеріалу — рецепт составить не из чего.
+  if (!can(m, 'stock.read') || !can(m, 'catalog.read')) redirect('/app')
+  // Два модуля, как и два права выше: рецептура связывает засоби склада
+  // с позициями каталога и без любой из половин бессмысленна.
+  if (!hasModule(m, 'inventory')) return <ModuleOff m={m} module="inventory" />
+  if (!hasModule(m, 'catalog')) return <ModuleOff m={m} module="catalog" />
+
   const supabase = await createClient()
 
   // auth.getUser() здесь не нужен: в variant_materials нет created_by —
@@ -58,7 +71,7 @@ export default async function RecipesPage() {
   })
 
   return (
-    <AppShell modules={m.modules} active="/app/inventory" title="Рецептура">
+    <AppShell active="/app/inventory" title="Рецептура">
       <RecipesClient
         canWrite={can(m, 'catalog.write')}
         error={error?.message ?? ''}
