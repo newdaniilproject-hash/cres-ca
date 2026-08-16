@@ -31,7 +31,7 @@ export default async function AppLayout({
     .from('tenants').select('name').eq('id', m.tenantId).maybeSingle()
 
   return (
-    <AppShell modules={m.modules} shopName={tenant?.name ?? ''}>
+    <AppShell modules={m.modules} perms={m.perms} shopName={tenant?.name ?? ''}>
       {children}
     </AppShell>
   )
