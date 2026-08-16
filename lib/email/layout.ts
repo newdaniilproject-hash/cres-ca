@@ -10,6 +10,8 @@
 // и непредсказуемо. Светлый фон с тёмным текстом переживает инверсию
 // лучше всего.
 
+import { SITE_URL } from '@/lib/site'
+
 const BRAND = '#141417'
 const ACCENT = '#2563eb'
 const TEXT = '#141417'
@@ -17,8 +19,28 @@ const MUTED = '#5b5b66'
 const LINE = '#e6e6ea'
 const BG = '#f4f4f6'
 
+// Подпись в подвале. Адрес берётся из lib/site.ts, а не пишется строкой:
+// иначе письмо с превью-деплоя зовёт на прод, и проверить правку письма
+// до выкатки нельзя. Показываем без схемы — «https://» в тексте ссылки
+// занимает место и ничего не сообщает.
+const SITE_HOST = SITE_URL.replace(/^https?:\/\//, '')
+
 export type EmailButton = { label: string; url: string }
 
+/**
+ * Каркас письма.
+ *
+ * ⚠️ Граница экранирования проходит здесь, и она не симметрична:
+ * `preheader`, `heading` и `button.label` — ТЕКСТ, каркас экранирует их
+ * сам; `button.url` — значение атрибута, экранируется как атрибут.
+ * А `body` и `footNote` — уже ГОТОВАЯ РАЗМЕТКА: письмам нужны абзацы,
+ * жирный шрифт и таблицы, и экранировать их значило бы показать теги
+ * человеку. Отсюда правило для вызывающего: всё, что пришло извне —
+ * название заведения, имя клиента, причина отмены, — попадает в `body`
+ * и `footNote` только через `escapeHtml()`, а адреса — через
+ * `escapeAttr()`. Иначе название заведения подставляет разметку
+ * в письмо, которое читает чужой клиент.
+ */
 export function emailLayout(opts: {
   preheader: string
   heading: string
@@ -86,7 +108,7 @@ export function emailLayout(opts: {
       <div style="border-top:1px solid ${LINE};padding-top:18px;
                   font:400 12px/1.6 -apple-system,'Segoe UI',Roboto,Arial,sans-serif;color:${MUTED};">
         CRES-CA — вітрина, склад і облік для українських підприємців.<br>
-        <a href="https://cres-ca.com" style="color:${MUTED};">cres-ca.com</a>
+        <a href="${escapeAttr(SITE_URL)}" style="color:${MUTED};">${escapeHtml(SITE_HOST)}</a>
       </div>
     </td></tr>
 
@@ -107,11 +129,18 @@ export function codeBlock(code: string): string {
   </td></tr></table>`
 }
 
+// Экранирование ТЕКСТА. Всё, что приходит извне — название заведения,
+// имя клиента, причина отмены, — идёт через него: иначе заведение с именем
+// вида `<img onerror=...>` подставляет разметку в чужое письмо.
 export function escapeHtml(s: string): string {
   return String(s ?? '').replace(/[&<>"]/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string))
 }
 
-function escapeAttr(s: string): string {
+// Экранирование ЗНАЧЕНИЯ АТРИБУТА (href прежде всего). Отдельная функция,
+// а не escapeHtml, потому что атрибут можно закрыть и одинарной кавычкой:
+// почтовые клиенты нормализуют разметку по-своему, и `'` там срабатывает.
+// Экспортируется, потому что адреса подставляются не только этим файлом.
+export function escapeAttr(s: string): string {
   return escapeHtml(s).replace(/'/g, '&#39;')
 }

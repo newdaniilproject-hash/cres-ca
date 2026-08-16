@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { render } from '@/lib/notify/render'
+import { queueEmailHtml } from '@/lib/email/queue'
 import { sendEmail, sendPush, sendViber, sendSms } from '@/lib/notify/send'
 
 export const dynamic = 'force-dynamic'
@@ -62,7 +63,16 @@ export async function GET(req: Request) {
       if (row.channel === 'email') {
         if (!row.to_email) throw new Error('нет email получателя')
         const subject = render(template.subject ?? '', payload)
-        await sendEmail(row.to_email, subject, body)
+
+        // Письмо уходит двумя телами. HTML — каркас из lib/email
+        // (таблицы, инлайновый стиль), чтобы письмо о заказе выглядело
+        // так же, как приглашение в команду, а не голой строкой.
+        // Текст — тот же самый текст шаблона: его показывают читалки
+        // без HTML и он же идёт в предпросмотр. Оба тела собираются
+        // из ОДНОГО текста базы, поэтому разъехаться не могут, а
+        // переопределение шаблона арендатором продолжает работать.
+        const html = queueEmailHtml(String(row.event), subject, body)
+        await sendEmail(String(row.to_email), subject, body, html)
       } else if (row.channel === 'push') {
         if (!row.user_id) throw new Error('нет user_id для push (гость)')
         await sendPush(row.user_id, body)

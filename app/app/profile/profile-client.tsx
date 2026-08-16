@@ -27,13 +27,15 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 }
 
 export function ProfileClient({
-  email, name, role, tenantName, tenantDraft,
+  email, name, role, tenantName, tenantDraft, canSettings,
 }: {
   email: string
   name: string
   role: string
   tenantName: string
   tenantDraft: boolean
+  /** Есть ли `settings.read`. Считает сервер — см. `page.tsx`. */
+  canSettings: boolean
 }) {
   const supabase = useMemo(() => createClient(), [])
   const toast = useToast()
@@ -167,18 +169,23 @@ export function ProfileClient({
           <span aria-hidden style={{ color: 'var(--color-faint)' }}>›</span>
         </button>
 
-        <Link href="/app/settings" className="row px-5" style={{ minHeight: 'var(--tap-min)' }}>
-          <span className="flex items-center gap-3">
-            <span aria-hidden style={{ color: 'var(--color-muted)' }}><IconGear size={20} /></span>
-            <span>
-              <span className="t-md block">Налаштування закладу</span>
-              <span className="t-xs block" style={{ color: 'var(--color-faint)' }}>
-                Назва, адреса, публікація, команда
+        {/* Без `settings.read` страница разворачивает на `/app`. Ссылка,
+            ведущая в редирект, читается как поломка — прячем целиком:
+            пункт, который ничего не открывает, хуже отсутствующего. */}
+        {canSettings && (
+          <Link href="/app/settings" className="row px-5" style={{ minHeight: 'var(--tap-min)' }}>
+            <span className="flex items-center gap-3">
+              <span aria-hidden style={{ color: 'var(--color-muted)' }}><IconGear size={20} /></span>
+              <span>
+                <span className="t-md block">Налаштування закладу</span>
+                <span className="t-xs block" style={{ color: 'var(--color-faint)' }}>
+                  Назва, адреса, публікація, команда
+                </span>
               </span>
             </span>
-          </span>
-          <span aria-hidden style={{ color: 'var(--color-faint)' }}>›</span>
-        </Link>
+            <span aria-hidden style={{ color: 'var(--color-faint)' }}>›</span>
+          </Link>
+        )}
       </section>
 
       {/* ── Вид ──────────────────────────────────────────────── */}

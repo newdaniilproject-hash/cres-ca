@@ -1,6 +1,7 @@
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { currentMembership, can } from '@/lib/tenant'
+import { currentMembership, can, hasModule } from '@/lib/tenant'
+import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { OrderDetail } from './order-detail'
 
@@ -15,6 +16,7 @@ export default async function OrderPage({
   const m = await currentMembership()
   if (!m) redirect('/register/seller')
   if (!can(m, 'orders.read')) redirect('/app')
+  if (!hasModule(m, 'orders')) return <ModuleOff m={m} module="orders" />
 
   const { id } = await params
   const supabase = await createClient()

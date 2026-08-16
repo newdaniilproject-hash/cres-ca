@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { currentMembership, can } from '@/lib/tenant'
+import { currentMembership, can, hasModule } from '@/lib/tenant'
+import { ModuleOff } from '@/components/module-gate'
 import { CountsClient } from './counts-client'
 
 export const dynamic = 'force-dynamic'
@@ -16,6 +17,10 @@ export const metadata = { title: 'Інвентаризація' }
 export default async function CountsPage() {
   const m = await currentMembership()
   if (!m) redirect('/register/seller')
+  // `stock_counts_read` (0003) — на `stock.read`.
+  if (!can(m, 'stock.read')) redirect('/app')
+  if (!hasModule(m, 'inventory')) return <ModuleOff m={m} module="inventory" />
+
   const supabase = await createClient()
 
   // auth.getUser() здесь сознательно не вызывается: started_by документа

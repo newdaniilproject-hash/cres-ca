@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { currentMembership, can } from '@/lib/tenant'
+import { currentMembership, can, hasModule } from '@/lib/tenant'
+import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { FinanceClient } from './finance-client'
 
@@ -41,6 +42,10 @@ export default async function FinancePage({
   const m = await currentMembership()
   if (!m) redirect('/register/seller')
   if (!can(m, 'finances.read')) redirect('/app')
+  // Единственный вместе с маркетингом модуль ВНЕ умолчания (0064, 0065):
+  // именно этот адрес владелец нового заведения открывал руками и видел
+  // экран финансов, которых не покупал.
+  if (!hasModule(m, 'finance')) return <ModuleOff m={m} module="finance" />
 
   const { period: raw } = await searchParams
   const period = raw === 'prev' || raw === '30d' ? raw : 'month'
@@ -88,7 +93,7 @@ export default async function FinancePage({
   }
 
   return (
-    <AppShell modules={m.modules} active="/app/finance" title="Фінанси">
+    <AppShell modules={m.modules} perms={m.perms} active="/app/finance" title="Фінанси">
       <FinanceClient
         tenantId={m.tenantId}
         userId={user?.id ?? ''}

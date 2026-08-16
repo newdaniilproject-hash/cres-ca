@@ -48,11 +48,11 @@ const EMPTY_STEP: Step = { step: '', solution: '', proportion: '', minutes: '', 
 
 // Читаем ТРИ поколения ключей, иначе история версий — ради которой таблица
 // и версионная — покажется пустой:
-//   1) нынешние, они же ТЗ-шные: step / solution / proportion / minutes / note;
-//   2) экранные до 14.08.2026: title / detail / minutes. `detail` был одним
-//      полем «как саме», куда писали и раствор, и пропорцию вперемешку, —
-//      кладём его в solution, разделить задним числом нечем;
-//   3) самые первые, из комментария миграции 0014: step / solution / note.
+// 1) нынешние, они же ТЗ-шные: step / solution / proportion / minutes / note;
+// 2) экранные до 14.08.2026: title / detail / minutes. `detail` был одним
+//    полем «как саме», куда писали и раствор, и пропорцию вперемешку, —
+//    кладём его в solution, разделить задним числом нечем;
+// 3) самые первые, из комментария миграции 0014: step / solution / note.
 function normalizeSteps(raw: unknown): Step[] {
   if (!Array.isArray(raw)) return []
   return raw.map((item) => {
@@ -68,9 +68,15 @@ function normalizeSteps(raw: unknown): Step[] {
 }
 
 export function TechCardsClient({
-  tenantId, userId, cards, services, loadError,
+  tenantId, userId, canWrite, cards, services, loadError,
 }: {
   tenantId: string; userId: string
+  /**
+   * `compliance.write` — выпуск новой версии карты. Читателю без него
+   * (инспектор, наблюдатель, мастер) кнопок не показываем: утверждение
+   * упёрлось бы в `tech_cards_insert` (0014).
+   */
+  canWrite: boolean
   cards: Card[]; services: Service[]; loadError: string
 }) {
   const supabase = useMemo(() => createClient(), [])
@@ -191,9 +197,11 @@ export function TechCardsClient({
   return (
     <div className="flex flex-col gap-5">
       <div className="rise flex flex-wrap items-center gap-2">
-        <button className="btn-primary t-sm" onClick={startNew} disabled={draft !== null}>
-          Нова техкарта
-        </button>
+        {canWrite && (
+          <button className="btn-primary t-sm" onClick={startNew} disabled={draft !== null}>
+            Нова техкарта
+          </button>
+        )}
         <Link href="/app/journals" className="btn-ghost">← Санітарні журнали</Link>
         <Link href="/app/documents" className="btn-ghost">Документи на матеріали</Link>
       </div>
@@ -326,14 +334,25 @@ export function TechCardsClient({
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h2 className="display t-lg">{g.title}</h2>
+                  {/* «Загальна для салону» — только когда услуги и правда
+                      нет. Название приходит из `compliance_offerings`
+                      (0083) и есть у всех, кто видит карту, включая
+                      инспектора; подпись «привʼязана до послуги» без
+                      названия осталась как последняя защита: подписать
+                      привязанную карту «загальною» значит соврать
+                      про регламент. */}
                   <p className="tabular t-xs prose-muted">
-                    {g.latest.offeringTitle ?? 'Загальна для салону'} · версій: {g.versions.length}
+                    {g.latest.offeringTitle
+                      ?? (g.latest.offeringId ? 'Привʼязана до послуги' : 'Загальна для салону')}
+                    {' · '}версій: {g.versions.length}
                   </p>
                 </div>
-                <button className="btn-secondary t-sm" disabled={draft !== null}
-                        onClick={() => startNextVersion(g)}>
-                  Створити нову версію
-                </button>
+                {canWrite && (
+                  <button className="btn-secondary t-sm" disabled={draft !== null}
+                          onClick={() => startNextVersion(g)}>
+                    Створити нову версію
+                  </button>
+                )}
               </div>
 
               <div className="flex flex-col">

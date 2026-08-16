@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { currentMembership } from '@/lib/tenant'
+import { currentMembership, can, hasModule } from '@/lib/tenant'
+import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { InventoryClient } from './inventory-client'
 
@@ -20,6 +21,15 @@ export default async function InventoryPage({
   const sp = await searchParams
   const m = await currentMembership()
   if (!m) redirect('/register/seller')
+  // `materials`, `suppliers`, `storage_locations`, `stock_value_view` —
+  // все на `stock.read` (0003, 0009). Без права экран рисовал счётчики
+  // из нулей и три пустых списка: человек решал, что склад сломан.
+  if (!can(m, 'stock.read')) redirect('/app')
+  // Вторая ось доступа — модуль заведения. Меню прячет раздел, которого
+  // нет в `modules`, а прямой адрес его открывал: экран отказа объясняет,
+  // что это не про права человека (CLAUDE.md → «Доступ: роли и модули»).
+  if (!hasModule(m, 'inventory')) return <ModuleOff m={m} module="inventory" />
+
   const supabase = await createClient()
   // created_by у партии и ёмкости обязателен и сверяется политикой RLS
   // с auth.uid() — без этого id форма не сможет ничего записать.
@@ -78,7 +88,7 @@ export default async function InventoryPage({
   }
 
   return (
-    <AppShell modules={m.modules} active="/app/inventory" title="Склад"
+    <AppShell modules={m.modules} perms={m.perms} active="/app/inventory" title="Склад"
               subtitle="Огляд запасів та матеріалів">
       <InventoryClient
         initialQuery={sp.q ?? ''}

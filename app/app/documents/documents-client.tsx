@@ -25,9 +25,13 @@ type Doc = {
 }
 
 export function DocumentsClient({
-  tenantId, userId, materials, documents, loadError,
+  tenantId, userId, canWrite, canStock, materials, documents, loadError,
 }: {
   tenantId: string; userId: string
+  /** `compliance.write` — загрузка и удаление документов. */
+  canWrite: boolean
+  /** `stock.read` — есть ли у читателя раздел «Склад». */
+  canStock: boolean
   materials: Material[]; documents: Doc[]; loadError: string
 }) {
   const supabase = useMemo(() => createClient(), [])
@@ -160,8 +164,10 @@ export function DocumentsClient({
 
   return (
     <div className="flex flex-col gap-5">
+      {/* «Склад» — только тем, у кого есть `stock.read`. У инспектора его
+          нет (0035), и раздел молча вернул бы его на «Сьогодні». */}
       <div className="rise flex flex-wrap items-center gap-2">
-        <Link href="/app/inventory" className="btn-ghost">← Склад</Link>
+        {canStock && <Link href="/app/inventory" className="btn-ghost">← Склад</Link>}
         <Link href="/app/journals" className="btn-ghost">Санітарні журнали</Link>
         <Link href="/app/techcards" className="btn-ghost">Техкарти обробки</Link>
       </div>
@@ -180,6 +186,10 @@ export function DocumentsClient({
         </div>
       )}
 
+      {/* Форма загрузки — под `compliance.write`. Инспектор и наблюдатель
+          читают документы, но не пополняют их: форма, которая гарантированно
+          упрётся в RLS, обещает то, чего нет. */}
+      {canWrite && (
       <form onSubmit={upload} className="card rise-1 grid gap-3 sm:grid-cols-2">
         <div>
           <label className="field-label">Матеріал</label>
@@ -218,6 +228,7 @@ export function DocumentsClient({
           {busy === 'upload' ? 'Завантажуємо…' : 'Завантажити документ'}
         </button>
       </form>
+      )}
 
       {materials.length === 0 ? (
         <div className="card rise-2">
@@ -234,7 +245,14 @@ export function DocumentsClient({
               <section key={m.id} className="card rise-2 flex flex-col gap-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <h2 className="display t-lg">{m.name}</h2>
+                    {/* Название ведёт в карточку засоба. Для инспектора это
+                        единственный вход в реестр: раздел «Склад» ему закрыт
+                        (0035), а карточка, её документы и контроль вскрытия —
+                        открыты по `compliance.read`. */}
+                    <Link href={`/app/inventory/materials/${m.id}`}
+                          className="display t-lg block">
+                      {m.name}
+                    </Link>
                     <p className="t-xs prose-muted">
                       {m.brand ? `${m.brand} · ` : ''}одиниця: {m.unit}
                     </p>
@@ -268,9 +286,11 @@ export function DocumentsClient({
                                   onClick={() => void view(d)}>Переглянути</button>
                           <button className="btn-ghost" disabled={busy === d.id}
                                   onClick={() => void download(d)}>Завантажити</button>
-                          <button className="btn-icon" aria-label="Видалити"
-                                  disabled={busy === d.id}
-                                  onClick={() => void remove(d)}>✕</button>
+                          {canWrite && (
+                            <button className="btn-icon" aria-label="Видалити"
+                                    disabled={busy === d.id}
+                                    onClick={() => void remove(d)}>✕</button>
+                          )}
                         </span>
                       </div>
                     ))}

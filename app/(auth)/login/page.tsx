@@ -41,7 +41,21 @@ function LoginInner() {
   // lib/where.ts уже после входа (нет заведения → его создание).
   // Контракт next при этом цел: шёл на страницу — попадёт на неё.
   const rawNext = params.get('next')
-  const next = rawNext && rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : null
+  const safeNext = rawNext && rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : ''
+  const next = safeNext || null
+  // Адрес возврата обязан пережить переход «вхід → реєстрація».
+  // Человек приходит сюда по /login?next=/invite/<token> (или из любого
+  // закрытого экрана), не находит акаунта, жмёт «Створити акаунт» — и без
+  // этого параметра цель терялась: после регистрации его выбрасывало на
+  // умолчание, а не туда, куда он шёл. `/register` и `/register/seller`
+  // читают тот же `next` и проверяют его тем же правилом «только
+  // внутренний путь», так что передавать безопасно.
+  //
+  // Когда `next` не задавали, параметр не подставляем НАМЕРЕННО: пусть
+  // обе формы регистрации сами решают, куда вести, — тем же lib/where.ts.
+  const nextQuery = safeNext ? `?next=${encodeURIComponent(safeNext)}` : ''
+  const registerHref = `/register${nextQuery}`
+  const sellerHref = `/register/seller${nextQuery}`
   const returned = params.get('error')
   const supabase = createClient()
 
@@ -269,7 +283,7 @@ function LoginInner() {
           <div className="card-flat" style={{ borderColor: 'var(--color-accent)' }}>
             <p className="t-md">Такої пошти в нас немає</p>
             <p className="t-sm mt-1 prose-muted">Створіть акаунт — це кілька полів.</p>
-            <Link href="/register" className="btn-primary btn-tall mt-3">Створити акаунт</Link>
+            <Link href={registerHref} className="btn-primary btn-tall mt-3">Створити акаунт</Link>
           </div>
         )}
 
@@ -285,9 +299,9 @@ function LoginInner() {
 
       <p className="t-md mt-6 prose-muted">
         Немає акаунта?{' '}
-        <Link href="/register" className="underline underline-offset-2">Зареєструватися</Link>
+        <Link href={registerHref} className="underline underline-offset-2">Зареєструватися</Link>
         {' · '}
-        <Link href="/register/seller" className="underline underline-offset-2">Я підприємець</Link>
+        <Link href={sellerHref} className="underline underline-offset-2">Я підприємець</Link>
       </p>
     </AuthShell>
   )

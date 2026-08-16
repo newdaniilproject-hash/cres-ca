@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { currentMembership } from '@/lib/tenant'
+import { currentMembership, can, hasModule } from '@/lib/tenant'
 import { labelsHtml } from '@/lib/report/labels'
 
 // Лист наклеек с QR для ёмкостей.
@@ -13,9 +13,33 @@ import { labelsHtml } from '@/lib/report/labels'
 //
 // QR рисуется на клиенте библиотекой из CDN: держать генератор картинок
 // на сервере ради листа наклеек — лишняя зависимость.
+//
+// Право то же, что у экрана склада (`stock.read`), — с него ведут все
+// три кнопки печати, и своей страницы у листа нет. Одного членства мало
+// по двум причинам сразу: название заведения в шапке листа берётся из
+// `tenants`, куда RLS пускает любого участника, а сами ёмкости политика
+// `material_containers_read` (0014) отдаёт по `compliance.read` — то есть
+// инспектору, которому склад закрыли отдельно в 0035, лист печатался
+// целиком. Роут, а не страница, поэтому 403 вместо редиректа: окно
+// печати обязано сказать «нельзя», а не принять за наклейки разметку
+// экрана кабинета.
 export async function GET(request: Request) {
   const m = await currentMembership()
   if (!m) return new NextResponse('Немає доступу', { status: 403 })
+  if (!can(m, 'stock.read')) {
+    return new NextResponse('Немає права на наліпки', { status: 403 })
+  }
+  // Вторая ось — модуль склада. Лист наклеек живёт только внутри
+  // `/app/inventory`, и когда сам раздел заведению не подключён,
+  // печатать нечего: у страницы за этим адресом стоит `ModuleOff`.
+  // Ответ тот же 403 и по той же причине, что и правом выше, — это
+  // роут, а не страница: `ModuleOff` здесь напечатался бы разметкой
+  // вместо наклеек, а редирект отдал бы в принтер экран кабинета.
+  // Текст отличается от «немає права» намеренно: раздел не куплен
+  // заведением, а не запрещён этому человеку.
+  if (!hasModule(m, 'inventory')) {
+    return new NextResponse('Модуль «Склад» не підключено', { status: 403 })
+  }
 
   const url = new URL(request.url)
   const ids = url.searchParams.get('ids')?.split(',').filter(Boolean)

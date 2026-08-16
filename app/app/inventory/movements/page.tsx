@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { currentMembership, can } from '@/lib/tenant'
+import { currentMembership, can, hasModule } from '@/lib/tenant'
+import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { MovementsClient } from './movements-client'
 
@@ -21,6 +22,10 @@ export default async function MovementsPage({
 }) {
   const m = await currentMembership()
   if (!m) redirect('/register/seller')
+  // `stock_movements_read` (0003) — на `stock.read`. Журнал движений
+  // это и есть остаток (правило 5), другого источника у экрана нет.
+  if (!can(m, 'stock.read')) redirect('/app')
+  if (!hasModule(m, 'inventory')) return <ModuleOff m={m} module="inventory" />
 
   const { type } = await searchParams
   // Чужое значение в адресе не должно уходить в запрос: незнакомый тип
@@ -52,7 +57,7 @@ export default async function MovementsPage({
   ])
 
   return (
-    <AppShell modules={m.modules} active="/app/inventory" title="Рухи залишку">
+    <AppShell active="/app/inventory" title="Рухи залишку">
       <MovementsClient
         tenantId={m.tenantId}
         canWrite={can(m, 'stock.write')}

@@ -11,6 +11,12 @@ export const metadata = { title: 'Команда' }
 // а входа к ним не существовало ни одного: приглашение сотрудника
 // оформлялось «напишите мне, я заведу руками».
 //
+// `team_overview` с 0082 отдаёт ДВА разных состояния блокировки раздельно
+// (`blocked_at` — нет доступа, `staff_blocked_at` — не работает) плюс
+// `staff_is_active`. Колонки здесь не перечисляются намеренно: функция
+// возвращает готовую таблицу, и список полей живёт в одном месте —
+// в её объявлении. Разбирает их TeamClient.
+//
 // Всё читается ЗДЕСЬ, на сервере, и уходит вниз готовым. Причина не
 // в моде на серверные компоненты: `team_overview` и `team_sessions` —
 // SECURITY DEFINER, они отдают почту и адреса сеансов, и их результат
@@ -23,7 +29,8 @@ export default async function TeamPage() {
   const supabase = await createClient()
 
   const [{ data: members }, { data: invites }, { data: sessions },
-         { data: templates }, { data: grants }, { data: caps }, { data: me }] =
+         { data: templates }, { data: grants }, { data: caps }, { data: auth },
+         { data: audit }] =
     await Promise.all([
       supabase.rpc('team_overview', { p_tenant_id: m.tenantId }),
       supabase.from('invitations')
@@ -39,18 +46,27 @@ export default async function TeamPage() {
       // иначе новый пункт доступа надо помнить продублировать здесь.
       supabase.from('role_grants').select('role, permission'),
       supabase.from('role_discount_caps').select('role, cap_pct'),
-      supabase.auth.getUser(),
+      // Свой id — из сеанса, а не из `auth.getUser()`: getUser идёт
+      // в GoTrue по сети ради значения, которое уже лежит в токене
+      // (`sub`), и его сбой стоил бы дорого — без id `self` не сработал
+      // бы НИ ДЛЯ КОГО, и человек увидел бы на себе «заблокувати»
+      // и «передати володіння». Разбор токена руками, как в
+      // `lib/tenant.ts`, потребовал бы экспорта оттуда — этот файл
+      // чужой, поэтому берём тот же id из сеанса, который тот же
+      // `lib/tenant.ts` уже прочитал для членства.
+      supabase.auth.getSession(),
+      // Журнал прав. Пишется триггером с 0076, читается политикой —
+      // но показать его было негде, и это ровно тот случай, когда
+      // «данные есть» не значит «работает»: неизменяемая запись о том,
+      // кто кому что выдал, стоит ноль, пока её никто не видит.
+      supabase.rpc('permission_audit_log', { p_tenant_id: m.tenantId, p_limit: 200 }),
     ])
 
-  const { data: shop } = await supabase.from('tenants')
-    .select('name').eq('id', m.tenantId).single()
-
   return (
-    <AppShell modules={m.modules} active="/app/team" title="Команда">
+    <AppShell modules={m.modules} perms={m.perms} active="/app/team" title="Команда">
       <TeamClient
         tenantId={m.tenantId}
-        shopName={shop?.name ?? ''}
-        myUserId={me?.user?.id ?? ''}
+        myUserId={auth?.session?.user?.id ?? null}
         myRole={m.role}
         canWrite={can(m, 'team.write')}
         members={members ?? []}
@@ -59,6 +75,7 @@ export default async function TeamPage() {
         templates={templates ?? []}
         grants={grants ?? []}
         caps={caps ?? []}
+        audit={audit ?? []}
       />
     </AppShell>
   )

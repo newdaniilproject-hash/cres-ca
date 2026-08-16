@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { currentMembership } from '@/lib/tenant'
+import { currentMembership, can } from '@/lib/tenant'
 import { AppShell } from '@/components/shell'
 import { ProfileClient } from './profile-client'
 
@@ -30,7 +30,7 @@ export default async function ProfilePage() {
     ?? [meta.first_name, meta.last_name].filter(Boolean).join(' ')).trim()
 
   return (
-    <AppShell modules={m.modules} active="/app/profile" title="Профіль"
+    <AppShell modules={m.modules} perms={m.perms} active="/app/profile" title="Профіль"
               subtitle="Обліковий запис, безпека та вихід">
       <ProfileClient
         email={user.email ?? ''}
@@ -38,6 +38,10 @@ export default async function ProfilePage() {
         role={m.role}
         tenantName={tenant?.name ?? ''}
         tenantDraft={tenant?.status === 'draft'}
+        // `/app/settings` требует `settings.read` и разворачивает всех
+        // остальных на `/app`. Право считается здесь и приезжает пропом:
+        // клиент за правами в базу не ходит (правило 3).
+        canSettings={can(m, 'settings.read')}
       />
     </AppShell>
   )

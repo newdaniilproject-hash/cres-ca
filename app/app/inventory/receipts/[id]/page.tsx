@@ -1,6 +1,7 @@
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { currentMembership, can } from '@/lib/tenant'
+import { currentMembership, can, hasModule } from '@/lib/tenant'
+import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { ReceiptDetail } from './receipt-detail'
 
@@ -14,6 +15,10 @@ export default async function ReceiptPage({
 }) {
   const m = await currentMembership()
   if (!m) redirect('/register/seller')
+  // Документ приймання — `stock_receipts_read` (0003), то же
+  // `stock.read`, что и перечень.
+  if (!can(m, 'stock.read')) redirect('/app')
+  if (!hasModule(m, 'inventory')) return <ModuleOff m={m} module="inventory" />
 
   const { id } = await params
   const supabase = await createClient()
@@ -29,7 +34,7 @@ export default async function ReceiptPage({
 
   if (error) {
     return (
-      <AppShell modules={m.modules} active="/app/inventory" title="Приймання">
+      <AppShell active="/app/inventory" title="Приймання">
         <p className="field-error rise">Не вдалося відкрити приймання: {error.message}</p>
       </AppShell>
     )
@@ -63,7 +68,6 @@ export default async function ReceiptPage({
 
   return (
     <AppShell
-      modules={m.modules}
       active="/app/inventory"
       title={receipt.document_number ? `Приймання №${receipt.document_number}` : 'Приймання'}
     >

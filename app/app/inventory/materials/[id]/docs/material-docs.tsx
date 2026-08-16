@@ -34,11 +34,19 @@ const FILTERS: { key: 'all' | DocKind; label: string }[] = [
 ]
 
 export function MaterialDocs({
-  tenantId, userId, canWrite, material, docs, loadError,
+  tenantId, userId, canWrite, canEditMoz, material, docs, loadError,
 }: {
   tenantId: string
   userId: string
+  /** `compliance.write` — загрузка и удаление самих документов. */
   canWrite: boolean
+  /**
+   * `stock.write` — правка полей нотификации МОЗ. Они лежат в `materials`,
+   * а её политика `materials_update` (0003) требует складского права,
+   * не компланс-ового. Кнопка под чужим правом означала бы отказ RLS
+   * после заполнения формы.
+   */
+  canEditMoz: boolean
   material: Material
   docs: Doc[]
   loadError: string
@@ -251,7 +259,7 @@ export function MaterialDocs({
         <section className="card-flat rise-3">
           <div className="flex items-center justify-between gap-3">
             <h3 className="t-sm" style={{ color: 'var(--color-faint)' }}>НОТИФІКАЦІЯ МОЗ</h3>
-            {canWrite && (
+            {canEditMoz && (
               <button type="button" className="btn-ghost t-sm" onClick={() => setMoz(true)}>
                 {material.notificationCode ? 'Змінити' : 'Вказати'}
               </button>
