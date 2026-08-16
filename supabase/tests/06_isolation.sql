@@ -295,12 +295,18 @@ do $$ declare лишние text; пропали text; with_check_true text; begi
     except select unnest(array[
       'role_grants.role_grants_read',
       'order_status_transitions.order_status_transitions_read',
-      'booking_status_transitions.booking_status_transitions_read'])) q;
+      'booking_status_transitions.booking_status_transitions_read',
+      -- Четвёртый справочник, добавлен 0077. Потолок скидки по роли —
+      -- те же данные для всех заведений, ни одной строки арендатора.
+      -- Фильтровать здесь не по чему, и это не нарушение правила 1,
+      -- а признак справочника.
+      'role_discount_caps.role_discount_caps_read'])) q;
   select string_agg(x, ', ') into пропали from (
     select unnest(array[
       'role_grants.role_grants_read',
       'order_status_transitions.order_status_transitions_read',
-      'booking_status_transitions.booking_status_transitions_read']) as x
+      'booking_status_transitions.booking_status_transitions_read',
+      'role_discount_caps.role_discount_caps_read']) as x
     except select tablename || '.' || policyname from pg_policies
      where schemaname = 'public' and qual = 'true') q;
   -- with_check(true) на INSERT — та же дыра с другой стороны: строку с чужим
@@ -317,7 +323,7 @@ do $$ declare лишние text; пропали text; with_check_true text; begi
   if with_check_true is not null then
     raise exception 'ПРОВАЛ: политика INSERT с with_check(true) — %', with_check_true;
   end if;
-  raise notice 'ok — using(true) только на трёх общих справочниках, with_check(true) нет';
+  raise notice 'ok — using(true) только на четырёх общих справочниках, with_check(true) нет';
 end $$;
 
 \echo '--- список функций, доступных анониму, закрыт: девятнадцать и ни одной больше'
