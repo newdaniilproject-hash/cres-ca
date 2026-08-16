@@ -7,7 +7,6 @@ import { createClient } from '@/lib/supabase/client'
 import {
   authErrorText, codeErrorText, humanAuthError, lockoutSeconds, lockoutText,
 } from '@/lib/auth-errors'
-import { nextRoute } from '@/lib/where'
 import { AuthShell } from '../auth-shell'
 import { GoogleButton } from '../google-button'
 import { CodeInput } from '@/app/m/code-input'
@@ -34,14 +33,23 @@ function LoginInner() {
   const params = useSearchParams()
   // next приходит из адреса — принимаем только внутренний путь,
   // иначе ссылка вида /login?next=https://… уводит человека с площадки.
-  //
-  // Раньше запасным значением стояло '/account' — покупательский кабинет,
-  // и туда попадал КАЖДЫЙ вошедший. Теперь запасного адреса здесь нет:
-  // если человек никуда конкретно не шёл, куда его вести, решает
-  // lib/where.ts уже после входа (нет заведения → его создание).
-  // Контракт next при этом цел: шёл на страницу — попадёт на неё.
   const rawNext = params.get('next')
-  const next = rawNext && rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : null
+  const safeNext = rawNext && rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : ''
+  const next = safeNext || '/account'
+  // Адрес возврата обязан пережить переход «вхід → реєстрація».
+  // Человек приходит сюда по /login?next=/invite/<token> (или из любого
+  // закрытого экрана), не находит акаунта, жмёт «Створити акаунт» — и без
+  // этого параметра цель терялась: после регистрации его выбрасывало на
+  // умолчание, а не туда, куда он шёл. `/register` и `/register/seller`
+  // читают тот же `next` и проверяют его тем же правилом «только
+  // внутренний путь», так что передавать безопасно.
+  //
+  // Когда `next` не задавали, параметр не подставляем НАМЕРЕННО: у формы
+  // покупателя умолчание '/account', у формы продавца '/app', и жёстко
+  // навязанный '/account' увёл бы предпринимателя мимо кабинета.
+  const nextQuery = safeNext ? `?next=${encodeURIComponent(safeNext)}` : ''
+  const registerHref = `/register${nextQuery}`
+  const sellerHref = `/register/seller${nextQuery}`
   const returned = params.get('error')
   const supabase = createClient()
 
@@ -56,17 +64,6 @@ function LoginInner() {
   const [noAccount, setNoAccount] = useState(false)
   const [left, setLeft] = useState(0)
   const [lockWait, setLockWait] = useState('')
-  // Куда уходим после успеха. Считается один раз — в момент, когда
-  // сессия уже есть: до входа членства прочитать нечем.
-  const [target, setTarget] = useState('/app')
-
-  // Вход состоялся: экран успеха, а следом — переход. Оба пути входа
-  // (пароль и код) заканчиваются здесь, чтобы решение о том, куда вести,
-  // жило в одном месте, а не в двух обработчиках.
-  async function done() {
-    setTarget(next ?? await nextRoute(supabase, 'web'))
-    setStep('done')
-  }
 
   useEffect(() => {
     if (left <= 0) return
@@ -126,7 +123,7 @@ function LoginInner() {
       setError(humanAuthError(error.message))
       return
     }
-    await done()
+    setStep('done')
   }
 
   async function verify(v: string) {
@@ -140,7 +137,7 @@ function LoginInner() {
       return
     }
     setBusy(false)
-    await done()
+    setStep('done')
   }
 
   async function resend() {
@@ -164,9 +161,9 @@ function LoginInner() {
           title="Вхід успішний!"
           subtitle="Раді вас бачити! Перехід у ваш кабінет…"
           actionLabel="Продовжити"
-          onAction={() => { window.location.href = target }}
+          onAction={() => { window.location.href = next }}
         />
-        <Redirect to={target} />
+        <Redirect to={next} />
       </AuthShell>
     )
   }
@@ -269,7 +266,7 @@ function LoginInner() {
           <div className="card-flat" style={{ borderColor: 'var(--color-accent)' }}>
             <p className="t-md">Такої пошти в нас немає</p>
             <p className="t-sm mt-1 prose-muted">Створіть акаунт — це кілька полів.</p>
-            <Link href="/register" className="btn-primary btn-tall mt-3">Створити акаунт</Link>
+            <Link href={registerHref} className="btn-primary btn-tall mt-3">Створити акаунт</Link>
           </div>
         )}
 
@@ -281,13 +278,13 @@ function LoginInner() {
         </button>
       </form>
 
-      <GoogleButton next={next ?? undefined} />
+      <GoogleButton next={next} />
 
       <p className="t-md mt-6 prose-muted">
         Немає акаунта?{' '}
-        <Link href="/register" className="underline underline-offset-2">Зареєструватися</Link>
+        <Link href={registerHref} className="underline underline-offset-2">Зареєструватися</Link>
         {' · '}
-        <Link href="/register/seller" className="underline underline-offset-2">Я підприємець</Link>
+        <Link href={sellerHref} className="underline underline-offset-2">Я підприємець</Link>
       </p>
     </AuthShell>
   )
