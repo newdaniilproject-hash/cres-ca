@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { cache } from 'react'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { PublicHeader, PublicFooter } from '@/components/shell'
+import { PublicHeader, PublicFooter, publicT as t } from '@/components/shell'
 
 export const revalidate = 60
 
@@ -36,7 +36,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug } = await params
   const data = await getStorefront(slug)
-  if (!data) return { title: 'Заклад не знайдено' }
+  if (!data) return { title: t('public.storefront.notFound.title') }
   const { name, tagline, description, city } = data.shop
   return {
     title: city ? `${name} · ${city}` : name,
@@ -80,11 +80,16 @@ export default async function ShopPage({
           </div>
           <h1 className="display t-3xl sm:t-4xl">{shop.name}</h1>
           {shop.tagline && <p className="t-md mt-2 prose-muted">{shop.tagline}</p>}
+          {/* Имя, подзаголовок, описание, адрес и город заведения —
+              данные продавца: не переводятся ни в каком языке. В словарь
+              уезжают только подписи вокруг них. */}
           {(shop.city || shop.address) && (
             <p className="t-sm mt-3 prose-muted">
               {[shop.address, shop.city].filter(Boolean).join(', ')}
               {' · '}
-              <Link href="/map" className="underline underline-offset-2">на мапі</Link>
+              <Link href="/map" className="underline underline-offset-2">
+                {t('public.storefront.onMap')}
+              </Link>
             </p>
           )}
         </section>
@@ -92,7 +97,7 @@ export default async function ShopPage({
         {/* Услуги: главный сценарий — записаться */}
         {services.length > 0 && (
           <section className="rise-1 pb-8">
-            <h2 className="display mb-4 t-xl">Послуги</h2>
+            <h2 className="display mb-4 t-xl">{t('public.storefront.services.title')}</h2>
             <div className="card !p-0">
               {services.map((o) => (
                 <div key={o.id} id={o.slug} className="row px-5">
@@ -101,11 +106,14 @@ export default async function ShopPage({
                     {o.subtitle && <p className="t-sm mt-0.5 prose-muted">{o.subtitle}</p>}
                   </div>
                   <div className="flex shrink-0 items-center gap-4">
+                    {/* Символ валюты ставит Intl, а не подстановка «` ₴`»:
+                        у позиции своя `currency`, и вторая валюта появится
+                        раньше, чем кто-нибудь вспомнит про эту строку. */}
                     {o.price != null && (
-                      <p className="tabular t-md">{Number(o.price).toLocaleString('uk-UA')} ₴</p>
+                      <p className="tabular t-md">{t.money(Number(o.price), o.currency)}</p>
                     )}
                     <Link href={`/t/${slug}/book/${o.id}`} className="btn-primary">
-                      Записатися
+                      {t('public.storefront.book')}
                     </Link>
                   </div>
                 </div>
@@ -113,7 +121,7 @@ export default async function ShopPage({
             </div>
             {staff.length > 0 && (
               <div className="t-sm mt-4 flex flex-wrap items-center gap-2 prose-muted">
-                <span>Майстри:</span>
+                <span>{t('public.storefront.staff.label')}</span>
                 {staff.map((s) => (
                   <span key={s.id} className="badge">{s.name}{s.title ? ` · ${s.title}` : ''}</span>
                 ))}
@@ -125,7 +133,7 @@ export default async function ShopPage({
         {/* Товары */}
         {products.length > 0 && (
           <section className="rise-2 pb-8">
-            <h2 className="display mb-4 t-xl">Товари</h2>
+            <h2 className="display mb-4 t-xl">{t('public.storefront.products.title')}</h2>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {products.map((o) => (
                 <div key={o.id} id={o.slug} className="card-link">
@@ -139,31 +147,28 @@ export default async function ShopPage({
                   <div className="mt-1 flex items-center justify-between">
                     <p className="t-sm prose-muted">{o.subtitle ?? ''}</p>
                     {o.price != null && (
-                      <p className="tabular t-md">{Number(o.price).toLocaleString('uk-UA')} ₴</p>
+                      <p className="tabular t-md">{t.money(Number(o.price), o.currency)}</p>
                     )}
                   </div>
                 </div>
               ))}
             </div>
-            <p className="t-xs mt-4 prose-muted">
-              Замовлення товарів — за телефоном або в повідомленнях закладу;
-              онлайн-кошик відкриється разом із доставкою.
-            </p>
+            <p className="t-xs mt-4 prose-muted">{t('public.storefront.products.note')}</p>
           </section>
         )}
 
         {offerings.length === 0 && (
           <div className="empty card rise-1">
             <p className="display t-lg" style={{ color: 'var(--color-text)' }}>
-              Каталог наповнюється
+              {t('public.storefront.empty.title')}
             </p>
-            <p>Заклад щойно приєднався — послуги та товари з’являться найближчим часом.</p>
+            <p>{t('public.storefront.empty.desc')}</p>
           </div>
         )}
 
         {shop.description && (
           <section className="rise-3 pb-8">
-            <h2 className="display mb-3 t-xl">Про заклад</h2>
+            <h2 className="display mb-3 t-xl">{t('public.storefront.about.title')}</h2>
             <p className="t-md max-w-2xl leading-relaxed prose-muted">{shop.description}</p>
           </section>
         )}
