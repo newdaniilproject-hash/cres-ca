@@ -4,9 +4,15 @@ import { currentMembership, can, hasModule } from '@/lib/tenant'
 import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { MovementsClient } from './movements-client'
+import { getT } from '@/lib/i18n/server'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Рухи залишку' }
+// Заголовок вкладки — тем же ключом, что и заголовок экрана
+// в оболочке (`components/app-shell.tsx`).
+export async function generateMetadata() {
+  const t = await getT()
+  return { title: t('app.screen.inventory.movements.title') }
+}
 
 // Значения enum stock_movement_type из 0003_inventory.sql. Список повторяет
 // тот, что в movements-client: импортировать его оттуда нельзя — серверный
@@ -57,7 +63,7 @@ export default async function MovementsPage({
   ])
 
   return (
-    <AppShell active="/app/inventory" title="Рухи залишку">
+    <AppShell>
       <MovementsClient
         tenantId={m.tenantId}
         canWrite={can(m, 'stock.write')}
