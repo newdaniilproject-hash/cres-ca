@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { ensureConsent } from '@/lib/consent'
-import { nextRoute, type Surface } from '@/lib/where'
+import { nextRoute } from '@/lib/where'
 import { authErrorText } from '@/app/(auth)/google-button'
+import { useT } from '@/lib/i18n/client'
 
 // Завершение входа через провайдера.
 //
@@ -12,6 +13,7 @@ import { authErrorText } from '@/app/(auth)/google-button'
 // кладёт в куки браузера при нажатии кнопки, и код, обменянный
 // где-то ещё, просто не сойдётся.
 export default function AuthFinishPage() {
+  const t = useT()
   const [error, setError] = useState('')
   // Сырой текст — Supabase иногда отвечает служебным кодом ошибки,
   // а не фразой. Технические детали ниже, мелким шрифтом, а не вместо
@@ -30,21 +32,21 @@ export default function AuthFinishPage() {
     // сайт, и перехватить это на клиенте нечем: signInWithOAuth только
     // строит ссылку (см. lib/oauth.ts, google-button.tsx). Здесь чинится
     // только то, что действительно доезжает сюда параметром в адресе.
-    if (err) { setError(authErrorText(err)); setRaw(err); return }
+    if (err) { setError(authErrorText(t, err)); setRaw(err); return }
     if (!code) { setError('Код входу не отримано'); return }
 
     const supabase = createClient()
     void (async () => {
       const { error } = await supabase.auth.exchangeCodeForSession(code)
-      if (error) { setError(authErrorText(error.message)); setRaw(error.message); return }
+      if (error) { setError(authErrorText(t, error.message)); setRaw(error.message); return }
       await ensureConsent(supabase)
-      // Шёл на конкретную страницу — туда и ведём (контракт next).
-      // Не шёл — решает lib/where.ts, но адреса у поверхностей разные,
-      // поэтому её проносит сюда параметр s (по умолчанию — приложение,
-      // как было до появления этого экрана в вебе).
-      const surface: Surface = params.get('s') === 'web' ? 'web' : 'm'
-      window.location.replace(params.get('next') || (await nextRoute(supabase, surface)))
+      window.location.replace(params.get('next') || (await nextRoute(supabase)))
     })()
+    // Обмен кода делается ОДИН раз на монтирование: повторный вызов
+    // exchangeCodeForSession с уже использованным кодом отвечает отказом.
+    // `t` из зависимостей исключён сознательно — он один на язык
+    // (`createT` кэширует), и ссылка между отрисовками не меняется.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return (
