@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { currentMembership, can, hasModule } from '@/lib/tenant'
+import { getT } from '@/lib/i18n/server'
 import { labelsHtml } from '@/lib/report/labels'
 
 // Лист наклеек с QR для ёмкостей.
@@ -24,10 +25,13 @@ import { labelsHtml } from '@/lib/report/labels'
 // печати обязано сказать «нельзя», а не принять за наклейки разметку
 // экрана кабинета.
 export async function GET(request: Request) {
+  // Роут отдаёт человеку ТЕКСТ, а не разметку, поэтому и он переводится:
+  // «Немає доступу» в окне печати читает тот же мастер, что и экран.
+  const t = await getT()
   const m = await currentMembership()
-  if (!m) return new NextResponse('Немає доступу', { status: 403 })
+  if (!m) return new NextResponse(t('inventory.labels.denied.member'), { status: 403 })
   if (!can(m, 'stock.read')) {
-    return new NextResponse('Немає права на наліпки', { status: 403 })
+    return new NextResponse(t('inventory.labels.denied.right'), { status: 403 })
   }
   // Вторая ось — модуль склада. Лист наклеек живёт только внутри
   // `/app/inventory`, и когда сам раздел заведению не подключён,
@@ -38,7 +42,7 @@ export async function GET(request: Request) {
   // Текст отличается от «немає права» намеренно: раздел не куплен
   // заведением, а не запрещён этому человеку.
   if (!hasModule(m, 'inventory')) {
-    return new NextResponse('Модуль «Склад» не підключено', { status: 403 })
+    return new NextResponse(t('inventory.labels.denied.module'), { status: 403 })
   }
 
   const url = new URL(request.url)
