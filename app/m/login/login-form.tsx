@@ -10,6 +10,7 @@ import { AppScreen, Field, keepVisible } from '../ui'
 import { MailIcon, PasswordStrength, mmss } from '@/components/auth-ui'
 import { OAuthButtons } from '../oauth'
 import { authErrorText } from '@/app/(auth)/google-button'
+import { useT } from '@/lib/i18n/client'
 
 // Шесть цифр — столько же, сколько в вебе и в макетах владельца.
 // Было восемь; расхождение с настройкой Supabase (MAILER_OTP_LENGTH)
@@ -28,6 +29,7 @@ const RESEND_SECONDS = 60
 type Mode = 'password' | 'code' | 'reset'
 
 export function MobileLoginForm() {
+  const t = useT()
   const supabase = useMemo(() => createClient(), [])
   const params = useSearchParams()
 
@@ -54,7 +56,7 @@ export function MobileLoginForm() {
   // не рассчитано на глаза человека.
   const [error, setError] = useState(() => {
     const oauth = params.get('oauth')
-    return oauth ? authErrorText(oauth) : ''
+    return oauth ? authErrorText(t, oauth) : ''
   })
   const [noAccount, setNoAccount] = useState(false)
 
@@ -74,13 +76,17 @@ export function MobileLoginForm() {
     })
     if (error) {
       setBusy(false)
+      // ⚠️ Подстроки, ПО КОТОРЫМ разбирается ответ Supabase
+      // (`email not confirmed`, `invalid login`), НЕ переводятся:
+      // сервер отвечает по-английски всегда, и перевод условия сломал
+      // бы разбор. Переводится только то, что читает человек.
       const m = error.message.toLowerCase()
       if (m.includes('email not confirmed')) {
-        setError('Пошта ще не підтверджена. Увійдіть кодом — і підтвердимо.')
+        setError(t('m.login.error.notConfirmed'))
         return
       }
       setError(m.includes('invalid login')
-        ? 'Невірна пошта або пароль'
+        ? t('m.login.error.invalid')
         : error.message)
       return
     }
@@ -113,7 +119,7 @@ export function MobileLoginForm() {
       email: email.trim(), token: v, type: 'email',
     })
     if (error) {
-      setBusy(false); setCodeError('Код невірний або вже застарів'); setCode(''); return
+      setBusy(false); setCodeError(t('m.login.code.invalid')); setCode(''); return
     }
     // Восстановление пароля: код проверен, сессия есть — осталось
     // задать новый пароль, не выходя из приложения.
@@ -132,9 +138,9 @@ export function MobileLoginForm() {
   // ── Новый пароль ─────────────────────────────────────────────
   if (step === 'newpass') {
     return (
-      <AppScreen title="Новий пароль" subtitle="Придумайте пароль — і одразу увійдемо">
+      <AppScreen title={t('m.login.newpass.title')} subtitle={t('m.login.newpass.subtitle')}>
         <form onSubmit={saveNewPassword} className="flex flex-col gap-5">
-          <Field label="Пароль" htmlFor="l-newpass">
+          <Field label={t('m.field.password')} htmlFor="l-newpass">
             <PasswordInput
               id="l-newpass" value={password} onChange={setPassword}
               see={seePass} onSee={() => setSeePass((v) => !v)} autoComplete="new-password"
@@ -145,7 +151,7 @@ export function MobileLoginForm() {
           <button className="btn-primary flex items-center justify-center"
                   style={{ height: 52, fontSize: 16 }}
                   disabled={busy || password.length < 8}>
-            {busy ? 'Зберігаємо…' : 'Зберегти і увійти'}
+            {busy ? t('common.saving') : t('m.login.newpass.submit')}
           </button>
         </form>
       </AppScreen>
@@ -156,8 +162,8 @@ export function MobileLoginForm() {
   if (step === 'code') {
     return (
       <AppScreen
-        title={mode === 'reset' ? 'Код для відновлення' : 'Введіть код'}
-        subtitle={`Ми надіслали 6-значний код на ${email.trim()}`}
+        title={mode === 'reset' ? t('m.login.code.title.reset') : t('m.login.code.title.login')}
+        subtitle={t('auth.code.sentTo', { email: email.trim(), n: CODE_LENGTH })}
         onBack={() => { setStep('form'); setCode(''); setCodeError('') }}
       >
         <CodeInput
@@ -168,30 +174,31 @@ export function MobileLoginForm() {
           }}
         />
         {codeError && <p className="field-error text-center">{codeError}</p>}
-        {busy && !codeError && <p className="t-sm mt-3 text-center prose-muted">Перевіряємо…</p>}
+        {busy && !codeError && (
+          <p className="t-sm mt-3 text-center prose-muted">{t('auth.code.checking')}</p>
+        )}
 
         <p className="code-countdown">
-          {left > 0 ? `Повторно надіслати код через ${mmss(left)}` : 'Код можна надіслати повторно'}
+          {left > 0
+            ? t('auth.code.resendIn', { time: mmss(left) })
+            : t('auth.code.resendReady')}
         </p>
 
         <div className="auth-result-actions">
           <button type="button" className="btn-primary btn-tall"
                   disabled={busy || code.length !== CODE_LENGTH}
                   onClick={() => void verify(code)}>
-            {busy ? 'Перевіряємо…' : 'Підтвердити'}
+            {busy ? t('auth.code.checking') : t('auth.code.submit')}
           </button>
           <button type="button" className="link-quiet link-accent"
                   disabled={left > 0 || busy} onClick={() => void sendCode()}>
-            Надіслати код повторно
+            {t('auth.code.resend')}
           </button>
         </div>
 
         <div className="note note-row">
           <span style={{ color: 'var(--color-muted)' }}><MailIcon size={20} /></span>
-          <span>
-            Не отримали лист? Перевірте папку «Вхідні» та «Спам».
-            Або повторіть через хвилину. Код діє 10 хвилин.
-          </span>
+          <span>{t('m.login.code.noMail')}</span>
         </div>
       </AppScreen>
     )
@@ -201,16 +208,16 @@ export function MobileLoginForm() {
   const byPassword = mode === 'password'
   return (
     <AppScreen
-      title={mode === 'reset' ? 'Відновлення' : 'Вхід'}
+      title={mode === 'reset' ? t('m.login.title.reset') : t('m.login.title.login')}
       subtitle={
-        mode === 'reset' ? 'Надішлемо код — і задасте новий пароль'
-          : byPassword ? 'Пошта і пароль' : 'Надішлемо код на пошту'
+        mode === 'reset' ? t('m.login.subtitle.reset')
+          : byPassword ? t('m.login.subtitle.password') : t('m.login.subtitle.code')
       }
       backHref="/m"
       onBack={mode === 'password' ? undefined : () => { setMode('password'); setError(''); setNoAccount(false) }}
     >
       <form onSubmit={byPassword ? signIn : sendCode} className="flex flex-col gap-5">
-        <Field label="Пошта" htmlFor="l-email">
+        <Field label={t('m.field.email')} htmlFor="l-email">
           <input
             id="l-email" type="email" required autoFocus={!email} autoComplete="email"
             inputMode="email" autoCapitalize="none" spellCheck={false}
@@ -222,7 +229,7 @@ export function MobileLoginForm() {
         </Field>
 
         {byPassword && (
-          <Field label="Пароль" htmlFor="l-pass">
+          <Field label={t('m.field.password')} htmlFor="l-pass">
             <PasswordInput
               id="l-pass" value={password} onChange={setPassword}
               see={seePass} onSee={() => setSeePass((v) => !v)} autoComplete="current-password"
@@ -232,11 +239,11 @@ export function MobileLoginForm() {
 
         {noAccount && (
           <div className="card-flat" style={{ borderColor: 'var(--color-accent)' }}>
-            <p className="t-md">Такої пошти в нас немає</p>
-            <p className="t-sm mt-1 prose-muted">Створіть акаунт — це кілька полів.</p>
+            <p className="t-md">{t('m.login.noAccount.title')}</p>
+            <p className="t-sm mt-1 prose-muted">{t('m.login.noAccount.desc')}</p>
             <Link href="/m/register" className="btn-primary mt-3 flex items-center justify-center"
                   style={{ height: 48, fontSize: 16 }}>
-              Створити акаунт
+              {t('m.login.noAccount.action')}
             </Link>
           </div>
         )}
@@ -246,7 +253,7 @@ export function MobileLoginForm() {
         <button className="btn-primary flex items-center justify-center"
                 style={{ height: 52, fontSize: 16 }}
                 disabled={busy || email.trim().length < 5 || (byPassword && password.length < 1)}>
-          {busy ? 'Хвилинку…' : byPassword ? 'Увійти' : 'Надіслати код'}
+          {busy ? t('m.login.busy') : byPassword ? t('m.login.submit') : t('m.login.sendCode')}
         </button>
       </form>
 
@@ -261,25 +268,27 @@ export function MobileLoginForm() {
             <button type="button" onClick={() => { setMode('code'); setError('') }}
                     className="t-sm underline underline-offset-2"
                     style={{ color: 'var(--color-accent)', minHeight: 'var(--tap-min)' }}>
-              Увійти кодом з пошти
+              {t('m.login.byCode')}
             </button>
             <button type="button" onClick={() => { setMode('reset'); setError('') }}
                     className="t-sm underline underline-offset-2 prose-muted"
                     style={{ minHeight: 'var(--tap-min)' }}>
-              Забули пароль?
+              {t('m.login.forgot')}
             </button>
           </>
         ) : (
           <button type="button" onClick={() => { setMode('password'); setError('') }}
                   className="t-sm underline underline-offset-2"
                   style={{ color: 'var(--color-accent)', minHeight: 'var(--tap-min)' }}>
-            Увійти паролем
+            {t('m.login.byPassword')}
           </button>
         )}
 
         <p className="t-sm prose-muted">
-          Немає акаунта?{' '}
-          <Link href="/m/register" className="underline underline-offset-2">Створити</Link>
+          {t('m.login.noAcc.lead')}{' '}
+          <Link href="/m/register" className="underline underline-offset-2">
+            {t('m.login.noAcc.link')}
+          </Link>
         </p>
       </div>
     </AppScreen>
@@ -298,6 +307,7 @@ function PasswordInput({
   onSee: () => void
   autoComplete: string
 }) {
+  const t = useT()
   return (
     <div className="relative">
       <input
@@ -309,7 +319,7 @@ function PasswordInput({
       />
       <button
         type="button" onClick={onSee}
-        aria-label={see ? 'Сховати пароль' : 'Показати пароль'}
+        aria-label={see ? t('auth.password.hide.aria') : t('auth.password.show.aria')}
         className="absolute right-0 top-0 flex items-center justify-center"
         style={{ width: 52, height: 52, color: 'var(--color-muted)' }}
       >
