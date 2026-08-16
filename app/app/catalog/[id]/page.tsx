@@ -1,6 +1,7 @@
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { currentMembership } from '@/lib/tenant'
+import { currentMembership, can, hasModule } from '@/lib/tenant'
+import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import {
   OfferingForm,
@@ -21,6 +22,15 @@ export default async function OfferingPage({
 }) {
   const m = await currentMembership()
   if (!m) redirect('/register/seller')
+  // Карточка позиции — тот же `catalog.read`, что и список: без права
+  // `offerings_read` не отдаст строку, и человек получал бы notFound
+  // вместо честного «розділ не ваш».
+  if (!can(m, 'catalog.read')) redirect('/app')
+  // Карточка закрывается модулем до чтения позиции: иначе при выключенном
+  // каталоге экран отвечал бы `notFound()` или, наоборот, показывал бы
+  // товар из раздела, которого у заведения нет.
+  if (!hasModule(m, 'catalog')) return <ModuleOff m={m} module="catalog" />
+
   const { id } = await params
   const supabase = await createClient()
 
@@ -52,9 +62,18 @@ export default async function OfferingPage({
   const row = offering as unknown as OfferingRow
 
   return (
-    <AppShell modules={m.modules} active="/app/catalog" title={row.title}>
+    <AppShell active="/app/catalog" title={row.title}>
       <OfferingForm
         tenantId={m.tenantId}
+        // Карточка открыта по `catalog.read`, а меняется по `catalog.write`:
+        // `operator`, `accountant` и `viewer` читают её и видят отметку
+        // «лише перегляд» вместо отказа политики на «Зберегти».
+        canWrite={can(m, 'catalog.write')}
+        canStock={can(m, 'stock.read')}
+        // См. `../new/page.tsx`: витрина и записи — соседние модули,
+        // и их поля в форме позиции держатся на них, а не на правах.
+        hasStorefront={hasModule(m, 'storefront')}
+        hasBookings={hasModule(m, 'bookings')}
         categories={(categories ?? []) as CategoryRow[]}
         locations={(locations ?? []) as LocationRow[]}
         offering={{
