@@ -3,8 +3,14 @@
 // либо отправляет и возвращает, либо бросает — обработчик сам решает,
 // что делать с ошибкой (notification_mark считает попытки и откладывает).
 
-export async function sendEmail(to: string, subject: string, text: string) {
+// `html` добавлен ради письма-приглашения: шаблоны из lib/email/ отдают
+// вёрстку, а не строку. Необязателен и стоит последним — очередь
+// уведомлений шлёт текстом и её вызовы не меняются. Когда есть оба,
+// уходят оба: почтовик сам выберет, а текст остаётся тем, что увидит
+// читалка без картинок и разбора HTML.
+export async function sendEmail(to: string, subject: string, text?: string, html?: string) {
   const key = process.env.RESEND_API_KEY
+  if (!text && !html) throw new Error('лист без тіла: потрібен text або html')
   if (!key) throw new Error('канал email не настроен: нет RESEND_API_KEY')
 
   // Отправитель по умолчанию совпадает с тем, чем УЖЕ шлёт Supabase Auth
@@ -23,7 +29,7 @@ export async function sendEmail(to: string, subject: string, text: string) {
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from, to, subject, text }),
+    body: JSON.stringify({ from, to, subject, ...(text ? { text } : {}), ...(html ? { html } : {}) }),
   })
   if (!res.ok) {
     const body = await res.text().catch(() => '')
