@@ -1,9 +1,9 @@
 'use client'
 
+import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { BioLockRow } from '@/components/native'
 
 type Shop = {
   id: string; name: string; slug: string; tagline: string | null
@@ -154,11 +154,15 @@ export function SettingsClient({ shop, canWrite, team }: {
             </span>
           </div>
         ))}
-        <p className="field-hint px-5 pb-4">
-          Запрошення співробітників і роль «інспектор» для перевіряючого —
-          скоро тут. Ролі вже працюють: майстер бачить склад і записи,
-          але не бачить фінансів.
-        </p>
+        {/* Здесь стояло «запрошення співробітників — скоро тут». Экран
+            команды появился, и обещание стало неправдой раньше, чем
+            его успели прочитать. Список оставлен как срез состава;
+            всё управление — на своём экране. */}
+        <div className="px-5 pb-4">
+          <Link href="/app/team" className="btn-secondary t-sm">
+            Керувати доступами →
+          </Link>
+        </div>
       </section>
 
       {/* Безпека: видалення акаунта */}
@@ -169,17 +173,11 @@ export function SettingsClient({ shop, canWrite, team }: {
           без листів, дзвінків і пояснень.
         </p>
 
-        {/* Вход по Face ID / отпечатку. Обёртка вернулась 11.08.2026,
-            вместе с ней вернулся и замок — прежний комментарий здесь
-            утверждал обратное и устарел.
-
-            Компонент из модуля обёртки: вся логика (ключи хранения,
-            проверка доступности биометрии, мост) живёт там, экран
-            настроек только даёт ему место. В браузере не рисуется
-            ничего — там биометрия доступна лишь через WebAuthn,
-            а это другой способ входа, а не замок поверх него. */}
-        <BioLockRow />
-
+        {/* Вход по Face ID / отпечатку жил на мосту нативной обёртки
+            и ушёл вместе с ней (CLAUDE.md → «Мобильная версия»).
+            В браузере замка нет и быть не может: биометрия там доступна
+            только через WebAuthn, а это уже не «замок на вход», а другой
+            способ входа. Вернётся в приложении на Flutter. */}
         {!danger ? (
           <button type="button" className="btn-secondary t-sm"
                   onClick={() => setDanger(true)}>
