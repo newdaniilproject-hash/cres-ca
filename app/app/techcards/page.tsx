@@ -3,10 +3,17 @@ import { createClient } from '@/lib/supabase/server'
 import { currentMembership, can, hasModule } from '@/lib/tenant'
 import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
+import { getT } from '@/lib/i18n/server'
 import { TechCardsClient } from './techcards-client'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Техкарти обробки' }
+
+// Заголовок вкладки браузера — строка интерфейса, поэтому из словаря.
+// Разбор решения — в `app/app/journals/page.tsx`.
+export async function generateMetadata() {
+  const t = await getT()
+  return { title: t('techcards.meta.title') }
+}
 
 // Технологические карты (ТЗ 3.4). Пункт «Техкарти» стоит в меню под
 // `compliance.read`; подсветка держится на журналах — это одна связка
@@ -66,7 +73,7 @@ export default async function TechCardsPage() {
   const titleOf = new Map((titles ?? []).map((o) => [o.id, o.title]))
 
   return (
-    <AppShell modules={m.modules} perms={m.perms} active="/app/journals" title="Техкарти обробки">
+    <AppShell modules={m.modules} perms={m.perms}>
       <TechCardsClient
         tenantId={m.tenantId}
         userId={user!.id}
