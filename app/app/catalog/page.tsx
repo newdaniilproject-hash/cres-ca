@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { currentMembership } from '@/lib/tenant'
+import { currentMembership, can, hasModule } from '@/lib/tenant'
+import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { CatalogClient } from './catalog-client'
 
@@ -16,6 +17,16 @@ type VariantRow = { id: string; price: number | null }
 export default async function CatalogPage() {
   const m = await currentMembership()
   if (!m) redirect('/register/seller')
+  // `offerings_read` (0004) стоит на `catalog.read`. Без проверки
+  // inspector, у которого это право забрали в 0035, открывал каталог
+  // прямым адресом и получал пустой экран без причины.
+  if (!can(m, 'catalog.read')) redirect('/app')
+  // Вторая ось: право сотрудника прочитано, теперь спрашиваем, брал ли
+  // заклад сам раздел. В панели этот пункт помечен модулем `catalog`
+  // («Послуги»), то есть меню его уже прячет — а прямой адрес открывал
+  // список позиций заведению, которое каталога не подключало.
+  if (!hasModule(m, 'catalog')) return <ModuleOff m={m} module="catalog" />
+
   const supabase = await createClient()
 
   const { data, error } = await supabase
@@ -29,9 +40,17 @@ export default async function CatalogPage() {
     .limit(200)
 
   return (
-    <AppShell modules={m.modules} active="/app/catalog" title="Каталог">
+    <AppShell modules={m.modules} perms={m.perms} active="/app/catalog" title="Каталог">
       <CatalogClient
         error={error?.message ?? null}
+        // `/app/catalog/new` требует `catalog.write` и разворачивает
+        // обратно сюда. Кнопка «Додати» без права вела человека в редирект —
+        // снаружи это неотличимо от сломанной кнопки. Право считается
+        // здесь и едет пропом: клиент за правами не ходит (правило 3).
+        canWrite={can(m, 'catalog.write')}
+        // Витрина — соседний модуль: от него зависят строка «вітрина нічого
+        // не показує» в пустом списке и отметка «поза каталогом».
+        hasStorefront={hasModule(m, 'storefront')}
         items={(data ?? []).map((o) => {
           const media = ([...((o.offering_media ?? []) as MediaRow[])])
             .sort((a, b) => a.position - b.position)

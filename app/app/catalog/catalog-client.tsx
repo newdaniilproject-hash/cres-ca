@@ -29,7 +29,20 @@ type Filter = 'all' | 'product' | 'service' | 'draft'
 
 // Список позиций. Фильтр — по виду и по «чернеткам»: продавец возвращается
 // сюда именно за недоделанным, а не за поиском по всему каталогу.
-export function CatalogClient({ items, error }: { items: CatalogItem[]; error: string | null }) {
+export function CatalogClient({ items, error, canWrite, hasStorefront = false }: {
+  items: CatalogItem[]
+  error: string | null
+  /** Есть ли `catalog.write`. Считает сервер — см. `page.tsx`. */
+  canWrite: boolean
+  /**
+   * Модуль `storefront` — вторая ось, не право. Список позиций сам
+   * принадлежит модулю `catalog`, но пара строк в нём говорит о витрине:
+   * зачем заводить позицию («вітрина нічого не показує») и отметка
+   * «поза каталогом» — про общий каталог маркетплейса. Заведению без
+   * витрины оба утверждения обещают публичную страницу, которой нет.
+   */
+  hasStorefront?: boolean
+}) {
   const supabase = useMemo(() => createClient(), [])
   const [filter, setFilter] = useState<Filter>('all')
   const [q, setQ] = useState('')
@@ -71,9 +84,11 @@ export function CatalogClient({ items, error }: { items: CatalogItem[]; error: s
                 className={filter === 'draft' ? 'chip-active' : 'chip'}>
           Чернетки {counts.draft > 0 && `· ${counts.draft}`}
         </button>
-        <Link href="/app/catalog/new" className="btn-primary ml-auto t-sm">
-          Додати
-        </Link>
+        {canWrite && (
+          <Link href="/app/catalog/new" className="btn-primary ml-auto t-sm">
+            Додати
+          </Link>
+        )}
       </div>
 
       {error && <p className="field-error rise">{error}</p>}
@@ -87,11 +102,20 @@ export function CatalogClient({ items, error }: { items: CatalogItem[]; error: s
         <div className="card rise-1">
           <div className="empty">
             {items.length === 0 ? (
-              <>
-                <p>Каталог порожній. Заведіть перший товар або послугу —
-                  без цього вітрина нічого не показує.</p>
-                <Link href="/app/catalog/new" className="btn-primary">Додати позицію</Link>
-              </>
+              // Пустой каталог без права записи — не задача этого человека:
+              // предлагать ему «завести первую позицию» значит послать
+              // за кнопкой, которой у него нет.
+              canWrite ? (
+                <>
+                  <p>Каталог порожній. Заведіть перший товар або послугу
+                    {hasStorefront
+                      ? ' — без цього вітрина нічого не показує.'
+                      : ' — з них збираються записи, замовлення та ціни.'}</p>
+                  <Link href="/app/catalog/new" className="btn-primary">Додати позицію</Link>
+                </>
+              ) : (
+                <p>Каталог порожній. Позиції заводить власник або менеджер.</p>
+              )
             ) : (
               <p>За цим фільтром нічого немає</p>
             )}
@@ -124,7 +148,10 @@ export function CatalogClient({ items, error }: { items: CatalogItem[]; error: s
                     </span>
                     <span className="badge">{i.kind === 'service' ? 'послуга' : 'товар'}</span>
                     {i.variants > 1 && <span className="badge">{i.variants} варіанти</span>}
-                    {!i.listed && <span className="badge">поза каталогом</span>}
+                    {/* «Поза каталогом» — про общий каталог маркетплейса,
+                        то есть про витрину. Без модуля отметка сообщала бы
+                        об отсутствии в списке, которого у заведения нет. */}
+                    {hasStorefront && !i.listed && <span className="badge">поза каталогом</span>}
                   </div>
                 </div>
 
