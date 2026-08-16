@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { currentMembership, can } from '@/lib/tenant'
+import { currentMembership, can, hasModule } from '@/lib/tenant'
+import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { ReceiptsClient } from './receipts-client'
 
@@ -12,6 +13,11 @@ export const metadata = { title: 'Приймання' }
 export default async function ReceiptsPage() {
   const m = await currentMembership()
   if (!m) redirect('/register/seller')
+  // `stock_receipts_read` и `suppliers_read` — обе на `stock.read`
+  // (0003, 0009).
+  if (!can(m, 'stock.read')) redirect('/app')
+  if (!hasModule(m, 'inventory')) return <ModuleOff m={m} module="inventory" />
+
   const supabase = await createClient()
   // created_by у приёмки — NOT NULL и сверяется политикой RLS с auth.uid():
   // без этого id форма не запишет документ.
@@ -41,7 +47,7 @@ export default async function ReceiptsPage() {
   const lines = (lineRows?.data ?? []) as { receipt_id: string }[]
 
   return (
-    <AppShell modules={m.modules} active="/app/inventory" title="Приймання">
+    <AppShell active="/app/inventory" title="Приймання">
       <ReceiptsClient
         tenantId={m.tenantId}
         userId={user?.id ?? ''}
