@@ -4,9 +4,16 @@ import { currentMembership, can, hasModule } from '@/lib/tenant'
 import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { OfferingForm, type CategoryRow, type LocationRow } from '../offering-form'
+import { getT } from '@/lib/i18n/server'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Нова позиція' }
+
+// Заголовок вкладки браузера — строка интерфейса, поэтому из словаря.
+// Разбор решения — в `app/app/journals/page.tsx`.
+export async function generateMetadata() {
+  const t = await getT()
+  return { title: t('catalog.new.meta.title') }
+}
 
 // Справочники (категории платформы и места хранения) грузим здесь, а не
 // в форме: они одинаковы для всех позиций и не меняются во время заполнения.
@@ -36,7 +43,7 @@ export default async function NewOfferingPage() {
   ])
 
   return (
-    <AppShell active="/app/catalog" title="Нова позиція">
+    <AppShell>
       <OfferingForm
         tenantId={m.tenantId}
         // Сюда без `catalog.write` не попасть — редирект выше. Значение
