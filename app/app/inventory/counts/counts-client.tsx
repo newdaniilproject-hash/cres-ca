@@ -6,14 +6,27 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Sheet } from '@/components/sheet'
 import { useToast } from '@/components/toast'
+import { useT } from '@/lib/i18n/client'
+import type { Key } from '@/lib/i18n/dict'
+import type { T } from '@/lib/i18n/translate'
 
 // Значения enum stock_count_status из 0003_inventory.sql — дословно.
 // Четвёртого состояния нет: документ либо считается, либо уже изменил
 // остаток корректировками, либо отброшен.
-export const COUNT_STATUS_LABEL: Record<string, string> = {
-  counting: 'триває перерахунок',
-  applied: 'проведено',
-  cancelled: 'скасовано',
+//
+// Само значение (`applied`) не переводится — это ключ, по которому
+// сверяется база. Переводится подпись к нему, и связь «значение → ключ
+// словаря» живёт ровно здесь, одна на список и на карточку документа.
+const COUNT_STATUS_KEY: Record<string, Key> = {
+  counting: 'inventory.count.status.counting',
+  applied: 'inventory.count.status.applied',
+  cancelled: 'inventory.count.status.cancelled',
+}
+
+/** Подпись статуса. Неизвестное значение показываем как есть. */
+export function countStatusLabel(t: T, status: string): string {
+  const key = COUNT_STATUS_KEY[status]
+  return key ? t(key) : status
 }
 
 export function countBadge(status: string): string {
@@ -29,40 +42,47 @@ export function countBadge(status: string): string {
 // «0.5 л» и «500 г» одинаково законны. Показываем ровно столько знаков,
 // сколько есть, но не больше трёх: хвост 0.30000000000000004 — это
 // двоичная дробь, а не данные.
-export function qty(n: number): string {
-  return Number.isInteger(n) ? String(n) : String(Math.round(n * 1000) / 1000)
+//
+// Формат — через `t.number`, а не своей сборкой: разделитель дробной
+// части у языков разный, и «0.5» в украинской локали пишется «0,5».
+export function qty(t: T, n: number): string {
+  return t.number(n, { maximumFractionDigits: 3 })
 }
 
 // База отвечает по-русски и словами разработчика. Мастеру у полки это ничего
 // не объясняет, поэтому известные отказы переводим, а незнакомый текст
 // показываем как есть — проглотить ошибку хуже, чем показать сырую.
-export function humanizeCount(message: string): string {
+//
+// Подстроки, по которым разбирается отказ, В СЛОВАРЬ НЕ ЕДУТ: это текст
+// миграции, и переписать его здесь значит завести второй источник правды.
+// Переводится только наш ответ.
+export function humanizeCount(t: T, message: string): string {
   if (message.includes('не идёт пересчёт') || message.includes('не идет пересчёт')) {
-    return 'Цю інвентаризацію вже проведено або скасовано. Оновіть сторінку.'
+    return t('inventory.count.error.notCounting')
   }
   if (message.includes('документ уже применён')) {
-    return 'Документ проведено — правити його заднім числом не можна.'
+    return t('inventory.count.error.locked')
   }
   if (message.includes('не найдена')) {
-    return 'Документ інвентаризації не знайдено — можливо, його видалили.'
+    return t('inventory.count.error.missing')
   }
   if (message.includes('нечего пересчитывать')) {
-    return 'Не обрано жодної позиції — перераховувати нічого.'
+    return t('inventory.count.error.nothing')
   }
   if (message.includes('недостаточно прав')) {
-    return 'Немає права змінювати склад (stock.write). Попросіть власника магазину видати його.'
+    return t('inventory.error.stockWrite')
   }
   if (message.includes('требует авторизованного пользователя')) {
-    return 'Сесія завершилась — увійдіть знову.'
+    return t('inventory.error.session')
   }
   if (message.includes('позиция не найдена')) {
-    return 'Позицію не знайдено у цьому магазині — можливо, її видалили.'
+    return t('inventory.error.itemMissing')
   }
   if (message.includes('stock_nonneg') || message.includes('current_stock')) {
-    return 'Після коригування залишок пішов би в мінус. Перевірте введені числа.'
+    return t('inventory.count.error.negativeStock')
   }
   if (message.includes('stock_count_lines_qty_nonneg')) {
-    return 'Залишок не буває відʼємним — перевірте введене число.'
+    return t('inventory.count.error.negativeQty')
   }
   return message
 }
@@ -97,6 +117,7 @@ export function CountsClient({
   materials: PickOption[]
   error: string
 }) {
+  const t = useT()
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
   const toast = useToast()
@@ -159,15 +180,17 @@ export function CountsClient({
     setBusy(false)
     const row = data as { id?: string } | null
     if (rpcError || !row?.id) {
-      setErr(rpcError ? humanizeCount(rpcError.message) : 'Не вдалося почати перерахунок')
+      setErr(rpcError ? humanizeCount(t, rpcError.message) : t('inventory.counts.startFailed'))
       return
     }
     // Пустой документ бесполезен — сразу уводим туда, где вписывают факт.
-    toast.success('Перерахунок почато', `Позицій у документі: ${totalPicked}`)
+    toast.success(t('inventory.counts.started.title'),
+      t('inventory.counts.started.desc', { n: t.number(totalPicked) }))
     router.push(`/app/inventory/counts/${row.id}`)
   }
 
-  const fmt = (s: string) => new Date(s).toLocaleString('uk-UA', {
+  // Дата и время — через `t.dateTime`, а не ручной сборкой из частей.
+  const fmt = (v: string) => t.dateTime(v, {
     day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
   })
 
@@ -179,16 +202,16 @@ export function CountsClient({
       {/* ── Счётчики: что не закрыто ─────────────────────────── */}
       <section className="rise-1 grid grid-cols-2 gap-2 sm:grid-cols-4">
         {[
-          { n: stats.counting, label: 'Триває', warn: stats.counting > 0, danger: false },
-          { n: stats.open, label: 'Не порахованих', warn: stats.open > 0, danger: false },
-          { n: stats.mismatches, label: 'Розбіжностей', warn: false, danger: stats.mismatches > 0 },
-          { n: stats.applied, label: 'Проведено', warn: false, danger: false },
+          { n: stats.counting, label: t('inventory.counts.stats.counting'), warn: stats.counting > 0, danger: false },
+          { n: stats.open, label: t('inventory.counts.stats.open'), warn: stats.open > 0, danger: false },
+          { n: stats.mismatches, label: t('inventory.counts.stats.mismatches'), warn: false, danger: stats.mismatches > 0 },
+          { n: stats.applied, label: t('inventory.counts.stats.applied'), warn: false, danger: false },
         ].map((s) => (
           <div key={s.label} className="card-flat !p-3 text-center">
             <p className="tabular t-xl"
                style={s.danger ? { color: 'var(--color-danger)' }
                  : s.warn ? { color: 'var(--color-warn)' } : undefined}>
-              {s.n}
+              {t.number(s.n)}
             </p>
             <p className="t-xs mt-0.5" style={{ color: 'var(--color-faint)' }}>{s.label}</p>
           </div>
@@ -199,7 +222,7 @@ export function CountsClient({
         <div className="rise-1 flex flex-wrap gap-2">
           <button type="button" className="btn-primary"
                   onClick={() => { setOpen(true); setErr('') }}>
-            + Почати перерахунок
+            {t('inventory.counts.start')}
           </button>
           {materials.length > 0 && (
             <button type="button" className="btn-secondary"
@@ -209,44 +232,51 @@ export function CountsClient({
                       setPickedV([])
                       setOpen(true); setErr('')
                     }}>
-              Усі засоби ({materials.length})
+              {t('inventory.counts.allMaterials', { n: t.number(materials.length) })}
             </button>
           )}
         </div>
       )}
 
-      {error && <p className="field-error rise">Не вдалося завантажити інвентаризації: {error}</p>}
+      {/* Текст отказа базы показывается как есть — это её слова, не наши. */}
+      {error && (
+        <p className="field-error rise">{t('inventory.counts.loadError')}: {error}</p>
+      )}
 
       {/* ── Список документов ────────────────────────────────── */}
       <section className="card rise-2 !p-0">
         {counts.length === 0 ? (
-          <div className="empty">
-            Інвентаризацій ще не було. Перерахунок — єдиний спосіб узгодити
-            залишок із полицею: розбіжність база проведе коригуванням, а не
-            тихою правкою числа.
-          </div>
+          <div className="empty">{t('inventory.counts.empty')}</div>
         ) : counts.map((c) => (
           <Link key={c.id} href={`/app/inventory/counts/${c.id}`} className="row px-5">
             <div className="min-w-0">
               <p className="tabular t-md truncate">
-                Перерахунок від {fmt(c.startedAt)}
+                {t('inventory.counts.row.title', { date: fmt(c.startedAt) })}
               </p>
               <p className="tabular t-xs mt-0.5 prose-muted">
-                {c.total === 0 ? 'жодної позиції' : `позицій: ${c.total}`}
-                {c.materials > 0 ? ` (засобів ${c.materials})` : ''}
-                {c.status === 'counting' && c.total > 0
-                  ? ` · заповнено ${c.filled}`
+                {c.total === 0
+                  ? t('inventory.counts.row.noLines')
+                  : t('inventory.counts.row.lines', { n: t.number(c.total) })}
+                {c.materials > 0
+                  ? ` ${t('inventory.counts.row.materials', { n: t.number(c.materials) })}`
                   : ''}
-                {c.appliedAt ? ` · проведено ${fmt(c.appliedAt)}` : ''}
+                {c.status === 'counting' && c.total > 0
+                  ? ` · ${t('inventory.counts.row.filled', { n: t.number(c.filled) })}`
+                  : ''}
+                {c.appliedAt
+                  ? ` · ${t('inventory.counts.row.applied', { date: fmt(c.appliedAt) })}`
+                  : ''}
               </p>
               {c.note && <p className="t-xs mt-0.5 truncate prose-muted">{c.note}</p>}
             </div>
             <div className="flex shrink-0 items-center gap-2">
               {c.mismatches > 0 && (
-                <span className="badge-warn tabular">розбіжностей {c.mismatches}</span>
+                <span className="badge-warn tabular">
+                  {t('inventory.counts.row.mismatches', { n: t.number(c.mismatches) })}
+                </span>
               )}
               <span className={countBadge(c.status)}>
-                {COUNT_STATUS_LABEL[c.status] ?? c.status}
+                {countStatusLabel(t, c.status)}
               </span>
             </div>
           </Link>
@@ -254,43 +284,33 @@ export function CountsClient({
       </section>
 
       {nothingToCount && (
-        <p className="field-hint">
-          Поки немає жодного засобу і жодного товару з обліком залишку —
-          перераховувати нічого. Засоби заводяться на складі, товари —
-          в каталозі; послуги залишку не мають.
-        </p>
+        <p className="field-hint">{t('inventory.counts.nothingToCount')}</p>
       )}
 
-      <p className="field-hint">
-        Проведений перерахунок не редагується: розбіжності вже стали рухами
-        «коригування» в журналі. Помилку виправляють наступною інвентаризацією,
-        а не правкою документа заднім числом.
-      </p>
+      <p className="field-hint">{t('inventory.counts.hint')}</p>
 
       {/* ── Выбор позиций ────────────────────────────────────── */}
       <Sheet
         open={open && canWrite}
         onClose={() => setOpen(false)}
-        title="Що перераховуємо"
+        title={t('inventory.counts.sheet.title')}
         footer={
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" className="btn-primary"
                     disabled={busy || totalPicked === 0}
                     onClick={() => void start()}>
-              {busy ? 'Готуємо документ…' : `Почати перерахунок (${totalPicked})`}
+              {busy
+                ? t('inventory.counts.sheet.busy')
+                : t('inventory.counts.sheet.submit', { n: t.number(totalPicked) })}
             </button>
             <button type="button" className="btn-ghost" onClick={() => setOpen(false)}>
-              Скасувати
+              {t('common.cancel')}
             </button>
           </div>
         }
       >
         <div className="flex flex-col gap-3">
-          <p className="field-hint !mt-0">
-            База сама запише поточний залишок кожної позиції як «очікується».
-            Далі ви проходите по полицях і вписуєте факт — залишок від цього
-            ще не змінюється.
-          </p>
+          <p className="field-hint !mt-0">{t('inventory.counts.sheet.hint')}</p>
 
           {/* Расходники и товары — разные списки, но один документ:
               база принимает оба массива за один вызов. */}
@@ -298,46 +318,56 @@ export function CountsClient({
             <button type="button"
                     className={kind === 'materials' ? 'chip-active' : 'chip'}
                     onClick={() => setKind('materials')}>
-              Засоби {materials.length > 0 ? `· ${materials.length}` : ''}
-              {pickedM.length > 0 ? ` (обрано ${pickedM.length})` : ''}
+              {t('inventory.counts.pick.materials')}
+              {materials.length > 0 ? ` · ${t.number(materials.length)}` : ''}
+              {pickedM.length > 0
+                ? ` ${t('inventory.counts.pick.chosen', { n: t.number(pickedM.length) })}`
+                : ''}
             </button>
             <button type="button"
                     className={kind === 'variants' ? 'chip-active' : 'chip'}
                     onClick={() => setKind('variants')}>
-              Товари {variants.length > 0 ? `· ${variants.length}` : ''}
-              {pickedV.length > 0 ? ` (обрано ${pickedV.length})` : ''}
+              {t('inventory.counts.pick.goods')}
+              {variants.length > 0 ? ` · ${t.number(variants.length)}` : ''}
+              {pickedV.length > 0
+                ? ` ${t('inventory.counts.pick.chosen', { n: t.number(pickedV.length) })}`
+                : ''}
             </button>
           </div>
 
-          <input className="input" placeholder="Пошук позиції…"
+          <input className="input" placeholder={t('inventory.counts.pick.search')}
                  value={query} onChange={(e) => setQuery(e.target.value)} />
 
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" className="chip"
                     onClick={() => setPicked(shown.map((v) => v.id))}>
-              Обрати всі{query.trim() ? ' знайдені' : ''}
+              {query.trim()
+                ? t('inventory.counts.pick.selectAllFound')
+                : t('inventory.counts.pick.selectAll')}
             </button>
             <button type="button" className="chip" onClick={() => setPicked([])}>
-              Зняти вибір
+              {t('inventory.counts.pick.clear')}
             </button>
-            <span className="badge-accent tabular ml-auto">обрано: {totalPicked}</span>
+            <span className="badge-accent tabular ml-auto">
+              {t('inventory.counts.pick.total', { n: t.number(totalPicked) })}
+            </span>
           </div>
 
           <div className="card-flat !p-0 px-5">
             {pool.length === 0 ? (
               <div className="empty">
                 {kind === 'materials'
-                  ? 'Засобів ще немає — заведіть їх на складі.'
-                  : 'Товарів з обліком залишку немає — послуги залишку не мають.'}
+                  ? t('inventory.counts.pick.noMaterials')
+                  : t('inventory.counts.pick.noGoods')}
               </div>
             ) : shown.length === 0 ? (
-              <div className="empty">Нічого не знайшлося за цим запитом</div>
+              <div className="empty">{t('inventory.counts.pick.searchEmpty')}</div>
             ) : shown.map((v) => (
               <label key={v.id} className="row cursor-pointer">
                 <div className="min-w-0">
                   <p className="t-md truncate">{v.title}</p>
                   <p className="tabular t-xs mt-0.5 prose-muted">
-                    зараз в базі: {qty(v.stock)} {v.unit}
+                    {t('inventory.counts.pick.stock', { qty: qty(t, v.stock), unit: v.unit })}
                     {v.category ? ` · ${v.category}` : ''}
                   </p>
                 </div>
