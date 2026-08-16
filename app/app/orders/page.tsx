@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { currentMembership, can } from '@/lib/tenant'
+import { currentMembership, can, hasModule } from '@/lib/tenant'
+import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { OrdersClient } from './orders-client'
 
@@ -23,6 +24,7 @@ export default async function OrdersPage({
   const m = await currentMembership()
   if (!m) redirect('/register/seller')
   if (!can(m, 'orders.read')) redirect('/app')
+  if (!hasModule(m, 'orders')) return <ModuleOff m={m} module="orders" />
 
   const { status } = await searchParams
   // Чужое значение в адресе не должно уходить в запрос: незнакомый статус
@@ -45,7 +47,7 @@ export default async function OrdersPage({
     .limit(100)
 
   return (
-    <AppShell modules={m.modules} active="/app/orders" title="Замовлення">
+    <AppShell modules={m.modules} perms={m.perms} active="/app/orders" title="Замовлення">
       <OrdersClient
         active={active}
         total={count ?? 0}
