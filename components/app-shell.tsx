@@ -41,11 +41,29 @@ import {
 // открывают один раз. Бургер слева при этом исчез: путь к остальным
 // разделам — аватар справа, там же тема и выход.
 
+// Пункт меню фильтруется по ДВУМ независимым осям (CLAUDE.md → «Доступ:
+// роли и модули — две разные оси»):
+//
+//   module — что заведение купило. Нет модуля — раздела нет ни у кого,
+//            включая владельца с полными правами.
+//   perm   — что можно ЭТОМУ человеку. Право берётся из `role_grants`
+//            (миграции 0001, 0014, 0015, 0035, 0039) и приезжает в токене.
+//
+// Пока фильтра по праву не было, `operator`, `accountant` и `viewer`
+// видели в меню «Команда», «Фінанси» и «Магазин», нажимали — и страница
+// молча возвращала их на `/app` своим `redirect`. Пункт, который нельзя
+// открыть, — это не «защищено», это сломанная навигация: человек считает,
+// что у него что-то не работает, а не что ему туда нельзя.
+//
+// Граница доверия при этом по-прежнему RLS и редиректы страниц, а не
+// этот список: скрытый пункт не запрещает прямой адрес и не должен.
 type Item = {
   href: string
   label: string
   icon: (p: { size?: number }) => React.ReactElement
   module?: TenantModule
+  /** Право из `role_grants`. Нет права — пункта нет в меню. */
+  perm?: string
   /** exact: пункт активен только при точном совпадении пути. */
   exact?: boolean
 }
@@ -54,23 +72,28 @@ type Item = {
 // Больше четырёх сюда не поместится так, чтобы подпись читалась
 // на 390px и зона нажатия осталась 44px.
 const TABS: Item[] = [
-  { href: '/app/inventory', label: 'Склад', icon: IconBox, module: 'inventory' },
-  { href: '/app/bookings', label: 'Записи', icon: IconCalendar, module: 'bookings' },
-  { href: '/app/catalog', label: 'Послуги', icon: IconScissors, module: 'catalog' },
+  // Записи закрыты `orders.read`, а не своим правом: отдельного
+  // `bookings.*` в базе нет — политики `bookings_read`, `slots_read`
+  // и `booking_events_read` в 0010 стоят на `orders.read`.
+  { href: '/app/inventory', label: 'Склад', icon: IconBox, module: 'inventory', perm: 'stock.read' },
+  { href: '/app/bookings', label: 'Записи', icon: IconCalendar, module: 'bookings', perm: 'orders.read' },
+  { href: '/app/catalog', label: 'Послуги', icon: IconScissors, module: 'catalog', perm: 'catalog.read' },
+  // Профиль — личный кабинет самого человека, права заведения его не
+  // касаются: он есть у любого, кто вошёл.
   { href: '/app/profile', label: 'Профіль', icon: IconUser },
 ]
 
 // ── Под аватаром: всё остальное ─────────────────────────────────
 const MENU: Item[] = [
   { href: '/app', label: 'Сьогодні', icon: IconHome, exact: true },
-  { href: '/app/journals', label: 'Журнали', icon: IconCheck, module: 'compliance' },
-  { href: '/app/documents', label: 'Документи', icon: IconDoc, module: 'compliance' },
-  { href: '/app/techcards', label: 'Техкарти', icon: IconDoc, module: 'compliance' },
-  { href: '/app/orders', label: 'Замовлення', icon: IconBag, module: 'orders' },
-  { href: '/app/customers', label: 'Клієнти', icon: IconUsers, module: 'customers' },
-  { href: '/app/finance', label: 'Фінанси', icon: IconMoney, module: 'finance' },
-  { href: '/app/team', label: 'Команда', icon: IconUsers },
-  { href: '/app/settings', label: 'Магазин', icon: IconGear },
+  { href: '/app/journals', label: 'Журнали', icon: IconCheck, module: 'compliance', perm: 'compliance.read' },
+  { href: '/app/documents', label: 'Документи', icon: IconDoc, module: 'compliance', perm: 'compliance.read' },
+  { href: '/app/techcards', label: 'Техкарти', icon: IconDoc, module: 'compliance', perm: 'compliance.read' },
+  { href: '/app/orders', label: 'Замовлення', icon: IconBag, module: 'orders', perm: 'orders.read' },
+  { href: '/app/customers', label: 'Клієнти', icon: IconUsers, module: 'customers', perm: 'customers.read' },
+  { href: '/app/finance', label: 'Фінанси', icon: IconMoney, module: 'finance', perm: 'finances.read' },
+  { href: '/app/team', label: 'Команда', icon: IconUsers, perm: 'team.read' },
+  { href: '/app/settings', label: 'Магазин', icon: IconGear, perm: 'settings.read' },
 ]
 
 // ── Подписи экранов ─────────────────────────────────────────────
@@ -119,8 +142,45 @@ function matches(pattern: string, pathname: string): boolean {
   return p.every((seg, i) => seg === '*' || seg === a[i])
 }
 
+// Существует ли такой экран. Оракул — сам HEADINGS: в нём ровно двадцать
+// шесть страниц кабинета, потому что заголовок нужен КАЖДОЙ, и новый
+// экран без строки здесь приезжает без названия — это замечают сразу.
+// Отдельного списка «а вот этих адресов нет» не заводим: он устареет на
+// первом же экране, который добавят, а этот список — нет.
+const screenExists = (path: string) =>
+  path === '/app'
+  || HEADINGS.some(([p]) => p === path || (p.includes('*') && matches(p, path)))
+
+// Адрес «назад».
+//
+// Было: отбрасывание последнего сегмента. Для `/app/inventory/materials/[id]`
+// это давало `/app/inventory/materials` — сегмент маршрута, у которого нет
+// своей страницы, то есть 404 на кнопке «назад» у всех ролей сразу.
+//
+// Стало: ближайший предок, который И существует, И открыт этому человеку.
+// Второе условие — тот же дефект, что у поиска: у `inspector` карточка
+// засоба открыта (`compliance.read`), а `/app/inventory` закрыт
+// (`stock.read`, миграция 0035), и стрелка «назад» молча уносила его
+// на «Сьогодні».
+//
+// `openable` знает только корни разделов — те, что перечислены в TABS
+// и MENU со своим правом. Про экраны глубже она не судит и судить не
+// должна: их правила живут в самих страницах (у карточки засоба это
+// `compliance.read OR stock.read`), и повторять их здесь значит завести
+// вторую копию политики, которая разъедется с первой.
+function backOf(pathname: string, openable: (href: string) => boolean): string {
+  const segs = pathname.split('/')
+  // i > 2 — не поднимаемся выше `/app`: он и так конечная остановка.
+  for (let i = segs.length - 1; i > 2; i -= 1) {
+    const parent = segs.slice(0, i).join('/')
+    if (screenExists(parent) && openable(parent)) return parent
+  }
+  // «Сьогодні» открыт любому, кто вошёл: у пункта нет ни модуля, ни права.
+  return '/app'
+}
+
 /** Заголовок, подпись и адрес «назад» — из адреса, а не из страницы. */
-function headingOf(pathname: string, shopName: string) {
+function headingOf(pathname: string, shopName: string, openable: (href: string) => boolean) {
   if (pathname === '/app') {
     return { title: shopName || 'Кабінет', subtitle: 'Що потребує уваги сьогодні', back: '' }
   }
@@ -129,7 +189,7 @@ function headingOf(pathname: string, shopName: string) {
   const hit = HEADINGS.find(([p]) => p === pathname)
     ?? HEADINGS.find(([p]) => p.includes('*') && matches(p, pathname))
   const root = [...TABS, ...MENU].some((i) => i.href === pathname)
-  const back = root ? '' : pathname.split('/').slice(0, -1).join('/')
+  const back = root ? '' : backOf(pathname, openable)
   return { title: hit?.[1] ?? '', subtitle: hit?.[2] ?? '', back }
 }
 
@@ -141,6 +201,12 @@ export function AppShell(props: {
   title?: string
   subtitle?: string
   modules?: TenantModule[]
+  /**
+   * Готовый набор прав из токена (`Membership.perms`). Владельцу приходит
+   * `['*']`. Не передан — фильтра по праву нет, как и с модулями: так
+   * вложенные вызовы AppShell не режут меню, которое собрал layout.
+   */
+  perms?: string[]
   /** Имя заведения — заголовок экрана «Сьогодні». */
   shopName?: string
   back?: string
@@ -164,9 +230,10 @@ export function AppShell(props: {
 }
 
 function AppShellInner({
-  modules, shopName = '', action, children,
+  modules, perms, shopName = '', action, children,
 }: {
   modules?: TenantModule[]
+  perms?: string[]
   shopName?: string
   action?: React.ReactNode
   children: React.ReactNode
@@ -178,10 +245,35 @@ function AppShellInner({
   const [query, setQuery] = useState('')
   const [initial, setInitial] = useState('')
 
-  const has = (i: Item) => !i.module || !modules || modules.includes(i.module)
-  const tabs = TABS.filter(has)
-  const menuItems = MENU.filter(has)
-  const heading = headingOf(pathname, shopName)
+  // Пункт показывается, только если совпало И то, и другое: заведение
+  // купило модуль И человеку разрешено право. Правило `'*'` повторяет
+  // `can()` из lib/tenant.ts, а не зовёт её: тот файл тянет серверный
+  // клиент Supabase первой строкой и в клиентский бандл не годится
+  // (сюда из него приходит только тип, а он стирается при сборке).
+  const hasModule = (i: Item) => !i.module || !modules || modules.includes(i.module)
+  const can = (i: Item) =>
+    !i.perm || !perms || perms.includes('*') || perms.includes(i.perm)
+  const allowed = (i: Item) => hasModule(i) && can(i)
+  const tabs = TABS.filter(allowed)
+  const menuItems = MENU.filter(allowed)
+
+  // Открыт ли КОРЕНЬ раздела. Адрес, которого нет в навигации, эта
+  // функция не запрещает: про экраны внутри раздела список ничего
+  // не знает (см. комментарий у `backOf`).
+  const openable = (href: string) => {
+    const item = [...TABS, ...MENU].find((i) => i.href === href)
+    return !item || allowed(item)
+  }
+  const heading = headingOf(pathname, shopName, openable)
+
+  // Поиск и сканер — это два входа в склад (`?q=` и `?scan=1`, решение
+  // владельца 15.08.2026). Значит и фильтруются они как вкладка «Склад»:
+  // модуль `inventory` у заведения И право `stock.read` у человека.
+  // У `inspector` права нет (0035), и `/app/inventory` разворачивал его
+  // на «Сьогодні»: человек набирал запрос, жал «найти» и оказывался
+  // на чужом экране, решив, что поиск сломан.
+  const stockTab = TABS.find((t) => t.href === '/app/inventory')
+  const canSearch = stockTab !== undefined && allowed(stockTab)
 
   // Смена экрана закрывает меню: навигация произошла — мебель обязана
   // уйти с дороги сама.
@@ -255,23 +347,31 @@ function AppShellInner({
               </Link>
             )}
 
-            <form onSubmit={search} className="min-w-0 flex-1">
-              <label className="searchbar flex items-center gap-2">
-                <span aria-hidden style={{ color: 'var(--color-faint)' }}><IconSearch /></span>
-                <input
-                  className="searchbar-input min-w-0 flex-1"
-                  placeholder="Пошук на складі…"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  aria-label="Пошук на складі"
-                />
-              </label>
-            </form>
+            {canSearch ? (
+              <>
+                <form onSubmit={search} className="min-w-0 flex-1">
+                  <label className="searchbar flex items-center gap-2">
+                    <span aria-hidden style={{ color: 'var(--color-faint)' }}><IconSearch /></span>
+                    <input
+                      className="searchbar-input min-w-0 flex-1"
+                      placeholder="Пошук на складі…"
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      aria-label="Пошук на складі"
+                    />
+                  </label>
+                </form>
 
-            <Link href="/app/inventory?scan=1" aria-label="Сканувати код"
-                  className="iconbtn shrink-0">
-              <IconScan />
-            </Link>
+                <Link href="/app/inventory?scan=1" aria-label="Сканувати код"
+                      className="iconbtn shrink-0">
+                  <IconScan />
+                </Link>
+              </>
+            ) : (
+              // Распорка вместо строки поиска: аватар обязан остаться
+              // справа, иначе он приезжает к стрелке «назад».
+              <div className="min-w-0 flex-1" />
+            )}
 
             <button type="button" onClick={() => setMenu(true)}
                     aria-label="Розділи та профіль" className="avatarbtn shrink-0">
@@ -297,7 +397,13 @@ function AppShellInner({
       </div>
 
       {/* ── Нижняя панель: разделы ──────────────────────────── */}
-      {tabs.length > 1 && (
+      {/* Порог был `> 1` — пока фильтр знал только модули, панель с одним
+          пунктом означала пустое заведение. С фильтром по правам один
+          пункт стал нормой: у `inspector` есть только `compliance.read`,
+          и из табов ему остаётся «Профіль». При старом пороге панель
+          пропадала целиком, а «Профіль» лежит в TABS, не в MENU, — то
+          есть с телефона он становился недостижим вовсе. */}
+      {tabs.length > 0 && (
         <nav className="bottomnav flex justify-around gap-1 p-1 lg:hidden">
           {tabs.map((t) => (
             <Link key={t.href} href={t.href} className="bottomnav-item flex-1"
