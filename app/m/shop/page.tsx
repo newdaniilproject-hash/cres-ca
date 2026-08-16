@@ -3,18 +3,22 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { keepVisible } from '../ui'
+import { useT } from '@/lib/i18n/client'
 
 type Kind = 'services' | 'goods' | 'both'
 
-const KINDS: { value: Kind; label: string; hint: string }[] = [
-  { value: 'services', label: 'Послуги', hint: 'Записи, майстри, розклад' },
-  { value: 'goods',    label: 'Товари',  hint: 'Каталог і замовлення' },
-  { value: 'both',     label: 'І те, й інше', hint: 'Записи та товари разом' },
-]
+// `value` уезжает в `register_tenant` — это служебное значение и оно
+// не переводится. В таблице лежат КЛЮЧИ подписей, а не сами подписи.
+const KINDS = [
+  { value: 'services', label: 'm.shop.kind.services.label', hint: 'm.shop.kind.services.hint' },
+  { value: 'goods',    label: 'm.shop.kind.goods.label',    hint: 'm.shop.kind.goods.hint' },
+  { value: 'both',     label: 'm.shop.kind.both.label',     hint: 'm.shop.kind.both.hint' },
+] as const satisfies readonly { value: Kind; label: string; hint: string }[]
 
 // Створення закладу — екран застосунку, а не сторінка сайту.
 // Один крок, велика кнопка внизу, клавіатура нічого не перекриває.
 export default function MobileShopPage() {
+  const t = useT()
   const supabase = useMemo(() => createClient(), [])
 
   const [ready, setReady] = useState(false)
@@ -69,6 +73,8 @@ export default function MobileShopPage() {
   if (!ready) {
     return (
       <main className="flex flex-1 items-center justify-center">
+        {/* Знак марки. Название продукта не переводится ни на один
+            язык — как и «CRESKO» в `components/auth-ui.tsx`. */}
         <div className="display t-2xl" style={{ opacity: 0.35 }}>
           Маркет<span style={{ color: 'var(--color-gold)' }}>.</span>
         </div>
@@ -83,6 +89,7 @@ export default function MobileShopPage() {
     // клавиатурой. Правило в globals.css, там же scroll-margin-top.
     <main className="m-scroll flex flex-1 flex-col px-6 pb-6">
       <div className="flex items-center justify-between" style={{ height: 56 }}>
+        {/* Знак марки — не строка интерфейса, см. выше. */}
         <span className="display t-lg">
           Маркет<span style={{ color: 'var(--color-gold)' }}>.</span>
         </span>
@@ -92,18 +99,20 @@ export default function MobileShopPage() {
           className="t-sm underline underline-offset-2"
           style={{ color: 'var(--color-muted)', minHeight: 'var(--tap-min)' }}
         >
-          Вийти
+          {t('m.shop.signOut')}
         </button>
       </div>
 
-      <h1 className="display t-2xl mt-2">Ваш заклад</h1>
+      <h1 className="display t-2xl mt-2">{t('m.shop.title')}</h1>
       <p className="t-md mt-2" style={{ color: 'var(--color-muted)', lineHeight: 1.5 }}>
-        {who ? <>Ви увійшли як {who}. </> : null}
-        Залишився один крок — назву й місто можна змінити будь-коли.
+        {/* Почта — данные человека, она не переводится; переводится
+            предложение вокруг неё. */}
+        {who ? <>{t('m.shop.who', { email: who })} </> : null}
+        {t('m.shop.lead')}
       </p>
 
       <form onSubmit={create} className="mt-7 flex flex-col">
-        <label className="field-label" htmlFor="shop-name">Назва закладу</label>
+        <label className="field-label" htmlFor="shop-name">{t('m.shop.name.label')}</label>
         <input
           id="shop-name"
           required
@@ -116,7 +125,7 @@ export default function MobileShopPage() {
           placeholder="Braids Studio"
         />
 
-        <p className="field-label mt-5">Чим займаєтесь?</p>
+        <p className="field-label mt-5">{t('m.shop.kind.label')}</p>
         <div className="flex flex-col gap-2">
           {KINDS.map((k) => {
             const on = kind === k.value
@@ -139,8 +148,10 @@ export default function MobileShopPage() {
                 }}
               >
                 <span>
-                  <span className="t-md block">{k.label}</span>
-                  <span className="t-xs block" style={{ color: 'var(--color-faint)' }}>{k.hint}</span>
+                  <span className="t-md block">{t(k.label)}</span>
+                  <span className="t-xs block" style={{ color: 'var(--color-faint)' }}>
+                    {t(k.hint)}
+                  </span>
                 </span>
                 <span
                   aria-hidden
@@ -155,7 +166,7 @@ export default function MobileShopPage() {
           })}
         </div>
 
-        <label className="field-label mt-5" htmlFor="shop-city">Місто</label>
+        <label className="field-label mt-5" htmlFor="shop-city">{t('m.shop.city.label')}</label>
         <input
           id="shop-city"
           className="input"
@@ -163,14 +174,13 @@ export default function MobileShopPage() {
           value={city}
           onFocus={keepVisible}
           onChange={(e) => setCity(e.target.value)}
-          placeholder="Харків"
+          placeholder={t('m.shop.city.placeholder')}
         />
 
         {error && <p className="field-error">{error}</p>}
 
         <p className="t-xs mt-5" style={{ color: 'var(--color-faint)', lineHeight: 1.5 }}>
-          Заклад створюється як чернетка: наповнюйте склад одразу,
-          публічна сторінка вмикається після перевірки.
+          {t('m.shop.hint')}
         </p>
 
         {/* m-sticky: кнопка остаётся у нижней кромки экрана, прямо над
@@ -183,7 +193,7 @@ export default function MobileShopPage() {
             style={{ height: 52, fontSize: 16 }}
             disabled={busy || name.trim().length < 2}
           >
-            {busy ? 'Створюємо…' : 'Створити заклад'}
+            {busy ? t('m.shop.busy') : t('m.shop.submit')}
           </button>
         </div>
       </form>
