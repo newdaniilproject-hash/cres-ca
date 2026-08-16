@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useT } from '@/lib/i18n/client'
 
 // Шторка снизу. В приложении окно посреди экрана — чужой элемент:
 // нативные экраны показывают дополнительное содержимое снизу, оттуда,
@@ -32,6 +33,7 @@ export function Sheet({
   footer?: React.ReactNode
   children: React.ReactNode
 }) {
+  const t = useT()
   const panel = useRef<HTMLDivElement>(null)
   const scroller = useRef<HTMLDivElement>(null)
   const [drag, setDrag] = useState(0)
@@ -88,7 +90,7 @@ export function Sheet({
     <div className="sheet-layer" role="dialog" aria-modal="true" aria-label={title}>
       <button
         type="button"
-        aria-label="Закрити"
+        aria-label={t('common.close.aria')}
         className="sheet-backdrop"
         style={{ opacity: Math.max(0, 1 - drag / 260) }}
         onClick={close}

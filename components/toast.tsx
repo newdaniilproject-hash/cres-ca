@@ -1,6 +1,7 @@
 'use client'
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { RootLangProvider, useT } from '@/lib/i18n/client'
 
 // Уведомления вместо alert().
 //
@@ -99,13 +100,26 @@ export function ToastProvider({ children, overlay }: {
           ошибка, что в первой крес-ке с нижней навигацией (урок №8).
           Отступ снизу считает место под плавающую панель: 12px её
           отступ + ~64px высота + запас. */}
-      <div
-        className="pointer-events-none fixed inset-x-3 z-[60] flex flex-col gap-2 sm:inset-x-auto sm:right-6 sm:w-96"
-        style={{ bottom: 'calc(88px + env(safe-area-inset-bottom))' }}
-      >
-        {overlay}
-        <ToastStack items={items} onClose={remove} />
-      </div>
+      {/* ЯЗЫК НИЖНЕГО СТЕКА (16.08.2026). Провайдер языка стоял только
+          в макете кабинета, и всё здешнее — полоса связи, предложение
+          установки, биометрия, подпись кнопки «закрити» — говорило
+          по-украински даже при русском интерфейсе. Обернуть провайдером
+          `{children}` было нельзя: витрина закреплена на украинском
+          до переезда на сегмент адреса (`components/shell.tsx`), и её
+          клиентские части поехали бы за кукой в обход этого решения.
+          Стек — не страница, он один на всё приложение, поэтому язык
+          берётся здесь и только для него. Внутри закрытых разделов
+          свои макеты ставят провайдер с языком, прочитанным на сервере,
+          — тот перекрывает этот для СВОЕГО поддерева, а не для стека. */}
+      <RootLangProvider>
+        <div
+          className="pointer-events-none fixed inset-x-3 z-[60] flex flex-col gap-2 sm:inset-x-auto sm:right-6 sm:w-96"
+          style={{ bottom: 'calc(88px + env(safe-area-inset-bottom))' }}
+        >
+          {overlay}
+          <ToastStack items={items} onClose={remove} />
+        </div>
+      </RootLangProvider>
     </Ctx.Provider>
   )
 }
@@ -118,17 +132,19 @@ const TONE: Record<ToastKind, { border: string; fg: string; mark: string }> = {
 }
 
 function ToastStack({ items, onClose }: { items: Toast[]; onClose: (id: number) => void }) {
+  // Хук зовётся ДО раннего возврата: правила хуков не разрешают иначе.
+  const closeLabel = useT()('common.close.aria')
   if (items.length === 0) return null
   return (
     // Снизу и с запасом: на телефоне там плавающая нижняя навигация,
     // и уведомление не должно её закрывать. aria-live — чтобы
     // голосовой доступ прочитал исход, а не промолчал.
     <div role="status" aria-live="polite" className="flex flex-col gap-2">
-      {items.map((t) => {
-        const tone = TONE[t.kind]
+      {items.map((item) => {
+        const tone = TONE[item.kind]
         return (
           <div
-            key={t.id}
+            key={item.id}
             className="pointer-events-auto flex items-start gap-3 border p-3.5 rise"
             style={{
               borderRadius: 'var(--radius-card)',
@@ -145,20 +161,20 @@ function ToastStack({ items, onClose }: { items: Toast[]; onClose: (id: number) 
               {tone.mark}
             </span>
             <div className="min-w-0 flex-1">
-              <p className="t-md">{t.text}</p>
-              {t.detail && <p className="t-sm mt-1 break-words prose-muted">{t.detail}</p>}
-              {t.action && (
+              <p className="t-md">{item.text}</p>
+              {item.detail && <p className="t-sm mt-1 break-words prose-muted">{item.detail}</p>}
+              {item.action && (
                 <button
                   type="button"
-                  onClick={() => { t.action!.run(); onClose(t.id) }}
+                  onClick={() => { item.action!.run(); onClose(item.id) }}
                   className="t-sm mt-2 underline underline-offset-2"
                   style={{ color: tone.fg }}
                 >
-                  {t.action.label}
+                  {item.action.label}
                 </button>
               )}
             </div>
-            <button type="button" onClick={() => onClose(t.id)} aria-label="Закрити"
+            <button type="button" onClick={() => onClose(item.id)} aria-label={closeLabel}
                     className="btn-icon shrink-0">
               ✕
             </button>
