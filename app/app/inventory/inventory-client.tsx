@@ -10,7 +10,9 @@ import { RefsForm } from './refs-form'
 import { Sheet } from '@/components/sheet'
 import { enqueue, isNetworkError } from '@/lib/offline/queue'
 import { useToast } from '@/components/toast'
-import { EXPIRY_BADGE, EXPIRY_LABEL, expiryState, fmtShort } from '@/lib/expiry'
+import { useT } from '@/lib/i18n/client'
+import type { Key } from '@/lib/i18n/dict'
+import { EXPIRY_BADGE, type ExpiryState, expiryState } from '@/lib/expiry'
 
 type Container = {
   id: string; code: string; status: string; useBy: string | null
@@ -33,6 +35,20 @@ type ScanHit = {
 type ContainerHit = {
   id: string; material: string; code: string; status: string
   use_by: string | null; days_left: number | null; expired: boolean
+}
+
+// Подпись состояния срока — из словаря, а не из `lib/expiry.ts`.
+// Само состояние там и остаётся: пороги (14 и 7 дней) — правило склада,
+// одно на экран, письмо и наклейку. Переводится только подпись.
+//
+// Карта одна на весь раздел (её же читают карточка засоба и контроль
+// вскрытия): вторая копия разъехалась бы на первом новом состоянии.
+export const EXPIRY_KEY: Record<ExpiryState, Key> = {
+  none: 'inventory.expiry.none',
+  ok: 'inventory.expiry.ok',
+  soon: 'inventory.expiry.soon',
+  urgent: 'inventory.expiry.urgent',
+  expired: 'inventory.expiry.expired',
 }
 
 // Экран склада — экран 1 макета.
@@ -59,6 +75,7 @@ export function InventoryClient({
   locations: RefItem[]
   batches: BatchOption[]
 }) {
+  const t = useT()
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
   const toast = useToast()
@@ -96,6 +113,11 @@ export function InventoryClient({
   const shownContainers = containers.filter((c) => match(c.code, c.material))
   const shownVariants = variants.filter((v) => match(v.title, v.name))
 
+  // Короткая дата для плотных списков: «20 трав.». Через `t.date`,
+  // а не своей сборкой — месяц называется на языке интерфейса.
+  const short = (v: string | null | undefined) =>
+    t.date(v, { day: 'numeric', month: 'short' })
+
   async function lookup(raw: string) {
     const s = raw.trim()
     if (!s) return
@@ -115,8 +137,7 @@ export function InventoryClient({
     type BD = { detect(source: ImageBitmap): Promise<{ rawValue: string }[]> }
     const W = window as unknown as { BarcodeDetector?: new (o?: object) => BD }
     if (!W.BarcodeDetector) {
-      toast.warn('Камера-сканер недоступний',
-        'Працює у Chrome на Android. Введіть код вручну — поле поруч.')
+      toast.warn(t('inventory.scan.unavailable.title'), t('inventory.scan.unavailable.desc'))
       return
     }
     try {
@@ -138,9 +159,9 @@ export function InventoryClient({
       }
       track.stop()
       if (found) await lookup(found)
-      else toast.info('Код не зчитано', 'Спробуйте ще раз або введіть вручну.')
+      else toast.info(t('inventory.scan.nothing.title'), t('inventory.scan.nothing.desc'))
     } catch {
-      toast.error('Камера не відкрилась', 'Введіть код вручну — поле поруч.')
+      toast.error(t('inventory.scan.failed.title'), t('inventory.scan.failed.desc'))
     }
   }
 
@@ -163,10 +184,10 @@ export function InventoryClient({
       setBusy(null)
       if (isNetworkError(e)) {
         await enqueue(`${label} · ${containerCode}`, { kind: 'container.status', containerId: id, status })
-        toast.info('Збережено офлайн', 'Надішлеться само, щойно зʼявиться мережа.')
+        toast.info(t('inventory.offline.saved'), t('inventory.offline.desc'))
         return true
       }
-      toast.error('Не вдалося зберегти', e instanceof Error ? e.message : String(e))
+      toast.error(t('inventory.container.saveError'), e instanceof Error ? e.message : String(e))
       return false
     }
     setBusy(null)
@@ -174,9 +195,9 @@ export function InventoryClient({
   }
 
   async function openContainer(id: string, containerCode: string) {
-    const ok = await setContainerStatus(id, containerCode, 'opened', 'Відкрити банку')
+    const ok = await setContainerStatus(id, containerCode, 'opened', t('inventory.container.open'))
     if (!ok) return
-    toast.success('Банку відкрито', 'Термін придатності перераховано за PAO.')
+    toast.success(t('inventory.container.opened.title'), t('inventory.container.opened.desc'))
     router.refresh()
     if (scan?.container?.id === id) void lookup(scan.container.code)
   }
@@ -185,7 +206,7 @@ export function InventoryClient({
     const ok = await setContainerStatus(
       id, containerCode,
       disposed ? 'disposed' : 'finished',
-      disposed ? 'Списати ємність' : 'Ємність закінчилась',
+      disposed ? t('inventory.queue.dispose') : t('inventory.queue.finish'),
     )
     if (!ok) return
     setScan(null)
@@ -207,16 +228,16 @@ export function InventoryClient({
       {/* ── Счётчики ─────────────────────────────────────────── */}
       <section className="rise-1 grid grid-cols-2 gap-2 sm:grid-cols-4">
         {[
-          { n: stats.total, label: 'Усі позиції', cls: '' },
-          { n: stats.soon, label: 'Закінчуються', cls: stats.soon > 0 ? 'badge-warn' : '' },
-          { n: stats.expired, label: 'Прострочені', cls: stats.expired > 0 ? 'badge-danger' : '' },
-          { n: stats.low, label: 'Мало на складі', cls: stats.low > 0 ? 'badge-warn' : '' },
+          { n: stats.total, label: t('inventory.stats.total'), cls: '' },
+          { n: stats.soon, label: t('inventory.stats.soon'), cls: stats.soon > 0 ? 'badge-warn' : '' },
+          { n: stats.expired, label: t('inventory.stats.expired'), cls: stats.expired > 0 ? 'badge-danger' : '' },
+          { n: stats.low, label: t('inventory.stats.low'), cls: stats.low > 0 ? 'badge-warn' : '' },
         ].map((s) => (
           <div key={s.label} className="card-flat !p-3 text-center">
             <p className={`tabular t-xl ${s.cls ? '' : ''}`}
                style={s.cls === 'badge-danger' ? { color: 'var(--color-danger)' }
                  : s.cls === 'badge-warn' ? { color: 'var(--color-warn)' } : undefined}>
-              {s.n}
+              {t.number(s.n)}
             </p>
             <p className="t-xs mt-0.5" style={{ color: 'var(--color-faint)' }}>{s.label}</p>
           </div>
@@ -228,22 +249,22 @@ export function InventoryClient({
         <button type="button" onClick={() => { setScanOpen(true); setTimeout(() => inputRef.current?.focus(), 50) }}
                 className="card-link !p-3 text-center" style={{ minHeight: 'var(--tap-min)' }}>
           <span aria-hidden className="t-xl block">⌗</span>
-          <span className="t-sm mt-1 block">Сканувати</span>
+          <span className="t-sm mt-1 block">{t('inventory.quick.scan')}</span>
         </button>
         <Link href="/app/inventory/receipts" className="card-link !p-3 text-center"
               style={{ minHeight: 'var(--tap-min)' }}>
           <span aria-hidden className="t-xl block">⬓</span>
-          <span className="t-sm mt-1 block">Надходження</span>
+          <span className="t-sm mt-1 block">{t('inventory.quick.receipts')}</span>
         </Link>
         <Link href="/app/inventory/movements" className="card-link !p-3 text-center"
               style={{ minHeight: 'var(--tap-min)' }}>
           <span aria-hidden className="t-xl block">⇅</span>
-          <span className="t-sm mt-1 block">Рухи</span>
+          <span className="t-sm mt-1 block">{t('inventory.quick.movements')}</span>
         </Link>
         <Link href="/app/inventory/counts" className="card-link !p-3 text-center"
               style={{ minHeight: 'var(--tap-min)' }}>
           <span aria-hidden className="t-xl block">☰</span>
-          <span className="t-sm mt-1 block">Інвентаризація</span>
+          <span className="t-sm mt-1 block">{t('inventory.quick.counts')}</span>
         </Link>
       </section>
 
@@ -253,7 +274,7 @@ export function InventoryClient({
           <input
             ref={inputRef}
             className="input"
-            placeholder="Пошук у складі або код наліпки…"
+            placeholder={t('inventory.search.placeholder')}
             value={scanOpen ? code : query}
             onChange={(e) => (scanOpen ? setCode(e.target.value) : setQuery(e.target.value))}
             onKeyDown={(e) => {
@@ -265,14 +286,14 @@ export function InventoryClient({
           {scanOpen ? (
             <>
               <button type="button" onClick={() => void lookup(code)} className="btn-secondary shrink-0">
-                Знайти
+                {t('inventory.search.find')}
               </button>
               <button type="button" onClick={() => { setScanOpen(false); setScan(null); setCode('') }}
-                      className="btn-ghost shrink-0">Пошук</button>
+                      className="btn-ghost shrink-0">{t('inventory.search.mode')}</button>
             </>
           ) : (
             <button type="button" onClick={() => void scanCamera()} className="btn-primary shrink-0"
-                    title="Сканувати камерою" aria-label="Сканувати камерою">
+                    title={t('inventory.scan.camera.aria')} aria-label={t('inventory.scan.camera.aria')}>
               ⌗
             </button>
           )}
@@ -281,32 +302,38 @@ export function InventoryClient({
         {scan?.container && (
           <div className="card-flat mt-3 flex flex-wrap items-center justify-between gap-3 rise">
             <div>
+              {/* Название засоба и код наліпки — данные арендатора. */}
               <p className="t-md">{scan.container.material}
                 <span className="prose-muted"> · {scan.container.code}</span></p>
               <p className="tabular t-md mt-0.5">
                 {scan.container.expired
-                  ? <span style={{ color: 'var(--color-danger)' }}>Термін сплив {fmtShort(scan.container.use_by)} — не використовувати</span>
+                  ? <span style={{ color: 'var(--color-danger)' }}>
+                      {t('inventory.container.expired', { date: short(scan.container.use_by) })}
+                    </span>
                   : scan.container.use_by
-                    ? <>Придатна до {fmtShort(scan.container.use_by)} ({scan.container.days_left} дн)</>
-                    : 'Запечатана — термін порахується при відкритті'}
+                    ? t('inventory.container.useBy', {
+                        date: short(scan.container.use_by),
+                        days: t.plural('inventory.days', scan.container.days_left ?? 0),
+                      })
+                    : t('inventory.container.sealedHint')}
               </p>
             </div>
             <div className="flex gap-2">
               {scan.container.status === 'sealed' && (
                 <button className="btn-primary" disabled={busy === scan.container.id}
                         onClick={() => void openContainer(scan.container!.id, scan.container!.code)}>
-                  Відкрити банку
+                  {t('inventory.container.open')}
                 </button>
               )}
               {scan.container.status === 'opened' && (
                 <>
                   <button className="btn-secondary" disabled={busy === scan.container.id}
                           onClick={() => void finishContainer(scan.container!.id, scan.container!.code)}>
-                    Закінчилась
+                    {t('inventory.container.finished')}
                   </button>
                   <button className="btn-danger" disabled={busy === scan.container.id}
                           onClick={() => void finishContainer(scan.container!.id, scan.container!.code, true)}>
-                    Списати
+                    {t('inventory.container.dispose')}
                   </button>
                 </>
               )}
@@ -318,24 +345,24 @@ export function InventoryClient({
             <p className="t-md">{scan.item.title}
               {scan.item.subtitle ? <span className="prose-muted"> · {scan.item.subtitle}</span> : null}</p>
             <p className="tabular t-md mt-0.5 prose-muted">
-              Залишок: {Number(scan.item.stock_qty)}
+              {t('inventory.scan.item.stock', { n: t.number(Number(scan.item.stock_qty)) })}
               {scan.item.location ? ` · ${scan.item.location}` : ''}
-              {scan.item.low_stock ? ' · мало!' : ''}
+              {scan.item.low_stock ? ` · ${t('inventory.scan.item.low')}` : ''}
             </p>
           </div>
         )}
         {scan?.miss && (
-          <p className="field-error mt-3">Код «{scan.miss}» не знайдено</p>
+          <p className="field-error mt-3">{t('inventory.scan.notFound', { code: scan.miss })}</p>
         )}
       </section>
 
       {/* ── Вкладки ──────────────────────────────────────────── */}
       <div className="rise-2 flex flex-wrap items-center gap-2">
         {([
-          ['all', 'Всі'],
-          ['materials', 'Розхідники'],
-          ['containers', `Ємності${containers.length ? ` · ${containers.length}` : ''}`],
-          ['goods', 'Товари'],
+          ['all', t('inventory.tab.all')],
+          ['materials', t('inventory.tab.materials')],
+          ['containers', `${t('inventory.tab.containers')}${containers.length ? ` · ${t.number(containers.length)}` : ''}`],
+          ['goods', t('inventory.tab.goods')],
         ] as const).map(([key, label]) => (
           <button key={key} onClick={() => switchTab(key)}
                   className={tab === key ? 'chip-active' : 'chip'}>
@@ -348,11 +375,11 @@ export function InventoryClient({
             <>
               <button type="button" className="btn-secondary t-sm"
                       onClick={() => setAdding(adding === 'refs' ? null : 'refs')}>
-                Довідники
+                {t('inventory.action.refs')}
               </button>
               <button type="button" className="btn-primary t-sm"
                       onClick={() => setAdding(adding === 'material' ? null : 'material')}>
-                + Засіб
+                {t('inventory.action.addMaterial')}
               </button>
             </>
           )}
@@ -361,12 +388,12 @@ export function InventoryClient({
               {containers.length > 0 && (
                 <a href="/app/inventory/labels" target="_blank" rel="noreferrer"
                    className="btn-secondary t-sm">
-                  Друк QR-наліпок
+                  {t('inventory.action.printLabels')}
                 </a>
               )}
               <button type="button" className="btn-primary t-sm"
                       onClick={() => setAdding(adding === 'container' ? null : 'container')}>
-                + Банка
+                {t('inventory.action.addContainer')}
               </button>
             </>
           )}
@@ -374,7 +401,7 @@ export function InventoryClient({
               формы для того же самого на складе быть не должно. */}
           {tab === 'goods' && (
             <a href="/app/catalog" className="btn-secondary t-sm">
-              Додати в каталозі
+              {t('inventory.action.addInCatalog')}
             </a>
           )}
         </div>
@@ -386,12 +413,12 @@ export function InventoryClient({
           {shownMaterials.length === 0 ? (
             <div className="empty">
               {materials.length === 0
-                ? 'Витратних засобів поки немає'
-                : 'За цим запитом нічого не знайшлося'}
+                ? t('inventory.materials.empty')
+                : t('inventory.search.empty')}
               {materials.length === 0 && (
                 <button type="button" className="btn-primary"
                         onClick={() => setAdding('material')}>
-                  Додати засіб
+                  {t('inventory.materials.add')}
                 </button>
               )}
             </div>
@@ -402,24 +429,25 @@ export function InventoryClient({
               <Link key={mt.id} href={`/app/inventory/materials/${mt.id}`}
                     className="row px-5" style={{ minHeight: 'var(--tap-min)' }}>
                 <span className="min-w-0">
+                  {/* Название, бренд и номер партии — данные арендатора. */}
                   <span className="t-md block truncate">{mt.name}</span>
                   <span className="t-xs block truncate" style={{ color: 'var(--color-faint)' }}>
                     {[
                       mt.brand,
-                      mt.batch ? `Партія: ${mt.batch}` : null,
-                      mt.expiry ? `до ${fmtShort(mt.expiry)}` : null,
-                      mt.cosmetic ? `PAO ${mt.pao ?? '—'} міс` : null,
+                      mt.batch ? t('inventory.materials.batch', { number: mt.batch }) : null,
+                      mt.expiry ? t('inventory.materials.until', { date: short(mt.expiry) }) : null,
+                      mt.cosmetic ? t('inventory.materials.pao', { n: mt.pao != null ? t.number(mt.pao) : '—' }) : null,
                     ].filter(Boolean).join(' · ')}
                   </span>
                   {mt.expiry && (
                     <span className={`mt-1 inline-block ${EXPIRY_BADGE[state]}`}>
-                      {EXPIRY_LABEL[state]}
+                      {t(EXPIRY_KEY[state])}
                     </span>
                   )}
                 </span>
                 <span className="flex shrink-0 items-center gap-2">
                   <span className={`tabular ${low ? 'badge-warn' : 'badge'}`}>
-                    {mt.stock} {mt.unit}
+                    {t.number(mt.stock)} {mt.unit}
                   </span>
                   <span aria-hidden style={{ color: 'var(--color-faint)' }}>›</span>
                 </span>
@@ -435,12 +463,12 @@ export function InventoryClient({
           {shownContainers.length === 0 ? (
             <div className="empty">
               {containers.length === 0
-                ? 'Ємностей поки немає. Заведіть банку — і наклейте на неї QR із кодом.'
-                : 'За цим запитом ємностей немає'}
+                ? t('inventory.containers.empty')
+                : t('inventory.containers.searchEmpty')}
               {containers.length === 0 && (
                 <button type="button" className="btn-primary"
                         onClick={() => setAdding('container')}>
-                  Завести банку
+                  {t('inventory.containers.add')}
                 </button>
               )}
             </div>
@@ -453,20 +481,22 @@ export function InventoryClient({
                   <span className="t-md block truncate">{c.material}
                     <span style={{ color: 'var(--color-faint)' }}> · {c.code}</span></span>
                   <span className="tabular t-xs mt-0.5 block" style={{ color: 'var(--color-faint)' }}>
-                    {c.status === 'sealed' ? 'запечатана' : `відкрита ${fmtShort(c.openedAt)}`}
-                    {c.volume ? ` · ${c.volume} ${c.unit ?? ''}` : ''}
+                    {c.status === 'sealed'
+                      ? t('inventory.container.sealed')
+                      : t('inventory.container.openedAt', { date: short(c.openedAt) })}
+                    {c.volume ? ` · ${t.number(c.volume)} ${c.unit ?? ''}` : ''}
                   </span>
                 </Link>
                 <span className="flex shrink-0 items-center gap-2">
                   {c.useBy && (
                     <span className={`tabular ${EXPIRY_BADGE[state]}`}>
-                      до {fmtShort(c.useBy)}
+                      {t('inventory.container.until', { date: short(c.useBy) })}
                     </span>
                   )}
                   {c.status === 'sealed' && (
                     <button className="btn-secondary t-sm" disabled={busy === c.id}
                             onClick={() => void openContainer(c.id, c.code)}>
-                      Відкрити
+                      {t('inventory.container.openShort')}
                     </button>
                   )}
                 </span>
@@ -482,9 +512,9 @@ export function InventoryClient({
           {totals && totals.units > 0 && (
             <div className="rise grid grid-cols-3 gap-3">
               {[
-                ['Одиниць', totals.units.toLocaleString('uk-UA')],
-                ['Собівартість', `${totals.cost.toLocaleString('uk-UA')} ₴`],
-                ['У продажу', `${totals.retail.toLocaleString('uk-UA')} ₴`],
+                [t('inventory.goods.units'), t.number(totals.units)],
+                [t('inventory.goods.cost'), t.money(totals.cost)],
+                [t('inventory.goods.retail'), t.money(totals.retail)],
               ].map(([label, val]) => (
                 <div key={label} className="card-flat !p-4 text-center">
                   <p className="tabular t-xl">{val}</p>
@@ -495,22 +525,24 @@ export function InventoryClient({
           )}
           <div className="card rise-1 !p-0">
             {shownVariants.length === 0 ? (
-              <div className="empty">За цим запитом товарів немає</div>
+              <div className="empty">{t('inventory.goods.searchEmpty')}</div>
             ) : shownVariants.map((v) => (
               <div key={v.id} className="row px-5">
                 <div className="min-w-0">
                   <p className="t-md truncate">{v.title}
                     <span className="prose-muted"> · {v.name}</span></p>
                   {v.reserved > 0 && (
-                    <p className="tabular t-xs mt-0.5 prose-muted">у резерві: {v.reserved}</p>
+                    <p className="tabular t-xs mt-0.5 prose-muted">
+                      {t('inventory.goods.reserved', { n: t.number(v.reserved) })}
+                    </p>
                   )}
                 </div>
                 {v.tracked ? (
                   <span className={`tabular ${v.threshold > 0 && v.stock <= v.threshold ? 'badge-warn' : 'badge'}`}>
-                    {v.stock} {v.unit}
+                    {t.number(v.stock)} {v.unit}
                   </span>
                 ) : (
-                  <span className="badge">без обліку</span>
+                  <span className="badge">{t('inventory.goods.untracked')}</span>
                 )}
               </div>
             ))}
@@ -520,17 +552,17 @@ export function InventoryClient({
 
       {/* ── Остальные экраны раздела ─────────────────────────── */}
       <div className="rise-3 flex flex-wrap gap-2">
-        <Link href="/app/inventory/reorder" className="btn-ghost t-sm">Пора замовити</Link>
-        <Link href="/app/inventory/recipes" className="btn-ghost t-sm">Рецептура</Link>
-        <Link href="/app/inventory/barcodes" className="btn-ghost t-sm">Штрихкоди</Link>
-        <Link href="/app/documents" className="btn-ghost t-sm">Усі документи</Link>
+        <Link href="/app/inventory/reorder" className="btn-ghost t-sm">{t('inventory.links.reorder')}</Link>
+        <Link href="/app/inventory/recipes" className="btn-ghost t-sm">{t('inventory.links.recipes')}</Link>
+        <Link href="/app/inventory/barcodes" className="btn-ghost t-sm">{t('inventory.links.barcodes')}</Link>
+        <Link href="/app/documents" className="btn-ghost t-sm">{t('inventory.links.documents')}</Link>
       </div>
 
       {/* ── Формы заведения ──────────────────────────────────── */}
       <Sheet
         open={adding === 'container'}
         onClose={() => setAdding(null)}
-        title="Нова банка або партія"
+        title={t('inventory.sheet.container')}
       >
         <ContainerForm
           tenantId={tenantId} userId={userId}
@@ -542,7 +574,7 @@ export function InventoryClient({
       <Sheet
         open={adding === 'material'}
         onClose={() => setAdding(null)}
-        title="Новий витратний засіб"
+        title={t('inventory.sheet.material')}
       >
         <MaterialForm
           tenantId={tenantId} suppliers={suppliers} locations={locations}
@@ -553,7 +585,7 @@ export function InventoryClient({
       <Sheet
         open={adding === 'refs'}
         onClose={() => setAdding(null)}
-        title="Довідники"
+        title={t('inventory.sheet.refs')}
       >
         <RefsForm
           tenantId={tenantId} suppliers={suppliers} locations={locations}

@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useT } from '@/lib/i18n/client'
 import { UNITS, type RefItem } from './material-form'
 
 export type MaterialOption = { id: string; name: string; unit: string; pao: number | null }
@@ -10,6 +11,10 @@ export type BatchOption = { id: string; materialId: string; number: string; expi
 
 // Код наклейки — латиницей и цифрами: его диктуют по телефону и вбивают
 // с клавиатуры сканера, где кириллицы может не быть вовсе.
+//
+// Кириллица в ключах этой карты — не строки интерфейса, а таблица
+// транслитерации: она разбирает НАЗВАНИЕ засоба (данные арендатора)
+// и в словарь локализации не едет.
 const TRANSLIT: Record<string, string> = {
   а: 'a', б: 'b', в: 'v', г: 'h', ґ: 'g', д: 'd', е: 'e', є: 'ye', ж: 'zh',
   з: 'z', и: 'y', і: 'i', ї: 'i', й: 'i', к: 'k', л: 'l', м: 'm', н: 'n',
@@ -43,9 +48,13 @@ export function ContainerForm({
   suppliers: RefItem[]
   onDone: () => void
 }) {
+  const t = useT()
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
-  const today = useMemo(() => new Date().toISOString().slice(0, 10), [])
+  // Значение для `<input type="date">` — через `t.inputDay`: срез
+  // `toISOString()` режет по UTC и для отрицательных смещений подставлял
+  // бы в поле вчерашний день.
+  const today = useMemo(() => t.inputDay(new Date()), [t])
   const [mode, setMode] = useState<'container' | 'batch'>('container')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -83,9 +92,6 @@ export function ContainerForm({
   const unitOptions = Array.from(new Set([...UNITS, unit].filter(Boolean)))
   const materialBatches = batches.filter((b) => b.materialId === material)
 
-  const fmtDate = (d: string) =>
-    new Date(d).toLocaleDateString('uk-UA', { day: 'numeric', month: 'short', year: '2-digit' })
-
   async function saveContainer(e: React.FormEvent) {
     e.preventDefault()
     setBusy(true); setErr(''); setMade(null)
@@ -104,7 +110,7 @@ export function ContainerForm({
     })
     setBusy(false)
     if (error) {
-      setErr(error.code === '23505' ? 'Такий код вже є' : error.message)
+      setErr(error.code === '23505' ? t('inventory.containerForm.error.code') : error.message)
       return
     }
     const created = code.trim()
@@ -134,7 +140,7 @@ export function ContainerForm({
     setBusy(false)
     if (error) {
       setErr(error.code === '23505'
-        ? 'Така партія для цього засобу вже заведена'
+        ? t('inventory.batchForm.error.duplicate')
         : error.message)
       return
     }
@@ -145,7 +151,7 @@ export function ContainerForm({
   if (materials.length === 0) {
     return (
       <div className="card rise empty">
-        Спочатку заведіть витратний засіб — партії та банки чіпляються до нього.
+        {t('inventory.containerForm.noMaterials')}
       </div>
     )
   }
@@ -155,63 +161,67 @@ export function ContainerForm({
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" onClick={() => { setMode('container'); setErr('') }}
                 className={mode === 'container' ? 'chip-active' : 'chip'}>
-          Нова банка
+          {t('inventory.containerForm.tab.container')}
         </button>
         <button type="button" onClick={() => { setMode('batch'); setErr('') }}
                 className={mode === 'batch' ? 'chip-active' : 'chip'}>
-          Нова партія
+          {t('inventory.containerForm.tab.batch')}
         </button>
-        <button type="button" className="btn-ghost ml-auto" onClick={onDone}>Закрити</button>
+        <button type="button" className="btn-ghost ml-auto" onClick={onDone}>
+          {t('inventory.common.close')}
+        </button>
       </div>
 
       {mode === 'container' && (
         <form onSubmit={saveContainer} className="grid gap-3 sm:grid-cols-2">
           <div className="sm:col-span-2">
-            <label className="field-label">Засіб</label>
+            <label className="field-label">{t('inventory.containerForm.material.label')}</label>
             <select required className="select" value={material}
                     onChange={(e) => pickMaterial(e.target.value)}>
-              <option value="">— оберіть —</option>
+              <option value="">{t('inventory.common.choose')}</option>
               {materials.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
           </div>
 
           <div className="sm:col-span-2">
-            <label className="field-label">Партія</label>
+            <label className="field-label">{t('inventory.containerForm.batch.label')}</label>
             <select className="select" value={batchId} disabled={!material}
                     onChange={(e) => setBatchId(e.target.value)}>
-              <option value="">— без партії —</option>
+              <option value="">{t('inventory.containerForm.batch.none')}</option>
               {materialBatches.map((b) => (
-                <option key={b.id} value={b.id}>{b.number} · до {fmtDate(b.expiry)}</option>
+                <option key={b.id} value={b.id}>
+                  {t('inventory.containerForm.batch.option', {
+                    number: b.number,
+                    date: t.date(b.expiry, { day: 'numeric', month: 'short', year: '2-digit' }),
+                  })}
+                </option>
               ))}
             </select>
             {material && materialBatches.length === 0 && (
-              <p className="field-hint">
-                Партій для цього засобу ще немає — заведіть її на сусідній вкладці,
-                щоб система знала заводський термін придатності.
-              </p>
+              <p className="field-hint">{t('inventory.containerForm.batch.hint')}</p>
             )}
           </div>
 
           <div className="sm:col-span-2">
-            <label className="field-label">Код на наліпці</label>
+            <label className="field-label">{t('inventory.containerForm.code.label')}</label>
             <div className="flex gap-2">
               <input required className="input" placeholder="BLND-4821"
                      value={code} onChange={(e) => setCode(e.target.value)} />
               <button type="button" className="btn-secondary shrink-0"
                       onClick={() => setCode(genCode(materials.find((m) => m.id === material)?.name ?? ''))}>
-                Згенерувати
+                {t('inventory.containerForm.code.generate')}
               </button>
             </div>
           </div>
 
           <div>
-            <label className="field-label">Обʼєм</label>
+            <label className="field-label">{t('inventory.containerForm.volume.label')}</label>
             <input type="number" min="0" step="any" className="input" placeholder="500"
                    value={volume} onChange={(e) => setVolume(e.target.value)} />
           </div>
 
           <div>
-            <label className="field-label">Одиниця</label>
+            <label className="field-label">{t('inventory.containerForm.unit.label')}</label>
             <select className="select" value={unit} onChange={(e) => setUnit(e.target.value)}>
               <option value="">—</option>
               {unitOptions.map((u) => <option key={u} value={u}>{u}</option>)}
@@ -219,36 +229,30 @@ export function ContainerForm({
           </div>
 
           <div>
-            <label className="field-label">PAO, місяців</label>
-            <input type="number" min="1" className="input" placeholder="з картки засобу"
+            <label className="field-label">{t('inventory.containerForm.pao.label')}</label>
+            <input type="number" min="1" className="input"
+                   placeholder={t('inventory.containerForm.pao.placeholder')}
                    value={pao} onChange={(e) => setPao(e.target.value)} />
           </div>
 
-          <p className="field-hint sm:col-span-2">
-            Дату «використати до» рахує система: менша з двох — термін партії
-            або день відкриття плюс PAO. Вручну її вводити не треба, і саме тому
-            в ній не можна помилитися.
-          </p>
+          <p className="field-hint sm:col-span-2">{t('inventory.containerForm.useBy.hint')}</p>
 
           {err && <p className="field-error sm:col-span-2">{err}</p>}
 
           {made && (
             <div className="card-flat rise sm:col-span-2">
-              <p className="t-lg">Банку {made} створено</p>
-              <p className="t-md mt-1 prose-muted">
-                Роздрукуйте наліпку з QR і наклейте на банку — далі майстер
-                просто сканує її камерою.
-              </p>
+              <p className="t-lg">{t('inventory.containerForm.created.title', { code: made })}</p>
+              <p className="t-md mt-1 prose-muted">{t('inventory.containerForm.created.desc')}</p>
               <a href="/app/inventory/labels" target="_blank" rel="noreferrer"
                  className="btn-secondary mt-3 t-sm">
-                Друк QR-наліпок
+                {t('inventory.action.printLabels')}
               </a>
             </div>
           )}
 
           <div className="flex gap-2 sm:col-span-2">
             <button className="btn-primary" disabled={busy || !material || !code.trim()}>
-              Завести банку
+              {t('inventory.containerForm.submit')}
             </button>
           </div>
         </form>
@@ -257,58 +261,56 @@ export function ContainerForm({
       {mode === 'batch' && (
         <form onSubmit={saveBatch} className="grid gap-3 sm:grid-cols-2">
           <div className="sm:col-span-2">
-            <label className="field-label">Засіб</label>
+            <label className="field-label">{t('inventory.containerForm.material.label')}</label>
             <select required className="select" value={bMaterial}
                     onChange={(e) => setBMaterial(e.target.value)}>
-              <option value="">— оберіть —</option>
+              <option value="">{t('inventory.common.choose')}</option>
               {materials.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
           </div>
 
           <div>
-            <label className="field-label">Номер партії</label>
-            <input required className="input" placeholder="з коробки"
+            <label className="field-label">{t('inventory.batchForm.number.label')}</label>
+            <input required className="input" placeholder={t('inventory.batchForm.number.placeholder')}
                    value={bNumber} onChange={(e) => setBNumber(e.target.value)} />
           </div>
 
           <div>
-            <label className="field-label">Дата виготовлення</label>
+            <label className="field-label">{t('inventory.batchForm.made.label')}</label>
             <input type="date" className="input" max={bExpiry || undefined}
                    value={bMade} onChange={(e) => setBMade(e.target.value)} />
           </div>
 
           <div>
-            <label className="field-label">Придатна до</label>
+            <label className="field-label">{t('inventory.batchForm.expiry.label')}</label>
             <input required type="date" className="input" min={bMade || undefined}
                    value={bExpiry} onChange={(e) => setBExpiry(e.target.value)} />
           </div>
 
           <div>
-            <label className="field-label">Дата отримання</label>
+            <label className="field-label">{t('inventory.batchForm.received.label')}</label>
             <input type="date" className="input"
                    value={bReceived} onChange={(e) => setBReceived(e.target.value)} />
           </div>
 
           <div>
-            <label className="field-label">Постачальник</label>
+            <label className="field-label">{t('inventory.batchForm.supplier.label')}</label>
             <select className="select" value={bSupplier} onChange={(e) => setBSupplier(e.target.value)}>
-              <option value="">— не вказано —</option>
+              <option value="">{t('inventory.common.notSet')}</option>
               {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
 
-          <p className="field-hint sm:col-span-2">
-            Партія — це не другий облік залишку, а простежуваність: який номер
-            і до якого числа придатний товар, що ви прийняли. Кількість
-            рахується приходами.
-          </p>
+          <p className="field-hint sm:col-span-2">{t('inventory.batchForm.hint')}</p>
 
           {err && <p className="field-error sm:col-span-2">{err}</p>}
-          {bDone && <p className="field-hint sm:col-span-2">Партію збережено — тепер її можна обрати для банки.</p>}
+          {bDone && (
+            <p className="field-hint sm:col-span-2">{t('inventory.batchForm.saved')}</p>
+          )}
 
           <div className="flex gap-2 sm:col-span-2">
             <button className="btn-primary" disabled={busy || !bMaterial || !bNumber.trim() || !bExpiry}>
-              Зберегти партію
+              {t('inventory.batchForm.submit')}
             </button>
           </div>
         </form>

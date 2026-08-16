@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useT } from '@/lib/i18n/client'
 import type { RefItem } from './material-form'
 
 // Справочники поставщиков и мест хранения. Заводятся отсюда, а не
@@ -17,6 +18,7 @@ export function RefsForm({
   locations: RefItem[]
   onDone: () => void
 }) {
+  const t = useT()
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
   const [busy, setBusy] = useState<string | null>(null)
@@ -38,7 +40,7 @@ export function RefsForm({
     })
     setBusy(null)
     if (error) {
-      setErr(error.code === '23505' ? 'Такий постачальник вже є' : error.message)
+      setErr(error.code === '23505' ? t('inventory.refs.supplier.duplicate') : error.message)
       return
     }
     setSName(''); setSPhone(''); setSEmail('')
@@ -56,7 +58,7 @@ export function RefsForm({
     })
     setBusy(null)
     if (error) {
-      setErr(error.code === '23505' ? 'Таке місце зберігання вже є' : error.message)
+      setErr(error.code === '23505' ? t('inventory.refs.location.duplicate') : error.message)
       return
     }
     setLName('')
@@ -70,47 +72,44 @@ export function RefsForm({
 
       <div className="grid gap-5 sm:grid-cols-2">
         <div className="flex flex-col gap-3">
-          <p className="t-md">Постачальники</p>
+          <p className="t-md">{t('inventory.refs.suppliers.title')}</p>
           {suppliers.length > 0 ? (
             <div className="flex flex-wrap gap-1.5">
               {suppliers.map((s) => <span key={s.id} className="badge">{s.name}</span>)}
             </div>
           ) : (
-            <p className="t-xs prose-muted">Поки жодного</p>
+            <p className="t-xs prose-muted">{t('inventory.refs.empty')}</p>
           )}
           <form onSubmit={addSupplier} className="grid gap-2">
-            <input required className="input" placeholder="Назва постачальника"
+            <input required className="input" placeholder={t('inventory.refs.supplier.name.placeholder')}
                    value={sName} onChange={(e) => setSName(e.target.value)} />
-            <input className="input" placeholder="Телефон" inputMode="tel"
+            <input className="input" placeholder={t('inventory.refs.supplier.phone.placeholder')} inputMode="tel"
                    value={sPhone} onChange={(e) => setSPhone(e.target.value)} />
-            <input className="input" type="email" placeholder="Пошта"
+            <input className="input" type="email" placeholder={t('inventory.refs.supplier.email.placeholder')}
                    value={sEmail} onChange={(e) => setSEmail(e.target.value)} />
             <button className="btn-secondary" disabled={!sName.trim() || busy === 'supplier'}>
-              Додати постачальника
+              {t('inventory.refs.supplier.submit')}
             </button>
           </form>
         </div>
 
         <div className="flex flex-col gap-3">
-          <p className="t-md">Місця зберігання</p>
+          <p className="t-md">{t('inventory.refs.locations.title')}</p>
           {locations.length > 0 ? (
             <div className="flex flex-wrap gap-1.5">
               {locations.map((l) => <span key={l.id} className="badge">{l.name}</span>)}
             </div>
           ) : (
-            <p className="t-xs prose-muted">Поки жодного</p>
+            <p className="t-xs prose-muted">{t('inventory.refs.empty')}</p>
           )}
           <form onSubmit={addLocation} className="grid gap-2">
-            <input required className="input" placeholder="Шафа біля дзеркала"
+            <input required className="input" placeholder={t('inventory.refs.location.name.placeholder')}
                    value={lName} onChange={(e) => setLName(e.target.value)} />
             <button className="btn-secondary" disabled={!lName.trim() || busy === 'location'}>
-              Додати місце
+              {t('inventory.refs.location.submit')}
             </button>
           </form>
-          <p className="field-hint">
-            Місце — це підказка «де лежить», а не окремий склад:
-            залишок у засобу один на всі полиці.
-          </p>
+          <p className="field-hint">{t('inventory.refs.location.hint')}</p>
         </div>
       </div>
     </div>
