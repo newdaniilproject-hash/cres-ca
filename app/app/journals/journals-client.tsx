@@ -6,26 +6,68 @@ import { createClient } from '@/lib/supabase/client'
 import { enqueue, isNetworkError } from '@/lib/offline/queue'
 import { useToast } from '@/components/toast'
 
+// `performer` — имя исполнителя или null. Null значит «имя не достаётся»
+// (человека вывели из состава команды, оговорка 0083), а НЕ «исполнителя
+// нет»: сами колонки `prepared_by` / `performed_by` объявлены `not null`.
+// Разница видна на экране: см. `Performer` ниже.
 type Solution = {
   id: string; agent_name: string; concentration: string
   volume: number; unit: string; prepared_at: string; expires_at: string
+  performer: string | null
 }
-type Task = { id: string; name: string; schedule: string | null; doneToday: boolean }
+type Task = {
+  id: string; name: string; schedule: string | null; doneToday: boolean
+  donePerformer: string | null; doneAt: string | null
+}
 type Cycle = {
   id: string; device: string; temperature_c: number
   duration_minutes: number; indicator_ok: boolean; performed_at: string
+  performer: string | null
 }
 type AuditRow = {
   id: number; action: string; entity: string
   label: string | null; actor_email: string | null; at: string
 }
+// `compliance_batch_history` (0043) — та же запись аудита, но без
+// коммерческих полей: `entity` в ней не хранится, он всегда
+// `material_batches`, а `label` называется `batch_number`.
+type BatchHistoryRow = {
+  id: number; action: string; batch_number: string | null
+  actor_email: string | null; at: string
+}
+
+// Исполнитель записи журнала. Обязательный реквизит: отчёт для проверки
+// печатает эту же колонку и утверждает в подвале, что «у кожного запису
+// зафіксовано час та виконавця». Пока экрана с исполнителем не было,
+// проверить это утверждение было негде — а имя не показывалось никому,
+// включая владельца (вложенная связь к `profiles` отдаёт null, 0083).
+function Performer({ name }: { name: string | null }) {
+  return name
+    ? <>{name}</>
+    : <span title="Учасника вилучено зі складу команди — сам запис незмінний">
+        імʼя недоступне
+      </span>
+}
 
 // Три журнала одним экраном. Каждая запись — одно касание или одна
 // короткая форма: заполнять их будут между клиентами, стоя.
 export function JournalsClient({
-  tenantId, userId, solutions, tasks, cycles,
+  tenantId, userId, canWrite, canManage, solutions, tasks, cycles,
 }: {
   tenantId: string; userId: string
+  /**
+   * Можно ли делать записи в журналы: `compliance.journal.write`
+   * (мастер, 0039) или `compliance.write`. Без права формы не рисуются
+   * вовсе — иначе инспектор жмёт «Виконано» и получает отказ RLS
+   * вместо честного «вам сюда только смотреть».
+   */
+  canWrite: boolean
+  /**
+   * Можно ли менять САМ чек-лист. Политика `cleaning_tasks_insert`
+   * требует `compliance.write` и НЕ принимает `compliance.journal.write`:
+   * мастер отмечает уборку, но состав чек-листа задаёт заведение.
+   */
+  canManage: boolean
   solutions: Solution[]; tasks: Task[]; cycles: Cycle[]
 }) {
   const supabase = useMemo(() => createClient(), [])
@@ -49,16 +91,57 @@ export function JournalsClient({
 
   // Журнал действий (Audit Trail из ТЗ): грузится при первом открытии
   // вкладки, а не с экраном, — обычно он нужен раз в месяц, при проверке.
+  //
+  // Читается ИЗ ДВУХ мест, и это не дублирование:
+  //
+  //   `audit_log` — общая лента. Её политика (0043) отдаёт инспектору
+  //     только компланс-сущности и намеренно ВЫРЕЗАЕТ `material_batches`:
+  //     в записи о приёмке партии лежат поставщик и заметка, то есть
+  //     коммерция.
+  //   `compliance_batch_history` — та же лента по партиям, но с уже
+  //     вычищенными `supplier_id` и `note` (0043). Ради этого
+  //     представление и заведено; до сих пор его не читал никто, и
+  //     история партий у инспектора просто отсутствовала.
+  //
+  // Ветвления по роли снова нет: оба запроса уходят всегда, каждый
+  // отдаёт ровно то, на что есть право, а склейка идёт по `id` записи
+  // аудита — он общий, поэтому у владельца, который видит партии
+  // в обеих лентах, строка не задвоится.
   const [audit, setAudit] = useState<AuditRow[] | null>(null)
   useEffect(() => {
     if (tab !== 'actions' || audit !== null) return
-    void supabase
-      .from('audit_log')
-      .select('id, action, entity, label, actor_email, at')
-      .order('at', { ascending: false })
-      .limit(200)
-      .then((res: { data: unknown }) => setAudit((res.data as AuditRow[] | null) ?? []))
-  }, [tab, audit, supabase])
+    void Promise.all([
+      // Фильтр по арендатору стоит ЯВНО, хотя изоляцию держит RLS.
+      // Причина не в безопасности, а в `limit(200)`: у того, кто состоит
+      // в двух заведениях, лента чужого заклада вытесняла бы записи
+      // этого — экран показывал бы «здесь ничего не менялось» там, где
+      // менялось. Правило 1 читается и так: у каждой строки есть
+      // `tenant_id`, значит запрос обязан его называть.
+      supabase.from('audit_log')
+        .select('id, action, entity, label, actor_email, at')
+        .eq('tenant_id', tenantId)
+        .order('at', { ascending: false })
+        .limit(200),
+      supabase.from('compliance_batch_history')
+        .select('id, action, batch_number, actor_email, at')
+        .eq('tenant_id', tenantId)
+        .order('at', { ascending: false })
+        .limit(200),
+    ]).then(([general, batches]) => {
+      const rows = new Map<number, AuditRow>()
+      for (const r of (general.data as AuditRow[] | null) ?? []) rows.set(r.id, r)
+      for (const r of (batches.data as BatchHistoryRow[] | null) ?? []) {
+        if (rows.has(r.id)) continue
+        rows.set(r.id, {
+          id: r.id, action: r.action, entity: 'material_batches',
+          label: r.batch_number, actor_email: r.actor_email, at: r.at,
+        })
+      }
+      setAudit(Array.from(rows.values())
+        .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
+        .slice(0, 200))
+    })
+  }, [tab, audit, supabase, tenantId])
 
   // формы
   const [agent, setAgent] = useState(''); const [conc, setConc] = useState('')
@@ -192,31 +275,45 @@ export function JournalsClient({
         <section className="flex flex-col gap-4">
           <div className="card rise-1 !p-0">
             {tasks.length === 0 ? (
-              <div className="empty">Додайте пункти чек-листа нижче — «Кварцування», «Обробка крісла»…</div>
+              <div className="empty">
+                {canManage
+                  ? 'Додайте пункти чек-листа нижче — «Кварцування», «Обробка крісла»…'
+                  : 'Чек-лист прибирання ще не заведено.'}
+              </div>
             ) : tasks.map((t) => (
               <div key={t.id} className="row px-5">
                 <div>
                   <p className="t-md">{t.name}</p>
-                  {t.schedule && <p className="t-xs prose-muted">{t.schedule}</p>}
+                  {t.doneToday && t.doneAt ? (
+                    <p className="t-xs prose-muted">
+                      {fmt(t.doneAt)} · <Performer name={t.donePerformer} />
+                    </p>
+                  ) : t.schedule ? (
+                    <p className="t-xs prose-muted">{t.schedule}</p>
+                  ) : null}
                 </div>
                 {t.doneToday || offDone.has(t.id) ? (
                   <span className="badge-success">сьогодні ✓</span>
-                ) : (
+                ) : canWrite ? (
                   <button className="btn-secondary t-sm" disabled={busy === t.id}
                           onClick={() => void markTask(t.id)}>
                     Виконано
                   </button>
+                ) : (
+                  <span className="badge">не відмічено</span>
                 )}
               </div>
             ))}
           </div>
-          <form onSubmit={addTask} className="rise-2 flex gap-2">
-            <input className="input" placeholder="Новий пункт чек-листа…"
-                   value={newTask} onChange={(e) => setNewTask(e.target.value)} />
-            <button className="btn-secondary shrink-0" disabled={!newTask.trim() || busy === 'newtask'}>
-              Додати
-            </button>
-          </form>
+          {canManage && (
+            <form onSubmit={addTask} className="rise-2 flex gap-2">
+              <input className="input" placeholder="Новий пункт чек-листа…"
+                     value={newTask} onChange={(e) => setNewTask(e.target.value)} />
+              <button className="btn-secondary shrink-0" disabled={!newTask.trim() || busy === 'newtask'}>
+                Додати
+              </button>
+            </form>
+          )}
           <p className="field-hint">
             Кожна відмітка — запис журналу з часом і виконавцем. Виправити
             або стерти її неможливо — це і є доказ для перевірки.
@@ -226,6 +323,7 @@ export function JournalsClient({
 
       {tab === 'solutions' && (
         <section className="flex flex-col gap-4">
+          {canWrite && (
           <form onSubmit={addSolution} className="card rise-1 grid gap-3 sm:grid-cols-2">
             <div className="sm:col-span-2">
               <label className="field-label">Засіб</label>
@@ -251,6 +349,7 @@ export function JournalsClient({
               Записати приготування
             </button>
           </form>
+          )}
 
           <div className="card rise-2 !p-0">
             {solutions.length === 0 ? (
@@ -263,6 +362,7 @@ export function JournalsClient({
                     <p className="t-md">{s.agent_name} · {s.concentration}</p>
                     <p className="tabular t-xs prose-muted">
                       {Number(s.volume)} {s.unit} · приготовано {fmt(s.prepared_at)}
+                      {' · '}<Performer name={s.performer} />
                     </p>
                   </div>
                   <span className={active ? 'badge-success tabular' : 'badge tabular'}>
@@ -277,6 +377,7 @@ export function JournalsClient({
 
       {tab === 'sterilization' && (
         <section className="flex flex-col gap-4">
+          {canWrite && (
           <form onSubmit={addCycle} className="card rise-1 grid gap-3 sm:grid-cols-2">
             <div className="sm:col-span-2">
               <label className="field-label">Пристрій</label>
@@ -302,6 +403,7 @@ export function JournalsClient({
               Записати цикл
             </button>
           </form>
+          )}
 
           <div className="card rise-2 !p-0">
             {cycles.length === 0 ? (
@@ -312,6 +414,7 @@ export function JournalsClient({
                   <p className="t-md">{c.device}</p>
                   <p className="tabular t-xs prose-muted">
                     {c.temperature_c}°C · {c.duration_minutes} хв · {fmt(c.performed_at)}
+                    {' · '}<Performer name={c.performer} />
                   </p>
                 </div>
                 <span className={c.indicator_ok ? 'badge-success' : 'badge-danger'}>
