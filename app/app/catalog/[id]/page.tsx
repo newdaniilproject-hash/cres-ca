@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { currentMembership, can, hasModule } from '@/lib/tenant'
 import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
+import { getT } from '@/lib/i18n/server'
 import {
   OfferingForm,
   type CategoryRow, type LocationRow, type MediaRow,
@@ -10,7 +11,13 @@ import {
 } from '../offering-form'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Позиція каталогу' }
+
+// Заголовок вкладки браузера — строка интерфейса, поэтому из словаря.
+// Разбор решения — в `app/app/journals/page.tsx`.
+export async function generateMetadata() {
+  const t = await getT()
+  return { title: t('catalog.item.meta.title') }
+}
 
 // Фильтр по tenant_id стоит рядом с фильтром по id намеренно: RLS отсечёт
 // чужую позицию и без него, но тогда экран упадёт в notFound без объяснения,
@@ -62,7 +69,7 @@ export default async function OfferingPage({
   const row = offering as unknown as OfferingRow
 
   return (
-    <AppShell active="/app/catalog" title={row.title}>
+    <AppShell>
       <OfferingForm
         tenantId={m.tenantId}
         // Карточка открыта по `catalog.read`, а меняется по `catalog.write`:
