@@ -3,9 +3,16 @@ import { createClient } from '@/lib/supabase/server'
 import { currentMembership, can } from '@/lib/tenant'
 import { AppShell } from '@/components/shell'
 import { TeamClient } from './team-client'
+import { getT } from '@/lib/i18n/server'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Команда' }
+
+// Заголовок вкладки браузера — строка интерфейса, поэтому из словаря.
+// Разбор решения — в `app/app/journals/page.tsx`.
+export async function generateMetadata() {
+  const t = await getT()
+  return { title: t('team.meta.title') }
+}
 
 // Экран команды. Ролей и функций под него было шесть штук с 0050 по 0079,
 // а входа к ним не существовало ни одного: приглашение сотрудника
@@ -63,7 +70,7 @@ export default async function TeamPage() {
     ])
 
   return (
-    <AppShell modules={m.modules} perms={m.perms} active="/app/team" title="Команда">
+    <AppShell modules={m.modules} perms={m.perms}>
       <TeamClient
         tenantId={m.tenantId}
         myUserId={auth?.session?.user?.id ?? null}
