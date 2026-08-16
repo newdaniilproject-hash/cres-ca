@@ -32,7 +32,7 @@ export default async function OrdersPage({
   const supabase = await createClient()
 
   let query = supabase
-    .from('orders')
+    .from('v_orders')
     .select(
       'id, number, status, contact_name, contact_phone, buyer_user_id, total, source, created_at',
       { count: 'exact' },
