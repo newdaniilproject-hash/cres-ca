@@ -106,3 +106,13 @@ create table if not exists storage.objects (
 );
 
 alter table storage.objects enable row level security;
+
+-- Права на схему storage выдаются ровно так, как их выдаёт Supabase:
+-- anon и authenticated имеют полный набор ПРАВ на storage.objects, а
+-- ограничивает их ТОЛЬКО построчная политика. Без этих трёх строк стенд
+-- врал бы в обе стороны: любая попытка чужого пути падала бы на
+-- «permission denied for schema storage» — то есть тест показывал бы
+-- зелёное, даже если политику из 0019 удалить целиком.
+grant usage on schema storage to anon, authenticated, service_role;
+grant select on storage.buckets to anon, authenticated, service_role;
+grant select, insert, update, delete on storage.objects to anon, authenticated, service_role;

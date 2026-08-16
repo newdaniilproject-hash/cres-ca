@@ -120,6 +120,21 @@ LOG="$(mktemp)"
   psql -f "$ROOT/supabase/tests/08_stock_plus.sql"
   psql -f "$ROOT/supabase/tests/09_team.sql"
   psql -f "$ROOT/supabase/tests/10_contacts.sql"
+  # 11–21 закрывают миграции 0016–0027: до них на эти файлы не было ни
+  # одного сценария — прогон падал на 0018 раньше, чем доходил до тестов.
+  psql -f "$ROOT/supabase/tests/11_search_geo.sql"
+  psql -f "$ROOT/supabase/tests/12_citext.sql"
+  psql -f "$ROOT/supabase/tests/13_cron.sql"
+  psql -f "$ROOT/supabase/tests/14_storage.sql"
+  psql -f "$ROOT/supabase/tests/15_modules.sql"
+  psql -f "$ROOT/supabase/tests/16_audit_log.sql"
+  psql -f "$ROOT/supabase/tests/17_expiry_sku.sql"
+  psql -f "$ROOT/supabase/tests/18_notify_delivery.sql"
+  psql -f "$ROOT/supabase/tests/19_register_tenant.sql"
+  psql -f "$ROOT/supabase/tests/20_profile_consents.sql"
+  # 21 стоит последним осознанно: он единственный, кто удаляет строки
+  # насовсем (удаление аккаунта), и после себя базу не восстанавливает.
+  psql -f "$ROOT/supabase/tests/21_account_deletion.sql"
 } 2>&1 | tee "$LOG"
 
 echo
