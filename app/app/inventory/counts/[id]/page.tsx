@@ -3,9 +3,15 @@ import { createClient } from '@/lib/supabase/server'
 import { currentMembership, can, hasModule } from '@/lib/tenant'
 import { ModuleOff } from '@/components/module-gate'
 import { CountDetail } from './count-detail'
+import { getT } from '@/lib/i18n/server'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Інвентаризація' }
+// Заголовок вкладки — тем же ключом, что и заголовок экрана
+// в оболочке (`components/app-shell.tsx`).
+export async function generateMetadata() {
+  const t = await getT()
+  return { title: t('app.screen.inventory.count.title') }
+}
 
 export default async function CountPage({
   params,
@@ -22,6 +28,7 @@ export default async function CountPage({
 
   const { id } = await params
   const supabase = await createClient()
+  const t = await getT()
 
   // Фильтр по арендатору стоит рядом с фильтром по id намеренно: RLS отсечёт
   // чужой документ и без него, но так запрос честно описывает, что мы ищем.
@@ -33,7 +40,12 @@ export default async function CountPage({
     .maybeSingle()
 
   if (error) {
-    return <p className="field-error rise">Не вдалося відкрити інвентаризацію: {error.message}</p>
+    // Текст отказа базы — её слова, а не наши: в словарь он не едет.
+    return (
+      <p className="field-error rise">
+        {t('inventory.count.openError')}: {error.message}
+      </p>
+    )
   }
   if (!count) notFound()
 

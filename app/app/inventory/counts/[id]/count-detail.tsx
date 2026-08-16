@@ -6,7 +6,8 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/toast'
 import { enqueue, isNetworkError, list as queueList, onQueueChange } from '@/lib/offline/queue'
-import { COUNT_STATUS_LABEL, countBadge, humanizeCount, qty } from '../counts-client'
+import { useT } from '@/lib/i18n/client'
+import { countBadge, countStatusLabel, humanizeCount, qty } from '../counts-client'
 
 export type CountCard = {
   id: string
@@ -38,6 +39,7 @@ export function CountDetail({
   canWrite: boolean
   loadError: string
 }) {
+  const t = useT()
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
   const toast = useToast()
@@ -78,12 +80,13 @@ export function CountDetail({
   }, [pendingLines])
 
   const shownValue = (l: CountLine) => draft[l.id] ?? (l.counted != null ? String(l.counted) : '')
+  // Переменная разбора названа `raw`, а не `t`: `t` — переводчик.
   const num = (s: string) => {
     // Запятая — то, что реально набирают на украинской раскладке телефона,
     // и Number('0,5') это NaN. Приводим до разбора, а не после.
-    const t = s.trim().replace(',', '.')
-    if (t === '') return null
-    const n = Number(t)
+    const raw = s.trim().replace(',', '.')
+    if (raw === '') return null
+    const n = Number(raw)
     return Number.isFinite(n) ? n : null
   }
 
@@ -116,7 +119,7 @@ export function CountDetail({
     const next = value == null ? null : normalize(line, value)
     if (next === line.counted) return
     if (next != null && next < 0) {
-      setErr('Залишок не буває відʼємним — перевірте введене число.')
+      setErr(t('inventory.count.error.negativeQty'))
       return
     }
 
@@ -132,14 +135,14 @@ export function CountDetail({
       // Повтор досылки безвреден: это одно поле, последняя запись
       // побеждает; движений отсюда не рождается — их сделает проведение.
       if (isNetworkError(e)) {
-        await enqueue(`Факт · ${line.title}`, {
+        await enqueue(t('inventory.count.queue.fact', { title: line.title }), {
           kind: 'count.line', lineId: line.id, countedQty: next,
         })
         setDraft((d) => ({ ...d, [line.id]: next == null ? '' : String(next) }))
-        toast.info('Збережено офлайн', 'Надішлеться само, щойно зʼявиться мережа.')
+        toast.info(t('inventory.offline.saved'), t('inventory.offline.desc'))
         return
       }
-      setErr(humanizeCount(e instanceof Error ? e.message : String(e)))
+      setErr(humanizeCount(t, e instanceof Error ? e.message : String(e)))
       return
     }
     setBusy(null)
@@ -175,8 +178,8 @@ export function CountDetail({
       setHit(null)
       const known = container?.material ?? found[0]?.title
       setScanMiss(known
-        ? `«${known}» не входить у цей перерахунок`
-        : `Код «${q}» не знайдено`)
+        ? t('inventory.count.scan.notInDoc', { name: known })
+        : t('inventory.scan.notFound', { code: q }))
       return
     }
     // Найденная строка обязана быть видимой: при включённом фильтре
@@ -198,8 +201,7 @@ export function CountDetail({
     type BD = { detect(source: ImageBitmap): Promise<{ rawValue: string }[]> }
     const W = window as unknown as { BarcodeDetector?: new (o?: object) => BD }
     if (!W.BarcodeDetector) {
-      toast.warn('Камера-сканер недоступний',
-        'Працює у Chrome на Android. Введіть код вручну — поле поруч.')
+      toast.warn(t('inventory.scan.unavailable.title'), t('inventory.scan.unavailable.desc'))
       return
     }
     try {
@@ -221,9 +223,9 @@ export function CountDetail({
       }
       track.stop()
       if (found) await lookup(found)
-      else toast.info('Код не зчитано', 'Спробуйте ще раз або введіть вручну.')
+      else toast.info(t('inventory.scan.nothing.title'), t('inventory.scan.nothing.desc'))
     } catch {
-      toast.error('Камера не відкрилась', 'Введіть код вручну — поле поруч.')
+      toast.error(t('inventory.scan.failed.title'), t('inventory.scan.failed.desc'))
     }
   }
 
@@ -236,17 +238,15 @@ export function CountDetail({
     // недостачу там, где мастер всё посчитал.
     const waiting = (await pendingLines()).length
     if (waiting > 0) {
-      setErr(`Ще ${waiting} рядків не надіслані — вони чекають мережі. `
-        + 'Проведення зараз рознесе нестачу там, де ви все порахували. '
-        + 'Дочекайтесь надсилання.')
+      setErr(t.plural('inventory.count.apply.pending', waiting))
       return
     }
 
     const unfilled = lines.length - filled
     const warn = unfilled > 0
-      ? `Не заповнено позицій: ${unfilled}. Вони лишаться без змін. `
+      ? `${t('inventory.count.apply.unfilled', { n: t.number(unfilled) })} `
       : ''
-    if (!confirm(`${warn}Провести інвентаризацію? Розбіжності стануть рухами «коригування», і документ закриється назавжди.`)) return
+    if (!confirm(`${warn}${t('inventory.count.apply.confirm')}`)) return
 
     setBusy('apply'); setErr('')
     // Единственный путь: функция в одной транзакции проводит все расхождения
@@ -256,19 +256,19 @@ export function CountDetail({
     setBusy(null)
     if (error) {
       setErr(isNetworkError(new Error(error.message))
-        ? 'Немає мережі. Факт з полиці збережеться офлайн, а провести '
-          + 'інвентаризацію можна лише онлайн: рухи по залишку робить база.'
-        : humanizeCount(error.message))
+        ? t('inventory.count.apply.offline')
+        : humanizeCount(t, error.message))
       return
     }
-    toast.success('Інвентаризацію проведено',
+    toast.success(t('inventory.count.applied.title'),
       mismatches > 0
-        ? `Розбіжностей рознесено: ${mismatches}. Дивіться їх у журналі рухів.`
-        : 'Розбіжностей не було — залишок не змінився.')
+        ? t('inventory.count.applied.mismatches', { n: t.number(mismatches) })
+        : t('inventory.count.applied.clean'))
     router.refresh()
   }
 
-  const fmt = (s: string) => new Date(s).toLocaleString('uk-UA', {
+  // Дата и время — через `t.dateTime`, а не ручной сборкой из частей.
+  const fmt = (v: string) => t.dateTime(v, {
     day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit',
   })
 
@@ -279,30 +279,43 @@ export function CountDetail({
       <section className="card rise-1">
         <div className="flex flex-wrap items-start gap-2">
           <div className="min-w-0">
-            <p className="tabular t-lg">Перерахунок від {fmt(count.startedAt)}</p>
+            <p className="tabular t-lg">
+              {t('inventory.count.title', { date: fmt(count.startedAt) })}
+            </p>
             <p className="tabular t-xs mt-0.5 prose-muted">
-              {count.appliedAt ? `проведено ${fmt(count.appliedAt)}` : 'триває'}
+              {count.appliedAt
+                ? t('inventory.count.appliedAt', { date: fmt(count.appliedAt) })
+                : t('inventory.count.ongoing')}
               {count.note ? ` · ${count.note}` : ''}
             </p>
           </div>
           <span className={`${countBadge(count.status)} ml-auto`}>
-            {COUNT_STATUS_LABEL[count.status] ?? count.status}
+            {countStatusLabel(t, count.status)}
           </span>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <span className="badge-accent tabular">
-            заповнено {filled} з {lines.length}
+            {t('inventory.count.filled', {
+              filled: t.number(filled), total: t.number(lines.length),
+            })}
           </span>
           {mismatches > 0 && (
-            <span className="badge-warn tabular">розбіжностей: {mismatches}</span>
+            <span className="badge-warn tabular">
+              {t('inventory.count.mismatches', { n: t.number(mismatches) })}
+            </span>
           )}
           {pending > 0 && (
-            <span className="badge-warn tabular">чекають мережі: {pending}</span>
+            <span className="badge-warn tabular">
+              {t('inventory.count.pending', { n: t.number(pending) })}
+            </span>
           )}
         </div>
       </section>
 
-      {loadError && <p className="field-error rise">Рядки не завантажились: {loadError}</p>}
+      {/* Текст отказа базы показывается как есть — это её слова, не наши. */}
+      {loadError && (
+        <p className="field-error rise">{t('inventory.count.linesError')}: {loadError}</p>
+      )}
       {err && <p className="field-error rise">{err}</p>}
 
       {/* ── Сканер: пересчёт ведут с кодом в руке ────────────── */}
@@ -311,7 +324,7 @@ export function CountDetail({
           <div className="flex gap-2">
             <input
               className="input"
-              placeholder="Сканувати наліпку або ввести код…"
+              placeholder={t('inventory.count.scan.placeholder')}
               value={code}
               onChange={(e) => setCode(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void lookup(code) } }}
@@ -320,20 +333,17 @@ export function CountDetail({
             />
             <button type="button" onClick={() => void lookup(code)}
                     className="btn-secondary shrink-0">
-              Знайти
+              {t('inventory.count.scan.find')}
             </button>
             <button type="button" onClick={() => void scanCamera()}
-                    className="btn-primary shrink-0" title="Сканувати камерою"
-                    aria-label="Сканувати камерою">
+                    className="btn-primary shrink-0"
+                    title={t('inventory.scan.camera.aria')}
+                    aria-label={t('inventory.scan.camera.aria')}>
               ⌗
             </button>
           </div>
           {scanMiss && <p className="field-error">{scanMiss}</p>}
-          <p className="field-hint">
-            Годиться і QR наліпки з банки, і заводський штрихкод. Знайдений
-            рядок підсвітиться і сам стане під курсор — лишиться вписати те,
-            що бачите на полиці.
-          </p>
+          <p className="field-hint">{t('inventory.count.scan.hint')}</p>
         </section>
       )}
 
@@ -341,9 +351,9 @@ export function CountDetail({
       {lines.length > 0 && (
         <div className="rise-2 flex flex-wrap gap-2">
           {([
-            ['all', `Усі · ${lines.length}`],
-            ['todo', `Не пораховані · ${lines.length - filled}`],
-            ['diff', `Розбіжності · ${mismatches}`],
+            ['all', t('inventory.count.filter.all', { n: t.number(lines.length) })],
+            ['todo', t('inventory.count.filter.todo', { n: t.number(lines.length - filled) })],
+            ['diff', t('inventory.count.filter.diff', { n: t.number(mismatches) })],
           ] as const).map(([key, label]) => (
             <button key={key} type="button"
                     className={filter === key ? 'chip-active' : 'chip'}
@@ -358,14 +368,12 @@ export function CountDetail({
       <section className="card rise-3 !p-0">
         <div className="px-5">
           {lines.length === 0 ? (
-            <div className="empty">
-              У цьому документі немає жодної позиції — проводити нічого.
-            </div>
+            <div className="empty">{t('inventory.count.empty')}</div>
           ) : visible.length === 0 ? (
             <div className="empty">
               {filter === 'todo'
-                ? 'Усі позиції пораховані — можна проводити.'
-                : 'Розбіжностей немає: факт збігся з обліком скрізь.'}
+                ? t('inventory.count.todoEmpty')
+                : t('inventory.count.diffEmpty')}
             </div>
           ) : visible.map((l) => {
             const diff = diffOf(l)
@@ -381,11 +389,13 @@ export function CountDetail({
                   <p className="t-md truncate">
                     {l.title}
                     {l.kind === 'material' && (
-                      <span className="prose-muted"> · засіб</span>
+                      <span className="prose-muted"> · {t('inventory.count.line.material')}</span>
                     )}
                   </p>
                   <p className="tabular t-xs mt-0.5 prose-muted">
-                    очікується {qty(l.expected)} {l.unit}
+                    {t('inventory.count.line.expected', {
+                      qty: qty(t, l.expected), unit: l.unit,
+                    })}
                     {l.subtitle ? ` · ${l.subtitle}` : ''}
                   </p>
                 </div>
@@ -398,7 +408,7 @@ export function CountDetail({
                       // number со step=1: он на телефоне режет ввод «0,5».
                       inputMode="decimal"
                       className="input w-24"
-                      placeholder="факт"
+                      placeholder={t('inventory.count.line.fact.placeholder')}
                       value={shownValue(l)}
                       disabled={busy === l.id}
                       onFocus={() => setHit(l.id)}
@@ -408,17 +418,23 @@ export function CountDetail({
                     />
                   ) : (
                     <span className="badge tabular">
-                      {l.counted != null ? `${qty(l.counted)} ${l.unit}` : 'не рахували'}
+                      {l.counted != null
+                        ? `${qty(t, l.counted)} ${l.unit}`
+                        : t('inventory.count.line.notCounted')}
                     </span>
                   )}
                   {diff == null ? (
                     <span className="badge">—</span>
                   ) : diff === 0 ? (
-                    <span className="badge-success">збіглось</span>
+                    <span className="badge-success">{t('inventory.count.line.match')}</span>
                   ) : diff < 0 ? (
-                    <span className="badge-danger tabular">нестача {qty(Math.abs(diff))}</span>
+                    <span className="badge-danger tabular">
+                      {t('inventory.count.line.short', { qty: qty(t, Math.abs(diff)) })}
+                    </span>
                   ) : (
-                    <span className="badge-warn tabular">надлишок +{qty(diff)}</span>
+                    <span className="badge-warn tabular">
+                      {t('inventory.count.line.over', { qty: qty(t, diff) })}
+                    </span>
                   )}
                 </div>
               </div>
@@ -432,32 +448,28 @@ export function CountDetail({
             <button type="button" className="btn-primary"
                     disabled={busy !== null || lines.length === 0 || pending > 0}
                     onClick={() => void apply()}>
-              {busy === 'apply' ? 'Проводимо…'
-                : pending > 0 ? `Чекаємо надсилання (${pending})`
-                  : 'Провести інвентаризацію'}
+              {busy === 'apply' ? t('inventory.count.apply.busy')
+                : pending > 0
+                  ? t('inventory.count.apply.waiting', { n: t.number(pending) })
+                  : t('inventory.count.apply.submit')}
             </button>
           ) : (
             <p className="t-md prose-muted">
               {count.status === 'applied'
-                ? 'Документ проведено — розбіжності вже стали коригуваннями в журналі, і правити його не можна.'
+                ? t('inventory.count.readonly.applied')
                 : count.status === 'cancelled'
-                  ? 'Перерахунок скасовано — на залишок він не вплинув.'
-                  : 'Немає права змінювати склад, тому документ доступний лише для перегляду.'}
+                  ? t('inventory.count.readonly.cancelled')
+                  : t('inventory.count.readonly.noRight')}
             </p>
           )}
           <Link href="/app/inventory/movements" className="btn-ghost ml-auto">
-            Журнал рухів
+            {t('inventory.link.movements')}
           </Link>
         </div>
       </section>
 
       {editable && (
-        <p className="field-hint">
-          Факт зберігається сам, щойно ви переходите до наступного рядка —
-          залишок при цьому не змінюється. Він зміниться один раз, під час
-          проведення: на кожну розбіжність база запише рух «коригування».
-          Вписати залишок напряму не можна ніде в системі — і це навмисно.
-        </p>
+        <p className="field-hint">{t('inventory.count.hint')}</p>
       )}
     </div>
   )
