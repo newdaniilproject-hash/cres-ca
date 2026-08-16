@@ -1,10 +1,10 @@
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { PublicHeader } from '@/components/shell'
+import { PublicHeader, publicT as t } from '@/components/shell'
 import { BookingFlow } from './booking-flow'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Запис' }
+export const metadata = { title: t('public.book.meta.title') }
 
 // Страница записи: вариант → день → время → имя и телефон. Четыре шага
 // на одном экране, каждый следующий появляется после предыдущего —
