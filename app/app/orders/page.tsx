@@ -4,9 +4,16 @@ import { currentMembership, can, hasModule } from '@/lib/tenant'
 import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { OrdersClient } from './orders-client'
+import { getT } from '@/lib/i18n/server'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Замовлення' }
+
+// Заголовок вкладки браузера — строка интерфейса, поэтому из словаря.
+// Разбор решения — в `app/app/journals/page.tsx`.
+export async function generateMetadata() {
+  const t = await getT()
+  return { title: t('orders.meta.title') }
+}
 
 // Значения enum order_status. Список повторяет тот, что в orders-client:
 // импортировать его оттуда нельзя — серверный компонент получил бы
@@ -47,7 +54,7 @@ export default async function OrdersPage({
     .limit(100)
 
   return (
-    <AppShell modules={m.modules} perms={m.perms} active="/app/orders" title="Замовлення">
+    <AppShell modules={m.modules} perms={m.perms}>
       <OrdersClient
         active={active}
         total={count ?? 0}
