@@ -692,6 +692,7 @@
   "inventory.pao.error.open": "Не вдалося відкрити",
   "inventory.pao.disposed": "Ємність списано",
   "inventory.pao.finished": "Ємність закрито",
+  "inventory.pao.decant.offline": "Розлив збережено і піде на сервер, щойно з'явиться мережа. Наліпку можна буде надрукувати після цього: код нової ємності видає база. Другий раз відливати не потрібно.",
   "inventory.pao.decant.error": "Розлив не виконано",
   "inventory.pao.decant.noRow": "База не повернула ємність",
   "inventory.pao.decant.created": "Дозатор {code} створено",

@@ -88,6 +88,52 @@ select public.container_label(id) like 'Засіб: %Партія: %Розлив
          as пять_реквизитов_ожид_t
   from public.material_containers where code like 'C-%';
 
+\echo '--- 3.2/0100: повтор розлива по тому же ключу не отливает второй раз'
+-- Правило офлайна: ключ придумывает ЭКРАН до первой попытки. Сеть рвётся
+-- и ПОСЛЕ записи — транзакция прошла, ответ не доехал. Без ключа досылка
+-- завела бы вторую ёмкость, которой нет на полке, и расхождение увидели бы
+-- на проверке. Проверяется ПОПЫТКОЙ повторить, а не наличием колонки.
+do $$
+declare
+  v_first  public.material_containers;
+  v_second public.material_containers;
+  v_before numeric;
+  v_after  numeric;
+  v_count  integer;
+begin
+  select volume into v_before from public.material_containers
+   where id = 'abcd0000-0000-0000-0000-000000000002';
+
+  v_first := public.decant_container('abcd0000-0000-0000-0000-000000000002', 30,
+                                     'дозатор з черги', 'kluch-odyn');
+  v_second := public.decant_container('abcd0000-0000-0000-0000-000000000002', 30,
+                                      'дозатор з черги', 'kluch-odyn');
+
+  if v_first.id <> v_second.id then
+    raise exception 'ПРОВАЛ: повтор за тим самим ключем завів другу ємність (% і %)',
+      v_first.code, v_second.code;
+  end if;
+
+  select volume into v_after from public.material_containers
+   where id = 'abcd0000-0000-0000-0000-000000000002';
+  if v_after <> v_before - 30 then
+    raise exception 'ПРОВАЛ: повтор списав об''єм родителя вдруге (було %, стало %)',
+      v_before, v_after;
+  end if;
+
+  select count(*) into v_count from public.material_containers
+   where idempotency_key = 'kluch-odyn';
+  if v_count <> 1 then
+    raise exception 'ПРОВАЛ: за одним ключем у реєстрі % ємностей', v_count;
+  end if;
+
+  raise notice 'ok — повтор повернув ту саму ємність %, об''єм родителя списано один раз', v_first.code;
+end $$;
+
+\echo '--- 3.2/0100: без ключа розлив работает как раньше — старые вызовы не сломаны'
+select (public.decant_container('abcd0000-0000-0000-0000-000000000002', 10,
+                                'без ключа')).volume = 10 as без_ключа_ожид_t;
+
 \echo '--- 3.2: перелить больше, чем есть в банке, нельзя'
 do $$ begin
   perform public.decant_container('abcd0000-0000-0000-0000-000000000002', 100000, null);

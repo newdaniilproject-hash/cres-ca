@@ -64,6 +64,24 @@ export type QueuedAction =
       countedQty: number | null
     }
   | {
+      /**
+       * Розлив из большой ёмкости в рабочий дозатор (ТЗ, 3.2).
+       *
+       * ⚠️ КЛЮЧ ЗДЕСЬ ОБЯЗАТЕЛЕН, И ЭТО НЕ ПЕРЕСТРАХОВКА. Розлив не просто
+       * уменьшает объём родителя — он ЗАВОДИТ НОВУЮ ЁМКОСТЬ со своим кодом,
+       * сроком и наклейкой. Сеть рвётся и после того, как база записала
+       * действие; без ключа досылка отлила бы второй раз, и в реестре
+       * соответствия появилась бы банка, которой нет на полке. Ключ
+       * генерирует ЭКРАН до первой попытки — тот же самый уезжает сюда
+       * (0100 хранит его в material_containers.idempotency_key).
+       */
+      kind: 'container.decant'
+      parentId: string
+      volume: number
+      note?: string | null
+      idempotencyKey: string
+    }
+  | {
       kind: 'journal.cleaning'
       tenantId: string
       taskId: string
@@ -175,6 +193,22 @@ function newId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 }
 
+/**
+ * Ключ повтора для действия, которое экран собирается отправить.
+ *
+ * ⚠️ ЗОВЁТСЯ ДО ПЕРВОЙ ПОПЫТКИ, А НЕ В ОБРАБОТЧИКЕ ОШИБКИ. В этом весь
+ * смысл: сеть рвётся и ПОСЛЕ того, как база записала действие — транзакция
+ * прошла, ответ не доехал. Ключ, придуманный в момент досылки, был бы
+ * новым, и повтор выполнился бы вторым разом.
+ *
+ * Живёт здесь, а не на экранах, чтобы у правила было одно место:
+ * `crypto.randomUUID` есть не в каждом веб-вью, и запасной путь не должен
+ * переписываться заново в каждой кнопке.
+ */
+export function newKey(): string {
+  return newId()
+}
+
 // «Это сеть упала или я сделал что-то не то?» — вопрос, от которого
 // зависит всё поведение кнопки. Ошибка сети → действие в очередь,
 // человек работает дальше. Ошибка данных → показать текст и НЕ прятать
@@ -265,6 +299,19 @@ async function send(supabase: SupabaseClient, rec: QueuedRecord): Promise<void> 
       // Тот самый ключ: повтор не спишет второй раз. Берём ключ экрана,
       // если он есть — см. комментарий у поля idempotencyKey.
       p_idempotency_key: a.idempotencyKey ?? rec.id,
+    })
+    if (error) throw new Error(error.message)
+    return
+  }
+  if (a.kind === 'container.decant') {
+    // Наклейку досылка НЕ печатает и печатать не должна: код ёмкости
+    // выдаёт счётчик базы, а человек в этот момент уже занят другим.
+    // Наклейка берётся с экрана списка розливов, когда она понадобится.
+    const { error } = await supabase.rpc('decant_container', {
+      p_parent_id: a.parentId,
+      p_volume: a.volume,
+      p_note: a.note ?? null,
+      p_idempotency_key: a.idempotencyKey,
     })
     if (error) throw new Error(error.message)
     return
