@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
 import { noteIfImmutable } from '@/lib/security-log'
+import { dbErrorText } from '@/lib/errors/db'
 
 // Дата выпуска версии — «12 січ. 2024». Набор опций, а не своя `fmt`:
 // форматирует `t.date`, то есть локаль, а не экран.
@@ -181,7 +182,7 @@ export function TechCardsClient({
       offering_id: draft.offeringId || null,
       approved_by: userId,
     })
-    if (error) { setBusy(false); setErr(error.message); return }
+    if (error) { setBusy(false); setErr(dbErrorText(t, error)); return }
 
     // Предыдущие версии перестают быть актуальными. Триггер tech_cards_guard
     // этому не мешает: он стережёт steps, title и version, а флаг is_active —
@@ -201,7 +202,7 @@ export function TechCardsClient({
       // транзакцию, поэтому событие пишется отсюда, уже снаружи неё
       // (0085, решение 4), а не из самой базы.
       void noteIfImmutable(supabase, offError.message, 'техкарта: зняття попередніх версій', tenantId)
-      setErr(t('techcards.error.activeLeft', { error: offError.message }))
+      setErr(t('techcards.error.activeLeft', { error: dbErrorText(t, offError) }))
     }
     router.refresh()
   }

@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
 import { noteIfImmutable } from '@/lib/security-log'
 import type { T } from '@/lib/i18n/translate'
+import { dbErrorText } from '@/lib/errors/db'
 
 export type FinanceKind = 'income' | 'expense'
 
@@ -105,7 +106,7 @@ export function FinanceClient({
       created_by: userId,
     })
     setBusy(null)
-    if (insertError) { setErr(insertError.message); return }
+    if (insertError) { setErr(dbErrorText(t, insertError)); return }
     setAmount(''); setNote(''); setCategoryId('')
     router.refresh()
   }
@@ -147,7 +148,7 @@ export function FinanceClient({
       // Изнутри упавшей транзакции событие не записать — оно откатится
       // вместе с ней, поэтому пишем отсюда (0085, решение 4).
       void noteIfImmutable(supabase, updateError.message, 'фінансовий запис', tenantId)
-      setErr(updateError.message); return
+      setErr(dbErrorText(t, updateError)); return
     }
     setEditing(null)
     router.refresh()
@@ -160,7 +161,7 @@ export function FinanceClient({
       tenant_id: tenantId, kind: catKind, name: catName.trim(),
     })
     setBusy(null)
-    if (insertError) { setErr(insertError.message); return }
+    if (insertError) { setErr(dbErrorText(t, insertError)); return }
     setCatName(''); router.refresh()
   }
 
@@ -169,7 +170,7 @@ export function FinanceClient({
     const { error: updateError } = await supabase.from('finance_categories')
       .update({ is_active: !c.isActive }).eq('id', c.id)
     setBusy(null)
-    if (updateError) { setErr(updateError.message); return }
+    if (updateError) { setErr(dbErrorText(t, updateError)); return }
     router.refresh()
   }
 

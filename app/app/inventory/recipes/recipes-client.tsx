@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
 import type { T } from '@/lib/i18n/translate'
+import { dbErrorText } from '@/lib/errors/db'
 
 export type RecipeLine = {
   variantId: string
@@ -43,7 +44,9 @@ function humanize(t: T, message: string, code?: string): string {
   if (message.includes('row-level security') || message.includes('policy')) {
     return t('inventory.recipes.error.catalogWrite')
   }
-  return message
+  // Незнакомое базе-специфичное сюда не доходит: общий разбор
+  // (`lib/errors/db.ts`) не отдаёт человеку сырой текст Postgres.
+  return dbErrorText(t, { message, code })
 }
 
 // Рецептура: что уходит на одну единицу услуги или товара. Экран

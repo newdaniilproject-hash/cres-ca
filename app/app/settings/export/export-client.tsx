@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
 import { toCsv, download } from '@/lib/export/csv'
+import { dbErrorText } from '@/lib/errors/db'
 
 // Разделы в порядке важности для продавца: сначала то, из-за чего он
 // вообще спрашивает про выгрузку (клиенты, заказы, записи), потом учёт.
@@ -58,7 +59,7 @@ export function ExportClient({
       }
       download(`cresca-${stamp()}.json`, JSON.stringify(out, null, 2), 'json')
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e))
+      setErr(dbErrorText(t, e))
     }
     setBusy(null)
   }
@@ -74,7 +75,7 @@ export function ExportClient({
         download(`cresca-${section}-${stamp()}.csv`, toCsv(rows), 'csv')
       }
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e))
+      setErr(dbErrorText(t, e))
     }
     setBusy(null)
   }

@@ -8,6 +8,7 @@ import { useT } from '@/lib/i18n/client'
 import type { Key } from '@/lib/i18n/dict'
 import type { T } from '@/lib/i18n/translate'
 import type { RefItem } from '../material-form'
+import { dbErrorText } from '@/lib/errors/db'
 
 // Значения enum stock_receipt_status из 0003_inventory.sql — дословно.
 // Четвёртого состояния нет: документ либо готовится, либо уже изменил
@@ -85,7 +86,7 @@ export function ReceiptsClient({
     }).select('id').single()
     setBusy(false)
     if (insertError || !data) {
-      setErr(insertError?.message ?? t('inventory.receipts.createFailed'))
+      setErr(insertError ? dbErrorText(t, insertError) : t('inventory.receipts.createFailed'))
       return
     }
     // Пустой документ бесполезен, поэтому сразу уводим на экран строк.

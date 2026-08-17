@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Sheet } from '@/components/sheet'
 import { useT } from '@/lib/i18n/client'
 import { parseRange, lastDay, isNow } from '../range'
+import { dbErrorText } from '@/lib/errors/db'
 
 type Staff = {
   id: string; name: string; title: string | null; bio: string | null
@@ -68,7 +69,7 @@ export function StaffCard({
     setBusy(true); setErr('')
     const { error } = await fn()
     setBusy(false)
-    if (error) { setErr(error.message); return false }
+    if (error) { setErr(dbErrorText(t, error)); return false }
     router.refresh()
     return true
   }
