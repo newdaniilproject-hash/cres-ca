@@ -10,7 +10,10 @@ import { AppScreen, Field, keepVisible } from '../ui'
 import { MailIcon, PasswordStrength, mmss } from '@/components/auth-ui'
 import { OAuthButtons } from '../oauth'
 import { authErrorText } from '@/app/(auth)/google-button'
+import { humanAuthError, lockedText } from '@/lib/auth-errors'
 import { useT } from '@/lib/i18n/client'
+import { guardSignIn } from '@/lib/ratelimit/guard'
+import { applySession, signInWithPassword, type SignInLock } from '@/lib/sign-in'
 
 // Шесть цифр — столько же, сколько в вебе и в макетах владельца.
 // Было восемь; расхождение с настройкой Supabase (MAILER_OTP_LENGTH)
@@ -59,6 +62,10 @@ export function MobileLoginForm() {
     return oauth ? authErrorText(t, oauth) : ''
   })
   const [noAccount, setNoAccount] = useState(false)
+  // Замок учётной записи (0085). Отдельным состоянием, а не строкой в
+  // `error`: у него другой тон, другой совет и своя карточка. Строкой
+  // под полем «вас замкнено на 15 хвилин» теряется среди «невірний пароль».
+  const [lock, setLock] = useState<SignInLock | null>(null)
 
   function tick() {
     setLeft(RESEND_SECONDS)
@@ -70,26 +77,38 @@ export function MobileLoginForm() {
   // ── Вход паролем ─────────────────────────────────────────────
   async function signIn(e: React.FormEvent) {
     e.preventDefault()
-    setBusy(true); setError(''); setNoAccount(false)
-    const { error } = await supabase.auth.signInWithPassword({
-      email: email.trim(), password,
-    })
-    if (error) {
+    setBusy(true); setError(''); setNoAccount(false); setLock(null)
+
+    // Вход паролем идёт ЧЕРЕЗ НАШ СЕРВЕР (`/api/auth/sign-in`), тем же
+    // путём, что и в вебе: один набор серверных действий на обе поверхности
+    // (CLAUDE.md, «Общий слой вместо паритета»). Ограничитель частоты
+    // тратится ВНУТРИ роута — здесь его звать больше нельзя, иначе одна
+    // попытка списывает две.
+    const res = await signInWithPassword(email, password)
+    if (!res.ok) {
       setBusy(false)
-      // ⚠️ Подстроки, ПО КОТОРЫМ разбирается ответ Supabase
+
+      if (res.kind === 'limited') { setError(res.message); return }
+      if (res.kind === 'locked') { setLock(res.lock); return }
+
+      // ⚠️ Подстроки, ПО КОТОРЫМ разбирается ответ сервера
       // (`email not confirmed`, `invalid login`), НЕ переводятся:
       // сервер отвечает по-английски всегда, и перевод условия сломал
       // бы разбор. Переводится только то, что читает человек.
-      const m = error.message.toLowerCase()
+      const m = res.message.toLowerCase()
       if (m.includes('email not confirmed')) {
         setError(t('m.login.error.notConfirmed'))
         return
       }
-      setError(m.includes('invalid login')
-        ? t('m.login.error.invalid')
-        : error.message)
+      if (m.includes('invalid login')) { setError(t('m.login.error.invalid')); return }
+      // Сюда приходит и «User is banned» — замок стоял ещё до этой попытки,
+      // и у него своя строка в `humanAuthError`.
+      setError(humanAuthError(t, res.message))
       return
     }
+
+    const failed = await applySession(supabase, res.session)
+    if (failed) { setBusy(false); setError(humanAuthError(t, failed)); return }
     window.location.href = await nextRoute(supabase)
   }
 
@@ -97,6 +116,12 @@ export function MobileLoginForm() {
   async function sendCode(e?: React.FormEvent) {
     e?.preventDefault()
     setBusy(true); setError(''); setNoAccount(false)
+
+    // Этой же функцией работает кнопка «надіслати ще раз», поэтому счётчик
+    // тратится и на повтор: иначе предел обходится одной отправкой формы
+    // и дальше повторами, каждый из которых — письмо от нашего имени.
+    const gate = await guardSignIn()
+    if (!gate.ok) { setBusy(false); setError(gate.message); return }
 
     // shouldCreateUser: false — вход не должен молча создавать акаунт.
     // Регистрация это отдельное обещание с отдельной формой.
@@ -214,7 +239,7 @@ export function MobileLoginForm() {
           : byPassword ? t('m.login.subtitle.password') : t('m.login.subtitle.code')
       }
       backHref="/m"
-      onBack={mode === 'password' ? undefined : () => { setMode('password'); setError(''); setNoAccount(false) }}
+      onBack={mode === 'password' ? undefined : () => { setMode('password'); setError(''); setNoAccount(false); setLock(null) }}
     >
       <form onSubmit={byPassword ? signIn : sendCode} className="flex flex-col gap-5">
         <Field label={t('m.field.email')} htmlFor="l-email">
@@ -248,6 +273,23 @@ export function MobileLoginForm() {
           </div>
         )}
 
+        {/* Замок 0085. Не строка под полем, а карточка с выходом: человеку
+            надо сказать три вещи — что заперто, до какого времени и что
+            блокировка снимется сама. Молчаливый отказ читается как
+            поломка продукта. */}
+        {lock && (
+          <div className="card-flat" style={{ borderColor: 'var(--color-danger)' }}>
+            <p className="t-md">{t('auth.locked.title')}</p>
+            <p className="t-sm mt-1 prose-muted">{lockedText(t, lock)}</p>
+            <p className="t-sm mt-1 prose-muted">{t('auth.locked.hint')}</p>
+            <button type="button" className="btn-secondary mt-3 flex items-center justify-center"
+                    style={{ height: 48, fontSize: 16 }}
+                    onClick={() => { setMode('reset'); setLock(null); setError('') }}>
+              {t('auth.blocked.reset')}
+            </button>
+          </div>
+        )}
+
         {error && <p className="field-error">{error}</p>}
 
         <button className="btn-primary flex items-center justify-center"
@@ -265,19 +307,19 @@ export function MobileLoginForm() {
       <div className="mt-6 flex flex-col items-center gap-3">
         {byPassword ? (
           <>
-            <button type="button" onClick={() => { setMode('code'); setError('') }}
+            <button type="button" onClick={() => { setMode('code'); setError(''); setLock(null) }}
                     className="t-sm underline underline-offset-2"
                     style={{ color: 'var(--color-accent)', minHeight: 'var(--tap-min)' }}>
               {t('m.login.byCode')}
             </button>
-            <button type="button" onClick={() => { setMode('reset'); setError('') }}
+            <button type="button" onClick={() => { setMode('reset'); setError(''); setLock(null) }}
                     className="t-sm underline underline-offset-2 prose-muted"
                     style={{ minHeight: 'var(--tap-min)' }}>
               {t('m.login.forgot')}
             </button>
           </>
         ) : (
-          <button type="button" onClick={() => { setMode('password'); setError('') }}
+          <button type="button" onClick={() => { setMode('password'); setError(''); setLock(null) }}
                   className="t-sm underline underline-offset-2"
                   style={{ color: 'var(--color-accent)', minHeight: 'var(--tap-min)' }}>
             {t('m.login.byPassword')}
