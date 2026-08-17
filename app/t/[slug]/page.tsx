@@ -65,6 +65,19 @@ export default async function ShopPage({
   const services = offerings.filter((o) => o.kind === 'service')
   const products = offerings.filter((o) => o.kind === 'product')
 
+  // Рейтинг лежал в `storefront()` и в этом типе с самого начала и никогда
+  // не рисовался (0104). Порог — ровно тот, что назван в правилах домена:
+  // меньше пяти оценок показывает «мало оцінок», а не число — единичная
+  // пятёрка от знакомого не должна выглядеть как проверенная репутация.
+  // Ноль отзывов не показывает вовсе: пустая строка честнее, чем «0.00».
+  const rating = (o: Offering) =>
+    o.rating_count === 0 ? null
+      : o.rating_count < 5
+        ? <span className="t-xs prose-muted">{t('public.storefront.rating.few')}</span>
+        : <span className="tabular t-xs prose-muted">
+            ★ {o.rating_avg.toFixed(1)} · {t('public.storefront.rating.count', { n: o.rating_count })}
+          </span>
+
   return (
     <>
       <PublicHeader authed={!!user} />
@@ -104,6 +117,7 @@ export default async function ShopPage({
                   <div className="min-w-0">
                     <p className="t-lg">{o.title}</p>
                     {o.subtitle && <p className="t-sm mt-0.5 prose-muted">{o.subtitle}</p>}
+                    {rating(o)}
                   </div>
                   <div className="flex shrink-0 items-center gap-4">
                     {/* Символ валюты ставит Intl, а не подстановка «` ₴`»:
@@ -144,6 +158,7 @@ export default async function ShopPage({
                     </span>
                   </div>
                   <p className="t-lg truncate">{o.title}</p>
+                  {rating(o)}
                   <div className="mt-1 flex items-center justify-between">
                     <p className="t-sm prose-muted">{o.subtitle ?? ''}</p>
                     {o.price != null && (
