@@ -4,6 +4,7 @@ import { cache } from 'react'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { PublicHeader, PublicFooter, publicT as t } from '@/components/shell'
+import { AttributionCapture } from '@/components/attribution-capture'
 
 export const revalidate = 60
 
@@ -14,7 +15,7 @@ type Offering = {
 }
 type Staff = { id: string; name: string; title: string | null }
 type Shop = {
-  name: string; tagline: string | null; description: string | null
+  id: string; name: string; tagline: string | null; description: string | null
   city: string | null; address: string | null; kind: string
 }
 type Storefront = { shop: Shop; offerings: Offering[] | null; staff: Staff[] | null }
@@ -80,6 +81,9 @@ export default async function ShopPage({
 
   return (
     <>
+      {/* Ссылка из шапки Instagram — `cres-ca.com/t/<slug>?from=ig` (0105).
+          Ничего не рисует, только запоминает источник для оформления. */}
+      <AttributionCapture tenantId={shop.id} />
       <PublicHeader authed={!!user} />
 
       <main className="mx-auto max-w-4xl px-4 sm:px-6">

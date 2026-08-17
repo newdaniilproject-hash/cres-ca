@@ -108,7 +108,12 @@ export default async function SearchPage({
               {results.map((r, i) => (
                 <Link
                   key={`${r.result_type}-${r.id}`}
-                  href={r.result_type === 'shop' ? `/t/${r.shop_slug}` : `/t/${r.shop_slug}#${r.slug}`}
+                  // ?from=search — атрибуция (0105): переход из результатов
+                  // поиска платформы, а не по собственной ссылке продавца.
+                  // Query перед якорем — `#` должен идти последним в адресе.
+                  href={r.result_type === 'shop'
+                    ? `/t/${r.shop_slug}?from=search`
+                    : `/t/${r.shop_slug}?from=search#${r.slug}`}
                   className={`card-link rise-${Math.min(i + 1, 4)} flex items-center justify-between gap-4`}
                 >
                   <div className="min-w-0">
