@@ -246,6 +246,23 @@ export function SettingsClient({
         )}
       </section>
 
+      {/* Ваши данные: выгрузка заведения.
+
+          Стоит ПЕРЕД блоком удаления аккаунта намеренно: человек, дошедший
+          до удаления, чаще всего сначала хочет забрать данные, а не потерять
+          их. Порядок блоков здесь — это и есть подсказка.
+
+          Отдельного права у экрана нет: он открывается по `settings.read`,
+          как и сами настройки, а что именно уедет в файл, решают права
+          РАЗДЕЛОВ внутри `tenant_export` (0102). */}
+      <section className="card rise-3">
+        <h2 className="t-lg mb-1">{t('settings.export.title')}</h2>
+        <p className="t-md mb-3 prose-muted">{t('settings.export.desc')}</p>
+        <Link href="/app/settings/export" className="btn-secondary t-sm">
+          {t('settings.export.open')}
+        </Link>
+      </section>
+
       {/* Безпека: видалення акаунта */}
       <section className="card rise-3">
         <h2 className="t-lg mb-1">{t('settings.security.title')}</h2>
