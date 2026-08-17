@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Sheet } from '@/components/sheet'
 import { useToast } from '@/components/toast'
-import { enqueue, isNetworkError } from '@/lib/offline/queue'
+import { enqueue, isNetworkError, newKey } from '@/lib/offline/queue'
 import { useT } from '@/lib/i18n/client'
 import { noteIfImmutable } from '@/lib/security-log'
 import type { Key } from '@/lib/i18n/dict'
@@ -107,15 +107,31 @@ export function PaoControl({
     router.refresh()
   }
 
+  // Закрытие банки переживает офлайн так же, как вскрытие: смена одного
+  // поля идемпотентна по своей природе — повтор ставит тот же статус.
+  // Мастер закрывает пустую банку у рабочего места, где связь хуже всего,
+  // и потерянное действие означает банку, которая в реестре ещё «в работе».
   async function finish(c: Container, disposed: boolean) {
+    const status = disposed ? 'disposed' : 'finished'
     setBusy(c.id)
-    const { error } = await supabase.from('material_containers')
-      .update({ status: disposed ? 'disposed' : 'finished' }).eq('id', c.id)
-    setBusy(null)
-    if (error) {
-      void noteIfImmutable(supabase, error.message, 'ємність: закриття')
-      toast.error(t('inventory.container.saveError'), error.message); return
+    try {
+      const { error } = await supabase.from('material_containers')
+        .update({ status }).eq('id', c.id)
+      if (error) throw new Error(error.message)
+    } catch (e) {
+      setBusy(null)
+      if (isNetworkError(e)) {
+        await enqueue(`${disposed ? t('inventory.pao.disposed') : t('inventory.pao.finished')} · ${c.code}`,
+                      { kind: 'container.status', containerId: c.id, status })
+        toast.info(t('inventory.offline.saved'), t('inventory.offline.desc'))
+        return
+      }
+      const message = e instanceof Error ? e.message : String(e)
+      void noteIfImmutable(supabase, message, 'ємність: закриття')
+      toast.error(t('inventory.container.saveError'), message)
+      return
     }
+    setBusy(null)
     toast.success(disposed ? t('inventory.pao.disposed') : t('inventory.pao.finished'))
     router.refresh()
   }
@@ -123,16 +139,39 @@ export function PaoControl({
   // Розлив идёт только функцией decant_container: она пишет партию,
   // код из пер-арендаторного счётчика и не даёт «омолодить» срок.
   // Прямой вставкой этого не повторить — и не нужно.
+  //
+  // ⚠️ КЛЮЧ ПОВТОРА ГЕНЕРИРУЕТСЯ ЗДЕСЬ, ДО ПЕРВОЙ ПОПЫТКИ, а не в момент
+  // досылки. Сеть рвётся и ПОСЛЕ того, как база записала розлив: транзакция
+  // прошла, ответ не доехал. С новым ключом досылка отлила бы второй раз
+  // и завела бы в реестре банку, которой нет на полке. Тот же ключ уезжает
+  // в очередь и в базу (0100).
   async function decant(parent: Container, volume: number, note: string) {
     setBusy('decant')
-    const { data, error } = await supabase.rpc('decant_container', {
-      p_parent_id: parent.id,
-      p_volume: volume,
-      p_note: note.trim() || null,
-    })
-    if (error) {
+    const key = newKey()
+    let data: unknown
+    try {
+      const res = await supabase.rpc('decant_container', {
+        p_parent_id: parent.id,
+        p_volume: volume,
+        p_note: note.trim() || null,
+        p_idempotency_key: key,
+      })
+      if (res.error) throw new Error(res.error.message)
+      data = res.data
+    } catch (e) {
       setBusy(null)
-      toast.error(t('inventory.pao.decant.error'), error.message)
+      if (isNetworkError(e)) {
+        await enqueue(`${t('inventory.pao.decant.create')} · ${parent.code}`,
+                      { kind: 'container.decant', parentId: parent.id, volume,
+                        note: note.trim() || null, idempotencyKey: key })
+        setDecantOf(null)
+        // Наклейку офлайн не напечатать: код новой ёмкости выдаёт счётчик
+        // базы. Об этом говорится прямо — мастер, ждущий наклейку, должен
+        // понимать, почему её нет, иначе он отольёт ещё раз.
+        toast.info(t('inventory.offline.saved'), t('inventory.pao.decant.offline'))
+        return
+      }
+      toast.error(t('inventory.pao.decant.error'), e instanceof Error ? e.message : String(e))
       return
     }
     const child = (Array.isArray(data) ? data[0] : data) as { id: string; code: string } | null

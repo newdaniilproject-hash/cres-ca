@@ -168,3 +168,29 @@ export async function currentMembership(): Promise<Membership | null> {
   const list = await getMemberships()
   return list[0] ?? null
 }
+
+/**
+ * Сотрудник платформы — это НЕ роль в заведении, а признак человека
+ * (`profiles.is_staff`), который хук кладёт в токен рядом с членствами.
+ *
+ * ⚠️ ЭТА ПРОВЕРКА НИЧЕГО НЕ ОТКРЫВАЕТ. С 0093 признак сам по себе не даёт
+ * доступа ни к одной чужой строке: нужен ещё действующий грант на конкретное
+ * заведение, с причиной и сроком, и его проверяет `has_platform_access()`
+ * внутри политик. Здесь признак решает ровно один вопрос — рисовать ли
+ * человеку экран выдачи доступа. Граница доверия, как и везде, — RLS
+ * и серверный роут, а не этот вызов.
+ *
+ * Читается из разобранного токена по той же причине, что и членства
+ * (правило 3): запрос к базе на каждый рендер меню недопустим. Плата —
+ * признак вступает в силу с обновлением токена; для служебного экрана,
+ * который открывают раз в месяц, это ничего не значит.
+ */
+export async function isPlatformStaff(): Promise<boolean> {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return false
+  const meta = (jwtPayload(session.access_token).app_metadata ?? {}) as {
+    is_staff?: boolean
+  }
+  return meta.is_staff === true
+}

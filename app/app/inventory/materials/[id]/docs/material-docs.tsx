@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Sheet } from '@/components/sheet'
 import { useToast } from '@/components/toast'
-import { DOC_KINDS, fmtSize, type DocKind } from '@/lib/documents'
+import { DOC_KINDS, documentSignedUrl, fmtSize, type DocKind } from '@/lib/documents'
 import { DOC_EXT_BY_MIME, DOC_MAX_BYTES } from '@/lib/upload/guard'
 import { verifyUploaded } from '@/lib/upload/client'
 import { useT } from '@/lib/i18n/client'
@@ -141,14 +141,14 @@ export function MaterialDocs({
     router.refresh()
   }
 
-  // Бакет приватный: публичной ссылки у файла нет в принципе.
-  // Пять минут — столько живёт доступ, дальше ссылка мертва даже
-  // если её переслали.
+  // Ссылка живёт пять минут и выдаётся через `document_access` (0090):
+  // она же проверяет право и она же пишет строку в журнал доступа.
+  // Разбор — в `lib/documents.ts`; здесь копии этой логики быть не должно,
+  // потому что экранов с документами два.
   async function signedUrl(doc: Doc, filename?: string): Promise<string | null> {
-    const { data, error } = await supabase.storage.from('documents')
-      .createSignedUrl(doc.path, 300, filename ? { download: filename } : undefined)
-    if (error) { toast.error(t('inventory.docs.error.open'), error.message); return null }
-    return data?.signedUrl ?? null
+    const { url, error } = await documentSignedUrl(supabase, tenantId, doc, filename)
+    if (error) { toast.error(t('inventory.docs.error.open'), error); return null }
+    return url
   }
 
   async function view(doc: Doc) {

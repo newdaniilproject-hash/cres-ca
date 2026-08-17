@@ -43,8 +43,21 @@ select stock_qty, reserved_qty as резерв_ожид_2 from public.offering_v
 
 \echo '--- гость через API не видит ни заказов, ни клиентов'
 set role anon;
-select (select count(*) from public.orders)    as заказов_ожид_0,
-       (select count(*) from public.customers) as клиентов_ожид_0;
+select (select count(*) from public.orders) as заказов_ожид_0;
+
+-- До 0099 гость получал по клиентам честный ноль: право на чтение таблицы
+-- у него было, а строк RLS не отдавала. Теперь права нет вовсе — контакты
+-- клиента закрыты правами на колонку, и заодно у анонима отобрано чтение
+-- таблицы целиком. Проверка изменена под это осознанно: отказ строже нуля,
+-- и молча оставленное «ожид_0» перестало бы что-либо проверять.
+do $$
+begin
+  perform 1 from public.customers limit 1;
+  raise exception 'ПРОВАЛ: анонім читає таблицю клієнтів';
+exception when others then
+  if sqlerrm like 'ПРОВАЛ%' then raise; end if;
+  raise notice 'ok — %', sqlerrm;
+end $$;
 
 \echo '--- второй гостевой заказ: номер 2, тот же телефон = тот же клиент'
 select o.number as номер_ожид_2 from public.create_order(
