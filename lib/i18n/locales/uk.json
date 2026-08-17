@@ -2248,5 +2248,15 @@
   "returns.reason.hint": "Обовʼязкова. Через місяць причину не згадає ніхто, а спір із покупцем розбирається саме за нею.",
   "returns.sum": "Сума повернення: {sum}",
   "returns.submit": "Провести повернення",
-  "returns.moneyHint": "Гроші покупцеві платформа не повертає — вона фіксує факт: товар лягає на склад, а дохід за замовленням гаситься зустрічним записом у фінансах."
+  "returns.moneyHint": "Гроші покупцеві платформа не повертає — вона фіксує факт: товар лягає на склад, а дохід за замовленням гаситься зустрічним записом у фінансах.",
+  "public.storefront.rating.few": "мало оцінок",
+  "public.storefront.rating.count": "{n} оцінок",
+  "account.review.leave": "Оцінити",
+  "account.review.done": "Оцінено",
+  "account.review.sheet.title": "Ваш відгук",
+  "account.review.rating": "Оцінка",
+  "account.review.text.label": "Коментар",
+  "account.review.text.placeholder": "Необов'язково",
+  "account.review.submit": "Залишити відгук",
+  "account.review.immutableHint": "Відгук не можна буде відредагувати чи видалити — це і є гарантія, що продавець не попросить його змінити заднім числом."
 }
