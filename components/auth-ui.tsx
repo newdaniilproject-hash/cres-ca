@@ -106,16 +106,28 @@ export function SuccessScreen({
 }
 
 // ── Акаунт заблокирован ────────────────────────────────────────
-// Показывается только когда Supabase действительно ответил перебором
-// попыток (см. lockoutSeconds). Отдельный экран, а не строка ошибки:
-// человек, которого не пускают, должен получить и объяснение,
-// и оба выхода — сбросить пароль либо подождать.
+// Два разных повода попасть сюда, и путать их нельзя:
+//
+//   • Supabase ответил перебором попыток (`lockoutSeconds`) — тогда
+//     известен только СРОК ОЖИДАНИЯ, и он приходит в `waitText`;
+//   • наш замок из 0085 (`record_failed_login`) — тогда известны и время
+//     снятия, и число неудачных попыток, и готовую фразу собирает
+//     `lockedText` из `lib/auth-errors.ts`. Она приходит в `note`
+//     и ЗАМЕНЯЕТ строку про ожидание: «спробуйте через до 14:05» — это
+//     не текст, а склейка двух разных предложений.
+//
+// Отдельный экран, а не строка ошибки: человек, которого не пускают,
+// должен получить и объяснение, и оба выхода — сбросить пароль либо
+// подождать.
 export function BlockedScreen({
   waitText,
+  note,
   onReset,
   onBack,
 }: {
   waitText: string
+  /** Готовая фраза замка. Задана — показывается вместо строки ожидания. */
+  note?: string
   onReset: () => void
   onBack: () => void
 }) {
@@ -139,7 +151,9 @@ export function BlockedScreen({
       {/* Срок ожидания приходит готовой строкой из `lockoutText`
           (`lib/auth-errors.ts`) — файл чужой, и склонение «хвилину /
           хвилини / хвилин» живёт там. Здесь только подстановка. */}
-      <div className="rise-3 note note-danger">{t('auth.blocked.note', { wait: waitText })}</div>
+      <div className="rise-3 note note-danger">
+        {note ?? t('auth.blocked.note', { wait: waitText })}
+      </div>
 
       <div className="rise-3 auth-result-actions">
         <button type="button" className="btn-primary btn-tall" onClick={onReset}>
