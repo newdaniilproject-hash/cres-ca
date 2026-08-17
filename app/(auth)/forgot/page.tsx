@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { codeErrorText, humanAuthError } from '@/lib/auth-errors'
+import { guardSignIn } from '@/lib/ratelimit/guard'
 import { AuthShell } from '../auth-shell'
 import { useT } from '@/lib/i18n/client'
 import { CodeInput } from '@/app/m/code-input'
@@ -53,6 +54,12 @@ export default function ForgotPage() {
     e?.preventDefault()
     if (busy) return
     setBusy(true); setError('')
+    // Восстановление считается тем же пределом, что и вход (5 за 15 хвилин
+    // с адреса): каждая отправка — это письмо от нашего имени, и это самая
+    // дешёвая для чужого скрипта кнопка на всём сайте. Кнопка «надіслати
+    // ще раз» зовёт эту же функцию, так что отдельного заслона ей не нужно.
+    const gate = await guardSignIn()
+    if (!gate.ok) { setBusy(false); setError(gate.message); return }
     // redirectTo здесь не задаётся намеренно: в письме код, а не ссылка,
     // и адрес возврата в нём никак не используется.
     const { error } = await supabase.auth.resetPasswordForEmail(email.trim())
