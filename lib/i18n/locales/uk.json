@@ -2235,5 +2235,18 @@
   "export.section.techcards": "Техкарти",
   "export.sectionDesc.techcards": "Технологічні картки з кроками і версіями",
   "export.section.finance": "Фінанси",
-  "export.sectionDesc.finance": "Доходи й витрати за категоріями"
+  "export.sectionDesc.finance": "Доходи й витрати за категоріями",
+  "returns.title": "Повернення",
+  "returns.empty": "Повернень за цим замовленням немає.",
+  "returns.create": "Оформити повернення",
+  "returns.number": "Повернення №{n}",
+  "returns.sheet.title": "Нове повернення",
+  "returns.sheet.hint": "Позиції беруться із замовлення. Повернути можна не більше, ніж продано, — з урахуванням уже повернутого.",
+  "returns.left": "можна повернути: {n}",
+  "returns.reason.label": "Причина",
+  "returns.reason.placeholder": "Не підійшов відтінок",
+  "returns.reason.hint": "Обовʼязкова. Через місяць причину не згадає ніхто, а спір із покупцем розбирається саме за нею.",
+  "returns.sum": "Сума повернення: {sum}",
+  "returns.submit": "Провести повернення",
+  "returns.moneyHint": "Гроші покупцеві платформа не повертає — вона фіксує факт: товар лягає на склад, а дохід за замовленням гаситься зустрічним записом у фінансах."
 }
