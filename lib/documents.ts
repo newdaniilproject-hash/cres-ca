@@ -27,19 +27,12 @@ export const DOC_KINDS: DocKind[] = [
   'msds', 'quality_cert', 'ses_conclusion', 'notification', 'other',
 ]
 
-// Повторяет ограничения бакета documents из 0019. Проверяем на клиенте
-// не вместо RLS, а чтобы вместо ответа хранилища «mime type not supported»
-// продавец увидел человеческую фразу.
-export const DOC_MAX_BYTES = 20 * 1024 * 1024
+// Ограничения на сам файл переехали в `lib/upload/guard.ts` (шаг 6):
+// там же живут лимиты бакета `media`, опознание типа по содержимому
+// и то, что зовёт серверная проверка. Держать здесь вторую копию списка
+// форматов значило бы завести второй источник правды — при следующем
+// добавлении формата один из списков молча отстал бы.
 
-export const DOC_EXT_BY_MIME: Record<string, string> = {
-  'application/pdf': 'pdf',
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/webp': 'webp',
-  'application/msword': 'doc',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
-}
 
 /**
  * «1,2 МБ». Размер у старых записей не заполнен — тогда пусто, а не ноль.
