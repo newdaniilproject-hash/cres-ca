@@ -7,12 +7,12 @@ import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
 import type { T } from '@/lib/i18n/translate'
 
+import { DOC_KINDS as KINDS, type DocKind } from '@/lib/documents'
 import {
   DOC_EXT_BY_MIME as EXT_BY_MIME,
-  DOC_KINDS as KINDS,
   DOC_MAX_BYTES as MAX_BYTES,
-  type DocKind,
-} from '@/lib/documents'
+} from '@/lib/upload/guard'
+import { verifyUploaded } from '@/lib/upload/client'
 
 export type { DocKind }
 
@@ -102,6 +102,16 @@ export function DocumentsClient({
     const { error: uploadError } = await supabase.storage
       .from('documents').upload(path, file, { contentType: file.type })
     if (uploadError) { setBusy(null); setErr(uploadError.message); return }
+
+    // Проверка на сервере, и она ЗДЕСЬ, до строки в реестре. Всё, что
+    // выше, — слово браузера: и `file.type`, и `file.size` приходят
+    // из формы, а форму можно обойти. Роут читает первые байты уже
+    // сохранённого объекта, сверяет их с объявленным типом и, если
+    // не сошлось, сам удаляет файл. Разбор — app/api/uploads/verify.
+    const rejected = await verifyUploaded('documents', path)
+    if (rejected) {
+      setBusy(null); setErr(t(`upload.reject.${rejected}`)); return
+    }
 
     const { error } = await supabase.from('material_documents').insert({
       tenant_id: tenantId, material_id: materialId,

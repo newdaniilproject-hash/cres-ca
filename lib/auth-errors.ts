@@ -53,11 +53,60 @@ export function humanAuthError(t: T, message: string): string {
     return t('auth.error.rateLimit')
   if (m.includes('already registered') || m.includes('already exists'))
     return t('auth.error.exists')
+  if (isBanned(message)) return t('auth.error.banned')
   if (m.includes('invalid login')) return t('auth.error.credentials')
   if (m.includes('email not confirmed')) return t('auth.error.notConfirmed')
   if (m.includes('password')) return t('auth.error.password')
   if (m.includes('email') && m.includes('invalid')) return t('auth.error.email')
   return message
+}
+
+// ── Замок учётной записи (0085) ────────────────────────────────────────────
+//
+// Это НЕ то же самое, что `lockoutSeconds` ниже. Там — предел Supabase
+// («слишком часто просите письмо»), он про частоту запросов и снимается
+// секундами. Здесь — наш замок: десять неверных паролей за 15 хвилин, и
+// `record_failed_login()` пишет `auth.users.banned_until`. Смешать их нельзя:
+// у них разные причины, разные сроки и разный совет человеку.
+//
+// Две стороны, с которых замок виден форме:
+//
+//   1. НАШ роут вернул `lock.locked` — это тот самый десятый пароль, и мы
+//      знаем и время снятия, и число попыток;
+//   2. GoTrue ответил «User is banned» — замок уже стоял до этой попытки.
+//      Числа попыток в таком ответе нет и быть не может, поэтому текст
+//      другой: он не врёт про «десять спроб», а называет само состояние.
+//
+// Второй случай раньше падал в общий `return message` и приезжал человеку
+// английской строкой «User is banned» — то есть ровно тем молчаливым
+// отказом, из-за которого запертый вход читается как поломка продукта.
+
+/** Ответ GoTrue про заблокированного пользователя. Подстроки английские. */
+export function isBanned(message: string): boolean {
+  const m = message.toLowerCase()
+  return m.includes('user is banned') || m.includes('user_banned')
+}
+
+/**
+ * Текст замка: что произошло, до какого времени и что делать.
+ *
+ * `until` — ISO-время из `record_failed_login`. Часы через `t.dateTime`,
+ * а не ручной подстановкой: формат времени зависит от языка.
+ * Число попыток — через `t.plural`, иначе выходит «10 спроба».
+ */
+export function lockedText(
+  t: T, lock: { until: string | null; attempts: number } | null,
+): string {
+  if (!lock) return t('auth.locked.plain')
+
+  const attempts = lock.attempts > 0
+    ? t.plural('auth.locked.attempts', lock.attempts)
+    : ''
+  const until = lock.until
+    ? t('auth.locked.until', { time: t.dateTime(lock.until, { hour: '2-digit', minute: '2-digit' }) })
+    : t('auth.locked.untilUnknown')
+
+  return [until, attempts].filter(Boolean).join(' ')
 }
 
 // Ошибки экрана кода. Отдельно от общего словаря сознательно: общий

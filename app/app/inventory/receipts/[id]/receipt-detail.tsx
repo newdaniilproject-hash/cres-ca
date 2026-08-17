@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
+import { noteIfImmutable } from '@/lib/security-log'
 import type { T } from '@/lib/i18n/translate'
 import type { RefItem } from '../../material-form'
 import { receiptBadge, receiptStatusLabel } from '../receipts-client'
@@ -117,7 +118,13 @@ export function ReceiptDetail({
     setBusy(lineId); setErr('')
     const { error } = await supabase.from('stock_receipt_lines').delete().eq('id', lineId)
     setBusy(null)
-    if (error) { setErr(humanize(t, error.message)); return }
+    if (error) {
+      // Сторож проведённой накладной (0066/0069) роняет транзакцию, поэтому
+      // записать событие изнутри неё нельзя — оно откатилось бы вместе
+      // с попыткой. Пишем отсюда, уже снаружи (0085, решение 4).
+      void noteIfImmutable(supabase, error.message, 'накладна: рядок')
+      setErr(humanize(t, error.message)); return
+    }
     router.refresh()
   }
 
@@ -130,7 +137,10 @@ export function ReceiptDetail({
       note: note.trim() || null,
     }).eq('id', receipt.id)
     setBusy(null)
-    if (error) { setErr(humanize(t, error.message)); return }
+    if (error) {
+      void noteIfImmutable(supabase, error.message, 'накладна: шапка')
+      setErr(humanize(t, error.message)); return
+    }
     setEditHeader(false)
     router.refresh()
   }
@@ -153,7 +163,10 @@ export function ReceiptDetail({
     const { error } = await supabase.from('stock_receipts')
       .update({ status: 'cancelled' }).eq('id', receipt.id)
     setBusy(null)
-    if (error) { setErr(humanize(t, error.message)); return }
+    if (error) {
+      void noteIfImmutable(supabase, error.message, 'накладна: скасування')
+      setErr(humanize(t, error.message)); return
+    }
     router.refresh()
   }
 

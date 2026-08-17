@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { currentMembership, can } from '@/lib/tenant'
+import { logForeignTenant } from '@/lib/security-log'
 import { mailTeamInvite } from '@/lib/email/templates'
 import { sendEmail } from '@/lib/notify/send'
 import { abs } from '@/lib/site'
@@ -98,12 +99,35 @@ export async function POST(req: Request) {
   }
 
   const m = await currentMembership()
+  const supabase = await createClient()
+
   if (!m || m.tenantId !== tenantId || !can(m, 'team.write')) {
+    // Заклад НАЗВАН ЯВНО — он приехал в теле запроса. Это ровно тот случай,
+    // который база поймать не может (0085, решение 4): чтение вернуло бы
+    // ноль строк, запись откатила бы транзакцию вместе с журналом. Здесь
+    // мы уже снаружи транзакции и знаем оба факта — какой заклад назвали
+    // и что членства в нём нет.
+    //
+    // Событие пишется ТОЛЬКО когда заклад чужой. «Свой заклад, но нет
+    // права team.write» — это обычный отказ по правам, а не обращение
+    // к чужому, и класть его сюда значит топить журнал своими же
+    // сотрудниками. Функция это и сама не примет.
+    //
+    // Второй страховкой стоит она же: `currentMembership()` отдаёт ПЕРВОЕ
+    // членство, и в день, когда появится переключатель заведений, «не
+    // совпало с первым» перестанет означать «чужое». Придумать событие,
+    // которого не было, всё равно не выйдет — `log_security_event` сверяет
+    // арендатора с `my_tenants()` и отклоняет свой (0085).
+    if (m && m.tenantId !== tenantId) {
+      await logForeignTenant(supabase, tenantId, {
+        what: 'запрошення в команду чужого закладу',
+        where: 'POST /api/team/invite',
+      })
+    }
     return NextResponse.json({ error: 'немає права' }, { status: 403 })
   }
 
   const to = email.trim()
-  const supabase = await createClient()
 
   // Читаем через RLS от имени вошедшего: политика invitations_read сама
   // отсечёт чужое заведение, второй проверки арендатора не нужно.

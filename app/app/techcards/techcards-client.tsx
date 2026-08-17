@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
+import { noteIfImmutable } from '@/lib/security-log'
 
 // Дата выпуска версии — «12 січ. 2024». Набор опций, а не своя `fmt`:
 // форматирует `t.date`, то есть локаль, а не экран.
@@ -195,7 +196,13 @@ export function TechCardsClient({
     setBusy(false)
     setDraft(null)
     // Текст отказа базы подставляется КАК ЕСТЬ — он её, а не наш.
-    if (offError) setErr(t('techcards.error.activeLeft', { error: offError.message }))
+    if (offError) {
+      // Сюда попадает и сторож утверждённой карты (0014). Он роняет
+      // транзакцию, поэтому событие пишется отсюда, уже снаружи неё
+      // (0085, решение 4), а не из самой базы.
+      void noteIfImmutable(supabase, offError.message, 'техкарта: зняття попередніх версій', tenantId)
+      setErr(t('techcards.error.activeLeft', { error: offError.message }))
+    }
     router.refresh()
   }
 

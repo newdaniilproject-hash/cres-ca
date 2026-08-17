@@ -5,10 +5,12 @@ import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
-  authErrorText, codeErrorText, humanAuthError, lockoutSeconds, lockoutText,
+  authErrorText, codeErrorText, humanAuthError, lockedText, lockoutSeconds, lockoutText,
 } from '@/lib/auth-errors'
 import { nextRoute } from '@/lib/where'
 import { useT } from '@/lib/i18n/client'
+import { guardSignIn } from '@/lib/ratelimit/guard'
+import { applySession, signInWithPassword } from '@/lib/sign-in'
 import { AuthShell } from '../auth-shell'
 import { GoogleButton } from '../google-button'
 import { CodeInput } from '@/app/m/code-input'
@@ -72,6 +74,9 @@ function LoginInner() {
   const [noAccount, setNoAccount] = useState(false)
   const [left, setLeft] = useState(0)
   const [lockWait, setLockWait] = useState('')
+  // Готовая фраза НАШЕГО замка (0085): «до 14:05 — після 10 невдалих спроб».
+  // Пустая строка означает, что сюда привёл предел Supabase, а не он.
+  const [lockNote, setLockNote] = useState('')
   // Куда уходим после успеха. Считается один раз — в момент, когда
   // сессия уже есть: до входа членства прочитать нечем.
   const [target, setTarget] = useState('/app')
@@ -107,6 +112,7 @@ function LoginInner() {
   function catchLockout(message: string, status?: number): boolean {
     const sec = lockoutSeconds(message, status)
     if (sec === null) return false
+    setLockNote('')
     setLockWait(lockoutText(t, sec))
     setStep('blocked')
     return true
@@ -117,6 +123,17 @@ function LoginInner() {
     setBusy(true); setError(''); setNoAccount(false)
 
     if (mode === 'code') {
+      // Ограничение частоты. Спрашиваем СВОЙ сервер до обращения в Supabase:
+      // отправка кода выполняется браузером напрямую, и ни Cloudflare,
+      // ни `proxy.ts` её не видят. Чего этот заслон не даёт — написано
+      // в `lib/ratelimit/guard.ts`, и повторять это здесь незачем.
+      //
+      // У входа ПАРОЛЕМ этого вызова больше нет: пароль уходит через
+      // `/api/auth/sign-in`, и счётчик тратит сам роут. Два вызова на одну
+      // попытку молча превратили бы предел 5 в предел 2.
+      const gate = await guardSignIn()
+      if (!gate.ok) { setBusy(false); setError(gate.message); return }
+
       // shouldCreateUser: false — вход не должен молча создавать акаунт.
       // Регистрация это отдельное обещание с отдельной формой.
       const { error } = await supabase.auth.signInWithOtp({
@@ -133,15 +150,37 @@ function LoginInner() {
       return
     }
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email: email.trim(), password,
-    })
-    setBusy(false)
-    if (error) {
-      if (catchLockout(error.message, error.status)) return
-      setError(humanAuthError(t, error.message))
+    // Вход паролем идёт ЧЕРЕЗ НАШ СЕРВЕР, а не напрямую в Supabase.
+    // Единственная причина — неудачную попытку надо увидеть и посчитать:
+    // база сама её не замечает (шапка миграции 0085). Разбор — в шапке
+    // `app/api/auth/sign-in/route.ts`.
+    const res = await signInWithPassword(email, password)
+    if (!res.ok) {
+      setBusy(false)
+
+      // Наш ограничитель частоты: текст уже человеческий и переведён.
+      if (res.kind === 'limited') { setError(res.message); return }
+
+      // Замок 0085: десятая неверная попытка. Показываем ВРЕМЯ СНЯТИЯ
+      // и число попыток — молчаливый отказ человек читает как поломку.
+      if (res.kind === 'locked') {
+        setLockNote(lockedText(t, res.lock))
+        setLockWait('')
+        setStep('blocked')
+        return
+      }
+
+      // Предел самого Supabase — другой экран с другим сроком.
+      if (catchLockout(res.message, res.status)) return
+      // Сюда же приходит «User is banned»: замок уже стоял до этой попытки,
+      // и `humanAuthError` отвечает на него отдельной строкой.
+      setError(humanAuthError(t, res.message))
       return
     }
+
+    const failed = await applySession(supabase, res.session)
+    setBusy(false)
+    if (failed) { setError(humanAuthError(t, failed)); return }
     await done()
   }
 
@@ -162,6 +201,10 @@ function LoginInner() {
   async function resend() {
     if (left > 0 || busy) return
     setBusy(true); setCodeError('')
+    // Повтор письма тратит ту же попытку входа: иначе предел обходится
+    // одной отправкой формы и дальше кнопкой «надіслати ще раз».
+    const gate = await guardSignIn()
+    if (!gate.ok) { setBusy(false); setCodeError(gate.message); return }
     const { error } = await supabase.auth.signInWithOtp({
       email: email.trim(), options: { shouldCreateUser: false },
     })
@@ -193,6 +236,7 @@ function LoginInner() {
       <AuthShell>
         <BlockedScreen
           waitText={lockWait}
+          note={lockNote || undefined}
           onReset={() => { window.location.href = '/forgot' }}
           onBack={() => { setStep('form'); setError(''); setPassword('') }}
         />

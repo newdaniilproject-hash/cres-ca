@@ -37,7 +37,7 @@ export default async function TeamPage() {
 
   const [{ data: members }, { data: invites }, { data: sessions },
          { data: templates }, { data: grants }, { data: caps }, { data: auth },
-         { data: audit }] =
+         { data: audit }, { data: security }] =
     await Promise.all([
       supabase.rpc('team_overview', { p_tenant_id: m.tenantId }),
       supabase.from('invitations')
@@ -67,6 +67,14 @@ export default async function TeamPage() {
       // «данные есть» не значит «работает»: неизменяемая запись о том,
       // кто кому что выдал, стоит ноль, пока её никто не видит.
       supabase.rpc('permission_audit_log', { p_tenant_id: m.tenantId, p_limit: 200 }),
+      // Журнал безопасности (0085). Тот же случай, что и с журналом прав:
+      // база пишет в него с 17.08.2026, а показать было негде. Читается
+      // ЗДЕСЬ, на сервере, по той же причине, что и остальное на этом
+      // экране: `security_log` — SECURITY DEFINER, она отдаёт почты, адреса
+      // и отпечатки устройств, и её результат не должен лежать в клиентском
+      // кэше дольше одного отрисовывания. Право — `team.read`, проверено
+      // и здесь (выше), и собственным WHERE самой функции.
+      supabase.rpc('security_log', { p_tenant_id: m.tenantId, p_limit: 200 }),
     ])
 
   return (
@@ -83,6 +91,7 @@ export default async function TeamPage() {
         grants={grants ?? []}
         caps={caps ?? []}
         audit={audit ?? []}
+        security={security ?? []}
       />
     </AppShell>
   )

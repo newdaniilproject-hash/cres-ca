@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
 import type { T } from '@/lib/i18n/translate'
+import { MEDIA_EXT_BY_MIME, MEDIA_MAX_BYTES } from '@/lib/upload/guard'
+import { verifyUploaded } from '@/lib/upload/client'
 
 export type CategoryRow = { id: string; name: string; kind: 'product' | 'service' }
 export type LocationRow = { id: string; name: string }
@@ -472,21 +474,40 @@ export function OfferingForm({
     const added: MediaRow[] = []
 
     for (const file of Array.from(files)) {
-      const ext = (file.name.split('.').pop() ?? '').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
+      // Бакет пропускает только картинки по mime. Некоторые камеры отдают
+      // файл с пустым type — тогда берём его из расширения, иначе загрузка
+      // упрётся в text/plain по умолчанию и будет отклонена.
+      //
+      // ⚠️ Это ДОГАДКА, а не проверка: расширение придумывает тот же, кто
+      // присылает файл. Настоящая проверка типа — по содержимому, на
+      // сервере, ниже по этой же функции.
+      const raw = (file.name.split('.').pop() ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
+      const mime = file.type
+        || (raw === 'png' ? 'image/png' : raw === 'webp' ? 'image/webp'
+          : raw === 'avif' ? 'image/avif' : raw === 'gif' ? 'image/gif' : 'image/jpeg')
+
+      // Размер и формат отсекаются здесь только ради текста: лимит бакета
+      // (0019) всё равно сработает на приёме, но отдаст «The object exceeded
+      // the maximum allowed size» посреди загрузки десяти фото.
+      if (!(mime in MEDIA_EXT_BY_MIME)) { setMediaErr(t('upload.reject.mime')); break }
+      if (file.size > MEDIA_MAX_BYTES) { setMediaErr(t('upload.reject.size')); break }
+
+      const ext = MEDIA_EXT_BY_MIME[mime]
       const name = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}.${ext}`
       // Первый сегмент пути — tenant_id: политика хранилища разбирает
       // владельца именно из него, другой путь она отвергнет.
       const path = `${tenantId}/offerings/${offeringId}/${name}`
-      // Бакет пропускает только картинки по mime. Некоторые камеры отдают
-      // файл с пустым type — тогда берём его из расширения, иначе загрузка
-      // упрётся в text/plain по умолчанию и будет отклонена.
-      const mime = file.type
-        || (ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp'
-          : ext === 'avif' ? 'image/avif' : ext === 'gif' ? 'image/gif' : 'image/jpeg')
 
       const up = await supabase.storage.from('media')
         .upload(path, file, { contentType: mime, upsert: false })
       if (up.error) { setMediaErr(up.error.message); break }
+
+      // Проверка на сервере, до строки в базе: роут читает первые байты
+      // уже сохранённого файла и сверяет их с объявленным типом. HEIC
+      // с именем `.jpg` и HTML под видом картинки отсюда не проходят,
+      // а сам файл роут удаляет. Разбор — app/api/uploads/verify.
+      const rejected = await verifyUploaded('media', path)
+      if (rejected) { setMediaErr(t(`upload.reject.${rejected}`)); break }
 
       const { data, error } = await supabase.from('offering_media').insert({
         tenant_id: tenantId, offering_id: offeringId, path, position,

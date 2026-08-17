@@ -11,6 +11,7 @@ import { AppScreen, Field, keepVisible } from '../ui'
 import { MailIcon, PasswordStrength, mmss } from '@/components/auth-ui'
 import { OAuthButtons } from '../oauth'
 import { useT } from '@/lib/i18n/client'
+import { guardSignUp } from '@/lib/ratelimit/guard'
 
 // Шесть цифр — как в вебе и в макетах владельца (было восемь).
 const CODE_LENGTH = 6
@@ -144,6 +145,11 @@ export function MobileRegisterForm() {
     e.preventDefault()
     if (!ready || !birth) return
     setBusy(true); setError(''); setTaken(false)
+
+    // 3 регистрации за час с адреса. Считается только создание акаунта:
+    // почему повтор письма счётчик не тратит — в `app/(auth)/register/page.tsx`.
+    const gate = await guardSignUp()
+    if (!gate.ok) { setBusy(false); setError(gate.message); return }
 
     const { data, error } = await supabase.auth.signUp({
       email: email.trim(),

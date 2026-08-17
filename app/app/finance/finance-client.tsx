@@ -5,6 +5,7 @@ import { useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
+import { noteIfImmutable } from '@/lib/security-log'
 import type { T } from '@/lib/i18n/translate'
 
 export type FinanceKind = 'income' | 'expense'
@@ -140,7 +141,14 @@ export function FinanceClient({
       .update({ note: editNote.trim() || null, category_id: editCategory || null })
       .eq('id', id)
     setBusy(null)
-    if (updateError) { setErr(updateError.message); return }
+    if (updateError) {
+      // Сторож финансовой записи (0007) роняет транзакцию: сумму, вид
+      // и принадлежность править нельзя, только заметку и категорию.
+      // Изнутри упавшей транзакции событие не записать — оно откатится
+      // вместе с ней, поэтому пишем отсюда (0085, решение 4).
+      void noteIfImmutable(supabase, updateError.message, 'фінансовий запис', tenantId)
+      setErr(updateError.message); return
+    }
     setEditing(null)
     router.refresh()
   }

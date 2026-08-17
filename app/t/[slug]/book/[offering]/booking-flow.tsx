@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
+import { guardOrder } from '@/lib/ratelimit/guard'
 
 // Язык здесь тот же, что у остальной витрины, и приходит тем же путём:
 // публичные страницы не обёрнуты `LangProvider`, поэтому `useT()` отдаёт
@@ -71,6 +72,20 @@ export function BookingFlow({
     e.preventDefault()
     if (!variant || !slot) return
     setState('sending')
+
+    // Ограничение частоты: 10 записей за час с адреса.
+    //
+    // Спрашиваем свой сервер до `create_booking`, потому что сам вызов
+    // уходит из браузера прямо в Supabase и мимо нас не проходит.
+    //
+    // ⚠️ Это ограничение НАШЕЙ ФОРМЫ. Тот, кто позовёт `create_booking`
+    // напрямую, сюда не заглянет — а запись он создаст настоящую, потому
+    // что функция открыта анониму (правило 7). Единственное место, где
+    // предел на запись выполняется всегда, — внутри самой `create_booking`;
+    // это миграция, и её пишет агент, отвечающий за SQL (см. отчёт по шагу 6).
+    const gate = await guardOrder()
+    if (!gate.ok) { setState('error'); setError(gate.message); return }
+
     const { data, error } = await supabase.rpc('create_booking', {
       p_tenant_id: tenantId,
       p_variant_id: variant.id,

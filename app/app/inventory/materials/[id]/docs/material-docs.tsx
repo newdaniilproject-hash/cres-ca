@@ -5,9 +5,9 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Sheet } from '@/components/sheet'
 import { useToast } from '@/components/toast'
-import {
-  DOC_EXT_BY_MIME, DOC_KINDS, DOC_MAX_BYTES, fmtSize, type DocKind,
-} from '@/lib/documents'
+import { DOC_KINDS, fmtSize, type DocKind } from '@/lib/documents'
+import { DOC_EXT_BY_MIME, DOC_MAX_BYTES } from '@/lib/upload/guard'
+import { verifyUploaded } from '@/lib/upload/client'
 import { useT } from '@/lib/i18n/client'
 import type { T } from '@/lib/i18n/translate'
 
@@ -108,6 +108,16 @@ export function MaterialDocs({
     if (uploadError) {
       setBusy(null)
       toast.error(t('inventory.docs.error.upload'), uploadError.message)
+      return
+    }
+
+    // Проверка на сервере, и она ЗДЕСЬ, до строки в реестре: см.
+    // app/api/uploads/verify. Форма проверила слово браузера, роут —
+    // сами байты уже сохранённого файла.
+    const rejected = await verifyUploaded('documents', path)
+    if (rejected) {
+      setBusy(null)
+      toast.error(t('inventory.docs.error.upload'), t(`upload.reject.${rejected}`))
       return
     }
 

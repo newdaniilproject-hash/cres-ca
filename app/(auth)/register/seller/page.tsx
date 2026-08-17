@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { Suspense, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { guardSignUp } from '@/lib/ratelimit/guard'
 import { AuthShell } from '../../auth-shell'
 import { GoogleButton } from '../../google-button'
 import { useT } from '@/lib/i18n/client'
@@ -54,6 +55,11 @@ function SellerRegisterInner() {
   async function submitAccount(e: React.FormEvent) {
     e.preventDefault()
     setState('busy'); setError('')
+    // Тот же предел регистрации, что и на `/register`: это вторая форма
+    // ОДНОГО действия, и считать их по разным счётчикам значило бы отдать
+    // шесть регистраций в час вместо трёх.
+    const gate = await guardSignUp()
+    if (!gate.ok) { setState('error'); setError(gate.message); return }
     const { data, error } = await supabase.auth.signUp({ email, password })
     if (error) { setState('error'); setError(error.message); return }
     if (!data.session) {

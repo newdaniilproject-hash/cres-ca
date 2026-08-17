@@ -3,9 +3,24 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { render } from '@/lib/notify/render'
 import { queueEmailHtml } from '@/lib/email/queue'
 import { sendEmail, sendPush, sendViber, sendSms } from '@/lib/notify/send'
+import { cronDenial } from '../guard'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
+// `node:crypto` в проверке источника (сравнение секрета за постоянное
+// время) на edge-рантайме отсутствует — рантайм назван явно, как в
+// app/api/team/invite/route.ts.
+export const runtime = 'nodejs'
+
+/**
+ * Один ответ на любой отказ: наружу не уходит даже намёк, что именно
+ * не сошлось. Функция, а не константа — тело ответа читается один раз,
+ * и общий объект отдал бы пустоту со второго запроса.
+ */
+const denied = () => NextResponse.json(
+  { error: 'unauthorized' },
+  { status: 401, headers: { 'cache-control': 'no-store' } },
+)
 
 // Обработчик очереди уведомлений (0011_notifications.sql). Триггеры базы
 // только СТАВЯТ в очередь — отправляет наружу этот роут, сервисным ключом,
@@ -13,10 +28,12 @@ export const maxDuration = 60
 // pg_cron бьёт сюда раз в 5 минут через pg_net, в обход суточного лимита
 // крона на бесплатном тарифе Vercel).
 export async function GET(req: Request) {
-  const secret = process.env.CRON_SECRET
-  const auth = req.headers.get('authorization')
-  if (!secret || auth !== `Bearer ${secret}`) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+  // Секрет плюс проверка источника — разбор в ../guard.ts.
+  const denial = cronDenial(req)
+  if (denial) {
+    // В журнал Vercel, а не в ответ: журнал видит владелец, ответ — все.
+    console.warn(`[cron/notifications] відмова: ${denial}`)
+    return denied()
   }
 
   const supabase = createServiceClient()
@@ -93,5 +110,10 @@ export async function GET(req: Request) {
     }
   }
 
-  return NextResponse.json({ processed: (batch ?? []).length, sent, failed })
+  // Ответ служебный: перед сайтом стоит Cloudflare, и закешированный
+  // «processed: 0» означал бы очередь, которая тихо перестала разбираться.
+  return NextResponse.json(
+    { processed: (batch ?? []).length, sent, failed },
+    { headers: { 'cache-control': 'no-store' } },
+  )
 }
