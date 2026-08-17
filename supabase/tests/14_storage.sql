@@ -199,3 +199,75 @@ set role authenticated;
 select count(*) as документів_чужаку_ожид_0 from storage.objects
  where bucket_id = 'documents';
 reset role;
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- 0088: что бакеты вообще принимают
+-- ─────────────────────────────────────────────────────────────────────────
+--
+-- `allowed_mime_types` — единственное, что отделяет публичный CDN проекта
+-- от чужого скрипта на его домене. Проверяется СПИСКОМ ЦЕЛИКОМ, а не
+-- «нет ли svg»: список, сверяемый по одному значению, тихо расползается
+-- при следующей правке, и появление там `text/html` никто не заметит.
+-- Эталон — `MEDIA_EXT_BY_MIME` и `DOC_EXT_BY_MIME` из `lib/upload/guard.ts`,
+-- то есть ровно то, что грузят экраны.
+
+\echo '--- 0088: media не принимает svg и вообще ничего исполняемого'
+do $$
+declare v_types text[]; v_bad text;
+begin
+  select allowed_mime_types into v_types from storage.buckets where id = 'media';
+
+  if 'image/svg+xml' = any(v_types) then
+    raise exception 'ПРОВАЛ: svg повернувся у публічний бакет media — це збережена XSS на домені сховища';
+  end if;
+
+  select string_agg(t, ', ') into v_bad from (
+    select unnest(v_types) as t
+    except select unnest(array['image/jpeg','image/png','image/webp','image/avif','image/gif'])) q;
+  if v_bad is not null then
+    raise exception 'ПРОВАЛ: media приймає зайве — %. Жоден екран цього не вантажить', v_bad;
+  end if;
+
+  select string_agg(t, ', ') into v_bad from (
+    select unnest(array['image/jpeg','image/png','image/webp','image/avif','image/gif']) as t
+    except select unnest(v_types)) q;
+  if v_bad is not null then
+    raise exception 'ПРОВАЛ: media перестав приймати те, що вантажить форма фото — %', v_bad;
+  end if;
+
+  raise notice 'ok — media приймає рівно пʼять растрових типів';
+end $$;
+
+\echo '--- 0088: documents принимает ровно то, что грузят оба экрана документов'
+do $$
+declare v_types text[]; v_bad text;
+  v_ok text[] := array['application/pdf','image/jpeg','image/png','image/webp',
+                       'application/msword',
+                       'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+begin
+  select allowed_mime_types into v_types from storage.buckets where id = 'documents';
+
+  if 'image/svg+xml' = any(v_types) or 'text/html' = any(v_types) then
+    raise exception 'ПРОВАЛ: у documents зʼявився тип зі скриптами';
+  end if;
+
+  select string_agg(t, ', ') into v_bad from (
+    select unnest(v_types) as t except select unnest(v_ok)) q;
+  if v_bad is not null then
+    raise exception 'ПРОВАЛ: documents приймає зайве — %', v_bad;
+  end if;
+
+  select string_agg(t, ', ') into v_bad from (
+    select unnest(v_ok) as t except select unnest(v_types)) q;
+  if v_bad is not null then
+    raise exception 'ПРОВАЛ: documents перестав приймати потрібне — %', v_bad;
+  end if;
+
+  raise notice 'ok — documents приймає рівно шість типів, жодного зі скриптами';
+end $$;
+
+\echo '--- 0088: media лишился svg, но остался публичным и с тем же лимитом'
+-- Сужение типов не должно было побочно поменять ни публичность, ни размер:
+-- первое сломало бы раздачу фото каталога, второе — загрузку крупных фото.
+select id as бакет, public as публічний, file_size_limit as ліміт
+  from storage.buckets order by id;

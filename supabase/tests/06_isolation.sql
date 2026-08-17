@@ -152,6 +152,12 @@ begin
                                            indicator_ok, performed_by)
        values (t,'ІЗО автоклав',180,60,true, u);
   insert into public.tech_cards (tenant_id, title, approved_by) values (t,'ІЗО техкарта', u);
+  -- 0085. Журнал безопасности тоже с tenant_id, значит попадает в перебор
+  -- ниже. Строку заводим прямой вставкой: писать в него разрешено только
+  -- definer-функциям, а предмет проверки здесь — изоляция, а не то, кто
+  -- вправе писать (это проверяет 22_security_perimeter.sql).
+  insert into public.security_events (kind, tenant_id, actor_id, actor_email)
+       values ('tenant.foreign_access', t, u, 'iso-'||s||'@test');
   -- audit_log наполняется сам, триггерами audit_row поверх вставок выше.
 end $$;
 

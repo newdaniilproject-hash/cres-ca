@@ -24,9 +24,16 @@ alter default privileges in schema public grant all on sequences to anon, authen
 alter default privileges in schema public grant all on functions to anon, authenticated;
 
 create schema if not exists auth;
+-- `banned_until` — не украшение стенда. Это то самое поле, которым GoTrue
+-- запирает вход (им же пользуется админский API через `ban_duration`),
+-- и в него пишет `record_failed_login()` из 0085. Без колонки миграция
+-- на стенде не применилась бы, а блокировка после перебора пароля
+-- осталась бы непроверенной — то есть ровно тем «зелёным на сломанном
+-- запрете», ради которого весь этот прогон и написан.
 create table auth.users (
   id uuid primary key default gen_random_uuid(),
   email text,
+  banned_until timestamptz,
   raw_user_meta_data jsonb default '{}'::jsonb
 );
 create or replace function auth.uid() returns uuid language sql stable as $$
