@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { abs } from '@/lib/site'
 import { useT } from '@/lib/i18n/client'
 import type { T } from '@/lib/i18n/translate'
+import { SecurityLog, type SecurityEvent } from './security-log'
 
 // ── Что здесь и почему именно так ─────────────────────────────────────────
 //
@@ -200,6 +201,7 @@ export function TeamClient(props: {
   grants: { role: string; permission: string }[]
   caps: { role: string; cap_pct: number }[]
   audit: Audit[]
+  security: SecurityEvent[]
 }) {
   const t = useT()
   const supabase = useMemo(() => createClient(), [])
@@ -1308,6 +1310,15 @@ export function TeamClient(props: {
       )}
 
       {/* ── Все сеансы ──────────────────────────────────────────────── */}
+      {/* ⚠️ Заголовок раздела называется «Сеанси» ДОСЛОВНО, и это не
+          стилистика. Шаблон письма о входе с нового устройства (0085,
+          `notification_templates`, событие `security.new_device`) говорит
+          человеку: «відкрийте Команда → Сеанси і завершіть сеанс». Путь
+          из письма обязан существовать и называться так же — иначе письмо
+          отправляет туда, чего нет, и читается как обман. Раздел назывался
+          «Активні сеанси», и это расхождение закрыто здесь, а не в базе:
+          шаблон лежит в `notification_templates`, где его вправе
+          переопределить арендатор, а заголовок экрана — наш. */}
       <section className="card rise-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="t-lg">{t('team.sessions.title')}</h2>
@@ -1391,6 +1402,14 @@ export function TeamClient(props: {
           </div>
         ))}
       </section>
+
+      {/* ── Журнал безопасности ─────────────────────────────────────── */}
+      {/* Рядом с журналом доступов и сразу после него: оба отвечают на
+          вопрос «что тут происходило», только один про действия своих,
+          а другой про попытки — в том числе чужие. Своим файлом, потому
+          что это отдельный механизм со своей функцией чтения (0085),
+          а не ещё одна секция этого экрана. */}
+      <SecurityLog events={props.security} />
     </div>
   )
 }
