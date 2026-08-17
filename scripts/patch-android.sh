@@ -175,7 +175,11 @@ public class MainActivity extends BridgeActivity {
               if (url != null && !url.isEmpty()) {
                 runOnUiThread(new Runnable() {
                   @Override public void run() {
-                    try { getBridge().getWebView().loadUrl("https://cres-ca.com" + url); } catch (Throwable ignored) {}
+                    // Хост www, а НЕ апекс. Апекс отдаёт 308 на www, и веб-вью
+                    // получает кросс-хостовый редирект — ровно то, на чём легли
+                    // все сборки 05.08.2026 (причина названа в capacitor.config.ts).
+                    // Здесь это было единственное место обёртки, смотревшее на апекс.
+                    try { getBridge().getWebView().loadUrl("https://www.cres-ca.com" + url); } catch (Throwable ignored) {}
                   }
                 });
               }
