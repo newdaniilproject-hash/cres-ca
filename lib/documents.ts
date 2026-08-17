@@ -50,3 +50,57 @@ export function fmtSize(t: T, bytes: number | null | undefined): string {
   // в английском это точка, и ручная замена сделала бы «1,2 MB».
   return t('common.size.mb', { n: t.number(bytes / 1024 / 1024, { maximumFractionDigits: 1 }) })
 }
+
+// ── Ссылка на приватный документ ───────────────────────────────────────────
+//
+// Бакет `documents` приватный: публичной ссылки у файла нет в принципе.
+// Пять минут — столько живёт доступ, дальше ссылка мертва, даже если её
+// переслали. Сертификаты и заключения СЭС наружу не отдаются.
+//
+// ⚠️ ПУТЬ БЕРЁТСЯ ИЗ `document_access` (0090), А НЕ ИЗ СТРОКИ РЕЕСТРА,
+// и это не перестраховка. Скачивание документа — одно из четырёх действий,
+// которые обязаны попадать в журнал доступа: инспектор, прокуратура и сам
+// клиент спрашивают «кто выносил MSDS», и ответить на это можно только
+// записью. Функция и проверяет право `compliance.read`, и пишет строку,
+// и отдаёт путь — одним вызовом, в одной транзакции. Подписать ссылку
+// по `doc.path` из уже загруженного списка технически можно, и ровно
+// поэтому этот путь закрыт здесь, в общем месте: два экрана показывают
+// документы (реестр и карточка засоба), и вторая копия кода неизбежно
+// отстала бы. Правило проекта: «добавление поля требует правки одного
+// файла» — здесь оно про журнал.
+//
+// Отказ функции — это отказ доступа, а не сбой подписи: `compliance.read`
+// проверяет она, а не хранилище. Поэтому текст ошибки возвращается
+// вызывающему как есть и показывается человеку.
+
+/** Минимум, который нужен от строки реестра. Полный тип живёт на экранах. */
+type DocRef = { id: string }
+
+export async function documentSignedUrl(
+  supabase: {
+    rpc: (fn: string, args: Record<string, unknown>) =>
+      PromiseLike<{ data: unknown; error: { message: string } | null }>
+    storage: {
+      from: (bucket: string) => {
+        createSignedUrl: (path: string, expiresIn: number, opts?: { download: string }) =>
+          PromiseLike<{ data: { signedUrl: string } | null; error: { message: string } | null }>
+      }
+    }
+  },
+  tenantId: string,
+  doc: DocRef,
+  filename?: string,
+): Promise<{ url: string | null; error: string | null }> {
+  const { data: path, error: accessError } = await supabase.rpc('document_access', {
+    p_tenant_id: tenantId, p_document_id: doc.id,
+  })
+  if (accessError) return { url: null, error: accessError.message }
+  if (typeof path !== 'string' || path === '') {
+    return { url: null, error: 'document_access: порожній шлях' }
+  }
+
+  const { data, error } = await supabase.storage.from('documents')
+    .createSignedUrl(path, 300, filename ? { download: filename } : undefined)
+  if (error) return { url: null, error: error.message }
+  return { url: data?.signedUrl ?? null, error: null }
+}

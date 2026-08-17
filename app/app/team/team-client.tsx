@@ -7,6 +7,7 @@ import { abs } from '@/lib/site'
 import { useT } from '@/lib/i18n/client'
 import type { T } from '@/lib/i18n/translate'
 import { SecurityLog, type SecurityEvent } from './security-log'
+import { DataAccessLog, type DataAccessRow } from './data-access-log'
 
 // ── Что здесь и почему именно так ─────────────────────────────────────────
 //
@@ -202,6 +203,7 @@ export function TeamClient(props: {
   caps: { role: string; cap_pct: number }[]
   audit: Audit[]
   security: SecurityEvent[]
+  access: DataAccessRow[]
 }) {
   const t = useT()
   const supabase = useMemo(() => createClient(), [])
@@ -1410,6 +1412,14 @@ export function TeamClient(props: {
           что это отдельный механизм со своей функцией чтения (0085),
           а не ещё одна секция этого экрана. */}
       <SecurityLog events={props.security} />
+
+      {/* ── Журнал доступа к данным ─────────────────────────────────── */}
+      {/* Третий журнал и третий вопрос. Первые два отвечают «кто кому что
+          выдал» и «кто ломился». Этот — «кто СМОТРЕЛ»: открытая карточка
+          и выгруженный список не меняют ни строки и потому не попадают
+          ни в один журнал изменений. Без него на вопрос «откуда у
+          конкурента телефоны моих клиентов» ответить нечем. */}
+      <DataAccessLog rows={props.access} />
     </div>
   )
 }

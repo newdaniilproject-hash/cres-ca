@@ -37,7 +37,7 @@ export default async function TeamPage() {
 
   const [{ data: members }, { data: invites }, { data: sessions },
          { data: templates }, { data: grants }, { data: caps }, { data: auth },
-         { data: audit }, { data: security }] =
+         { data: audit }, { data: security }, { data: access }] =
     await Promise.all([
       supabase.rpc('team_overview', { p_tenant_id: m.tenantId }),
       supabase.from('invitations')
@@ -75,6 +75,16 @@ export default async function TeamPage() {
       // кэше дольше одного отрисовывания. Право — `team.read`, проверено
       // и здесь (выше), и собственным WHERE самой функции.
       supabase.rpc('security_log', { p_tenant_id: m.tenantId, p_limit: 200 }),
+      // Журнал доступа к данным (0090). Третий журнал этого экрана: кто
+      // открывал карточки, выгружал списки и скачивал документы. Читается
+      // ПРЕДСТАВЛЕНИЕ, а не функция, и фильтр по арендатору здесь — не
+      // защита, а сужение: представление и без него отдаёт владельцу
+      // только свои заклады, а сотруднику только его собственные строки.
+      supabase.from('data_access_log')
+        .select('id, at, actor_id, actor_email, action, entity, entity_id, label')
+        .eq('tenant_id', m.tenantId)
+        .order('at', { ascending: false })
+        .limit(200),
     ])
 
   return (
@@ -92,6 +102,7 @@ export default async function TeamPage() {
         caps={caps ?? []}
         audit={audit ?? []}
         security={security ?? []}
+        access={access ?? []}
       />
     </AppShell>
   )

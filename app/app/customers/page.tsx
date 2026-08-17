@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { currentMembership, can, hasModule } from '@/lib/tenant'
 import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
+import { CustomersClient } from './customers-client'
 import { getT } from '@/lib/i18n/server'
 
 export const dynamic = 'force-dynamic'
@@ -22,9 +23,21 @@ export default async function CustomersPage() {
 
   const t = await getT()
   const supabase = await createClient()
+
+  // ⚠️ КОЛОНКИ `phone` И `email` ЗДЕСЬ НЕ ЗАПРАШИВАЮТСЯ, И ЭТО РЕШЕНИЕ,
+  // А НЕ ЭКОНОМИЯ. Контакт клиента отдаёт `customer_card` (0090): она
+  // проверяет право `customers.contacts`, маскирует телефон и почту тому,
+  // у кого его нет, и пишет строку в журнал доступа. Список, который
+  // показывает контакты сам, обходит всё три вещи разом — и именно так
+  // «кто выгрузил базу» перестаёт иметь ответ.
+  //
+  // Что этим НЕ закрыто: политика чтения самой таблицы висит на
+  // `customers.read`, значит те же колонки достаются прямым запросом
+  // к PostgREST мимо этого экрана. Разбор и починка — notes/pii-leaks.md,
+  // пункт 1; она меняет права на таблицу, то есть соседний модуль.
   const [{ data: customers }, { data: reminders }] = await Promise.all([
     supabase.from('customers')
-      .select('id, name, phone, orders_count, total_spent, last_order_at, tags')
+      .select('id, name, orders_count, total_spent, last_order_at, tags')
       .eq('tenant_id', m.tenantId)
       .order('last_order_at', { ascending: false, nullsFirst: false })
       .limit(100),
@@ -52,31 +65,7 @@ export default async function CustomersPage() {
         </section>
       )}
 
-      <section className="card rise-1 !p-0">
-        {(customers ?? []).length === 0 ? (
-          <div className="empty">{t('customers.empty')}</div>
-        ) : (customers ?? []).map((c) => (
-          <div key={c.id} className="row px-5">
-            <div className="min-w-0">
-              <p className="t-md truncate">{c.name}</p>
-              <p className="tabular t-xs mt-0.5 prose-muted">
-                {c.phone ?? t('customers.noPhone')}
-                {c.last_order_at
-                  ? ` · ${t('customers.lastVisit', { date: t.date(c.last_order_at) })}` : ''}
-              </p>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              {/* Символ валюты ставит Intl (`t.money`), а не подстановка «₴». */}
-              {Number(c.total_spent) > 0 && (
-                <span className="badge tabular">{t.money(Number(c.total_spent))}</span>
-              )}
-              <span className="badge-accent tabular">
-                {t('customers.ordersCount', { n: Number(c.orders_count) })}
-              </span>
-            </div>
-          </div>
-        ))}
-      </section>
+      <CustomersClient tenantId={m.tenantId} customers={customers ?? []} />
 
       <p className="field-hint rise-2 mt-4">{t('customers.hint')}</p>
     </AppShell>

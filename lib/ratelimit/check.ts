@@ -1,6 +1,7 @@
 import { client, type HeaderBag } from './address'
 import { LIMITS, scopesFor, type Scope } from './rules'
 import { hit } from './store'
+import { maskIp } from '@/lib/redact'
 
 // Сама проверка. Два входа: по пути запроса (для `proxy.ts`) и по названному
 // смыслу (для серверных действий из `guard.ts`).
@@ -88,9 +89,14 @@ function note(denial: Denial, key: string, via: string): void {
   noted.set(denial.scope, now)
   // Журнал — для того, кто чинит, а не для посетителя: он по-русски,
   // как и остальные служебные записи проекта.
+  // Адрес — персональные данные, а журнал хостинга живёт вне нашего
+  // контроля и без срока хранения (правило приёмки 14). Обрезанного
+  // адреса хватает, чтобы отличить перебор из одной сети от разрозненных
+  // попыток, и не хватает, чтобы указать на человека. Полный адрес
+  // остаётся там, где он и есть событие, — в `security_events` (0085).
   console.warn(
     `[ratelimit] отказ: ${denial.scope}, ещё ${denial.retryAfter} с,`
-    + ` адрес ${key} (${via})`,
+    + ` адрес ${maskIp(key) ?? '—'} (${via})`,
   )
 }
 

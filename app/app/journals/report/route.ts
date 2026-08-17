@@ -81,6 +81,29 @@ export async function GET(request: Request) {
 
   const supabase = await createClient()
 
+  // Отчёт для проверки — четвёртое действие журнала доступа (0090).
+  // Это самая полная выгрузка в продукте: реестр косметики, партии,
+  // ёмкости со сроками, санитарные журналы и техкарты одним документом,
+  // — и до этой строки она уходила, не оставляя следа.
+  //
+  // Записывается ЗДЕСЬ, а не в `compliance_report()`: несмотря на имя,
+  // этот документ собирает роут, читая компланс-представления, а функция
+  // 0041 им не вызывается вовсе. Свою запись она делает сама (0098) —
+  // на случай, когда её позовут откуда-то ещё.
+  //
+  // Отказ записи НЕ отменяет отчёт: `log_data_access` роняет вызов, если
+  // человек не член заведения, а сюда он уже прошёл две проверки выше.
+  // Печать документа, сорванная из-за журнала, — это отчёт, который
+  // проверяющему не показали, и цена такой ошибки выше пропущенной строки.
+  const { error: logError } = await supabase.rpc('log_data_access', {
+    p_tenant: m.tenantId,
+    p_action: 'reported',
+    p_entity: 'compliance_report',
+    p_entity_id: null,
+    p_label: `звіт за ${days} дн.`,
+  })
+  if (logError) console.error('journals/report: журнал доступу', logError.message)
+
   const [
     shop, materials, batches, containers, solutions, cleaning, cycles, cards,
     actors, stock, suppliers,

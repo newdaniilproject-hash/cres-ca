@@ -185,6 +185,40 @@ begin
   raise notice 'ok — журнал доступу і гранти платформи лише читаються';
 end $$;
 
+\echo '--- 0099: контакты клиента не читаются прямым запросом к таблице'
+-- Дыра, ради которой написана 0099: маскировка в customer_card обходилась
+-- одним GET /rest/v1/customers?select=phone. Проверяется ПРАВО, а не попытка:
+-- под ролью postgres в стенде запрос прошёл бы в любом случае.
+do $$
+declare v_bad text;
+begin
+  select string_agg(g.grantee || ':' || g.column_name, ', ')
+    into v_bad
+    from information_schema.column_privileges g
+   where g.table_schema = 'public' and g.table_name = 'customers'
+     and g.column_name in ('phone','email')
+     and g.grantee in ('anon','authenticated','PUBLIC')
+     and g.privilege_type = 'SELECT';
+  if v_bad is not null then
+    raise exception 'ПРОВАЛ: контакти клієнта читаються напряму — %', v_bad;
+  end if;
+  raise notice 'ok — контакти клієнта віддають лише customer_card і customers_export';
+end $$;
+
+do $$
+declare v_n integer;
+begin
+  select count(*) into v_n
+    from information_schema.column_privileges g
+   where g.table_schema = 'public' and g.table_name = 'customers'
+     and g.column_name = 'name' and g.grantee = 'authenticated'
+     and g.privilege_type = 'SELECT';
+  if v_n <> 1 then
+    raise exception 'ПРОВАЛ: разом з контактами закрито і ім''я — список клієнтів перестав працювати';
+  end if;
+  raise notice 'ok — решта колонок відкрита, список клієнтів працює';
+end $$;
+
 -- ── 0093: сотрудник платформы без гранта не видит ничего ───────────────────
 
 \echo '--- 0093: признак is_staff сам по себе не открывает чужие данные'
