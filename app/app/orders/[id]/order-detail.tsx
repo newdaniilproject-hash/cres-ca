@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { ORDER_STATUSES, orderBadge, orderLabel } from '../orders-client'
 import { useT } from '@/lib/i18n/client'
 import type { T } from '@/lib/i18n/translate'
+import { dbErrorText } from '@/lib/errors/db'
 
 export type OrderItem = {
   id: string; title: string; variant: string; price: number; qty: number
@@ -94,7 +95,7 @@ export function OrderDetail({
       p_note: note.trim() || null,
     })
     setBusy(null)
-    if (error) { setErr(error.message); return }
+    if (error) { setErr(dbErrorText(t, error)); return }
     setNote(''); router.refresh()
   }
 

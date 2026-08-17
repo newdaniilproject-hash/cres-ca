@@ -9,6 +9,7 @@ import { noteIfImmutable } from '@/lib/security-log'
 import type { T } from '@/lib/i18n/translate'
 import type { RefItem } from '../../material-form'
 import { receiptBadge, receiptStatusLabel } from '../receipts-client'
+import { dbErrorText } from '@/lib/errors/db'
 
 export type ReceiptCard = {
   id: string
@@ -53,7 +54,9 @@ function humanize(t: T, message: string): string {
   if (message.includes('позиция не найдена')) {
     return t('inventory.error.itemMissing')
   }
-  return message
+  // Незнакомое базе-специфичное сюда не доходит: общий разбор
+  // (`lib/errors/db.ts`) не отдаёт человеку сырой текст Postgres.
+  return dbErrorText(t, { message })
 }
 
 export function ReceiptDetail({

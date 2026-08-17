@@ -8,6 +8,7 @@ import { useT } from '@/lib/i18n/client'
 import type { T } from '@/lib/i18n/translate'
 import { SecurityLog, type SecurityEvent } from './security-log'
 import { DataAccessLog, type DataAccessRow } from './data-access-log'
+import { maskText } from '@/lib/redact'
 
 // ── Что здесь и почему именно так ─────────────────────────────────────────
 //
@@ -189,7 +190,10 @@ function teamErrorText(t: T, raw: string): string {
   // для человека и объясняют, что делать. Переписывать их здесь значит
   // разойтись с ними при первой же правке миграции. В словарь они по той же
   // причине не едут: источник правды о причине отказа — миграция.
-  if (/[а-яіїєґ]/i.test(raw)) return raw
+  // Показываем, но ОБЕЗЛИЧИВАЕМ: в подстановку `%` нашего же
+  // `raise exception` могло уехать значение поля — телефон участника
+  // или почта. Та же причина, что у общего разбора в lib/errors/db.ts.
+  if (/[а-яіїєґ]/i.test(raw)) return maskText(raw) ?? raw
 
   return t('team.error.generic')
 }

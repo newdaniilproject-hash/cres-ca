@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Sheet } from '@/components/sheet'
 import { useT } from '@/lib/i18n/client'
+import { dbErrorText } from '@/lib/errors/db'
 
 export type StaffRow = {
   id: string
@@ -54,7 +55,7 @@ export function StaffList({
       .insert({ tenant_id: tenantId, name: name.trim(), title: title.trim() || null })
       .select('id').single()
     setBusy(false)
-    if (error) { setErr(error.message); return }
+    if (error) { setErr(dbErrorText(t, error)); return }
     setAdd(false); setName(''); setTitle('')
     // Сразу в карточку: без расписания мастер всё равно невидим для
     // записи, и следующий шаг здесь ровно один.

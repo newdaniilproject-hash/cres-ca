@@ -13,6 +13,7 @@ import {
   DOC_MAX_BYTES as MAX_BYTES,
 } from '@/lib/upload/guard'
 import { verifyUploaded } from '@/lib/upload/client'
+import { dbErrorText } from '@/lib/errors/db'
 
 export type { DocKind }
 
@@ -101,7 +102,7 @@ export function DocumentsClient({
     setBusy('upload'); setErr('')
     const { error: uploadError } = await supabase.storage
       .from('documents').upload(path, file, { contentType: file.type })
-    if (uploadError) { setBusy(null); setErr(uploadError.message); return }
+    if (uploadError) { setBusy(null); setErr(dbErrorText(t, uploadError)); return }
 
     // Проверка на сервере, и она ЗДЕСЬ, до строки в реестре. Всё, что
     // выше, — слово браузера: и `file.type`, и `file.size` приходят
@@ -124,7 +125,7 @@ export function DocumentsClient({
       // Файл без учётной записи невидим и неудаляем через интерфейс —
       // убираем сразу, чтобы не копить мусор в приватном бакете.
       await supabase.storage.from('documents').remove([path])
-      setBusy(null); setErr(error.message); return
+      setBusy(null); setErr(dbErrorText(t, error)); return
     }
 
     setBusy(null)
@@ -182,13 +183,13 @@ export function DocumentsClient({
     // реестра, которая обещает инспектору документ, а файла уже нет, —
     // хуже, чем файл, на который никто не ссылается.
     const { error } = await supabase.from('material_documents').delete().eq('id', doc.id)
-    if (error) { setBusy(null); setErr(error.message); return }
+    if (error) { setBusy(null); setErr(dbErrorText(t, error)); return }
     const { error: storageError } = await supabase.storage.from('documents').remove([doc.path])
     setBusy(null)
     // Текст отказа хранилища подставляется КАК ЕСТЬ: это его сообщение,
     // а не наше, и в словарь оно не едет (CLAUDE.md → «Локализация»).
     if (storageError) {
-      setErr(t('documents.error.fileKept', { error: storageError.message }))
+      setErr(t('documents.error.fileKept', { error: dbErrorText(t, storageError) }))
     }
     router.refresh()
   }

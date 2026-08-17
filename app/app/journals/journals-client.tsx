@@ -7,6 +7,7 @@ import { enqueue, isNetworkError } from '@/lib/offline/queue'
 import { useToast } from '@/components/toast'
 import { useT } from '@/lib/i18n/client'
 import type { T } from '@/lib/i18n/translate'
+import { dbErrorText } from '@/lib/errors/db'
 
 // Дата и время записи журнала — «16 серп., 14:05». Это НАБОР ОПЦИЙ,
 // а не своя `fmt`: форматирует по-прежнему `t.dateTime`, то есть язык
@@ -194,7 +195,7 @@ export function JournalsClient({
         toast.info(t('journals.offline.saved'), t('journals.offline.cleaning.desc'))
         return
       }
-      setErr(e instanceof Error ? e.message : String(e))
+      setErr(dbErrorText(t, e))
       return
     }
     setBusy(null)
@@ -208,7 +209,7 @@ export function JournalsClient({
       tenant_id: tenantId, name: newTask,
     })
     setBusy(null)
-    if (error) { setErr(error.message); return }
+    if (error) { setErr(dbErrorText(t, error)); return }
     setNewTask(''); router.refresh()
   }
 
@@ -236,7 +237,7 @@ export function JournalsClient({
         setAgent(''); setConc(''); setVol('')
         return
       }
-      setErr(ex instanceof Error ? ex.message : String(ex))
+      setErr(dbErrorText(t, ex))
       return
     }
     setBusy(null)
@@ -263,7 +264,7 @@ export function JournalsClient({
         toast.info(t('journals.offline.saved'), t('journals.offline.cycle.desc'))
         return
       }
-      setErr(ex instanceof Error ? ex.message : String(ex))
+      setErr(dbErrorText(t, ex))
       return
     }
     setBusy(null)

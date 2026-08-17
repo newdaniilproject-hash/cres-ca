@@ -9,6 +9,7 @@ import { useToast } from '@/components/toast'
 import { useT } from '@/lib/i18n/client'
 import type { Key } from '@/lib/i18n/dict'
 import type { T } from '@/lib/i18n/translate'
+import { dbErrorText } from '@/lib/errors/db'
 
 // Значения enum stock_count_status из 0003_inventory.sql — дословно.
 // Четвёртого состояния нет: документ либо считается, либо уже изменил
@@ -84,7 +85,9 @@ export function humanizeCount(t: T, message: string): string {
   if (message.includes('stock_count_lines_qty_nonneg')) {
     return t('inventory.count.error.negativeQty')
   }
-  return message
+  // Незнакомое базе-специфичное сюда не доходит: общий разбор
+  // (`lib/errors/db.ts`) не отдаёт человеку сырой текст Postgres.
+  return dbErrorText(t, { message })
 }
 
 export type CountRow = {

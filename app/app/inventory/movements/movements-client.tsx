@@ -9,6 +9,7 @@ import { useToast } from '@/components/toast'
 import { useT } from '@/lib/i18n/client'
 import type { Key } from '@/lib/i18n/dict'
 import type { T } from '@/lib/i18n/translate'
+import { dbErrorText } from '@/lib/errors/db'
 
 // Значения enum stock_movement_type из 0003_inventory.sql, в том же порядке.
 export const MOVEMENT_TYPES: string[] = [
@@ -97,7 +98,9 @@ function humanize(t: T, message: string): string {
   if (message.includes('current_stock_check') || message.includes('stock_nonneg')) {
     return t('inventory.movements.error.negative')
   }
-  return message
+  // Незнакомое базе-специфичное сюда не доходит: общий разбор
+  // (`lib/errors/db.ts`) не отдаёт человеку сырой текст Postgres.
+  return dbErrorText(t, { message })
 }
 
 // Журнал движений. Строки только читаются: записи в stock_movements

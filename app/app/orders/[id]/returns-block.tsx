@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Sheet } from '@/components/sheet'
 import { useT } from '@/lib/i18n/client'
+import { dbErrorText } from '@/lib/errors/db'
 
 export type ReturnableItem = {
   id: string; title: string; variant: string | null
@@ -68,7 +69,7 @@ export function ReturnsBlock({
       p_lines: picked.map(([id, n]) => ({ order_item_id: id, quantity: n })),
     })
     setBusy(false)
-    if (error) { setErr(error.message); return }
+    if (error) { setErr(dbErrorText(t, error)); return }
     setOpen(false); setReason(''); setQty({})
     router.refresh()
   }

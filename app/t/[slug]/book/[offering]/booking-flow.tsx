@@ -6,6 +6,7 @@ import { useT } from '@/lib/i18n/client'
 import { guardOrder } from '@/lib/ratelimit/guard'
 import { AttributionCapture } from '@/components/attribution-capture'
 import { readAttribution } from '@/lib/attribution'
+import { dbErrorText } from '@/lib/errors/db'
 
 // Язык здесь тот же, что у остальной витрины, и приходит тем же путём:
 // публичные страницы не обёрнуты `LangProvider`, поэтому `useT()` отдаёт
@@ -86,7 +87,7 @@ export function BookingFlow({
     // предел на запись выполняется всегда, — внутри самой `create_booking`;
     // это миграция, и её пишет агент, отвечающий за SQL (см. отчёт по шагу 6).
     const gate = await guardOrder()
-    if (!gate.ok) { setState('error'); setError(gate.message); return }
+    if (!gate.ok) { setState('error'); setError(dbErrorText(t, gate)); return }
 
     // Атрибуция (0105) — то же, что запомнил `AttributionCapture` на этой
     // или на родительской странице заведения. Нет запомненного перехода —
@@ -105,7 +106,7 @@ export function BookingFlow({
       p_attribution_at: attr?.at ?? null,
     })
     if (error) {
-      setState('error'); setError(error.message)
+      setState('error'); setError(dbErrorText(t, error))
       if (variant && day) void loadSlots(variant, day) // время могли занять
       return
     }

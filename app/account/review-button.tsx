@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Sheet } from '@/components/sheet'
 import { useT } from '@/lib/i18n/client'
+import { dbErrorText } from '@/lib/errors/db'
 
 // Кнопка «Оцінити» на выполненном заказе/записи покупателя.
 //
@@ -46,7 +47,7 @@ export function ReviewButton({
       p_rating: rating, p_text: text.trim() || null,
     })
     setBusy(false)
-    if (error) { setErr(error.message); return }
+    if (error) { setErr(dbErrorText(t, error)); return }
     setOpen(false)
     router.refresh()
   }

@@ -8,6 +8,7 @@ import { useT } from '@/lib/i18n/client'
 import type { T } from '@/lib/i18n/translate'
 import { MEDIA_EXT_BY_MIME, MEDIA_MAX_BYTES } from '@/lib/upload/guard'
 import { verifyUploaded } from '@/lib/upload/client'
+import { dbErrorText } from '@/lib/errors/db'
 
 export type CategoryRow = { id: string; name: string; kind: 'product' | 'service' }
 export type LocationRow = { id: string; name: string }
@@ -360,7 +361,7 @@ export function OfferingForm({
     if (oid) {
       const { error } = await supabase.from('offerings')
         .update(offeringPayload(finalSlug)).eq('id', oid)
-      if (error) { setErr(error.message); setBusy(null); return null }
+      if (error) { setErr(dbErrorText(t, error)); setBusy(null); return null }
     } else {
       const { data, error } = await supabase.from('offerings').insert({
         ...offeringPayload(finalSlug),
@@ -372,7 +373,7 @@ export function OfferingForm({
       // `error.message` — текст базы, он показывается как есть.
       // Из словаря только наш запасной вариант.
       if (error || !data) {
-        setErr(error?.message ?? t('catalog.form.error.save')); setBusy(null); return null
+        setErr(error ? dbErrorText(t, error) : t('catalog.form.error.save')); setBusy(null); return null
       }
       oid = data.id as string
       setCreatedId(oid)
@@ -383,7 +384,7 @@ export function OfferingForm({
     const removed = savedIds.filter((id) => !list.some((d) => d.id === id))
     if (removed.length > 0) {
       const { error } = await supabase.from('offering_variants').delete().in('id', removed)
-      if (error) { setErr(error.message); setBusy(null); return null }
+      if (error) { setErr(dbErrorText(t, error)); setBusy(null); return null }
     }
 
     // Записанные варианты сразу получают свой id в состоянии формы: иначе
@@ -461,7 +462,7 @@ export function OfferingForm({
     if (next === 'active') patch.published_at = new Date().toISOString()
     const { error } = await supabase.from('offerings').update(patch).eq('id', oid)
     setBusy(null)
-    if (error) { setErr(error.message); return }
+    if (error) { setErr(dbErrorText(t, error)); return }
     setStatus(next)
     router.refresh()
   }

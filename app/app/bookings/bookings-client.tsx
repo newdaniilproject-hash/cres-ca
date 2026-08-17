@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
 import type { T } from '@/lib/i18n/translate'
+import { dbErrorText } from '@/lib/errors/db'
 
 type B = {
   id: string; number: number; title: string; variant: string; start: string
@@ -50,7 +51,7 @@ export function BookingsClient({ bookings }: { bookings: B[] }) {
       p_booking_id: id, p_status: to,
     })
     setBusy(null)
-    if (error) { setErr(error.message); return }
+    if (error) { setErr(dbErrorText(t, error)); return }
     router.refresh()
   }
 

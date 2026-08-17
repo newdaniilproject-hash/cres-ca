@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
 import type { T } from '@/lib/i18n/translate'
+import { dbErrorText } from '@/lib/errors/db'
 
 type Shop = {
   id: string; name: string; slug: string; tagline: string | null
@@ -91,7 +92,7 @@ export function SettingsClient({
   async function deleteAccount() {
     setKilling(true); setKillError('')
     const { error } = await supabase.rpc('delete_my_account')
-    if (error) { setKilling(false); setKillError(error.message); return }
+    if (error) { setKilling(false); setKillError(dbErrorText(t, error)); return }
     await supabase.auth.signOut()
     // Не router.push: після видалення користувача треба повне
     // перезавантаження, інакше клієнт живе зі знищеною сесією.
@@ -107,7 +108,7 @@ export function SettingsClient({
       name, tagline: tagline || null, description: description || null,
       city: city || null, address: address || null, contact_phone: phone || null,
     }).eq('id', shop.id)
-    if (error) { setState('error'); setError(error.message); return }
+    if (error) { setState('error'); setError(dbErrorText(t, error)); return }
     setState('saved'); router.refresh()
     setTimeout(() => setState('idle'), 2000)
   }
