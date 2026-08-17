@@ -5,6 +5,7 @@ import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { getT } from '@/lib/i18n/server'
 import { OrderDetail } from './order-detail'
+import { ReturnsBlock } from './returns-block'
 
 export const dynamic = 'force-dynamic'
 
@@ -61,6 +62,7 @@ export default async function OrderPage({
     { data: items, error: itemsError },
     { data: events, error: eventsError },
     { data: transitions, error: transitionsError },
+    { data: returns },
   ] = await Promise.all([
     supabase.auth.getUser(),
     supabase.from('order_items')
@@ -76,6 +78,16 @@ export default async function OrderPage({
     supabase.from('order_status_transitions')
       .select('to_status')
       .eq('from_status', order.status),
+    // Возвраты по заказу вместе с составом. Читаются здесь, а не в блоке:
+    // сколько ещё можно вернуть — это данные базы, а не арифметика экрана.
+    supabase.from('returns')
+      // Строка запроса ЦЕЛИКОМ, без склейки: supabase-js выводит тип
+      // результата из литерала, а сумма двух строк для него — просто
+      // `string`, и вложенный `return_items` перестаёт существовать.
+      .select(`id, number, reason, total, note, created_at,
+               return_items(id, order_item_id, title, variant_name, quantity)`)
+      .eq('tenant_id', m.tenantId).eq('order_id', order.id)
+      .order('number'),
   ])
 
   return (
@@ -123,6 +135,40 @@ export default async function OrderPage({
           note: e.note,
           actor: e.actor,
           at: e.created_at,
+        }))}
+      />
+      {/* Возвраты — отдельный блок под карточкой, а не вкладка: их
+          обычно нет, а когда есть — они читаются вместе с составом
+          заказа, из которого сделаны. */}
+      <ReturnsBlock
+        tenantId={m.tenantId}
+        orderId={order.id}
+        canWrite={can(m, 'orders.write')}
+        items={(items ?? []).map((i) => ({
+          id: i.id,
+          title: i.title,
+          variant: i.variant_name,
+          price: Number(i.unit_price),
+          qty: Number(i.quantity),
+          // Уже возвращённое по этой позиции — сумма по ВСЕМ документам
+          // заказа, а не по последнему: возвратов бывает несколько.
+          returned: (returns ?? []).reduce((acc, r) => acc
+            + ((r.return_items ?? []) as { order_item_id: string; quantity: number }[])
+              .filter((ri) => ri.order_item_id === i.id)
+              .reduce((s2, ri) => s2 + Number(ri.quantity), 0), 0),
+        }))}
+        returns={(returns ?? []).map((r) => ({
+          id: r.id,
+          number: Number(r.number),
+          reason: r.reason,
+          total: Number(r.total),
+          note: r.note,
+          createdAt: r.created_at,
+          items: ((r.return_items ?? []) as {
+            id: string; title: string; variant_name: string | null; quantity: number
+          }[]).map((ri) => ({
+            id: ri.id, title: ri.title, variant: ri.variant_name, qty: Number(ri.quantity),
+          })),
         }))}
       />
     </AppShell>
