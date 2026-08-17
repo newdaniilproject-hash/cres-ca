@@ -7,6 +7,7 @@ import { Sheet } from '@/components/sheet'
 import { useToast } from '@/components/toast'
 import { enqueue, isNetworkError } from '@/lib/offline/queue'
 import { useT } from '@/lib/i18n/client'
+import { noteIfImmutable } from '@/lib/security-log'
 import type { Key } from '@/lib/i18n/dict'
 import { EXPIRY_KEY } from '../../../inventory-client'
 import { EXPIRY_BADGE, daysLeft, expiryState } from '@/lib/expiry'
@@ -93,7 +94,12 @@ export function PaoControl({
         toast.info(t('inventory.offline.saved'), t('inventory.offline.desc'))
         return
       }
-      toast.error(t('inventory.pao.error.open'), e instanceof Error ? e.message : String(e))
+      // Сторож ёмкости (0014/0044: «дата вскрытия не редактируется»)
+      // роняет транзакцию — записать событие изнутри неё нельзя, оно
+      // откатится вместе с попыткой. Пишем отсюда (0085, решение 4).
+      const message = e instanceof Error ? e.message : String(e)
+      void noteIfImmutable(supabase, message, 'ємність: відкриття')
+      toast.error(t('inventory.pao.error.open'), message)
       return
     }
     setBusy(null)
@@ -106,7 +112,10 @@ export function PaoControl({
     const { error } = await supabase.from('material_containers')
       .update({ status: disposed ? 'disposed' : 'finished' }).eq('id', c.id)
     setBusy(null)
-    if (error) { toast.error(t('inventory.container.saveError'), error.message); return }
+    if (error) {
+      void noteIfImmutable(supabase, error.message, 'ємність: закриття')
+      toast.error(t('inventory.container.saveError'), error.message); return
+    }
     toast.success(disposed ? t('inventory.pao.disposed') : t('inventory.pao.finished'))
     router.refresh()
   }
