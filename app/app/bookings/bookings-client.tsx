@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
@@ -64,19 +65,36 @@ export function BookingsClient({ bookings }: { bookings: B[] }) {
     return [...map.entries()]
   }, [bookings, t])
 
+  // Вход в мастеров — здесь, внутри раздела, а не пунктом нижней панели:
+  // панель держит то, между чем прыгают за смену, а расписание правят
+  // раз в месяц (CLAUDE.md → «Мобильная версия»). Ссылка стоит выше
+  // развилки «есть записи / пусто» намеренно: на пустом экране она нужнее
+  // всего — записей нет ровно потому, что мастера ещё не заведены.
+  const toStaff = (
+    <div className="flex items-center justify-end">
+      <Link href="/app/bookings/staff" className="btn-secondary t-sm">
+        {t('bookings.toStaff')}
+      </Link>
+    </div>
+  )
+
   if (bookings.length === 0) {
     return (
-      <div className="empty card rise">
-        <p className="display t-lg" style={{ color: 'var(--color-text)' }}>
-          {t('bookings.empty.title')}
-        </p>
-        <p>{t('bookings.empty.desc')}</p>
+      <div className="flex flex-col gap-4">
+        {toStaff}
+        <div className="empty card rise">
+          <p className="display t-lg" style={{ color: 'var(--color-text)' }}>
+            {t('bookings.empty.title')}
+          </p>
+          <p>{t('bookings.empty.desc')}</p>
+        </div>
       </div>
     )
   }
 
   return (
     <div className="flex flex-col gap-6">
+      {toStaff}
       {err && <p className="field-error rise">{err}</p>}
       {byDay.map(([day, list], di) => (
         <section key={day} className={`rise-${Math.min(di + 1, 4)}`}>
