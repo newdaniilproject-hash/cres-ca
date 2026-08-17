@@ -150,6 +150,7 @@ const HEADINGS: [string, Key, Key][] = [
   ['/app/profile', 'app.screen.profile.title', 'app.screen.profile.desc'],
   ['/app/team', 'app.screen.team.title', 'app.screen.team.desc'],
   ['/app/settings', 'app.screen.settings.title', 'app.screen.settings.desc'],
+  ['/app/settings/export', 'app.screen.export.title', 'app.screen.export.desc'],
 ]
 
 function matches(pattern: string, pathname: string): boolean {
@@ -160,7 +161,7 @@ function matches(pattern: string, pathname: string): boolean {
 }
 
 // Существует ли такой экран. Оракул — сам HEADINGS: в нём ровно двадцать
-// восемь страниц кабинета, потому что заголовок нужен КАЖДОЙ, и новый
+// девять страниц кабинета, потому что заголовок нужен КАЖДОЙ, и новый
 // экран без строки здесь приезжает без названия — это замечают сразу.
 // Отдельного списка «а вот этих адресов нет» не заводим: он устареет на
 // первом же экране, который добавят, а этот список — нет.
