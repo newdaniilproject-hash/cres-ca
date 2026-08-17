@@ -9,6 +9,7 @@ import { signupSource } from '@/lib/consent'
 import { humanAuthError, codeErrorText } from '@/lib/auth-errors'
 import { nextRoute } from '@/lib/where'
 import { useT } from '@/lib/i18n/client'
+import { guardSignUp } from '@/lib/ratelimit/guard'
 import { AuthShell } from '../auth-shell'
 import { GoogleButton } from '../google-button'
 import { CodeInput } from '@/app/m/code-input'
@@ -106,6 +107,18 @@ function RegisterInner() {
     e.preventDefault()
     if (!ready || busy) return
     setBusy(true); setError(''); setNote('')
+
+    // Ограничение частоты: 3 регистрации за час с адреса.
+    //
+    // Считается ТОЛЬКО создание акаунта. Кнопка «надіслати ще раз» ниже
+    // счётчик не тратит намеренно: предел и так тесный, а повтор письма
+    // доступен лишь тому, кто уже прошёл эту проверку, и сверху ограничен
+    // дважды — отсчётом в 60 секунд на этом экране и собственным пределом
+    // Supabase на повторную отправку. Списывать за него третью попытку
+    // значило бы запирать на час человека, у которого просто медленно
+    // идёт почта.
+    const gate = await guardSignUp()
+    if (!gate.ok) { setBusy(false); setError(gate.message); return }
 
     const { data, error } = await supabase.auth.signUp({
       email: email.trim(),
