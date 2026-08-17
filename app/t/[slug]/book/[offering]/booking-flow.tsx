@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
 import { guardOrder } from '@/lib/ratelimit/guard'
+import { AttributionCapture } from '@/components/attribution-capture'
+import { readAttribution } from '@/lib/attribution'
 
 // Язык здесь тот же, что у остальной витрины, и приходит тем же путём:
 // публичные страницы не обёрнуты `LangProvider`, поэтому `useT()` отдаёт
@@ -86,6 +88,11 @@ export function BookingFlow({
     const gate = await guardOrder()
     if (!gate.ok) { setState('error'); setError(gate.message); return }
 
+    // Атрибуция (0105) — то же, что запомнил `AttributionCapture` на этой
+    // или на родительской странице заведения. Нет запомненного перехода —
+    // три поля просто null, и `create_booking` это не смущает.
+    const attr = readAttribution(tenantId)
+
     const { data, error } = await supabase.rpc('create_booking', {
       p_tenant_id: tenantId,
       p_variant_id: variant.id,
@@ -93,6 +100,9 @@ export function BookingFlow({
       p_starts_at: slot.starts_at,
       p_contact_name: name,
       p_contact_phone: phone || null,
+      p_attribution_source: attr?.source ?? null,
+      p_attribution_label: attr?.label ?? null,
+      p_attribution_at: attr?.at ?? null,
     })
     if (error) {
       setState('error'); setError(error.message)
@@ -137,6 +147,9 @@ export function BookingFlow({
 
   return (
     <form onSubmit={submit} className="mt-8 flex flex-col gap-8 pb-8">
+      {/* Подстраховка для прямой ссылки на конкретную услугу — минуя
+          страницу заведения, где обычно и стоит `?from=`. */}
+      <AttributionCapture tenantId={tenantId} />
       {/* Шаг 1: вариант */}
       <section className="rise-1">
         <p className="field-label">{t('public.book.variant.label')}</p>

@@ -44,7 +44,9 @@ function popupContent(p: Point, openLabel: string): HTMLElement {
   // Схема адреса задана здесь и не берётся из данных, поэтому `javascript:`
   // подставить нельзя; `encodeURIComponent` закрывает выход из сегмента пути.
   const link = document.createElement('a')
-  link.setAttribute('href', `/t/${encodeURIComponent(p.slug)}`)
+  // ?from=map — атрибуция (0105): переход із мітки на мапі, а не за
+  // власним посиланням продавця.
+  link.setAttribute('href', `/t/${encodeURIComponent(p.slug)}?from=map`)
   link.setAttribute(
     'style',
     'display:inline-block;margin-top:8px;padding:8px 12px;' +
