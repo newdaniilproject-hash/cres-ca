@@ -1248,7 +1248,7 @@
   "team.granted.none": "Нічого понад перегляд власного профілю.",
   "team.granted.hint": "Синім — видане окремо, поза набором ролі.",
 
-  "team.sessions.title": "Сеанси",
+  "team.sessions.title": "Активні сеанси",
   "team.sessions.unknownDevice": "невідомий пристрій",
   "team.sessions.lastSeen": "остання дія {date}",
   "team.sessions.end": "Завершити сеанси",
