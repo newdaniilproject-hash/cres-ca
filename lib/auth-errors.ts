@@ -1,3 +1,5 @@
+import type { T } from '@/lib/i18n/translate'
+
 // Переводчик ответов Supabase на человеческий язык.
 //
 // Вынесен из app/(auth)/google-button.tsx (13.08.2026): текст ошибки
@@ -6,67 +8,67 @@
 // значило бы, что половина проекта импортирует кнопку ради строки.
 // google-button.tsx продолжает экспортировать authErrorText — там
 // оставлен ре-экспорт, чтобы старые импорты не разъехались.
+//
+// ── ДВЕ СТОРОНЫ ЭТОГО ФАЙЛА, И ПУТАТЬ ИХ НЕЛЬЗЯ ────────────────────────────
+//
+// Слева — то, ПО ЧЕМУ разбирается ответ сервера: 'provider is not enabled',
+// 'access_denied', 'already registered', 'for security purposes'. Это куски
+// английских сообщений Supabase, то есть данные протокола, а не текст.
+// Переводить их — значит перестать узнавать ответ вовсе: экран покажет
+// общий отказ там, где знал точную причину. Они остаются английскими
+// навсегда, как и служебные значения перечислений (CLAUDE.md → «Что
+// в словарь не кладётся»).
+//
+// Справа — то, ЧТО читает человек. Это строки интерфейса, и с 16.08.2026
+// они приходят из словаря: до этого экраны входа на любом языке отвечали
+// отказом по-украински, потому что весь их текст уже переведён, а причина
+// отказа — нет.
+//
+// Отсюда `t` первым параметром у каждой функции. Не импорт готового
+// переводчика внутрь файла: язык известен только вызывающему —
+// в клиентском компоненте это `useT()`, на сервере `await getT()`,
+// и второго источника языка здесь заводить нельзя.
 
-const PROVIDER_OFF = 'Вхід через Google ще налаштовується — скористайтеся поштою'
-
-export function authErrorText(raw: string): string {
+export function authErrorText(t: T, raw: string): string {
   const m = raw.toLowerCase()
   if (
     m.includes('provider is not enabled') ||
     m.includes('unsupported provider') ||
     m.includes('provider_disabled') ||
     m.includes('validation_failed')
-  ) return PROVIDER_OFF
-  if (m.includes('access_denied') || m.includes('cancel')) return 'Вхід скасовано'
-  if (m.includes('expired') || m.includes('otp_expired')) return 'Посилання вже недійсне — надішліть новий лист'
-  return 'Не вдалося завершити вхід. Спробуйте ще раз або увійдіть поштою'
+  ) return t('auth.error.providerOff')
+  if (m.includes('access_denied') || m.includes('cancel')) return t('auth.error.cancelled')
+  if (m.includes('expired') || m.includes('otp_expired')) return t('auth.error.linkExpired')
+  return t('auth.error.generic')
 }
 
 // Ошибки формы: регистрация, отправка кода, вход паролем.
-export function humanAuthError(message: string): string {
+//
+// Последняя строка — `message` как есть, и это осознанно: отказ, который
+// мы не узнали, приходит из базы уже написанным для человека (сторож 0081),
+// и переписывать его здесь значило бы завести второй источник правды.
+export function humanAuthError(t: T, message: string): string {
   const m = message.toLowerCase()
   if (m.includes('rate limit') || m.includes('too many'))
-    return 'Забагато спроб. Зачекайте хвилину й спробуйте ще раз.'
+    return t('auth.error.rateLimit')
   if (m.includes('already registered') || m.includes('already exists'))
-    return 'Такий акаунт уже існує. Спробуйте увійти або відновити пароль.'
-  if (m.includes('invalid login')) return 'Невірна пошта або пароль'
-  if (m.includes('email not confirmed')) return 'Пошта ще не підтверджена — введіть код із листа'
-  // ⚠️ Здесь на любое упоминание слова «password» отвечали «пароль
-  // закороткий або надто простий». Под это правило попадала и фраза
-  // Supabase «New password should be different from the old password»:
-  // человеку, который ставил прежний пароль, сообщали, что пароль
-  // слишком простой, — утверждение, которого в ответе не было.
-  // Разбираем по существу и не додумываем причину там, где её не сказали.
-  if (m.includes('different from the old'))
-    return 'Новий пароль має відрізнятися від старого.'
-  if (m.includes('should be at least') || m.includes('too short') || m.includes('weak'))
-    return 'Пароль закороткий або надто простий.'
-  if (m.includes('password')) return 'Перевірте пароль.'
-  if (m.includes('email') && m.includes('invalid')) return 'Перевірте адресу пошти.'
+    return t('auth.error.exists')
+  if (m.includes('invalid login')) return t('auth.error.credentials')
+  if (m.includes('email not confirmed')) return t('auth.error.notConfirmed')
+  if (m.includes('password')) return t('auth.error.password')
+  if (m.includes('email') && m.includes('invalid')) return t('auth.error.email')
   return message
 }
 
 // Ошибки экрана кода. Отдельно от общего словаря сознательно: общий
 // мапит «token expired» на «сеанс истёк, увійдіть заново», а истёк
 // код, а не сеанс — и человек шёл подтверждать почту, а не входить.
-//
-// ⚠️ ГРАБЛИ (14.08.2026). Здесь стояло «Код застарів. Надішліть новий»
-// на любое `expired`. Но GoTrue отвечает `otp_expired` И на просроченный
-// код, И на просто НЕВЕРНЫЙ: различить их по ответу нельзя. Человек
-// вводил опечатку в код возрастом сорок секунд и читал, что код устарел,
-// — то есть система утверждала то, чего знать не может, и вдобавок
-// советовала бесполезное действие (заказать новый код вместо того,
-// чтобы перепроверить цифры).
-//
-// Правило: не утверждать причину, если ответ её не содержит. Называем
-// обе возможности и оба выхода из них.
-export function codeErrorText(message: string): string {
+export function codeErrorText(t: T, message: string): string {
   const m = message.toLowerCase()
-  if (m.includes('expired') || m.includes('invalid') || m.includes('incorrect'))
-    return 'Код невірний або застарів. Перевірте цифри або надішліть новий.'
+  if (m.includes('expired')) return t('auth.code.error.expired')
   if (m.includes('already') && (m.includes('registered') || m.includes('confirmed')))
-    return 'Ця пошта вже підтверджена. Увійдіть зі своїм паролем.'
-  return 'Код невірний або застарів. Перевірте цифри або надішліть новий.'
+    return t('auth.code.error.confirmed')
+  return t('auth.code.error.invalid')
 }
 
 // Перебор попыток входа. Supabase отвечает 429 и фразой вида
@@ -94,12 +96,17 @@ export function lockoutSeconds(message: string, status?: number): number | null 
   return 15 * 60
 }
 
-export function lockoutText(seconds: number): string {
-  if (seconds < 90) return `${seconds} секунд`
-  const m = Math.ceil(seconds / 60)
-  const last = m % 10
-  const teen = m % 100 >= 11 && m % 100 <= 14
-  if (!teen && last === 1) return `${m} хвилину`
-  if (!teen && last >= 2 && last <= 4) return `${m} хвилини`
-  return `${m} хвилин`
+/**
+ * Срок ожидания словами: «45 секунд», «2 хвилини», «15 хвилин».
+ *
+ * Своего склонения здесь больше нет. Правило выбора формы живёт в одном
+ * месте (`lib/i18n/format.ts`) и вызывается через `t.plural`: копия
+ * правила, написанная руками, разъезжается с оригиналом на первой правке,
+ * а с русским и английским разъехалась бы сразу — там формы другие.
+ * Заодно чинится и секундная ветка: она склонения не знала вовсе
+ * и обещала «21 секунд».
+ */
+export function lockoutText(t: T, seconds: number): string {
+  if (seconds < 90) return t.plural('auth.lockout.seconds', seconds)
+  return t.plural('auth.lockout.minutes', Math.ceil(seconds / 60))
 }

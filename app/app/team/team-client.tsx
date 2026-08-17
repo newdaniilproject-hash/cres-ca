@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { abs } from '@/lib/site'
+import { useT } from '@/lib/i18n/client'
+import type { T } from '@/lib/i18n/translate'
 
 // ── Что здесь и почему именно так ─────────────────────────────────────────
 //
@@ -75,24 +77,41 @@ type Audit = {
   note: string | null
 }
 
+// ── Значения базы и подписи к ним — РАЗНЫЕ вещи ────────────────────────────
+//
+// `owner`, `added`, `stock.read` — служебные значения перечислений и ключи
+// прав. Они НЕ переводятся никогда: по ним сверяется база, они уезжают
+// в запросы и приезжают в журнале. Переводится подпись к значению, и живёт
+// она в словаре (`role.owner`, `team.audit.action.added`).
+//
+// Значение, которого нет в списке, показывается КАК ЕСТЬ. Это не запасной
+// вариант «на всякий случай»: новая роль в базе появится раньше, чем строка
+// в словаре, и увидеть `supervisor` полезнее, чем пустоту или чужое слово.
+const ROLES = [
+  'owner', 'admin', 'manager', 'accountant', 'operator', 'viewer', 'inspector',
+] as const
+type Role = (typeof ROLES)[number]
+const isRole = (r: string): r is Role => (ROLES as readonly string[]).includes(r)
+
+const roleLabel = (t: T, r: string): string => (isRole(r) ? t(`role.${r}`) : r)
+const roleHint = (t: T, r: string): string => (isRole(r) ? t(`role.hint.${r}`) : '')
+
 // Журнал пишется триггером на `tenant_members` (0080), то есть события
 // `blocked`/`unblocked` в нём — ТОЛЬКО про доступ. Карточка мастера
 // в журнал прав не попадает и попадать не должна: это не право.
 // Отсюда и подписи — «закрито доступ», а не «заблоковано»: последнее
 // на этом экране теперь значит два разных состояния.
-const ACTION_LABEL: Record<string, string> = {
-  added: 'додано в команду', removed: 'прибрано з команди',
-  changed: 'змінено доступ', blocked: 'закрито доступ', unblocked: 'відкрито доступ',
-}
+const ACTIONS = ['added', 'removed', 'changed', 'blocked', 'unblocked'] as const
+type AuditAction = (typeof ACTIONS)[number]
+const isAction = (a: string): a is AuditAction =>
+  (ACTIONS as readonly string[]).includes(a)
+const actionLabel = (t: T, a: string): string =>
+  (isAction(a) ? t(`team.audit.action.${a}`) : a)
+
+// Тон бейджа — не текст, а класс оформления: в словаре ему делать нечего.
 const ACTION_TONE: Record<string, string> = {
   added: 'badge-success', removed: 'badge-danger', changed: 'badge',
   blocked: 'badge-danger', unblocked: 'badge-success',
-}
-
-const ROLE_LABEL: Record<string, string> = {
-  owner: 'власник', admin: 'адміністратор', manager: 'менеджер',
-  operator: 'майстер / склад', accountant: 'бухгалтер',
-  viewer: 'перегляд', inspector: 'інспектор',
 }
 
 // Порядок ОТОБРАЖЕНИЯ списка ролей сверху вниз. Сравнивать роли по
@@ -113,43 +132,12 @@ const ROLE_RANK: Record<string, number> = {
 // чем предложить то, что откажут.
 const rank = (role: string): number => ROLE_RANK[role] ?? 0
 
-const ROLE_HINT: Record<string, string> = {
-  owner: 'Усе, включно з передачею закладу.',
-  admin: 'Усе, крім передачі закладу.',
-  manager: 'Замовлення, записи, клієнти, каталог, склад.',
-  accountant: 'Фінанси й документи. Без складу.',
-  operator: 'Свої записи, склад, журнали. Без фінансів і телефонів чужих клієнтів.',
-  viewer: 'Тільки дивиться.',
-  inspector: 'Реєстр, журнали, документи. Доступ за строком.',
-}
-
-function fmt(ts: string | null): string {
-  if (!ts) return '—'
-  return new Date(ts).toLocaleString('uk-UA', {
-    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
-  })
-}
-
-// Дата МЕСТНЫМИ частями, а не срезом `toISOString()`. Срез режет по UTC,
-// а в поле `<input type="date">` дата пишется как местная полночь-без-минуты
-// (`${value}T23:59:59`), и для отрицательных смещений одно и то же значение
-// показывалось в поле одним днём, а в бейдже «до …» — предыдущим.
-function fmtDay(ts: string | null): string {
-  if (!ts) return ''
-  const d = new Date(ts)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-}
-
-// Украинские числительные: 1 сеанс, 2 сеанси, 5 сеансів. Приём тот же,
-// что в lib/email/templates.ts — выбор формы по остатку; библиотека ради
-// двух строк не нужна. Проверка `> 1` давала «5 сеанси».
-function plural(n: number, one: string, few: string, many: string): string {
-  const m10 = n % 10, m100 = n % 100
-  if (m10 === 1 && m100 !== 11) return one
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few
-  return many
-}
+// Дата, время, дробь и процент — через `t.date`, `t.dateTime`, `t.number`
+// и `t.percent` (`lib/i18n/format.ts`). Своих `fmt` и `fmtDay` на экране
+// больше нет: месяцы, разделитель разрядов и место символа процента зависят
+// от языка, и собранные руками они остались бы украинскими навсегда.
+// Единственное исключение — значение для `<input type="date">`: это формат
+// поля, а не текст, и `t.inputDay` не локализует его намеренно.
 
 // Отказы базы — на человеческий. Приём тот же, что в lib/auth-errors.ts:
 // словарь по подстроке, всё неопознанное отдаётся как есть.
@@ -165,40 +153,43 @@ function plural(n: number, one: string, few: string, many: string): string {
 //     что ключ `*` — это полный доступ владельца;
 //   • английские ответы PostgREST и RLS, которые к тому же приходят
 //     ровно в момент, когда доступ у смотрящего уже изменили.
-function teamErrorText(raw: string): string {
+//
+// ВАЖНОЕ ПРО СЛОВАРЬ: переводится ОТВЕТ ЧЕЛОВЕКУ, а не отказ базы. Подстроки,
+// по которым здесь идёт разбор («чия роль вища за власну»), — это ТЕКСТ
+// ОТКАЗА ИЗ МИГРАЦИИ, и он не ключ словаря: переведи его — и разбор
+// перестанет узнавать свой же случай.
+function teamErrorText(t: T, raw: string): string {
   const m = raw.toLowerCase()
 
-  if (m.includes('perms_no_star'))
-    return 'Дозвіл «*» видати не можна: це повний доступ власника.'
+  if (m.includes('perms_no_star')) return t('team.error.noStar')
 
   // Два разных отказа по рангу с одинаковым хвостом: один про правку
   // строки (сторож), другой про принудительный выход (`end_sessions`).
-  if (m.includes('завершити сеанси того'))
-    return 'Ця людина за роллю вища за вас — завершити її сеанси не можна.'
+  if (m.includes('завершити сеанси того')) return t('team.error.rankSessions')
 
-  if (m.includes('чия роль вища за власну'))
-    return 'Ця людина за роллю вища за вас — змінювати її може лише рівний їй або вищий.'
+  if (m.includes('чия роль вища за власну')) return t('team.error.rankEdit')
 
   if (m.includes('видати роль, вищу за власну')) {
     const pair = raw.match(/\(([a-z_]+) > ([a-z_]+)\)/)
-    const label = pair ? ROLE_LABEL[pair[1]] ?? pair[1] : ''
+    const label = pair ? roleLabel(t, pair[1]) : ''
     return label
-      ? `Роль «${label}» вища за вашу — видати її не можна.`
-      : 'Не можна видати роль, вищу за власну.'
+      ? t('team.error.rankRole', { role: label })
+      : t('team.error.rankRoleAny')
   }
 
   if (m.includes('row-level security') || m.includes('permission denied'))
-    return 'Недостатньо прав для цієї дії. Можливо, ваш доступ щойно змінили — оновіть сторінку.'
+    return t('team.error.denied')
 
   if (m.includes('jwt') || m.includes('не автентифіковано'))
-    return 'Сеанс завершено. Увійдіть заново.'
+    return t('team.error.session')
 
   // База отвечает по-украински намеренно (0081): её отказы уже написаны
   // для человека и объясняют, что делать. Переписывать их здесь значит
-  // разойтись с ними при первой же правке миграции.
+  // разойтись с ними при первой же правке миграции. В словарь они по той же
+  // причине не едут: источник правды о причине отказа — миграция.
   if (/[а-яіїєґ]/i.test(raw)) return raw
 
-  return 'Дію не виконано. Спробуйте ще раз або оновіть сторінку.'
+  return t('team.error.generic')
 }
 
 export function TeamClient(props: {
@@ -210,6 +201,7 @@ export function TeamClient(props: {
   caps: { role: string; cap_pct: number }[]
   audit: Audit[]
 }) {
+  const t = useT()
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
 
@@ -313,12 +305,12 @@ export function TeamClient(props: {
     setBusy(key); setError('')
     try {
       const { error } = await fn()
-      if (error) { setError(teamErrorText(error.message)); return false }
+      if (error) { setError(teamErrorText(t, error.message)); return false }
     } catch {
       // Обрыв связи. Без этого перехвата очередь записи прав ниже
       // повисла бы навсегда: следующее переключение ждало бы обещание,
       // которое никогда не разрешится.
-      setError('Немає зв’язку з сервером — спробуйте ще раз.')
+      setError(t('team.error.offline'))
       return false
     } finally {
       setBusy('')
@@ -354,11 +346,11 @@ export function TeamClient(props: {
       p_access_days: days,
     })
     setBusy('')
-    if (error) { setError(teamErrorText(error.message)); return }
+    if (error) { setError(teamErrorText(t, error.message)); return }
 
     const row = Array.isArray(data) ? data[0] : data
     const token = row?.token as string | undefined
-    if (!token) { setError('Запрошення створено, але посилання не повернулося.'); router.refresh(); return }
+    if (!token) { setError(t('team.error.noLink')); router.refresh(); return }
 
     // Адрес — из lib/site.ts, тем же способом, что и в письме. На
     // `location.origin` ссылка на экране и ссылка в письме расходятся
@@ -390,7 +382,7 @@ export function TeamClient(props: {
     } catch {
       // Буфер обмена недоступен без защищённого соединения — не молчим,
       // иначе человек уверен, что скопировал.
-      setError('Скопіювати не вдалося — виділіть посилання і скопіюйте вручну.')
+      setError(t('team.error.copy'))
     }
   }
 
@@ -538,7 +530,7 @@ export function TeamClient(props: {
     // Поле подтверждения чистится только при успехе: на ошибке человек
     // должен видеть, что он набрал, а не набирать заново.
     if (!ok) return
-    setTransferTo((t) => { const copy = { ...t }; delete copy[m.user_id]; return copy })
+    setTransferTo((prev) => { const copy = { ...prev }; delete copy[m.user_id]; return copy })
     try {
       await supabase.auth.signOut()
     } catch {
@@ -570,10 +562,10 @@ export function TeamClient(props: {
   const [tplPerms, setTplPerms] = useState<Record<string, boolean>>({})
   const [openTpl, setOpenTpl] = useState<string | null>(null)
 
-  async function saveTemplateCap(t: Template, value: string) {
+  async function saveTemplateCap(tpl: Template, value: string) {
     const cap = value.trim() === '' ? null : Math.max(0, Math.min(100, Number(value)))
-    await run(`tpl-cap:${t.id}`, () =>
-      supabase.from('permission_templates').update({ cap_pct: cap }).eq('id', t.id))
+    await run(`tpl-cap:${tpl.id}`, () =>
+      supabase.from('permission_templates').update({ cap_pct: cap }).eq('id', tpl.id))
   }
 
   async function createTemplate(e: React.FormEvent) {
@@ -599,32 +591,28 @@ export function TeamClient(props: {
       {error && <p className="field-error" role="alert">{error}</p>}
 
       {!knowMe && (
-        <p className="note note-danger">
-          Не вдалося визначити, під ким ви увійшли, тому блокування,
-          завершення сеансів і передача володіння сховані: інакше екран
-          запропонував би застосувати їх до вас самих. Оновіть сторінку
-          або увійдіть заново.
-        </p>
+        <p className="note note-danger">{t('team.unknownSelf')}</p>
       )}
 
       {/* ── Приглашение ─────────────────────────────────────────────── */}
       {props.canWrite && (
         <section className="card rise-1">
-          <h2 className="t-lg mb-1">Запросити людину</h2>
-          <p className="t-md mb-4 prose-muted">
-            Надішлемо лист із посиланням. Воно діє 72 години й спрацьовує один раз —
-            і тільки для тієї пошти, на яку виписане.
-          </p>
+          <h2 className="t-lg mb-1">{t('team.invite.title')}</h2>
+          <p className="t-md mb-4 prose-muted">{t('team.invite.desc')}</p>
 
           <form onSubmit={invite} className="grid gap-3 sm:grid-cols-[1fr_auto_auto_auto] sm:items-end">
             <div>
-              <label className="field-label" htmlFor="invite-email">Пошта</label>
+              <label className="field-label" htmlFor="invite-email">
+                {t('team.invite.email.label')}
+              </label>
+              {/* Подсказка в поле — такая же строка интерфейса, как подпись:
+                  в русском примере имя другое, в английском — другое. */}
               <input required type="email" className="input" id="invite-email" value={inviteEmail}
                      onChange={(e) => setInviteEmail(e.target.value)}
-                     placeholder="olya@example.com" />
+                     placeholder={t('team.invite.email.placeholder')} />
             </div>
             <div>
-              <label className="field-label" htmlFor="invite-role">Роль</label>
+              <label className="field-label" htmlFor="invite-role">{t('common.role')}</label>
               {/* Роль, чей набор прав шире моего, отказывает не сейчас,
                   а через трое суток и приглашённому (0081, п. 5): роль
                   и права проверяются В МОМЕНТ ПРИЁМА. Отложенный отказ
@@ -633,37 +621,45 @@ export function TeamClient(props: {
                       onChange={(e) => setInviteRole(e.target.value)}>
                 {assignableRoles.map((r) => (
                   <option key={r} value={r} disabled={!invitable.has(r)}>
-                    {ROLE_LABEL[r] ?? r}{invitable.has(r) ? '' : ' — понад ваш доступ'}
+                    {/* Строка с подстановкой: собирать её сложением
+                        («подпись» + « — понад ваш доступ») нельзя — порядок
+                        слов в языках разный, и склейка ломается первой же. */}
+                    {invitable.has(r)
+                      ? roleLabel(t, r)
+                      : t('team.beyond', { name: roleLabel(t, r) })}
                   </option>
                 ))}
               </select>
             </div>
             <div>
-              <label className="field-label" htmlFor="invite-days">Доступ, днів</label>
+              <label className="field-label" htmlFor="invite-days">
+                {t('team.invite.days.label')}
+              </label>
+              {/* «7» — число, а не текст: в словарь оно не едет. */}
               <input type="number" min={1} max={365} className="input sm:w-28" id="invite-days"
                      value={inviteDays} onChange={(e) => setInviteDays(e.target.value)}
-                     placeholder={inviteRole === 'inspector' ? '7' : 'без строку'} />
+                     placeholder={inviteRole === 'inspector' ? '7' : t('team.invite.days.placeholder')} />
             </div>
             <button className="btn-primary" disabled={busy === 'invite'}>
-              {busy === 'invite' ? 'Створюємо…' : 'Запросити'}
+              {busy === 'invite' ? t('team.invite.submitBusy') : t('team.invite.submit')}
             </button>
           </form>
 
-          <p className="field-hint mt-2">{ROLE_HINT[inviteRole]}</p>
+          <p className="field-hint mt-2">{roleHint(t, inviteRole)}</p>
 
           {inviteLink && (
             <div className="card-flat mt-4 flex flex-col gap-2">
-              <p className="t-md">Посилання створено. Покажіть його людині або надішліть самі:</p>
+              <p className="t-md">{t('team.invite.linkReady')}</p>
               <div className="flex flex-wrap items-center gap-2">
                 <code className="t-sm break-all">{inviteLink}</code>
                 <button type="button" className="btn-secondary t-sm" onClick={() => void copyLink()}>
-                  {copied ? 'Скопійовано ✓' : 'Скопіювати'}
+                  {copied ? t('common.copied') : t('common.copy')}
                 </button>
               </div>
               <p className="t-sm prose-muted">
-                {mailState === 'sending' && 'Надсилаємо лист…'}
-                {mailState === 'sent' && 'Лист надіслано ✓'}
-                {mailState === 'failed' && 'Лист не пішов — надішліть посилання самі.'}
+                {mailState === 'sending' && t('team.invite.mail.sending')}
+                {mailState === 'sent' && t('team.invite.mail.sent')}
+                {mailState === 'failed' && t('team.invite.mail.failed')}
               </p>
             </div>
           )}
@@ -674,22 +670,30 @@ export function TeamClient(props: {
       {props.invites.length > 0 && (
         <section className="card rise-2 !p-0">
           <div className="p-5 pb-3">
-            <h2 className="t-lg">Чекають на прийняття</h2>
+            <h2 className="t-lg">{t('team.pending.title')}</h2>
           </div>
           {props.invites.map((i) => (
             <div key={i.id} className="row px-5">
               <div className="min-w-0">
                 <p className="t-md truncate">{i.email}</p>
+                {/* Дата — через `t.dateTime`, а не сборкой из частей:
+                    порядок «день. месяц. год» держит локаль. */}
                 <p className="t-xs prose-muted">
-                  {ROLE_LABEL[i.role] ?? i.role} · діє до {fmt(i.expires_at)}
-                  {i.access_days ? ` · доступ ${i.access_days} дн.` : ''}
+                  {t('team.pending.meta', {
+                    role: roleLabel(t, i.role),
+                    date: t.dateTime(i.expires_at),
+                  })}
+                  {/* Числительное: 1 день / 2 дні / 5 днів. Было
+                      сокращение «дн.», которое не склоняется, — теперь
+                      форма выбирается по остатку. */}
+                  {i.access_days ? ` · ${t.plural('team.pending.days', i.access_days)}` : ''}
                 </p>
               </div>
               {props.canWrite && (
                 <button type="button" className="btn-ghost t-sm"
                         disabled={busy === `inv:${i.id}`}
                         onClick={() => revokeInvite(i.id)}>
-                  Відкликати
+                  {t('team.pending.revoke')}
                 </button>
               )}
             </div>
@@ -700,20 +704,16 @@ export function TeamClient(props: {
       {/* ── Команда ─────────────────────────────────────────────────── */}
       <section className="card rise-3 !p-0">
         <div className="p-5 pb-3">
-          <h2 className="t-lg">Команда</h2>
-          <p className="t-sm prose-muted">
-            Зміна ролі або прав миттєво завершує сеанси людини: права живуть
-            у токені, і без виходу нове обмеження почало б діяти лише за годину.
-          </p>
+          <h2 className="t-lg">{t('team.members.title')}</h2>
+          <p className="t-sm prose-muted">{t('team.members.desc')}</p>
         </div>
 
         {props.members.length === 0 && (
           <div className="empty px-5 pb-5">
+            {/* Значок — символ, а не текст: `aria-hidden`, в словарь не едет. */}
             <span className="empty-icon" aria-hidden>◎</span>
-            <p className="empty-title">Список порожній</p>
-            <p className="empty-desc">
-              Тут з’являться всі, хто прийняв запрошення.
-            </p>
+            <p className="empty-title">{t('team.members.empty.title')}</p>
+            <p className="empty-desc">{t('team.members.empty.desc')}</p>
           </div>
         )}
 
@@ -760,13 +760,12 @@ export function TeamClient(props: {
                    }}>
                 <div className="min-w-0">
                   <p className="t-md truncate">
-                    {m.full_name ?? m.email ?? 'Без імені'}
-                    {self && <span className="t-xs prose-muted"> — це ви</span>}
+                    {m.full_name ?? m.email ?? t('common.noName')}
+                    {self && <span className="t-xs prose-muted"> {t('team.member.self')}</span>}
                   </p>
                   <p className="t-xs prose-muted truncate">
                     {m.email}
-                    {live > 0 && ` · ${live} ${plural(live,
-                      'активний сеанс', 'активні сеанси', 'активних сеансів')}`}
+                    {live > 0 && ` · ${t.plural('team.member.sessions', live)}`}
                   </p>
                 </div>
                 {/* Три состояния — три разных бейджа и три разных тона.
@@ -776,16 +775,22 @@ export function TeamClient(props: {
                     Перенос по строке — потому что на 390px четыре бейджа
                     рядом с именем не помещаются. */}
                 <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-                  {m.blocked_at && <span className="badge-danger">немає доступу</span>}
-                  {m.staff_blocked_at && <span className="badge-warn">не працює</span>}
+                  {m.blocked_at && (
+                    <span className="badge-danger">{t('team.badge.noAccess')}</span>
+                  )}
+                  {m.staff_blocked_at && (
+                    <span className="badge-warn">{t('team.badge.notWorking')}</span>
+                  )}
                   {m.staff_is_active === false && (
-                    <span className="badge">не приймає записи</span>
+                    <span className="badge">{t('team.badge.notBooking')}</span>
                   )}
                   {!m.blocked_at && m.access_expires_at && (
-                    <span className="badge-warn">до {fmtDay(m.access_expires_at)}</span>
+                    <span className="badge-warn">
+                      {t('team.badge.until', { date: t.date(m.access_expires_at) })}
+                    </span>
                   )}
                   <span className={m.role === 'owner' ? 'badge-accent' : 'badge'}>
-                    {ROLE_LABEL[m.role] ?? m.role}
+                    {roleLabel(t, m.role)}
                   </span>
                 </div>
               </div>
@@ -799,68 +804,56 @@ export function TeamClient(props: {
                     <div className="card-flat flex flex-col gap-3">
                       {m.blocked_at && (
                         <div>
+                          {/* Жирная часть — отдельный ключ: разметки
+                              в словаре не бывает, а вырезать <b> из строки
+                              значит завести свой мини-язык шаблонов. */}
                           <p className="t-sm">
-                            <b>Немає доступу</b> з {fmt(m.blocked_at)}
+                            <b>{t('team.state.noAccess.title')}</b>{' '}
+                            {t('common.since', { date: t.dateTime(m.blocked_at) })}
+                            {/* Причина — то, что набрал человек. Не переводится. */}
                             {m.blocked_reason ? ` · ${m.blocked_reason}` : ''}
                           </p>
-                          <p className="field-hint">
-                            У кабінет не зайде — ні з телефона, ні за прямим
-                            посиланням. Знімається кнопкою «Розблокувати»:
-                            вона поверне і доступ, і картку майстра.
-                          </p>
+                          <p className="field-hint">{t('team.state.noAccess.hint')}</p>
                         </div>
                       )}
 
                       {m.staff_blocked_at && (
                         <div>
                           <p className="t-sm">
-                            <b>Не працює</b> з {fmt(m.staff_blocked_at)}
+                            <b>{t('team.state.notWorking.title')}</b>{' '}
+                            {t('common.since', { date: t.dateTime(m.staff_blocked_at) })}
                             {m.staff_blocked_reason ? ` · ${m.staff_blocked_reason}` : ''}
                           </p>
                           <p className="field-hint">
-                            Це картка майстра в розділі «Записи», а не доступ:
-                            людина зникає з розкладу й зі списку, на кого
-                            записують клієнта.{' '}
+                            {t('team.state.notWorking.hint')}{' '}
                             {m.blocked_at
-                              ? 'Повернеться разом із доступом.'
-                              : 'Кабінет при цьому відкритий. Окремої кнопки тут немає: картку гасить і повертає те саме блокування доступу.'}
+                              ? t('team.state.notWorking.hintBlocked')
+                              : t('team.state.notWorking.hintOpen')}
                           </p>
                         </div>
                       )}
 
                       {m.staff_is_active === false && (
                         <div>
-                          <p className="t-sm"><b>Не приймає записи</b></p>
-                          <p className="field-hint">
-                            Відпустка або лікарняний: доступ у кабінет є,
-                            у розкладі людини немає. Вмикають і вимикають
-                            у картці майстра — розділ «Записи», не тут.
-                          </p>
+                          <p className="t-sm"><b>{t('team.state.notBooking.title')}</b></p>
+                          <p className="field-hint">{t('team.state.notBooking.hint')}</p>
                         </div>
                       )}
                     </div>
                   )}
 
                   {outranksMe && !self && (
-                    <p className="field-hint">
-                      Ця людина за роллю вища за вас, тому її картка тут
-                      тільки для перегляду: ні роль, ні строк, ні блокування
-                      змінити не вийде. Це зробить власник або рівний їй.
-                    </p>
+                    <p className="field-hint">{t('team.hint.outranksMe')}</p>
                   )}
 
-                  {self && (
-                    <p className="field-hint">
-                      Свою роль і свої права змінити не можна — це захист від
-                      втрати доступу до власного закладу. Попросіть іншого
-                      власника або передайте володіння.
-                    </p>
-                  )}
+                  {self && <p className="field-hint">{t('team.hint.self')}</p>}
 
                   {editable ? (
                     <div className="grid gap-3 sm:grid-cols-3">
                       <div>
-                        <label className="field-label" htmlFor={`role-${m.user_id}`}>Роль</label>
+                        <label className="field-label" htmlFor={`role-${m.user_id}`}>
+                          {t('common.role')}
+                        </label>
                         {/* Текущая роль обязана быть в списке, даже если она
                             выше моей: иначе select покажет чужое значение
                             и первое же касание понизит человека молча.
@@ -874,31 +867,44 @@ export function TeamClient(props: {
                             <option key={r} value={r}
                                     disabled={r !== m.role && (!assignableRoles.includes(r)
                                       || notMine(r, m.permissions, m.role, m.permissions).length > 0)}>
-                              {ROLE_LABEL[r] ?? r}
+                              {roleLabel(t, r)}
                             </option>
                           ))}
                         </select>
-                        <p className="field-hint">{ROLE_HINT[m.role]}</p>
+                        <p className="field-hint">{roleHint(t, m.role)}</p>
                       </div>
 
                       <div>
-                        <label className="field-label" htmlFor={`cap-${m.user_id}`}>Стеля знижки, %</label>
+                        <label className="field-label" htmlFor={`cap-${m.user_id}`}>
+                          {t('team.field.cap.label')}
+                        </label>
+                        {/* Подстановка внутри подсказки поля и процент через
+                            Intl: знак и пробел перед ним ставит локаль. */}
                         <input type="number" min={0} max={100} className="input"
                                id={`cap-${m.user_id}`}
                                defaultValue={m.discount_cap_pct ?? ''}
-                               placeholder={`за роллю — ${capByRole[m.role] ?? 0}`}
+                               placeholder={t('team.field.cap.placeholder', {
+                                 n: t.number(capByRole[m.role] ?? 0),
+                               })}
                                disabled={busy === `cap:${m.user_id}`}
                                onBlur={(e) => setCap(m, e.target.value)} />
-                        <p className="field-hint">Зараз діє {m.effective_cap_pct}%.</p>
+                        <p className="field-hint">
+                          {t('team.field.cap.effective', {
+                            pct: t.percent(m.effective_cap_pct),
+                          })}
+                        </p>
                       </div>
 
                       <div>
-                        <label className="field-label" htmlFor={`exp-${m.user_id}`}>Доступ до</label>
+                        <label className="field-label" htmlFor={`exp-${m.user_id}`}>
+                          {t('team.field.expiry.label')}
+                        </label>
+                        {/* Значение поля даты — формат браузера, а не локали. */}
                         <input type="date" className="input" id={`exp-${m.user_id}`}
-                               defaultValue={fmtDay(m.access_expires_at)}
+                               defaultValue={t.inputDay(m.access_expires_at)}
                                disabled={busy === `exp:${m.user_id}`}
                                onBlur={(e) => setExpiry(m, e.target.value)} />
-                        <p className="field-hint">Порожньо — безстроково.</p>
+                        <p className="field-hint">{t('team.field.expiry.hint')}</p>
                       </div>
                     </div>
                   ) : (
@@ -909,61 +915,71 @@ export function TeamClient(props: {
                     // вопрос, с которым сюда и приходят.
                     <div className="grid gap-3 sm:grid-cols-3">
                       <div>
-                        <p className="field-label">Роль</p>
-                        <p className="t-md">{ROLE_LABEL[m.role] ?? m.role}</p>
-                        <p className="field-hint">{ROLE_HINT[m.role]}</p>
+                        <p className="field-label">{t('common.role')}</p>
+                        <p className="t-md">{roleLabel(t, m.role)}</p>
+                        <p className="field-hint">{roleHint(t, m.role)}</p>
                       </div>
                       <div>
-                        <p className="field-label">Стеля знижки</p>
-                        <p className="t-md tabular">{m.effective_cap_pct}%</p>
+                        <p className="field-label">{t('team.view.cap.label')}</p>
+                        <p className="t-md tabular">{t.percent(m.effective_cap_pct)}</p>
                         <p className="field-hint">
-                          {m.discount_cap_pct === null ? 'за роллю' : 'окремо для людини'}
+                          {m.discount_cap_pct === null
+                            ? t('team.view.cap.byRole')
+                            : t('team.view.cap.personal')}
                         </p>
                       </div>
                       <div>
-                        <p className="field-label">Доступ</p>
+                        <p className="field-label">{t('team.view.access.label')}</p>
                         <p className="t-md">
-                          {m.access_expires_at ? `до ${fmtDay(m.access_expires_at)}` : 'безстроково'}
+                          {m.access_expires_at
+                            ? t('team.view.access.until', { date: t.date(m.access_expires_at) })
+                            : t('team.view.access.forever')}
                         </p>
-                        <p className="field-hint">у команді з {fmt(m.joined_at)}</p>
+                        <p className="field-hint">
+                          {t('team.view.joined', { date: t.dateTime(m.joined_at) })}
+                        </p>
                       </div>
                     </div>
                   )}
 
                   {editable && props.templates.length > 0 && (
                     <div>
-                      <label className="field-label" htmlFor={`tpl-${m.user_id}`}>Застосувати шаблон</label>
+                      <label className="field-label" htmlFor={`tpl-${m.user_id}`}>
+                        {t('team.tplApply.label')}
+                      </label>
                       <select className="select sm:max-w-xs" id={`tpl-${m.user_id}`} value=""
                               disabled={busy === `tpl:${m.user_id}`}
                               onChange={(e) => applyTemplate(m, e.target.value)}>
-                        <option value="">— обрати —</option>
+                        <option value="">{t('team.tplApply.none')}</option>
                         {/* Шаблон, который выдаёт роль выше моей или права,
                             которых у меня нет, база отклонит (0081, п. 7).
                             Гасим его здесь, а не ловим отказ после нажатия. */}
-                        {props.templates.map((t) => {
-                          const off = rank(t.role) > myRank
-                            || notMine(t.role, t.permissions, m.role, m.permissions).length > 0
+                        {/* Параметр `tpl`, а не `t`: имя `t` занято
+                            переводчиком, и тень над ним гасит весь экран. */}
+                        {props.templates.map((tpl) => {
+                          const off = rank(tpl.role) > myRank
+                            || notMine(tpl.role, tpl.permissions, m.role, m.permissions).length > 0
                           return (
-                            <option key={t.id} value={t.id} disabled={off}>
-                              {t.name}{off ? ' — понад ваш доступ' : ''}
+                            <option key={tpl.id} value={tpl.id} disabled={off}>
+                              {/* Тот же ключ, что и у роли выше: смысл один
+                                  — «это выше вашего доступа», и текст обязан
+                                  быть один. */}
+                              {off ? t('team.beyond', { name: tpl.name }) : tpl.name}
                             </option>
                           )
                         })}
                       </select>
-                      <p className="field-hint">
-                        Шаблон перезаписує роль, точкові дозволи й стелю знижки.
-                      </p>
+                      <p className="field-hint">{t('team.tplApply.hint')}</p>
                     </div>
                   )}
 
                   {/* Точечная выдача */}
                   {editable ? (
                     <div>
-                      <p className="field-label">Точкові дозволи</p>
+                      <p className="field-label">{t('team.perms.label')}</p>
                       <p className="field-hint mb-2">
-                        Галочка, що збігається з роллю, не зберігається окремо:
-                        зміниться роль — зміниться й доступ.
-                        {!iHaveStar && ' Погашені — це те, чого немає у вас самих: видати таке база не дасть.'}
+                        {t('team.perms.hint')}
+                        {!iHaveStar && ` ${t('team.perms.hintNotMine')}`}
                       </p>
                       <div className="grid gap-x-4 sm:grid-cols-2">
                         {allPerms.map((p) => {
@@ -988,9 +1004,13 @@ export function TeamClient(props: {
                                          .update({ permissions: perms })
                                          .eq('tenant_id', props.tenantId)
                                          .eq('user_id', m.user_id))} />
+                              {/* `p` — ключ права (`stock.read`). Служебное
+                                  значение: не переводится ни здесь, ни ниже. */}
                               <span className={overridden ? 'font-semibold'
                                 : cannotGive ? 'prose-muted' : ''}>{p}</span>
-                              {overridden && <span className="badge t-xs">окремо</span>}
+                              {overridden && (
+                                <span className="badge t-xs">{t('team.perms.override')}</span>
+                              )}
                             </label>
                           )
                         })}
@@ -998,11 +1018,9 @@ export function TeamClient(props: {
                     </div>
                   ) : (
                     <div>
-                      <p className="field-label">Що дозволено</p>
+                      <p className="field-label">{t('team.granted.label')}</p>
                       {granted.length === 0 ? (
-                        <p className="t-sm prose-muted">
-                          Нічого понад перегляд власного профілю.
-                        </p>
+                        <p className="t-sm prose-muted">{t('team.granted.none')}</p>
                       ) : (
                         <div className="flex flex-wrap gap-1.5">
                           {granted.map((p) => (
@@ -1013,27 +1031,27 @@ export function TeamClient(props: {
                           ))}
                         </div>
                       )}
-                      <p className="field-hint">
-                        Синім — видане окремо, поза набором ролі.
-                      </p>
+                      <p className="field-hint">{t('team.granted.hint')}</p>
                     </div>
                   )}
 
                   {/* Сеансы этого человека */}
                   {(sessionsByUser[m.user_id] ?? []).length > 0 && (
                     <div>
-                      <p className="field-label">Активні сеанси</p>
+                      <p className="field-label">{t('team.sessions.title')}</p>
                       {(sessionsByUser[m.user_id] ?? []).map((s) => (
+                        // Строка устройства и адрес — данные, а не текст.
                         <p key={s.session_id} className="t-sm prose-muted">
-                          {s.device?.slice(0, 60) ?? 'невідомий пристрій'} · {s.ip ?? '—'} ·
-                          {' '}остання дія {fmt(s.last_seen)}
+                          {s.device?.slice(0, 60) ?? t('team.sessions.unknownDevice')}
+                          {' · '}{s.ip ?? '—'}{' · '}
+                          {t('team.sessions.lastSeen', { date: t.dateTime(s.last_seen) })}
                         </p>
                       ))}
                       {dangerous && (
                         <button type="button" className="btn-secondary t-sm mt-2"
                                 disabled={busy === `sess:${m.user_id}`}
                                 onClick={() => endSessions(m.user_id)}>
-                          Завершити сеанси
+                          {t('team.sessions.end')}
                         </button>
                       )}
                     </div>
@@ -1050,37 +1068,30 @@ export function TeamClient(props: {
                         <button type="button" className="btn-secondary t-sm"
                                 disabled={busy === `unblock:${m.user_id}`}
                                 onClick={() => unblock(m)}>
-                          Розблокувати
+                          {t('team.block.unblock')}
                         </button>
-                        <p className="field-hint">
-                          Поверне і доступ до кабінету, і картку майстра
-                          в розкладі.
-                        </p>
+                        <p className="field-hint">{t('team.block.unblockHint')}</p>
                       </div>
                     ) : (
                       <div className="flex flex-col gap-1">
                         <div className="flex flex-wrap items-end gap-2">
                           <div className="grow sm:max-w-xs">
                             <label className="field-label" htmlFor={`block-${m.user_id}`}>
-                              Причина блокування
+                              {t('team.block.reason.label')}
                             </label>
                             <input className="input" id={`block-${m.user_id}`}
                                    value={blockReason[m.user_id] ?? ''}
                                    onChange={(e) => setBlockReason(
                                      (r) => ({ ...r, [m.user_id]: e.target.value }))}
-                                   placeholder="звільнення, втрата телефону…" />
+                                   placeholder={t('team.block.reason.placeholder')} />
                           </div>
                           <button type="button" className="btn-danger t-sm"
                                   disabled={busy === `block:${m.user_id}`}
                                   onClick={() => block(m)}>
-                            Заблокувати доступ
+                            {t('team.block.submit')}
                           </button>
                         </div>
-                        <p className="field-hint">
-                          Закриє вхід у кабінет і заразом погасить картку
-                          майстра: людина зникне і зі списку, на кого
-                          записують клієнта. Причина йде в незмінний журнал.
-                        </p>
+                        <p className="field-hint">{t('team.block.hint')}</p>
                       </div>
                     )
                   )}
@@ -1093,26 +1104,28 @@ export function TeamClient(props: {
                   {props.myRole === 'owner' && knowMe && !self
                    && m.role !== 'owner' && !m.blocked_at && (
                     <div className="card-flat flex flex-col gap-2">
-                      <p className="t-md">Передати володіння закладом</p>
-                      <p className="t-sm prose-muted">
-                        Ви станете адміністратором, а сеанси на цьому пристрої
-                        завершаться — доведеться увійти заново. Повернути
-                        володіння зможе тільки новий власник.
-                      </p>
+                      <p className="t-md">{t('team.transfer.title')}</p>
+                      <p className="t-sm prose-muted">{t('team.transfer.desc')}</p>
+                      {/* Подстановка внутри жирного — два ключа, «до» и
+                          «после». Разметку в словарь класть нельзя, а резать
+                          строку по `{name}` значит завести свой шаблонизатор
+                          ради одного места. */}
                       <label className="field-label" htmlFor={`own-${m.user_id}`}>
-                        Надрукуйте <b>{m.email ?? m.full_name}</b> для підтвердження
+                        {t('team.transfer.confirm.pre')}{' '}
+                        <b>{m.email ?? m.full_name}</b>{' '}
+                        {t('team.transfer.confirm.post')}
                       </label>
                       <input className="input" id={`own-${m.user_id}`}
                              value={transferTo[m.user_id] ?? ''}
                              autoComplete="off"
                              onChange={(e) => setTransferTo(
-                               (t) => ({ ...t, [m.user_id]: e.target.value }))} />
+                               (prev) => ({ ...prev, [m.user_id]: e.target.value }))} />
                       <div>
                         <button type="button" className="btn-danger t-sm"
                                 disabled={(transferTo[m.user_id] ?? '') !== (m.email ?? m.full_name ?? '')
                                           || busy === `own:${m.user_id}`}
                                 onClick={() => transfer(m)}>
-                          Передати володіння
+                          {t('team.transfer.submit')}
                         </button>
                       </div>
                     </div>
@@ -1127,28 +1140,25 @@ export function TeamClient(props: {
       {/* ── Шаблоны прав ────────────────────────────────────────────── */}
       {props.canWrite && (
         <section className="card rise-3">
-          <h2 className="t-lg mb-1">Шаблони доступу</h2>
-          <p className="t-md mb-4 prose-muted">
-            Набір «роль + точкові дозволи + стеля знижки» під вашу посаду.
-            Щоб не збирати п’ятнадцять галочок кожному новому майстру.
-          </p>
+          <h2 className="t-lg mb-1">{t('team.templates.title')}</h2>
+          <p className="t-md mb-4 prose-muted">{t('team.templates.desc')}</p>
 
           {props.templates.length === 0 && (
-            <p className="t-sm prose-muted">Шаблонів ще немає — створіть перший нижче.</p>
+            <p className="t-sm prose-muted">{t('team.templates.empty')}</p>
           )}
 
-          {props.templates.map((t) => {
-            const tRolePerms = permsByRole[t.role] ?? new Set<string>()
-            const tOpen = openTpl === t.id
-            const tplKey = `tpl:${t.id}`
+          {props.templates.map((tpl) => {
+            const tRolePerms = permsByRole[tpl.role] ?? new Set<string>()
+            const tOpen = openTpl === tpl.id
+            const tplKey = `tpl:${tpl.id}`
             const tPerms: Record<string, boolean> =
-              savedPerms[tplKey] ?? t.permissions ?? {}
+              savedPerms[tplKey] ?? tpl.permissions ?? {}
             return (
               // Граница — на обёртке, а не на `.row`: правило
               // `.row:last-child` гасит её у последнего ребёнка, а `.row`
               // здесь всегда единственный ребёнок своего div, поэтому
               // список шаблонов шёл вообще без разделителей.
-              <div key={t.id} className="border-b last:border-b-0"
+              <div key={tpl.id} className="border-b last:border-b-0"
                    style={{ borderColor: 'var(--color-border)' }}>
                 <div className="row">
                   {/* Две строки текста дают около 38px — ниже --tap-min.
@@ -1157,43 +1167,48 @@ export function TeamClient(props: {
                   <button type="button" className="min-w-0 grow text-left"
                           style={{ minHeight: 'var(--tap-min)' }}
                           aria-expanded={tOpen}
-                          onClick={() => setOpenTpl(tOpen ? null : t.id)}>
-                    <span className="t-md block truncate">{t.name}</span>
+                          onClick={() => setOpenTpl(tOpen ? null : tpl.id)}>
+                    {/* Имя шаблона придумал человек — это данные. */}
+                    <span className="t-md block truncate">{tpl.name}</span>
                     <span className="t-xs prose-muted block">
-                      {ROLE_LABEL[t.role] ?? t.role}
-                      {t.cap_pct !== null ? ` · знижка до ${t.cap_pct}%` : ' · знижка за роллю'}
+                      {roleLabel(t, tpl.role)}
+                      {' · '}
+                      {tpl.cap_pct !== null
+                        ? t('team.templates.capTo', { pct: t.percent(tpl.cap_pct) })
+                        : t('team.templates.capByRole')}
                       {' · '}
                       {Object.keys(tPerms).length === 0
-                        ? 'без точкових дозволів'
-                        : `${Object.keys(tPerms).length} ${plural(Object.keys(tPerms).length,
-                            'точковий дозвіл', 'точкові дозволи', 'точкових дозволів')}`}
+                        ? t('team.templates.noPerms')
+                        : t.plural('team.templates.permCount', Object.keys(tPerms).length)}
                     </span>
                   </button>
                   <button type="button" className="btn-ghost t-sm"
-                          disabled={busy === `tpl-del:${t.id}`}
-                          onClick={() => deleteTemplate(t.id)}>
-                    Видалити
+                          disabled={busy === `tpl-del:${tpl.id}`}
+                          onClick={() => deleteTemplate(tpl.id)}>
+                    {t('common.delete')}
                   </button>
                 </div>
 
                 {tOpen && (
                   <div className="card-flat mb-3 flex flex-col gap-3">
                     <div className="sm:max-w-[12rem]">
-                      <label className="field-label" htmlFor={`tpl-cap-${t.id}`}>Стеля знижки, %</label>
+                      <label className="field-label" htmlFor={`tpl-cap-${tpl.id}`}>
+                        {t('team.field.cap.label')}
+                      </label>
                       <input type="number" min={0} max={100} className="input"
-                             id={`tpl-cap-${t.id}`}
-                             defaultValue={t.cap_pct ?? ''}
-                             placeholder={`за роллю — ${capByRole[t.role] ?? 0}`}
-                             disabled={busy === `tpl-cap:${t.id}`}
-                             onBlur={(e) => saveTemplateCap(t, e.target.value)} />
+                             id={`tpl-cap-${tpl.id}`}
+                             defaultValue={tpl.cap_pct ?? ''}
+                             placeholder={t('team.field.cap.placeholder', {
+                               n: t.number(capByRole[tpl.role] ?? 0),
+                             })}
+                             disabled={busy === `tpl-cap:${tpl.id}`}
+                             onBlur={(e) => saveTemplateCap(tpl, e.target.value)} />
                     </div>
                     <div>
-                      <p className="field-label">Точкові дозволи шаблону</p>
+                      <p className="field-label">{t('team.templates.perms.label')}</p>
                       <p className="field-hint mb-2">
-                        Зберігається лише те, що ВІДРІЗНЯЄТЬСЯ від ролі
-                        «{ROLE_LABEL[t.role] ?? t.role}». Збіг із роллю не
-                        записується: зміниться набір ролі — зміниться й шаблон.
-                        {!iHaveStar && ' Шаблон, що видає більше, ніж є у вас, база не застосує — у картці людини він буде погашений.'}
+                        {t('team.templates.perms.hint', { role: roleLabel(t, tpl.role) })}
+                        {!iHaveStar && ` ${t('team.templates.perms.hintNotMine')}`}
                       </p>
                       <div className="grid gap-x-4 sm:grid-cols-2">
                         {allPerms.map((p) => {
@@ -1207,14 +1222,16 @@ export function TeamClient(props: {
                                   на шаблон целиком: с общим ключом гасла
                                   вся сетка разом, хотя записывается одна. */}
                               <input type="checkbox" checked={val} className="shrink-0"
-                                     disabled={busy === `tpl-perm:${t.id}:${p}`}
+                                     disabled={busy === `tpl-perm:${tpl.id}:${p}`}
                                      onChange={(e) => queuePerms(
-                                       tplKey, `tpl-perm:${t.id}:${p}`,
-                                       tPerms, t.role, p, e.target.checked,
+                                       tplKey, `tpl-perm:${tpl.id}:${p}`,
+                                       tPerms, tpl.role, p, e.target.checked,
                                        (perms) => supabase.from('permission_templates')
-                                         .update({ permissions: perms }).eq('id', t.id))} />
+                                         .update({ permissions: perms }).eq('id', tpl.id))} />
                               <span className={overridden ? 'font-semibold' : ''}>{p}</span>
-                              {overridden && <span className="badge t-xs">окремо</span>}
+                              {overridden && (
+                                <span className="badge t-xs">{t('team.perms.override')}</span>
+                              )}
                             </label>
                           )
                         })}
@@ -1229,25 +1246,29 @@ export function TeamClient(props: {
           <form onSubmit={createTemplate} className="mt-4 flex flex-col gap-3">
             <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
               <div>
-                <label className="field-label" htmlFor="tpl-name">Назва</label>
+                <label className="field-label" htmlFor="tpl-name">
+                  {t('team.templates.new.name.label')}
+                </label>
                 <input required className="input" id="tpl-name" value={tplName}
                        onChange={(e) => setTplName(e.target.value)}
-                       placeholder="Майстер зміни" />
+                       placeholder={t('team.templates.new.name.placeholder')} />
               </div>
               <div>
-                <label className="field-label" htmlFor="tpl-role">Роль</label>
+                <label className="field-label" htmlFor="tpl-role">{t('common.role')}</label>
                 <select className="select" id="tpl-role" value={tplRole}
                         onChange={(e) => setTplRole(e.target.value)}>
                   {assignableRoles.map((r) => (
-                    <option key={r} value={r}>{ROLE_LABEL[r] ?? r}</option>
+                    <option key={r} value={r}>{roleLabel(t, r)}</option>
                   ))}
                 </select>
               </div>
               <div>
-                <label className="field-label" htmlFor="tpl-new-cap">Знижка, %</label>
+                <label className="field-label" htmlFor="tpl-new-cap">
+                  {t('team.templates.new.cap.label')}
+                </label>
                 <input type="number" min={0} max={100} className="input sm:w-24" id="tpl-new-cap"
                        value={tplCap} onChange={(e) => setTplCap(e.target.value)}
-                       placeholder="за роллю" />
+                       placeholder={t('team.templates.new.cap.placeholder')} />
               </div>
             </div>
 
@@ -1255,10 +1276,9 @@ export function TeamClient(props: {
                 Шаблон, созданный пустым, применяется как чистая роль, и первое
                 же применение сотрёт человеку то, ради чего шаблон и заводили. */}
             <div>
-              <p className="field-label">Точкові дозволи нового шаблону</p>
+              <p className="field-label">{t('team.templates.new.perms.label')}</p>
               <p className="field-hint mb-2">
-                Відносно ролі «{ROLE_LABEL[tplRole] ?? tplRole}». Порожньо —
-                шаблон ставить чисту роль.
+                {t('team.templates.new.perms.hint', { role: roleLabel(t, tplRole) })}
               </p>
               <div className="grid gap-x-4 sm:grid-cols-2">
                 {allPerms.map((p) => {
@@ -1280,7 +1300,7 @@ export function TeamClient(props: {
 
             <div>
               <button className="btn-secondary" disabled={busy === 'tpl-new'}>
-                Додати шаблон
+                {t('team.templates.new.submit')}
               </button>
             </div>
           </form>
@@ -1290,22 +1310,21 @@ export function TeamClient(props: {
       {/* ── Все сеансы ──────────────────────────────────────────────── */}
       <section className="card rise-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="t-lg">Активні сеанси</h2>
+          <h2 className="t-lg">{t('team.sessions.title')}</h2>
           {props.canWrite && props.sessions.length > 0 && (
             <button type="button" className="btn-secondary t-sm"
                     disabled={busy === 'sess:all'}
                     onClick={() => endSessions(null)}>
-              Завершити всі, крім мого
+              {t('team.sessions.endAll')}
             </button>
           )}
         </div>
         {props.sessions.length === 0 ? (
-          <p className="t-md prose-muted mt-2">Активних сеансів немає.</p>
+          <p className="t-md prose-muted mt-2">{t('team.sessions.empty')}</p>
         ) : (
           <p className="t-sm prose-muted mt-2">
-            {props.sessions.length}{' '}
-            {plural(props.sessions.length, 'сеанс', 'сеанси', 'сеансів')}.
-            {' '}Подробиці — у картці людини вище.
+            {t.plural('team.sessions.count', props.sessions.length)}.
+            {' '}{t('team.sessions.details')}
           </p>
         )}
       </section>
@@ -1318,42 +1337,40 @@ export function TeamClient(props: {
       <section className="card rise-3 !p-0">
         <div className="flex flex-wrap items-center justify-between gap-2 p-5 pb-3">
           <div>
-            <h2 className="t-lg">Журнал доступів</h2>
-            <p className="t-sm prose-muted">
-              Хто, кому й що змінив. Записи не редагуються і не видаляються —
-              навіть власником.
-            </p>
+            <h2 className="t-lg">{t('team.audit.title')}</h2>
+            <p className="t-sm prose-muted">{t('team.audit.desc')}</p>
           </div>
           {props.audit.length > 0 && (
             <button type="button" className="btn-secondary t-sm"
                     aria-expanded={auditOpen}
                     onClick={() => setAuditOpen(!auditOpen)}>
-              {auditOpen ? 'Згорнути' : `Показати (${props.audit.length})`}
+              {auditOpen
+                ? t('team.audit.collapse')
+                : t('team.audit.expand', { n: t.number(props.audit.length) })}
             </button>
           )}
         </div>
 
         {props.audit.length === 0 && (
-          <p className="t-md prose-muted px-5 pb-5">
-            Поки порожньо: доступи ще ніхто не змінював.
-          </p>
+          <p className="t-md prose-muted px-5 pb-5">{t('team.audit.empty')}</p>
         )}
 
         {auditOpen && props.audit.map((a) => (
           <div key={a.id} className="row items-start px-5">
             <div className="min-w-0">
               <p className="t-md">
-                <b>{a.actor_name ?? 'система'}</b>
+                <b>{a.actor_name ?? t('team.audit.system')}</b>
                 {' → '}
-                {a.target_name ?? 'учасник'}
+                {a.target_name ?? t('team.audit.member')}
               </p>
-              <p className="t-xs prose-muted">{fmt(a.at)}</p>
+              <p className="t-xs prose-muted">{t.dateTime(a.at)}</p>
 
               {a.role_before !== a.role_after && (
                 <p className="t-sm">
-                  роль: {a.role_before ? (ROLE_LABEL[a.role_before] ?? a.role_before) : '—'}
-                  {' → '}
-                  {a.role_after ? (ROLE_LABEL[a.role_after] ?? a.role_after) : '—'}
+                  {t('team.audit.roleChange', {
+                    before: a.role_before ? roleLabel(t, a.role_before) : '—',
+                    after: a.role_after ? roleLabel(t, a.role_after) : '—',
+                  })}
                 </p>
               )}
               {(a.perms_added ?? []).length > 0 && (
@@ -1369,7 +1386,7 @@ export function TeamClient(props: {
               {a.note && <p className="t-sm prose-muted">{a.note}</p>}
             </div>
             <span className={`${ACTION_TONE[a.action] ?? 'badge'} shrink-0`}>
-              {ACTION_LABEL[a.action] ?? a.action}
+              {actionLabel(t, a.action)}
             </span>
           </div>
         ))}

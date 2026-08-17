@@ -4,16 +4,35 @@ import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useT } from '@/lib/i18n/client'
+import type { T } from '@/lib/i18n/translate'
 
 import {
   DOC_EXT_BY_MIME as EXT_BY_MIME,
   DOC_KINDS as KINDS,
-  DOC_KIND_LABEL as KIND_LABEL,
   DOC_MAX_BYTES as MAX_BYTES,
   type DocKind,
 } from '@/lib/documents'
 
 export type { DocKind }
+
+// Вид документа — значение перечисления `material_doc_kind` (0014).
+// Само значение (`msds`) не переводится никогда: по нему сверяется база.
+// Переводится ПОДПИСЬ, и живёт она в словаре — полная для выпадающего
+// списка (`documents.kind.msds`) и короткая для строки (`…​.short`).
+//
+// Из `lib/documents.ts` берётся только ПОРЯДОК и набор значений. Два
+// украинских списка подписей, что лежали там раньше (`DOC_KINDS[].label`
+// и `DOC_KIND_LABEL`), удалены 16.08.2026 вместе с переводом второго
+// экрана документов: подписи обязаны иметь один источник, и это словарь.
+const kindLabel = (t: T, k: DocKind): string => t(`documents.kind.${k}`)
+const kindShort = (t: T, k: DocKind): string => t(`documents.kind.${k}.short`)
+
+// Дата загрузки — «12 січ. 2024». Набор опций, а не своя `fmt`:
+// форматирует `t.date`, то есть локаль, а не экран.
+const DAY: Intl.DateTimeFormatOptions = {
+  day: 'numeric', month: 'short', year: 'numeric',
+}
 
 type Material = {
   id: string; name: string; unit: string
@@ -34,6 +53,7 @@ export function DocumentsClient({
   canStock: boolean
   materials: Material[]; documents: Doc[]; loadError: string
 }) {
+  const t = useT()
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
   const [materialId, setMaterialId] = useState('')
@@ -63,11 +83,11 @@ export function DocumentsClient({
     if (!file || !materialId) return
     const ext = EXT_BY_MIME[file.type]
     if (!ext) {
-      setErr('Дозволені формати: PDF, JPG, PNG, WEBP, DOC, DOCX')
+      setErr(t('documents.error.mime'))
       return
     }
     if (file.size > MAX_BYTES) {
-      setErr('Файл більший за 20 МБ — стисніть або розділіть його')
+      setErr(t('documents.error.tooBig'))
       return
     }
 
@@ -145,7 +165,8 @@ export function DocumentsClient({
   }
 
   async function remove(doc: Doc) {
-    if (!window.confirm(`Видалити «${doc.title}»? Файл зникне назавжди.`)) return
+    // Назва документа — данные арендатора, она приезжает подстановкой.
+    if (!window.confirm(t('documents.remove.confirm', { title: doc.title }))) return
     setBusy(doc.id); setErr('')
     // Сначала запись, потом файл. Обратный порядок опаснее: строка
     // реестра, которая обещает инспектору документ, а файла уже нет, —
@@ -154,22 +175,24 @@ export function DocumentsClient({
     if (error) { setBusy(null); setErr(error.message); return }
     const { error: storageError } = await supabase.storage.from('documents').remove([doc.path])
     setBusy(null)
-    if (storageError) setErr(`Запис видалено, файл лишився у сховищі: ${storageError.message}`)
+    // Текст отказа хранилища подставляется КАК ЕСТЬ: это его сообщение,
+    // а не наше, и в словарь оно не едет (CLAUDE.md → «Локализация»).
+    if (storageError) {
+      setErr(t('documents.error.fileKept', { error: storageError.message }))
+    }
     router.refresh()
   }
-
-  const fmt = (s: string) => new Date(s).toLocaleDateString('uk-UA', {
-    day: 'numeric', month: 'short', year: 'numeric',
-  })
 
   return (
     <div className="flex flex-col gap-5">
       {/* «Склад» — только тем, у кого есть `stock.read`. У инспектора его
           нет (0035), и раздел молча вернул бы его на «Сьогодні». */}
       <div className="rise flex flex-wrap items-center gap-2">
-        {canStock && <Link href="/app/inventory" className="btn-ghost">← Склад</Link>}
-        <Link href="/app/journals" className="btn-ghost">Санітарні журнали</Link>
-        <Link href="/app/techcards" className="btn-ghost">Техкарти обробки</Link>
+        {canStock && (
+          <Link href="/app/inventory" className="btn-ghost">{t('documents.nav.stock')}</Link>
+        )}
+        <Link href="/app/journals" className="btn-ghost">{t('documents.nav.journals')}</Link>
+        <Link href="/app/techcards" className="btn-ghost">{t('documents.nav.techcards')}</Link>
       </div>
 
       {loadError && <p className="field-error rise">{loadError}</p>}
@@ -177,12 +200,10 @@ export function DocumentsClient({
 
       {missing.length > 0 && (
         <div className="card-flat rise-1 flex flex-wrap items-center gap-3">
-          <span className="badge-warn tabular">без документів: {missing.length}</span>
-          <p className="t-md prose-muted">
-            На косметичні засоби перевірка вимагає паспорт безпеки, сертифікат
-            якості та висновок СЕС. Завантажте їх зараз — під час перевірки
-            шукати вже пізно.
-          </p>
+          <span className="badge-warn tabular">
+            {t('documents.missing.badge', { n: t.number(missing.length) })}
+          </span>
+          <p className="t-md prose-muted">{t('documents.missing.desc')}</p>
         </div>
       )}
 
@@ -192,10 +213,11 @@ export function DocumentsClient({
       {canWrite && (
       <form onSubmit={upload} className="card rise-1 grid gap-3 sm:grid-cols-2">
         <div>
-          <label className="field-label">Матеріал</label>
+          <label className="field-label">{t('documents.upload.material.label')}</label>
           <select required className="select" value={materialId}
                   onChange={(e) => setMaterialId(e.target.value)}>
-            <option value="">Оберіть матеріал…</option>
+            <option value="">{t('documents.upload.material.placeholder')}</option>
+            {/* Назва і бренд засобу — данные заклада, не переводятся. */}
             {materials.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.name}{m.brand ? ` · ${m.brand}` : ''}
@@ -204,28 +226,30 @@ export function DocumentsClient({
           </select>
         </div>
         <div>
-          <label className="field-label">Тип документа</label>
+          <label className="field-label">{t('documents.upload.kind.label')}</label>
           <select className="select" value={kind}
                   onChange={(e) => setKind(e.target.value as DocKind)}>
-            {KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
+            {KINDS.map((k) => (
+              <option key={k} value={k}>{kindLabel(t, k)}</option>
+            ))}
           </select>
         </div>
         <div>
-          <label className="field-label">Назва</label>
-          <input required className="input" placeholder="Сертифікат якості партії 2024/07"
+          <label className="field-label">{t('documents.upload.title.label')}</label>
+          <input required className="input" placeholder={t('documents.upload.title.placeholder')}
                  value={title} onChange={(e) => setTitle(e.target.value)} />
-          <p className="field-hint">Так документ буде видно у списку та у файлі при завантаженні.</p>
+          <p className="field-hint">{t('documents.upload.title.hint')}</p>
         </div>
         <div>
-          <label className="field-label">Файл</label>
+          <label className="field-label">{t('documents.upload.file.label')}</label>
           <input key={fileKey} required type="file" className="input pt-2.5"
                  accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx"
                  onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-          <p className="field-hint">PDF, фото або документ Word, до 20 МБ.</p>
+          <p className="field-hint">{t('documents.upload.file.hint')}</p>
         </div>
         <button className="btn-primary sm:col-span-2 sm:justify-self-start"
                 disabled={busy === 'upload' || !file || !materialId || !title.trim()}>
-          {busy === 'upload' ? 'Завантажуємо…' : 'Завантажити документ'}
+          {busy === 'upload' ? t('documents.upload.submitBusy') : t('documents.upload.submit')}
         </button>
       </form>
       )}
@@ -233,8 +257,8 @@ export function DocumentsClient({
       {materials.length === 0 ? (
         <div className="card rise-2">
           <div className="empty">
-            <p>Матеріалів ще немає.</p>
-            <p className="prose-muted">Спершу заведіть їх на складі — документи чіпляються до матеріалу.</p>
+            <p>{t('documents.empty.title')}</p>
+            <p className="prose-muted">{t('documents.empty.desc')}</p>
           </div>
         </div>
       ) : (
@@ -254,40 +278,48 @@ export function DocumentsClient({
                       {m.name}
                     </Link>
                     <p className="t-xs prose-muted">
-                      {m.brand ? `${m.brand} · ` : ''}одиниця: {m.unit}
+                      {/* Бренд і одиниця виміру — данные засоба; переводится
+                          только слово «одиниця». */}
+                      {m.brand ? `${m.brand} · ` : ''}
+                      {t('documents.material.unit', { unit: m.unit })}
                     </p>
                   </div>
                   <span className="flex flex-wrap items-center gap-2">
-                    {m.isCosmetic && <span className="badge-accent">косметика</span>}
+                    {m.isCosmetic && (
+                      <span className="badge-accent">{t('documents.badge.cosmetic')}</span>
+                    )}
                     {m.isCosmetic && docs.length === 0 ? (
-                      <span className="badge-warn">
-                        потрібні документи для перевірки
-                      </span>
+                      <span className="badge-warn">{t('documents.badge.needDocs')}</span>
                     ) : (
-                      <span className="badge tabular">документів: {docs.length}</span>
+                      <span className="badge tabular">
+                        {t('documents.badge.count', { n: t.number(docs.length) })}
+                      </span>
                     )}
                   </span>
                 </div>
 
                 {docs.length === 0 ? (
-                  <div className="empty !py-6">Документів не завантажено.</div>
+                  <div className="empty !py-6">{t('documents.docs.empty')}</div>
                 ) : (
                   <div className="flex flex-col">
                     {docs.map((d) => (
                       <div key={d.id} className="row">
                         <div className="min-w-0">
+                          {/* Назва документа — данные заклада. */}
                           <p className="t-md truncate">{d.title}</p>
                           <p className="tabular t-xs prose-muted">
-                            {KIND_LABEL[d.kind]} · {fmt(d.createdAt)}
+                            {kindShort(t, d.kind)} · {t.date(d.createdAt, DAY)}
                           </p>
                         </div>
                         <span className="flex shrink-0 items-center gap-1">
                           <button className="btn-ghost" disabled={busy === d.id}
-                                  onClick={() => void view(d)}>Переглянути</button>
+                                  onClick={() => void view(d)}>{t('documents.doc.view')}</button>
                           <button className="btn-ghost" disabled={busy === d.id}
-                                  onClick={() => void download(d)}>Завантажити</button>
+                                  onClick={() => void download(d)}>{t('documents.doc.download')}</button>
                           {canWrite && (
-                            <button className="btn-icon" aria-label="Видалити"
+                            // Подпись для скринридера — из словаря, как
+                            // и всё остальное: «✕» он не прочтёт.
+                            <button className="btn-icon" aria-label={t('common.delete')}
                                     disabled={busy === d.id}
                                     onClick={() => void remove(d)}>✕</button>
                           )}
@@ -302,11 +334,7 @@ export function DocumentsClient({
         </div>
       )}
 
-      <p className="field-hint rise-3">
-        Файли зберігаються у закритому сховищі: посилання на документ діє
-        пʼять хвилин і працює лише для тих, кому ви відкрили доступ до
-        санітарного обліку. Назовні сертифікати не потрапляють.
-      </p>
+      <p className="field-hint rise-3">{t('documents.footer')}</p>
     </div>
   )
 }

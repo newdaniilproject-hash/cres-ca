@@ -8,6 +8,7 @@ import {
   authErrorText, codeErrorText, humanAuthError, lockoutSeconds, lockoutText,
 } from '@/lib/auth-errors'
 import { nextRoute } from '@/lib/where'
+import { useT } from '@/lib/i18n/client'
 import { AuthShell } from '../auth-shell'
 import { GoogleButton } from '../google-button'
 import { CodeInput } from '@/app/m/code-input'
@@ -31,6 +32,7 @@ type Mode = 'code' | 'password'
 type Step = 'form' | 'code' | 'done' | 'blocked'
 
 function LoginInner() {
+  const t = useT()
   const params = useSearchParams()
   // next приходит из адреса — принимаем только внутренний путь,
   // иначе ссылка вида /login?next=https://… уводит человека с площадки.
@@ -66,7 +68,7 @@ function LoginInner() {
   const [code, setCode] = useState('')
   const [codeError, setCodeError] = useState('')
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState(returned ? authErrorText(returned) : '')
+  const [error, setError] = useState(returned ? authErrorText(t, returned) : '')
   const [noAccount, setNoAccount] = useState(false)
   const [left, setLeft] = useState(0)
   const [lockWait, setLockWait] = useState('')
@@ -78,7 +80,7 @@ function LoginInner() {
   // (пароль и код) заканчиваются здесь, чтобы решение о том, куда вести,
   // жило в одном месте, а не в двух обработчиках.
   async function done() {
-    setTarget(next ?? await nextRoute(supabase, 'web'))
+    setTarget(next ?? await nextRoute(supabase))
     setStep('done')
   }
 
@@ -96,7 +98,7 @@ function LoginInner() {
     const h = new URLSearchParams(hash.slice(1))
     const raw = h.get('error_description') ?? h.get('error')
     if (!raw) return
-    setError(authErrorText(raw))
+    setError(authErrorText(t, raw))
     window.history.replaceState(null, '', window.location.pathname + window.location.search)
   }, [])
 
@@ -105,7 +107,7 @@ function LoginInner() {
   function catchLockout(message: string, status?: number): boolean {
     const sec = lockoutSeconds(message, status)
     if (sec === null) return false
-    setLockWait(lockoutText(sec))
+    setLockWait(lockoutText(t, sec))
     setStep('blocked')
     return true
   }
@@ -124,7 +126,7 @@ function LoginInner() {
       if (error) {
         if (catchLockout(error.message, error.status)) return
         if (error.message.toLowerCase().includes('signups not allowed')) { setNoAccount(true); return }
-        setError(humanAuthError(error.message))
+        setError(humanAuthError(t, error.message))
         return
       }
       setCode(''); setCodeError(''); setLeft(RESEND_SECONDS); setStep('code')
@@ -137,7 +139,7 @@ function LoginInner() {
     setBusy(false)
     if (error) {
       if (catchLockout(error.message, error.status)) return
-      setError(humanAuthError(error.message))
+      setError(humanAuthError(t, error.message))
       return
     }
     await done()
@@ -150,7 +152,7 @@ function LoginInner() {
       email: email.trim(), token: v, type: 'email',
     })
     if (error) {
-      setBusy(false); setCodeError(codeErrorText(error.message)); setCode('')
+      setBusy(false); setCodeError(codeErrorText(t, error.message)); setCode('')
       return
     }
     setBusy(false)
@@ -164,7 +166,7 @@ function LoginInner() {
       email: email.trim(), options: { shouldCreateUser: false },
     })
     setBusy(false)
-    if (error) { setCodeError(humanAuthError(error.message)); return }
+    if (error) { setCodeError(humanAuthError(t, error.message)); return }
     setLeft(RESEND_SECONDS)
   }
 
@@ -175,9 +177,9 @@ function LoginInner() {
     return (
       <AuthShell>
         <SuccessScreen
-          title="Вхід успішний!"
-          subtitle="Раді вас бачити! Перехід у ваш кабінет…"
-          actionLabel="Продовжити"
+          title={t('auth.login.done.title')}
+          subtitle={t('auth.login.done.desc')}
+          actionLabel={t('common.continue')}
           onAction={() => { window.location.href = target }}
         />
         <Redirect to={target} />
@@ -201,8 +203,8 @@ function LoginInner() {
   // ── Код ──────────────────────────────────────────────────────
   if (step === 'code') {
     return (
-      <AuthShell title="Підтвердження входу"
-                 subtitle={`Ми надіслали 6-значний код на ${email.trim()}`}>
+      <AuthShell title={t('auth.login.code.title')}
+                 subtitle={t('auth.code.sentTo', { email: email.trim(), n: CODE_LENGTH })}>
         <CodeInput
           value={code} disabled={busy} invalid={!!codeError} length={CODE_LENGTH}
           onChange={(v) => {
@@ -212,34 +214,35 @@ function LoginInner() {
         />
 
         {codeError && <p className="field-error text-center">{codeError}</p>}
-        {busy && !codeError && <p className="t-sm mt-3 text-center prose-muted">Перевіряємо…</p>}
+        {busy && !codeError && (
+          <p className="t-sm mt-3 text-center prose-muted">{t('auth.code.checking')}</p>
+        )}
 
         <p className="code-countdown">
-          {left > 0 ? `Повторно надіслати код через ${mmss(left)}` : 'Код можна надіслати повторно'}
+          {left > 0
+            ? t('auth.code.resendIn', { time: mmss(left) })
+            : t('auth.code.resendReady')}
         </p>
 
         <div className="auth-result-actions">
           <button type="button" className="btn-primary btn-tall"
                   disabled={busy || code.length !== CODE_LENGTH}
                   onClick={() => void verify(code)}>
-            {busy ? 'Перевіряємо…' : 'Підтвердити'}
+            {busy ? t('auth.code.checking') : t('auth.code.submit')}
           </button>
           <button type="button" className="link-quiet link-accent"
                   disabled={left > 0 || busy} onClick={() => void resend()}>
-            Надіслати код повторно
+            {t('auth.code.resend')}
           </button>
           <button type="button" className="link-quiet"
                   onClick={() => { setStep('form'); setCode(''); setCodeError('') }}>
-            Змінити пошту
+            {t('auth.code.changeEmail')}
           </button>
         </div>
 
         <div className="note note-row">
           <span style={{ color: 'var(--color-muted)' }}><MailIcon size={20} /></span>
-          <span>
-            Не отримали лист? Перевірте папку «Вхідні» та «Спам».
-            Або повторіть через хвилину.
-          </span>
+          <span>{t('auth.code.noMail')}</span>
         </div>
       </AuthShell>
     )
@@ -248,12 +251,16 @@ function LoginInner() {
   // ── Форма ────────────────────────────────────────────────────
   const byPassword = mode === 'password'
   return (
-    <AuthShell title="Вхід" subtitle="Раді бачити знову">
+    <AuthShell title={t('auth.login.title')} subtitle={t('auth.login.subtitle')}>
       <div className="mb-6 flex gap-2">
         <button type="button" onClick={() => { setMode('password'); setError('') }}
-                className={byPassword ? 'chip-active' : 'chip'}>Пароль</button>
+                className={byPassword ? 'chip-active' : 'chip'}>
+          {t('auth.login.tab.password')}
+        </button>
         <button type="button" onClick={() => { setMode('code'); setError('') }}
-                className={byPassword ? 'chip' : 'chip-active'}>Код на пошту</button>
+                className={byPassword ? 'chip' : 'chip-active'}>
+          {t('auth.login.tab.code')}
+        </button>
       </div>
 
       <form onSubmit={submit} className="flex flex-col gap-4">
@@ -269,9 +276,9 @@ function LoginInner() {
         {byPassword && (
           <div>
             <div className="flex items-baseline justify-between">
-              <label className="field-label" htmlFor="pass">Пароль</label>
+              <label className="field-label" htmlFor="pass">{t('auth.field.password')}</label>
               <Link href="/forgot" className="t-xs underline underline-offset-2 prose-muted">
-                Забули?
+                {t('auth.login.forgot')}
               </Link>
             </div>
             <PasswordInput id="pass" value={password} onChange={setPassword}
@@ -281,9 +288,11 @@ function LoginInner() {
 
         {noAccount && (
           <div className="card-flat" style={{ borderColor: 'var(--color-accent)' }}>
-            <p className="t-md">Такої пошти в нас немає</p>
-            <p className="t-sm mt-1 prose-muted">Створіть акаунт — це кілька полів.</p>
-            <Link href={registerHref} className="btn-primary btn-tall mt-3">Створити акаунт</Link>
+            <p className="t-md">{t('auth.login.noAccount.title')}</p>
+            <p className="t-sm mt-1 prose-muted">{t('auth.login.noAccount.desc')}</p>
+            <Link href={registerHref} className="btn-primary btn-tall mt-3">
+              {t('auth.login.noAccount.action')}
+            </Link>
           </div>
         )}
 
@@ -291,17 +300,23 @@ function LoginInner() {
 
         <button className="btn-primary btn-tall"
                 disabled={busy || email.trim().length < 5 || (byPassword && password.length < 1)}>
-          {busy ? 'Хвилинку…' : byPassword ? 'Увійти' : 'Надіслати код'}
+          {busy ? t('auth.busy') : byPassword ? t('auth.login.submit') : t('auth.login.sendCode')}
         </button>
       </form>
 
       <GoogleButton next={next ?? undefined} />
 
+      {/* Ссылка внутри предложения — отдельные ключи: разметки
+          в словаре не бывает. */}
       <p className="t-md mt-6 prose-muted">
-        Немає акаунта?{' '}
-        <Link href={registerHref} className="underline underline-offset-2">Зареєструватися</Link>
+        {t('auth.login.register.lead')}{' '}
+        <Link href={registerHref} className="underline underline-offset-2">
+          {t('auth.login.register.buyer')}
+        </Link>
         {' · '}
-        <Link href={sellerHref} className="underline underline-offset-2">Я підприємець</Link>
+        <Link href={sellerHref} className="underline underline-offset-2">
+          {t('auth.login.register.seller')}
+        </Link>
       </p>
     </AuthShell>
   )

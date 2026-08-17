@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useState } from 'react'
 import { signInWithProvider, type OAuthProvider } from '@/lib/oauth'
 import { LEGAL_DOCS } from '@/lib/legal'
+import { useT } from '@/lib/i18n/client'
 
 // Кнопка входа через провайдера.
 //
@@ -21,8 +22,11 @@ import { LEGAL_DOCS } from '@/lib/legal'
 // Требование App Store Review 4.8 («Sign in with Apple рядом с другими
 // провайдерами») при этом никуда не делось и станет блокером на подаче
 // в магазин. Возвращать кнопку — вместе с ключами, одним заходом.
+// `hint` остаётся пропом: экран регистрации подставляет свою подводку.
+// Умолчания в сигнатуре нет — строку берём из словаря внутри, потому
+// что `useT` в списке параметров не позовёшь.
 export function OAuthButtons({
-  hint = 'або',
+  hint,
   sep = 'above',
   legal = false,
   disabled = false,
@@ -36,6 +40,7 @@ export function OAuthButtons({
   legal?: boolean
   disabled?: boolean
 }) {
+  const t = useT()
   const [busy, setBusy] = useState<OAuthProvider | null>(null)
   const [error, setError] = useState('')
 
@@ -48,13 +53,13 @@ export function OAuthButtons({
       // второе окно и запутает вход.
     } catch (e) {
       setBusy(null)
-      setError(e instanceof Error ? e.message : 'Не вдалося відкрити вхід')
+      setError(e instanceof Error ? e.message : t('m.oauth.error'))
     }
   }
 
   const line = (
     <div className={sep === 'below' ? 'oauth-sep below' : 'oauth-sep'}>
-      <span>{hint}</span>
+      <span>{hint ?? t('m.oauth.or')}</span>
     </div>
   )
 
@@ -69,21 +74,25 @@ export function OAuthButtons({
         onClick={() => void run('google')}
       >
         <GoogleMark />
-        <span>{busy === 'google' ? 'Відкриваємо…' : 'Продовжити з Google'}</span>
+        <span>{busy === 'google' ? t('m.oauth.busy') : t('m.oauth.submit')}</span>
       </button>
 
       {error && <p className="field-error">{error}</p>}
 
       {legal && (
         <p className="t-xs mt-1" style={{ color: 'var(--color-faint)', lineHeight: 1.5 }}>
-          Продовжуючи, ви приймаєте{' '}
+          {t('m.oauth.legal.lead')}{' '}
+          {/* Названия документов приходят из `lib/legal.ts`: это перечень
+              юридических документов, а не строки интерфейса. */}
           {LEGAL_DOCS.map((d, i) => (
             <span key={d.href}>
               <Link href={d.href} className="underline underline-offset-2"
                     style={{ color: 'var(--color-muted)' }}>
                 {d.label}
               </Link>
-              {i < LEGAL_DOCS.length - 2 ? ', ' : i === LEGAL_DOCS.length - 2 ? ' та ' : ''}
+              {i < LEGAL_DOCS.length - 2
+                ? ', '
+                : i === LEGAL_DOCS.length - 2 ? ` ${t('m.oauth.legal.and')} ` : ''}
             </span>
           ))}
           .

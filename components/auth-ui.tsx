@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useState } from 'react'
+import { useT } from '@/lib/i18n/client'
 
 // Общие детали экранов входа для веба и приложения.
 //
@@ -17,9 +18,11 @@ import { useState } from 'react'
 // Обратный отсчёт в виде 00:45. Так его показывает макет, и так он
 // читается как время, а не как «осталось 45 чего-то».
 export function mmss(total: number): string {
-  const t = Math.max(0, total)
-  const m = Math.floor(t / 60)
-  const s = t % 60
+  // Переменная названа `secs`, а не `t`: `t` — переводчик (правило
+  // именования в `lib/i18n/dict.ts`), и тень от него читается как ошибка.
+  const secs = Math.max(0, total)
+  const m = Math.floor(secs / 60)
+  const s = secs % 60
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
@@ -27,17 +30,13 @@ export function mmss(total: number): string {
 // CRESKO — «склад для майстрів». Подпись включается там, где человек
 // видит продукт впервые (приветствие), и молчит там, где он уже
 // внутри потока входа.
-//
-// Единственное место, где написано имя продукта. Шапки кабинета зовут
-// её же, обёрнутой в .brand-topbar (там знак мельче — это ссылка,
-// а не герой). Раньше «Маркет.» было вписано руками в сайдбар, шторку
-// разделов и шапку над /account, экраны входа успели стать CRESKO,
-// а кабинет нет — продукт был подписан двумя именами сразу.
 export function Brand({ tagline = false }: { tagline?: boolean }) {
+  const t = useT()
   return (
     <div className="brand-lockup">
+      {/* CRESKO — имя продукта, оно не переводится ни на один язык. */}
       <span className="brand-word">CRESKO</span>
-      {tagline && <span className="brand-tagline">Склад для майстрів</span>}
+      {tagline && <span className="brand-tagline">{t('auth.brand.tagline')}</span>}
     </div>
   )
 }
@@ -120,6 +119,7 @@ export function BlockedScreen({
   onReset: () => void
   onBack: () => void
 }) {
+  const t = useT()
   return (
     <div className="auth-result">
       <span className="hero-circle hero-circle-danger rise" aria-hidden>
@@ -131,21 +131,22 @@ export function BlockedScreen({
         </svg>
       </span>
 
-      <h1 className="display rise-1 t-2xl mt-6 text-center">Акаунт заблоковано</h1>
+      <h1 className="display rise-1 t-2xl mt-6 text-center">{t('auth.blocked.title')}</h1>
       <p className="rise-2 t-md mt-2 text-center prose-muted" style={{ lineHeight: 1.5 }}>
-        Забагато невдалих спроб входу. Для вашої безпеки акаунт тимчасово заблоковано.
+        {t('auth.blocked.desc')}
       </p>
 
-      <div className="rise-3 note note-danger">
-        Спробуйте повторити через {waitText}. Або скиньте пароль, якщо забули його.
-      </div>
+      {/* Срок ожидания приходит готовой строкой из `lockoutText`
+          (`lib/auth-errors.ts`) — файл чужой, и склонение «хвилину /
+          хвилини / хвилин» живёт там. Здесь только подстановка. */}
+      <div className="rise-3 note note-danger">{t('auth.blocked.note', { wait: waitText })}</div>
 
       <div className="rise-3 auth-result-actions">
         <button type="button" className="btn-primary btn-tall" onClick={onReset}>
-          Скинути пароль
+          {t('auth.blocked.reset')}
         </button>
         <button type="button" className="link-quiet" onClick={onBack}>
-          Повернутися до входу
+          {t('auth.blocked.back')}
         </button>
       </div>
     </div>
@@ -174,6 +175,7 @@ export function PasswordInput({
   autoFocus?: boolean
   onFocus?: (e: React.FocusEvent<HTMLInputElement>) => void
 }) {
+  const t = useT()
   const [see, setSee] = useState(false)
   return (
     <div className="pw-wrap">
@@ -193,7 +195,7 @@ export function PasswordInput({
       <button
         type="button"
         onClick={() => setSee((v) => !v)}
-        aria-label={see ? 'Сховати пароль' : 'Показати пароль'}
+        aria-label={see ? t('auth.password.hide.aria') : t('auth.password.show.aria')}
         className="pw-eye"
       >
         {see ? <EyeOff /> : <Eye />}
@@ -216,12 +218,20 @@ export function passwordScore(pw: string): 0 | 1 | 2 | 3 | 4 {
   return Math.min(s, 4) as 0 | 1 | 2 | 3 | 4
 }
 
-const SCORE_LABEL = ['', 'Слабкий пароль', 'Так собі пароль', 'Добрий пароль', 'Надійний пароль']
+// Оценка — число от 0 до 4, подпись к ней приходит из словаря.
+// Нулевая оценка своей подписи не имеет: при пустом и коротком пароле
+// показывается не она, а требование к длине.
+const SCORE_KEY = [
+  null, 'auth.password.score.1', 'auth.password.score.2',
+  'auth.password.score.3', 'auth.password.score.4',
+] as const
 const SCORE_TONE = ['none', 'weak', 'weak', 'ok', 'good'] as const
 
 export function PasswordStrength({ value }: { value: string }) {
+  const t = useT()
   const score = passwordScore(value)
   const tone = SCORE_TONE[score]
+  const scoreKey = SCORE_KEY[score]
   return (
     <div className="pw-meter-wrap">
       <div className="pw-meter" aria-hidden>
@@ -231,10 +241,10 @@ export function PasswordStrength({ value }: { value: string }) {
       </div>
       <p className="pw-meter-label" data-tone={tone}>
         {value.length === 0
-          ? 'Мінімум 8 символів'
+          ? t('auth.password.min')
           : value.length < 8
-            ? `Ще ${8 - value.length} символів`
-            : SCORE_LABEL[score]}
+            ? t.plural('auth.password.more', 8 - value.length)
+            : scoreKey ? t(scoreKey) : ''}
       </p>
     </div>
   )

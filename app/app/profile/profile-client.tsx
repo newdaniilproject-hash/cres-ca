@@ -7,14 +7,23 @@ import { Sheet } from '@/components/sheet'
 import { ThemeToggle } from '@/components/theme'
 import { useToast } from '@/components/toast'
 import { IconExit, IconGear, IconUser } from '@/components/icons'
+import { useT } from '@/lib/i18n/client'
+import type { T } from '@/lib/i18n/translate'
 
-const ROLE_LABEL: Record<string, string> = {
-  owner: 'Власник',
-  admin: 'Адміністратор',
-  operator: 'Майстер',
-  inspector: 'Інспектор',
-  staff: 'Співробітник',
-}
+// Подписи ролей — ОБЩИЙ словарь `role.*`: те же семь слов показывают
+// `/app/team` и `/app/settings`, и расходиться им нельзя. Само значение
+// (`owner`) не переводится: это ключ перечисления, по нему сверяется база.
+// Неизвестная роль выводится как есть — новая роль появится в базе раньше,
+// чем в словаре.
+//
+// Здесь был свой список из пяти подписей, и в нём стояло значение `staff`,
+// которого в `member_role` (0001) нет вовсе: оно не показывалось никогда.
+const ROLES = [
+  'owner', 'admin', 'manager', 'accountant', 'operator', 'viewer', 'inspector',
+] as const
+type Role = (typeof ROLES)[number]
+const roleLabel = (t: T, r: string): string =>
+  ((ROLES as readonly string[]).includes(r) ? t(`role.${r as Role}`) : r)
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -37,6 +46,7 @@ export function ProfileClient({
   /** Есть ли `settings.read`. Считает сервер — см. `page.tsx`. */
   canSettings: boolean
 }) {
+  const t = useT()
   const supabase = useMemo(() => createClient(), [])
   const toast = useToast()
 
@@ -55,15 +65,16 @@ export function ProfileClient({
   async function changePassword(e: React.FormEvent) {
     e.preventDefault()
     if (password !== password2) {
-      toast.error('Паролі не збігаються')
+      toast.error(t('profile.pass.error.mismatch'))
       return
     }
     setBusy('pass')
     const { error } = await supabase.auth.updateUser({ password })
     setBusy(null)
-    if (error) { toast.error('Пароль не змінено', error.message); return }
+    // Вторая строка тоста — текст отказа Supabase, он показывается как есть.
+    if (error) { toast.error(t('profile.pass.error.failed'), error.message); return }
     setPassword(''); setPassword2(''); setPass(false)
-    toast.success('Пароль змінено')
+    toast.success(t('profile.pass.ok'))
   }
 
   async function changeEmail(e: React.FormEvent) {
@@ -71,10 +82,9 @@ export function ProfileClient({
     setBusy('mail')
     const { error } = await supabase.auth.updateUser({ email: newEmail.trim() })
     setBusy(null)
-    if (error) { toast.error('Пошту не змінено', error.message); return }
+    if (error) { toast.error(t('profile.mail.error.failed'), error.message); return }
     setNewEmail(''); setMail(false)
-    toast.info('Підтвердіть зміну',
-      'Листи пішли на стару і на нову адресу — перейдіть за обома.')
+    toast.info(t('profile.mail.sent.title'), t('profile.mail.sent.desc'))
   }
 
   async function signOut() {
@@ -89,26 +99,32 @@ export function ProfileClient({
   // Поэтому сначала честно считаем файлы и говорим, сколько их.
   async function deleteAccount(e: React.FormEvent) {
     e.preventDefault()
-    if (confirm.trim().toUpperCase() !== 'ВИДАЛИТИ') {
-      toast.error('Введіть слово ВИДАЛИТИ', 'Так підтверджується незворотна дія.')
+    // Слово-подтверждение сверяется С ТЕМ ЖЕ КЛЮЧОМ, которым оно показано
+    // в поле ниже. Захардкоженное «ВИДАЛИТИ» в проверке дало бы русский
+    // интерфейс с украинским словом в подписи — кнопка не сработала бы
+    // никогда.
+    if (confirm.trim().toUpperCase() !== t('profile.delete.word')) {
+      toast.error(t('profile.delete.error.word', { word: t('profile.delete.word') }),
+        t('profile.delete.error.word.desc'))
       return
     }
     setBusy('kill')
     const { data: files, error: countError } = await supabase.rpc('my_account_files_count')
     if (countError) {
       setBusy(null)
-      toast.error('Не вдалося перевірити файли', countError.message)
+      toast.error(t('profile.delete.error.check'), countError.message)
       return
     }
-    if (Number(files ?? 0) > 0) {
+    const left = Number(files ?? 0)
+    if (left > 0) {
       setBusy(null)
-      toast.error(`У сховищі ще ${files} файлів`,
-        'Видаліть документи засобів у складі, потім поверніться сюди.')
+      toast.error(t.plural('profile.delete.error.files', left),
+        t('profile.delete.error.files.desc'))
       return
     }
     const { error } = await supabase.rpc('delete_my_account')
     setBusy(null)
-    if (error) { toast.error('Акаунт не видалено', error.message); return }
+    if (error) { toast.error(t('profile.delete.error.failed'), error.message); return }
     await supabase.auth.signOut()
     window.location.href = '/'
   }
@@ -123,26 +139,26 @@ export function ProfileClient({
           {initial || <IconUser size={24} />}
         </span>
         <div className="min-w-0">
-          <p className="display t-xl truncate">{name || 'Без імені'}</p>
+          {/* Имя человека, почта и название заклада — данные, не строки. */}
+          <p className="display t-xl truncate">{name || t('common.noName')}</p>
           <p className="t-sm truncate" style={{ color: 'var(--color-muted)' }}>{email}</p>
           <p className="mt-1 flex flex-wrap items-center gap-2">
-            <span className="badge-accent">{ROLE_LABEL[role] ?? role}</span>
+            <span className="badge-accent">{roleLabel(t, role)}</span>
             {tenantName && <span className="badge">{tenantName}</span>}
-            {tenantDraft && <span className="badge-warn">чернетка</span>}
+            {tenantDraft && <span className="badge-warn">{t('profile.badge.draft')}</span>}
           </p>
         </div>
       </section>
 
       {/* ── Данные ───────────────────────────────────────────── */}
       <section className="card rise-2">
-        <h2 className="t-sm mb-1" style={{ color: 'var(--color-faint)' }}>ОБЛІКОВИЙ ЗАПИС</h2>
-        <Row label="Імʼя" value={name || '—'} />
-        <Row label="Пошта" value={email} />
-        <Row label="Роль" value={ROLE_LABEL[role] ?? role} />
-        <p className="field-hint mt-2">
-          Імʼя видно на наліпках розливу як «відповідальний майстер» —
-          порожнє поле там і надрукується порожнім.
-        </p>
+        <h2 className="t-sm mb-1" style={{ color: 'var(--color-faint)' }}>
+          {t('profile.account.title')}
+        </h2>
+        <Row label={t('profile.account.name')} value={name || '—'} />
+        <Row label={t('profile.account.email')} value={email} />
+        <Row label={t('common.role')} value={roleLabel(t, role)} />
+        <p className="field-hint mt-2">{t('profile.account.hint')}</p>
       </section>
 
       {/* ── Безопасность ─────────────────────────────────────── */}
@@ -150,9 +166,9 @@ export function ProfileClient({
         <button type="button" onClick={() => setPass(true)}
                 className="row w-full px-5 text-left" style={{ minHeight: 'var(--tap-min)' }}>
           <span>
-            <span className="t-md block">Змінити пароль</span>
+            <span className="t-md block">{t('profile.password.title')}</span>
             <span className="t-xs block" style={{ color: 'var(--color-faint)' }}>
-              Новий пароль набирається двічі
+              {t('profile.password.desc')}
             </span>
           </span>
           <span aria-hidden style={{ color: 'var(--color-faint)' }}>›</span>
@@ -161,9 +177,9 @@ export function ProfileClient({
         <button type="button" onClick={() => setMail(true)}
                 className="row w-full px-5 text-left" style={{ minHeight: 'var(--tap-min)' }}>
           <span>
-            <span className="t-md block">Змінити пошту</span>
+            <span className="t-md block">{t('profile.email.title')}</span>
             <span className="t-xs block" style={{ color: 'var(--color-faint)' }}>
-              Підтвердження піде на обидві адреси
+              {t('profile.email.desc')}
             </span>
           </span>
           <span aria-hidden style={{ color: 'var(--color-faint)' }}>›</span>
@@ -177,9 +193,9 @@ export function ProfileClient({
             <span className="flex items-center gap-3">
               <span aria-hidden style={{ color: 'var(--color-muted)' }}><IconGear size={20} /></span>
               <span>
-                <span className="t-md block">Налаштування закладу</span>
+                <span className="t-md block">{t('profile.settings.title')}</span>
                 <span className="t-xs block" style={{ color: 'var(--color-faint)' }}>
-                  Назва, адреса, публікація, команда
+                  {t('profile.settings.desc')}
                 </span>
               </span>
             </span>
@@ -191,9 +207,9 @@ export function ProfileClient({
       {/* ── Вид ──────────────────────────────────────────────── */}
       <section className="card rise-3 flex items-center justify-between gap-3">
         <span>
-          <span className="t-md block">Оформлення</span>
+          <span className="t-md block">{t('profile.theme.title')}</span>
           <span className="t-xs block" style={{ color: 'var(--color-faint)' }}>
-            Світла, темна або як у системі
+            {t('profile.theme.desc')}
           </span>
         </span>
         <ThemeToggle />
@@ -203,88 +219,82 @@ export function ProfileClient({
       <section className="flex flex-col gap-2 rise-3">
         <button type="button" onClick={() => void signOut()}
                 className="btn-secondary flex items-center justify-center gap-2">
-          <IconExit size={18} /> Вийти з акаунту
+          <IconExit size={18} /> {t('profile.signOut')}
         </button>
         <button type="button" onClick={() => setKill(true)} className="btn-ghost"
                 style={{ color: 'var(--color-danger)' }}>
-          Видалити акаунт
+          {t('profile.delete.open')}
         </button>
       </section>
 
       {/* ── Пароль ───────────────────────────────────────────── */}
-      <Sheet open={pass} onClose={() => setPass(false)} title="Новий пароль">
+      <Sheet open={pass} onClose={() => setPass(false)} title={t('profile.pass.sheet.title')}>
         <form onSubmit={changePassword} className="grid gap-3">
           <div>
-            <label className="field-label">Новий пароль</label>
+            <label className="field-label">{t('profile.pass.new.label')}</label>
             <input required autoFocus type="password" minLength={8} className="input"
                    autoComplete="new-password"
                    value={password} onChange={(e) => setPassword(e.target.value)} />
-            <p className="field-hint">Мінімум 8 символів.</p>
+            <p className="field-hint">{t('profile.pass.new.hint')}</p>
           </div>
           <div>
-            <label className="field-label">Повторіть пароль</label>
+            <label className="field-label">{t('profile.pass.repeat.label')}</label>
             <input required type="password" minLength={8} className="input"
                    autoComplete="new-password"
                    value={password2} onChange={(e) => setPassword2(e.target.value)} />
           </div>
           <div className="flex gap-2">
             <button className="btn-primary" disabled={busy === 'pass' || !password}>
-              {busy === 'pass' ? 'Зберігаємо…' : 'Змінити пароль'}
+              {busy === 'pass' ? t('common.saving') : t('profile.pass.submit')}
             </button>
             <button type="button" className="btn-ghost" onClick={() => setPass(false)}>
-              Скасувати
+              {t('common.cancel')}
             </button>
           </div>
         </form>
       </Sheet>
 
       {/* ── Почта ────────────────────────────────────────────── */}
-      <Sheet open={mail} onClose={() => setMail(false)} title="Нова пошта">
+      <Sheet open={mail} onClose={() => setMail(false)} title={t('profile.mail.sheet.title')}>
         <form onSubmit={changeEmail} className="grid gap-3">
           <div>
-            <label className="field-label">Нова адреса</label>
+            <label className="field-label">{t('profile.mail.new.label')}</label>
             <input required autoFocus type="email" className="input"
-                   inputMode="email" autoComplete="email" placeholder="name@example.com"
+                   inputMode="email" autoComplete="email"
+                   placeholder={t('profile.mail.new.placeholder')}
                    value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
-            <p className="field-hint">
-              Поки не перейдете за посиланням в обох листах, вхід залишиться
-              за старою адресою.
-            </p>
+            <p className="field-hint">{t('profile.mail.new.hint')}</p>
           </div>
           <div className="flex gap-2">
             <button className="btn-primary" disabled={busy === 'mail' || !newEmail.trim()}>
-              {busy === 'mail' ? 'Надсилаємо…' : 'Змінити пошту'}
+              {busy === 'mail' ? t('profile.mail.submitBusy') : t('profile.mail.submit')}
             </button>
             <button type="button" className="btn-ghost" onClick={() => setMail(false)}>
-              Скасувати
+              {t('common.cancel')}
             </button>
           </div>
         </form>
       </Sheet>
 
       {/* ── Удаление ─────────────────────────────────────────── */}
-      <Sheet open={kill} onClose={() => setKill(false)} title="Видалення акаунту">
+      <Sheet open={kill} onClose={() => setKill(false)} title={t('profile.delete.sheet.title')}>
         <form onSubmit={deleteAccount} className="grid gap-3">
-          <p className="t-md">
-            Зникне все: заклад, склад, журнали, документи і сам обліковий запис.
-            Відновити не вийде — це не «архів», а видалення.
-          </p>
-          <p className="field-hint">
-            Якщо у закладі є інші власники, він залишиться їм. Ваші записи
-            в незмінюваних журналах теж залишаться — вони доказ перевірці,
-            і прибрати їх не можна нікому.
-          </p>
+          <p className="t-md">{t('profile.delete.lead')}</p>
+          <p className="field-hint">{t('profile.delete.hint')}</p>
           <div>
-            <label className="field-label">Наберіть слово ВИДАЛИТИ</label>
+            {/* Слово подставляется тем же ключом, по которому идёт сверка. */}
+            <label className="field-label">
+              {t('profile.delete.confirm.label', { word: t('profile.delete.word') })}
+            </label>
             <input required className="input" value={confirm}
                    onChange={(e) => setConfirm(e.target.value)} />
           </div>
           <div className="flex gap-2">
             <button className="btn-danger" disabled={busy === 'kill'}>
-              {busy === 'kill' ? 'Видаляємо…' : 'Видалити назавжди'}
+              {busy === 'kill' ? t('profile.delete.submitBusy') : t('profile.delete.submit')}
             </button>
             <button type="button" className="btn-ghost" onClick={() => setKill(false)}>
-              Скасувати
+              {t('common.cancel')}
             </button>
           </div>
         </form>

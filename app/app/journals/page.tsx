@@ -3,10 +3,21 @@ import { createClient } from '@/lib/supabase/server'
 import { currentMembership, can, hasModule } from '@/lib/tenant'
 import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
+import { getT } from '@/lib/i18n/server'
 import { JournalsClient } from './journals-client'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Санітарні журнали' }
+
+// Заголовок вкладки браузера — такая же строка интерфейса, как и всё
+// остальное, поэтому `generateMetadata`, а не константа. Здесь это ничего
+// не стоит: страница и так `force-dynamic` (роль читается из токена),
+// а кабинет закрыт в `app/robots.ts` целиком — поисковых последствий,
+// из-за которых метаданные витрины сознательно не переведены
+// (см. шапку `app/layout.tsx`), у него нет.
+export async function generateMetadata() {
+  const t = await getT()
+  return { title: t('journals.meta.title') }
+}
 
 export default async function JournalsPage() {
   const m = await currentMembership()
@@ -57,7 +68,7 @@ export default async function JournalsPage() {
   const who = (id: string | null) => (id ? nameOf.get(id) ?? null : null)
 
   return (
-    <AppShell modules={m.modules} perms={m.perms} active="/app/journals" title="Санітарні журнали">
+    <AppShell modules={m.modules} perms={m.perms}>
       <JournalsClient
         tenantId={m.tenantId}
         userId={user!.id}
@@ -67,15 +78,16 @@ export default async function JournalsPage() {
         canWrite={can(m, 'compliance.journal.write') || can(m, 'compliance.write')}
         canManage={can(m, 'compliance.write')}
         solutions={(solutions ?? []).map((s) => ({ ...s, performer: who(s.prepared_by) }))}
-        tasks={(tasks ?? []).map((t) => {
+        // Параметр назван `task`, а не `t`: `t` в этом файле — переводчик.
+        tasks={(tasks ?? []).map((task) => {
           // Отметка за сегодня — последняя по времени: чек-лист можно
           // отметить дважды (журнал неизменяем, встречной записи нет),
           // и подписывать пункт первым исполнителем было бы неверно.
           const done = (entries ?? [])
-            .filter((e) => e.task_id === t.id)
+            .filter((e) => e.task_id === task.id)
             .sort((a, b) => (a.performed_at < b.performed_at ? 1 : -1))[0]
           return {
-            ...t,
+            ...task,
             doneToday: done != null,
             donePerformer: done ? who(done.performed_by) : null,
             doneAt: done?.performed_at ?? null,

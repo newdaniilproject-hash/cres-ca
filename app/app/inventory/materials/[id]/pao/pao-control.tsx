@@ -6,7 +6,10 @@ import { createClient } from '@/lib/supabase/client'
 import { Sheet } from '@/components/sheet'
 import { useToast } from '@/components/toast'
 import { enqueue, isNetworkError } from '@/lib/offline/queue'
-import { EXPIRY_BADGE, EXPIRY_LABEL, daysLeft, expiryState, fmtDate } from '@/lib/expiry'
+import { useT } from '@/lib/i18n/client'
+import type { Key } from '@/lib/i18n/dict'
+import { EXPIRY_KEY } from '../../../inventory-client'
+import { EXPIRY_BADGE, daysLeft, expiryState } from '@/lib/expiry'
 
 type Container = {
   id: string; code: string; status: string
@@ -27,11 +30,13 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
   )
 }
 
-const STATUS_LABEL: Record<string, string> = {
-  sealed: 'Запечатана',
-  opened: 'Відкрита',
-  finished: 'Закінчилась',
-  disposed: 'Списана',
+// Значения `material_containers.status` не переводятся — это ключи базы.
+// Переводится подпись к ним.
+const STATUS_KEY: Record<string, Key> = {
+  sealed: 'inventory.pao.status.sealed',
+  opened: 'inventory.pao.status.opened',
+  finished: 'inventory.pao.status.finished',
+  disposed: 'inventory.pao.status.disposed',
 }
 
 export function PaoControl({
@@ -50,9 +55,14 @@ export function PaoControl({
   batches: Batch[]
   loadError: string
 }) {
+  const t = useT()
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
   const toast = useToast()
+
+  /** Подпись статуса ёмкости. Неизвестное значение показываем как есть. */
+  const statusLabel = (status: string) =>
+    (STATUS_KEY[status] ? t(STATUS_KEY[status]) : status)
 
   const [busy, setBusy] = useState<string | null>(null)
   const [decantOf, setDecantOf] = useState<Container | null>(null)
@@ -78,16 +88,16 @@ export function PaoControl({
       // не быть вовсе. Сетевая ошибка кладёт действие в очередь, ошибка
       // данных показывается честно: в очереди она не отправится никогда.
       if (isNetworkError(e)) {
-        await enqueue(`Відкрити банку · ${c.code}`,
+        await enqueue(`${t('inventory.container.open')} · ${c.code}`,
           { kind: 'container.status', containerId: c.id, status: 'opened' })
-        toast.info('Збережено офлайн', 'Надішлеться само, щойно зʼявиться мережа.')
+        toast.info(t('inventory.offline.saved'), t('inventory.offline.desc'))
         return
       }
-      toast.error('Не вдалося відкрити', e instanceof Error ? e.message : String(e))
+      toast.error(t('inventory.pao.error.open'), e instanceof Error ? e.message : String(e))
       return
     }
     setBusy(null)
-    toast.success('Банку відкрито', 'Термін придатності перераховано за PAO.')
+    toast.success(t('inventory.container.opened.title'), t('inventory.container.opened.desc'))
     router.refresh()
   }
 
@@ -96,8 +106,8 @@ export function PaoControl({
     const { error } = await supabase.from('material_containers')
       .update({ status: disposed ? 'disposed' : 'finished' }).eq('id', c.id)
     setBusy(null)
-    if (error) { toast.error('Не вдалося зберегти', error.message); return }
-    toast.success(disposed ? 'Ємність списано' : 'Ємність закрито')
+    if (error) { toast.error(t('inventory.container.saveError'), error.message); return }
+    toast.success(disposed ? t('inventory.pao.disposed') : t('inventory.pao.finished'))
     router.refresh()
   }
 
@@ -113,11 +123,15 @@ export function PaoControl({
     })
     if (error) {
       setBusy(null)
-      toast.error('Розлив не виконано', error.message)
+      toast.error(t('inventory.pao.decant.error'), error.message)
       return
     }
     const child = (Array.isArray(data) ? data[0] : data) as { id: string; code: string } | null
-    if (!child) { setBusy(null); toast.error('Розлив не виконано', 'База не повернула ємність'); return }
+    if (!child) {
+      setBusy(null)
+      toast.error(t('inventory.pao.decant.error'), t('inventory.pao.decant.noRow'))
+      return
+    }
 
     // Наклейку берём у базы, а не собираем на экране: пять реквизитов
     // ТЗ отдаёт функция container_label, и она же печатается на бумаге.
@@ -125,7 +139,7 @@ export function PaoControl({
     setBusy(null)
     setDecantOf(null)
     setLabel({ code: child.code, id: child.id, text: String(text ?? '') })
-    toast.success(`Дозатор ${child.code} створено`)
+    toast.success(t('inventory.pao.decant.created', { code: child.code }))
     router.refresh()
   }
 
@@ -136,7 +150,7 @@ export function PaoControl({
     setBusy(c.id)
     const { data, error } = await supabase.rpc('container_label', { p_container_id: c.id })
     setBusy(null)
-    if (error) { toast.error('Наліпку не отримано', error.message); return }
+    if (error) { toast.error(t('inventory.pao.label.error'), error.message); return }
     setLabel({ code: c.code, id: c.id, text: String(data ?? '') })
   }
 
@@ -146,19 +160,12 @@ export function PaoControl({
       {loadError && <p className="field-error rise">{loadError}</p>}
 
       {material.isCosmetic && material.paoMonths == null && (
-        <p className="field-hint rise">
-          PAO у картці засобу не вказаний. Тоді термін після відкриття
-          дорівнює терміну партії — а це не те, що вимагає техрегламент.
-          Впишіть значок відкритої баночки з етикетки.
-        </p>
+        <p className="field-hint rise">{t('inventory.pao.noPao')}</p>
       )}
 
       {/* ── Банки: учёт PAO по каждой ────────────────────────── */}
       {live.length === 0 ? (
-        <div className="card rise-1 empty">
-          Відкритих чи запечатаних банок немає. Заведіть банку на складі —
-          і сюди прийде облік її терміну після відкриття.
-        </div>
+        <div className="card rise-1 empty">{t('inventory.pao.empty')}</div>
       ) : live.map((c) => {
         const state = expiryState(c.useBy)
         const left = daysLeft(c.useBy)
@@ -168,55 +175,62 @@ export function PaoControl({
             <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
               <h3 className="tabular t-lg">{c.code}</h3>
               <span className={EXPIRY_BADGE[state]}>
-                {c.status === 'sealed' ? STATUS_LABEL.sealed : EXPIRY_LABEL[state]}
+                {c.status === 'sealed'
+                  ? t('inventory.pao.status.sealed')
+                  : t(EXPIRY_KEY[state])}
               </span>
             </div>
 
-            <Row label="Партія" value={b?.number ?? '—'} />
-            <Row label="Обʼєм" value={c.volume != null ? `${c.volume} ${c.unit ?? material.unit}` : '—'} />
-            <Row label="Дата відкриття" value={fmtDate(c.openedAt)} />
-            <Row label="PAO (період)"
-                 value={(c.paoMonths ?? material.paoMonths) ? `${c.paoMonths ?? material.paoMonths} місяців` : '—'} />
-            <Row label="Розрахований термін дії"
+            {/* Номер партии и объём — данные арендатора. */}
+            <Row label={t('inventory.pao.row.batch')} value={b?.number ?? '—'} />
+            <Row label={t('inventory.pao.row.volume')}
+                 value={c.volume != null
+                   ? `${t.number(c.volume)} ${c.unit ?? material.unit}`
+                   : '—'} />
+            <Row label={t('inventory.pao.row.openedAt')} value={t.date(c.openedAt)} />
+            <Row label={t('inventory.pao.row.pao')}
+                 value={(c.paoMonths ?? material.paoMonths)
+                   ? t.plural('inventory.pao.months', (c.paoMonths ?? material.paoMonths)!)
+                   : '—'} />
+            <Row label={t('inventory.pao.row.useBy')}
                  value={c.useBy
-                   ? <>{fmtDate(c.useBy)}{left != null && left >= 0 ? ` · ${left} дн` : ''}</>
-                   : 'порахується при відкритті'} />
-            <Row label="Статус" value={STATUS_LABEL[c.status] ?? c.status} />
+                   ? <>{t.date(c.useBy)}{left != null && left >= 0
+                       ? ` · ${t.plural('inventory.days', left)}`
+                       : ''}</>
+                   : t('inventory.pao.useBy.pending')} />
+            <Row label={t('inventory.pao.row.status')} value={statusLabel(c.status)} />
 
             <div className="mt-3 flex flex-wrap gap-2">
               {c.status === 'sealed' && canOpen && (
                 <button className="btn-primary" disabled={busy === c.id}
                         onClick={() => void open(c)}>
-                  Відкрити банку
+                  {t('inventory.container.open')}
                 </button>
               )}
               {c.status === 'opened' && canOpen && (
                 <>
                   <button className="btn-primary" disabled={busy === c.id}
                           onClick={() => setDecantOf(c)}>
-                    Створити QR-код розливу
+                    {t('inventory.pao.decant.create')}
                   </button>
                   <button className="btn-secondary" disabled={busy === c.id}
                           onClick={() => void finish(c, false)}>
-                    Закінчилась
+                    {t('inventory.container.finished')}
                   </button>
                   <button className="btn-danger" disabled={busy === c.id}
                           onClick={() => void finish(c, true)}>
-                    Списати
+                    {t('inventory.container.dispose')}
                   </button>
                 </>
               )}
               {canPrint && (
                 <a href={`/app/inventory/labels?ids=${c.id}`} target="_blank" rel="noreferrer"
-                   className="btn-ghost t-sm">Друк наліпки</a>
+                   className="btn-ghost t-sm">{t('inventory.pao.print')}</a>
               )}
             </div>
 
             {c.status === 'sealed' && (
-              <p className="field-hint mt-2">
-                Термін після відкриття порахується в момент натискання:
-                менше з двох — термін партії або сьогодні плюс PAO.
-              </p>
+              <p className="field-hint mt-2">{t('inventory.pao.sealed.hint')}</p>
             )}
           </section>
         )
@@ -225,14 +239,13 @@ export function PaoControl({
       {/* ── История розливов ─────────────────────────────────── */}
       <section className="card rise-2 !p-0">
         <div className="flex items-center justify-between gap-3 px-5 pt-4">
-          <h3 className="t-sm" style={{ color: 'var(--color-faint)' }}>ІСТОРІЯ РОЗЛИВІВ</h3>
-          <span className="badge tabular">{decants.length}</span>
+          <h3 className="t-sm" style={{ color: 'var(--color-faint)' }}>
+            {t('inventory.pao.decants.title')}
+          </h3>
+          <span className="badge tabular">{t.number(decants.length)}</span>
         </div>
         {decants.length === 0 ? (
-          <div className="empty !py-6">
-            Розливів ще не було. Коли переллєте засіб у робочий дозатор,
-            система згенерує внутрішній код і наліпку з пʼятьма реквізитами.
-          </div>
+          <div className="empty !py-6">{t('inventory.pao.decants.empty')}</div>
         ) : decants.map((d) => {
           const state = expiryState(d.useBy)
           return (
@@ -240,18 +253,21 @@ export function PaoControl({
               <div className="min-w-0">
                 <p className="tabular t-md">{d.code}
                   <span style={{ color: 'var(--color-faint)' }}>
-                    {' '}· {d.volume ?? '—'} {d.unit ?? material.unit}
+                    {' '}· {d.volume != null ? t.number(d.volume) : '—'} {d.unit ?? material.unit}
                   </span>
                 </p>
                 <p className="tabular t-xs" style={{ color: 'var(--color-faint)' }}>
-                  {fmtDate(d.decantedAt ?? d.openedAt)}
+                  {t.date(d.decantedAt ?? d.openedAt)}
                   {d.note ? ` · ${d.note}` : ''}
-                  {d.status !== 'opened' ? ` · ${STATUS_LABEL[d.status] ?? d.status}` : ''}
+                  {d.status !== 'opened' ? ` · ${statusLabel(d.status)}` : ''}
                 </p>
               </div>
               <span className="flex shrink-0 items-center gap-2">
-                <span className={`tabular ${EXPIRY_BADGE[state]}`}>до {fmtDate(d.useBy)}</span>
-                <button className="btn-icon" aria-label="Наліпка" disabled={busy === d.id}
+                <span className={`tabular ${EXPIRY_BADGE[state]}`}>
+                  {t('inventory.pao.decant.until', { date: t.date(d.useBy) })}
+                </span>
+                <button className="btn-icon" aria-label={t('inventory.pao.label.aria')}
+                        disabled={busy === d.id}
                         onClick={() => void showLabel(d)}>▤</button>
               </span>
             </div>
@@ -261,7 +277,7 @@ export function PaoControl({
 
       {/* ── Розлив ───────────────────────────────────────────── */}
       <Sheet open={decantOf !== null} onClose={() => setDecantOf(null)}
-             title="Створення QR-коду розливу">
+             title={t('inventory.pao.sheet.decant')}>
         {decantOf && (
           <DecantForm
             parent={decantOf}
@@ -274,7 +290,8 @@ export function PaoControl({
       </Sheet>
 
       {/* ── Наклейка ─────────────────────────────────────────── */}
-      <Sheet open={label !== null} onClose={() => setLabel(null)} title="Наліпка на дозатор">
+      <Sheet open={label !== null} onClose={() => setLabel(null)}
+             title={t('inventory.pao.sheet.label')}>
         {label && (
           <div className="flex flex-col gap-3">
             <p className="tabular display t-2xl">{label.code}</p>
@@ -283,16 +300,12 @@ export function PaoControl({
                 {label.text.split(' · ').join('\n')}
               </p>
             </div>
-            <p className="field-hint">
-              Пʼять реквізитів ТЗ: назва, партія, дата розливу, відповідальний
-              майстер і кінцевий термін. Роздрукуйте наліпку — на ній ще й
-              QR-код, за яким дозатор відкривається скануванням.
-            </p>
+            <p className="field-hint">{t('inventory.pao.label.hint')}</p>
             <div className="flex flex-wrap gap-2">
               <a href={`/app/inventory/labels?ids=${label.id}`} target="_blank" rel="noreferrer"
-                 className="btn-primary">Друк наліпки з QR</a>
+                 className="btn-primary">{t('inventory.pao.label.print')}</a>
               <button type="button" className="btn-ghost" onClick={() => setLabel(null)}>
-                Закрити
+                {t('inventory.common.close')}
               </button>
             </div>
           </div>
@@ -316,6 +329,7 @@ function DecantForm({
   onSave: (volume: number, note: string) => void
   onCancel: () => void
 }) {
+  const t = useT()
   const [volume, setVolume] = useState('')
   const [note, setNote] = useState('')
   const v = Number(volume)
@@ -326,46 +340,48 @@ function DecantForm({
     <form className="grid gap-3"
           onSubmit={(e) => { e.preventDefault(); onSave(v, note) }}>
       <div className="card-flat">
-        <p className="t-sm" style={{ color: 'var(--color-muted)' }}>З ємності</p>
+        <p className="t-sm" style={{ color: 'var(--color-muted)' }}>
+          {t('inventory.pao.decant.from')}
+        </p>
         <p className="tabular t-lg">{parent.code}
           {parent.volume != null && (
-            <span style={{ color: 'var(--color-faint)' }}> · залишок {parent.volume} {unit}</span>
+            <span style={{ color: 'var(--color-faint)' }}>
+              {' '}· {t('inventory.pao.decant.rest', {
+                volume: t.number(parent.volume), unit,
+              })}
+            </span>
           )}
         </p>
       </div>
 
       <div>
-        <label className="field-label">Обʼєм розливу, {unit}</label>
+        <label className="field-label">
+          {t('inventory.pao.decant.volume.label', { unit })}
+        </label>
         <input required autoFocus type="number" min="0" step="any"
                className={tooMuch ? 'input input-error' : 'input'}
                placeholder="100" value={volume}
                onChange={(e) => setVolume(e.target.value)} />
         {tooMuch && (
-          <p className="field-error">
-            Більше, ніж є в банці. Порожню банку закривають статусом
-            «Закінчилась», а не розливом у нуль.
-          </p>
+          <p className="field-error">{t('inventory.pao.decant.tooMuch')}</p>
         )}
       </div>
 
       <div>
-        <label className="field-label">Примітка</label>
-        <input className="input" maxLength={100} placeholder="робоча ємність №1"
+        <label className="field-label">{t('inventory.pao.decant.note.label')}</label>
+        <input className="input" maxLength={100}
+               placeholder={t('inventory.pao.decant.note.placeholder')}
                value={note} onChange={(e) => setNote(e.target.value)} />
         <p className="field-hint">{note.length}/100</p>
       </div>
 
-      <p className="field-hint">
-        Дата розливу і відповідальний майстер підставляються самі — це ви
-        і зараз. Вони йдуть у незмінюваний журнал і на наліпку, тому
-        вибирати їх не можна: підпис чужим імʼям зруйнував би доказовість.
-      </p>
+      <p className="field-hint">{t('inventory.pao.decant.hint')}</p>
 
       <div className="flex gap-2">
         <button className="btn-primary" disabled={busy || !volume || v <= 0 || tooMuch}>
-          {busy ? 'Розливаємо…' : 'Зберегти QR-код'}
+          {busy ? t('inventory.pao.decant.busy') : t('inventory.pao.decant.submit')}
         </button>
-        <button type="button" className="btn-ghost" onClick={onCancel}>Скасувати</button>
+        <button type="button" className="btn-ghost" onClick={onCancel}>{t('common.cancel')}</button>
       </div>
     </form>
   )

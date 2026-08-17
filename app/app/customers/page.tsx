@@ -3,9 +3,16 @@ import { createClient } from '@/lib/supabase/server'
 import { currentMembership, can, hasModule } from '@/lib/tenant'
 import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
+import { getT } from '@/lib/i18n/server'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Клієнти' }
+
+// Заголовок вкладки браузера — строка интерфейса, поэтому из словаря.
+// Разбор решения — в `app/app/journals/page.tsx`.
+export async function generateMetadata() {
+  const t = await getT()
+  return { title: t('customers.meta.title') }
+}
 
 export default async function CustomersPage() {
   const m = await currentMembership()
@@ -13,6 +20,7 @@ export default async function CustomersPage() {
   if (!can(m, 'customers.read')) redirect('/app')
   if (!hasModule(m, 'customers')) return <ModuleOff m={m} module="customers" />
 
+  const t = await getT()
   const supabase = await createClient()
   const [{ data: customers }, { data: reminders }] = await Promise.all([
     supabase.from('customers')
@@ -27,17 +35,17 @@ export default async function CustomersPage() {
   ])
 
   return (
-    <AppShell modules={m.modules} perms={m.perms} active="/app/customers" title="Клієнти">
+    <AppShell modules={m.modules} perms={m.perms}>
       {(reminders ?? []).length > 0 && (
         <section className="card-flat rise mb-5">
-          <h2 className="t-md mb-2">Нагадування</h2>
+          <h2 className="t-md mb-2">{t('customers.reminders.title')}</h2>
           <div className="flex flex-wrap gap-2">
             {(reminders ?? []).map((r) => (
               <span key={r.id} className="badge-warn tabular">
                 {r.title}
                 {(r.customers as unknown as { name: string })?.name
                   ? ` · ${(r.customers as unknown as { name: string }).name}` : ''}
-                {' · '}{new Date(r.due_at).toLocaleDateString('uk-UA')}
+                {' · '}{t.date(r.due_at)}
               </span>
             ))}
           </div>
@@ -46,34 +54,31 @@ export default async function CustomersPage() {
 
       <section className="card rise-1 !p-0">
         {(customers ?? []).length === 0 ? (
-          <div className="empty">
-            База порожня. Клієнти зʼявляються самі — з першим записом
-            або замовленням, навіть гостьовим.
-          </div>
+          <div className="empty">{t('customers.empty')}</div>
         ) : (customers ?? []).map((c) => (
           <div key={c.id} className="row px-5">
             <div className="min-w-0">
               <p className="t-md truncate">{c.name}</p>
               <p className="tabular t-xs mt-0.5 prose-muted">
-                {c.phone ?? 'без телефону'}
+                {c.phone ?? t('customers.noPhone')}
                 {c.last_order_at
-                  ? ` · останній візит ${new Date(c.last_order_at).toLocaleDateString('uk-UA')}` : ''}
+                  ? ` · ${t('customers.lastVisit', { date: t.date(c.last_order_at) })}` : ''}
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
+              {/* Символ валюты ставит Intl (`t.money`), а не подстановка «₴». */}
               {Number(c.total_spent) > 0 && (
-                <span className="badge tabular">{Number(c.total_spent).toLocaleString('uk-UA')} ₴</span>
+                <span className="badge tabular">{t.money(Number(c.total_spent))}</span>
               )}
-              <span className="badge-accent tabular">{c.orders_count} зам.</span>
+              <span className="badge-accent tabular">
+                {t('customers.ordersCount', { n: Number(c.orders_count) })}
+              </span>
             </div>
           </div>
         ))}
       </section>
 
-      <p className="field-hint rise-2 mt-4">
-        База клієнтів належить вам: вивантаження у файл — у налаштуваннях,
-        у будь-який момент, без умов.
-      </p>
+      <p className="field-hint rise-2 mt-4">{t('customers.hint')}</p>
     </AppShell>
   )
 }

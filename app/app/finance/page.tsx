@@ -4,9 +4,16 @@ import { currentMembership, can, hasModule } from '@/lib/tenant'
 import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { FinanceClient } from './finance-client'
+import { getT } from '@/lib/i18n/server'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Фінанси' }
+
+// Заголовок вкладки браузера — строка интерфейса, поэтому из словаря.
+// Разбор решения — в `app/app/journals/page.tsx`.
+export async function generateMetadata() {
+  const t = await getT()
+  return { title: t('finance.meta.title') }
+}
 
 // occurred_on — дата без времени, поэтому границы периода считаются
 // в календаре, а не в миллисекундах: toISOString сдвинул бы первое число
@@ -93,7 +100,7 @@ export default async function FinancePage({
   }
 
   return (
-    <AppShell modules={m.modules} perms={m.perms} active="/app/finance" title="Фінанси">
+    <AppShell modules={m.modules} perms={m.perms}>
       <FinanceClient
         tenantId={m.tenantId}
         userId={user?.id ?? ''}

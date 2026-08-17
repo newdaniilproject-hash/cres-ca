@@ -4,7 +4,9 @@ import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { ORDER_LABEL, ORDER_STATUSES, orderBadge } from '../orders-client'
+import { ORDER_STATUSES, orderBadge, orderLabel } from '../orders-client'
+import { useT } from '@/lib/i18n/client'
+import type { T } from '@/lib/i18n/translate'
 
 export type OrderItem = {
   id: string; title: string; variant: string; price: number; qty: number
@@ -27,28 +29,27 @@ export type OrderCard = {
 }
 
 // Подписи кнопок переходов. Ключ — целевой статус; текст императивный,
-// потому что кнопка обещает действие, а не называет состояние.
-const ACTION: Record<string, string> = {
-  confirmed: 'Прийняти в роботу',
-  awaiting_payment: 'Виставити рахунок',
-  paid: 'Оплата надійшла',
-  packing: 'Збирати',
-  shipped: 'Передано перевізнику',
-  delivered: 'Доставлено',
-  completed: 'Завершити',
-  cancelled: 'Скасувати',
-  returned: 'Оформити повернення',
-}
+// потому что кнопка обещает действие, а не называет состояние. Само
+// значение статуса не переводится — оно уезжает в `set_order_status`.
+// Перехода без своей подписи не бывает, но если матрица в базе получит
+// новый — покажем название состояния вместо обещания действия.
+const ACTIONS = [
+  'confirmed', 'awaiting_payment', 'paid', 'packing', 'shipped',
+  'delivered', 'completed', 'cancelled', 'returned',
+] as const
+type ActionStatus = (typeof ACTIONS)[number]
+const actionLabel = (t: T, status: string): string =>
+  ((ACTIONS as readonly string[]).includes(status)
+    ? t(`orders.action.${status as ActionStatus}`)
+    : orderLabel(t, status))
 
-const SOURCE_LABEL: Record<string, string> = {
-  storefront: 'з вітрини',
-  manual: 'заведено вручну',
-  instagram: 'instagram',
-  phone: 'телефоном',
-  offline: 'офлайн',
-}
-
-const money = (n: number) => `${n.toLocaleString('uk-UA')} ₴`
+// Откуда пришёл заказ. Здесь формулировка своя («з вітрини», а не
+// «вітрина»): в карточке это часть предложения о дате, а в списке —
+// пометка. Один ключ на оба места склеил бы две разные фразы.
+const SOURCES = ['storefront', 'manual', 'instagram', 'phone', 'offline'] as const
+type Source = (typeof SOURCES)[number]
+const sourceLabel = (t: T, v: string): string =>
+  ((SOURCES as readonly string[]).includes(v) ? t(`orders.detail.source.${v as Source}`) : v)
 
 export function OrderDetail({
   order, items, events, allowed, canWrite, userId, loadError,
@@ -61,6 +62,7 @@ export function OrderDetail({
   userId: string
   loadError: string
 }) {
+  const t = useT()
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
   const [busy, setBusy] = useState<string | null>(null)
@@ -96,17 +98,20 @@ export function OrderDetail({
     setNote(''); router.refresh()
   }
 
-  const fmt = (s: string) => new Date(s).toLocaleString('uk-UA', {
+  // Своей `fmt` больше нет: дату собирает `t.dateTime` по локали языка
+  // интерфейса, а не жёстким 'uk-UA'. Деньги — `t.money`: подстановка
+  // «₴» руками ломается на второй валюте.
+  const stamp: Intl.DateTimeFormatOptions = {
     day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit',
-  })
+  }
 
   // Имя автора события не показываем: политика profiles_self_read отдаёт
   // только собственный профиль, поэтому join вернул бы пустоту для всех,
   // кроме себя. Честнее назвать роль, чем показать прочерк.
   const actorLabel = (e: OrderEvent) =>
-    e.actor === null ? 'гість або система'
-      : e.actor === userId ? 'ви'
-      : 'команда магазину'
+    e.actor === null ? t('orders.detail.actor.system')
+      : e.actor === userId ? t('orders.detail.actor.self')
+      : t('orders.detail.actor.team')
 
   const delivery = [
     order.deliveryMethod, order.deliveryCity,
@@ -116,29 +121,28 @@ export function OrderDetail({
   return (
     <div className="flex flex-col gap-5">
       <div className="rise flex flex-wrap items-center justify-between gap-3">
-        <Link href="/app/orders" className="btn-ghost">← Усі замовлення</Link>
+        <Link href="/app/orders" className="btn-ghost">← {t('orders.detail.back')}</Link>
         <div className="flex items-center gap-2">
           <span className="tabular t-xs prose-muted">
-            {fmt(order.createdAt)} · {SOURCE_LABEL[order.source] ?? order.source}
+            {t.dateTime(order.createdAt, stamp)} · {sourceLabel(t, order.source)}
           </span>
-          {order.guest && <span className="badge">гостьове</span>}
-          <span className={orderBadge(order.status)}>
-            {ORDER_LABEL[order.status] ?? order.status}
-          </span>
+          {order.guest && <span className="badge">{t('orders.detail.badge.guest')}</span>}
+          <span className={orderBadge(order.status)}>{orderLabel(t, order.status)}</span>
         </div>
       </div>
 
-      {loadError && <p className="field-error rise">Частина даних не завантажилась: {loadError}</p>}
+      {/* Тексты отказов базы подставляются как есть; из словаря — рамка. */}
+      {loadError && (
+        <p className="field-error rise">{t('orders.detail.error.partial', { message: loadError })}</p>
+      )}
       {err && <p className="field-error rise">{err}</p>}
 
       {/* Смена статуса */}
       {canWrite && (
         <section className="card rise-1">
-          <h2 className="t-lg mb-3">Що робимо далі</h2>
+          <h2 className="t-lg mb-3">{t('orders.detail.next.title')}</h2>
           {forward.length === 0 && undoing.length === 0 ? (
-            <p className="t-md prose-muted">
-              Це кінцевий стан — переходів із нього немає.
-            </p>
+            <p className="t-md prose-muted">{t('orders.detail.next.final')}</p>
           ) : (
             <>
               <div className="flex flex-wrap gap-2">
@@ -146,27 +150,25 @@ export function OrderDetail({
                   <button key={s} disabled={busy !== null}
                           className={i === 0 ? 'btn-primary t-md' : 'btn-secondary t-md'}
                           onClick={() => void move(s)}>
-                    {ACTION[s] ?? ORDER_LABEL[s]}
+                    {actionLabel(t, s)}
                   </button>
                 ))}
                 {undoing.map((s) => (
                   <button key={s} disabled={busy !== null}
                           className="btn-danger t-md"
                           onClick={() => void move(s)}>
-                    {ACTION[s] ?? ORDER_LABEL[s]}
+                    {actionLabel(t, s)}
                   </button>
                 ))}
               </div>
               <div className="mt-3">
-                <label className="field-label" htmlFor="status-note">Коментар до переходу</label>
+                <label className="field-label" htmlFor="status-note">
+                  {t('orders.detail.note.label')}
+                </label>
                 <input id="status-note" className="input" value={note}
-                       placeholder="Причина скасування, номер накладної, домовленість…"
+                       placeholder={t('orders.detail.note.placeholder')}
                        onChange={(e) => setNote(e.target.value)} />
-                <p className="field-hint">
-                  Коментар лишиться в історії назавжди. Перехід в «оплачено»
-                  сам створює запис доходу у Фінансах, а скасування й повернення —
-                  звільняють резерв на складі.
-                </p>
+                <p className="field-hint">{t('orders.detail.note.hint')}</p>
               </div>
             </>
           )}
@@ -176,64 +178,69 @@ export function OrderDetail({
       <div className="grid gap-4 lg:grid-cols-2">
         {/* Позиции */}
         <section className="card rise-2 lg:col-span-2 !p-0">
-          <h2 className="t-lg px-5 pt-5">Позиції</h2>
+          <h2 className="t-lg px-5 pt-5">{t('orders.detail.items.title')}</h2>
           <div className="px-5">
             {items.length === 0 ? (
-              <div className="empty">У замовленні немає жодної позиції</div>
+              <div className="empty">{t('orders.detail.items.empty')}</div>
             ) : items.map((it) => (
               <div key={it.id} className="row">
                 <div className="min-w-0">
                   <p className="t-md truncate">{it.title}</p>
                   <p className="tabular t-xs mt-0.5 prose-muted">
-                    {it.variant} · {money(it.price)} × {it.qty}
+                    {it.variant} · {t.money(it.price)} × {t.number(it.qty)}
                   </p>
                 </div>
                 <span className="tabular t-md shrink-0">
-                  {money(it.price * it.qty)}
+                  {t.money(it.price * it.qty)}
                 </span>
               </div>
             ))}
           </div>
           <div className="tabular t-md flex flex-col items-end gap-1 px-5 pb-5 pt-4">
-            <p className="prose-muted">Позиції: {money(order.subtotal)}</p>
+            <p className="prose-muted">
+              {t('orders.detail.sum.subtotal', { sum: t.money(order.subtotal) })}
+            </p>
             {order.discount > 0 && (
-              <p className="prose-muted">Знижка: −{money(order.discount)}</p>
+              <p className="prose-muted">
+                {t('orders.detail.sum.discount', { sum: t.money(order.discount) })}
+              </p>
             )}
-            <p className="t-2xl">{money(order.total)}</p>
+            <p className="t-2xl">{t.money(order.total)}</p>
             {order.paid > 0 && (
-              <p className="prose-muted">Сплачено: {money(order.paid)}</p>
+              <p className="prose-muted">
+                {t('orders.detail.sum.paid', { sum: t.money(order.paid) })}
+              </p>
             )}
           </div>
         </section>
 
         {/* Контакты и доставка */}
         <section className="card rise-3">
-          <h2 className="t-lg mb-3">Покупець</h2>
+          <h2 className="t-lg mb-3">{t('orders.detail.buyer.title')}</h2>
           <div className="t-md flex flex-col gap-1">
             <p className="t-md">{order.name}</p>
             {order.phone
               ? <a href={`tel:${order.phone}`} className="prose-muted">{order.phone}</a>
-              : <p className="prose-muted">телефон не вказано</p>}
+              : <p className="prose-muted">{t('orders.detail.buyer.noPhone')}</p>}
             {order.email && (
               <a href={`mailto:${order.email}`} className="prose-muted">{order.email}</a>
             )}
             {order.guest && (
-              <p className="field-hint">
-                Замовлення оформлене без акаунта: у нас є лише імʼя й телефон
-                із форми. Написати в застосунку такому покупцеві не вийде — тільки подзвонити.
-              </p>
+              <p className="field-hint">{t('orders.detail.buyer.guestHint')}</p>
             )}
           </div>
 
           <div className="divider my-4" />
 
-          <h2 className="t-lg mb-3">Доставка</h2>
+          <h2 className="t-lg mb-3">{t('orders.detail.delivery.title')}</h2>
           <div className="t-md flex flex-col gap-1">
             <p className={delivery ? '' : 'prose-muted'}>
-              {delivery || 'спосіб доставки не вказано'}
+              {delivery || t('orders.detail.delivery.none')}
             </p>
             {order.tracking && (
-              <p className="prose-muted">Накладна: {order.tracking}</p>
+              <p className="prose-muted">
+                {t('orders.detail.delivery.tracking', { number: order.tracking })}
+              </p>
             )}
           </div>
 
@@ -242,12 +249,14 @@ export function OrderDetail({
               <div className="divider my-4" />
               {order.comment && (
                 <p className="t-md">
-                  <span className="prose-muted">Коментар покупця: </span>{order.comment}
+                  <span className="prose-muted">{t('orders.detail.comment.label')} </span>
+                  {order.comment}
                 </p>
               )}
               {order.cancelReason && (
                 <p className="t-md mt-1">
-                  <span className="prose-muted">Причина скасування: </span>{order.cancelReason}
+                  <span className="prose-muted">{t('orders.detail.cancel.label')} </span>
+                  {order.cancelReason}
                 </p>
               )}
             </>
@@ -256,9 +265,9 @@ export function OrderDetail({
 
         {/* История */}
         <section className="card rise-4">
-          <h2 className="t-lg mb-3">Історія</h2>
+          <h2 className="t-lg mb-3">{t('orders.detail.history.title')}</h2>
           {events.length === 0 ? (
-            <div className="empty !py-8">Подій ще немає</div>
+            <div className="empty !py-8">{t('orders.detail.history.empty')}</div>
           ) : (
             <ol className="flex flex-col gap-4">
               {events.map((e) => (
@@ -268,20 +277,19 @@ export function OrderDetail({
                         style={{ background: 'var(--color-accent)' }} />
                   <div className="min-w-0">
                     <p className="t-md">
-                      {e.from ? `${ORDER_LABEL[e.from] ?? e.from} → ` : ''}
-                      <span className="font-medium">{ORDER_LABEL[e.to] ?? e.to}</span>
+                      {e.from ? `${orderLabel(t, e.from)} → ` : ''}
+                      <span className="font-medium">{orderLabel(t, e.to)}</span>
                     </p>
-                    <p className="tabular t-xs prose-muted">{fmt(e.at)} · {actorLabel(e)}</p>
+                    <p className="tabular t-xs prose-muted">
+                      {t.dateTime(e.at, stamp)} · {actorLabel(e)}
+                    </p>
                     {e.note && <p className="t-md mt-0.5">{e.note}</p>}
                   </div>
                 </li>
               ))}
             </ol>
           )}
-          <p className="field-hint">
-            Історію пише база на кожному переході. Стерти чи виправити
-            запис неможливо — це і є доказ того, що сталося із замовленням.
-          </p>
+          <p className="field-hint">{t('orders.detail.history.hint')}</p>
         </section>
       </div>
     </div>

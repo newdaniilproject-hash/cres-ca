@@ -4,9 +4,15 @@ import { currentMembership, can, hasModule } from '@/lib/tenant'
 import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { ReceiptDetail } from './receipt-detail'
+import { getT } from '@/lib/i18n/server'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Приймання' }
+// Заголовок вкладки — тем же ключом, что и заголовок экрана
+// в оболочке (`components/app-shell.tsx`).
+export async function generateMetadata() {
+  const t = await getT()
+  return { title: t('app.screen.inventory.receipt.title') }
+}
 
 export default async function ReceiptPage({
   params,
@@ -22,6 +28,7 @@ export default async function ReceiptPage({
 
   const { id } = await params
   const supabase = await createClient()
+  const t = await getT()
 
   // Фильтр по арендатору стоит рядом с фильтром по id намеренно: RLS отсечёт
   // чужой документ и без него, но так запрос честно описывает, что мы ищем.
@@ -34,8 +41,11 @@ export default async function ReceiptPage({
 
   if (error) {
     return (
-      <AppShell active="/app/inventory" title="Приймання">
-        <p className="field-error rise">Не вдалося відкрити приймання: {error.message}</p>
+      <AppShell>
+        {/* Текст отказа базы — её слова, а не наши: в словарь он не едет. */}
+        <p className="field-error rise">
+          {t('inventory.receipt.openError')}: {error.message}
+        </p>
       </AppShell>
     )
   }
@@ -67,10 +77,7 @@ export default async function ReceiptPage({
   ])
 
   return (
-    <AppShell
-      active="/app/inventory"
-      title={receipt.document_number ? `Приймання №${receipt.document_number}` : 'Приймання'}
-    >
+    <AppShell>
       <ReceiptDetail
         canWrite={can(m, 'stock.write')}
         loadError={linesError?.message ?? ''}

@@ -5,6 +5,15 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { enqueue, isNetworkError } from '@/lib/offline/queue'
 import { useToast } from '@/components/toast'
+import { useT } from '@/lib/i18n/client'
+import type { T } from '@/lib/i18n/translate'
+
+// Дата и время записи журнала — «16 серп., 14:05». Это НАБОР ОПЦИЙ,
+// а не своя `fmt`: форматирует по-прежнему `t.dateTime`, то есть язык
+// и порядок частей выбирает локаль, а не мы (lib/i18n/format.ts).
+const AT: Intl.DateTimeFormatOptions = {
+  day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+}
 
 // `performer` — имя исполнителя или null. Null значит «имя не достаётся»
 // (человека вывели из состава команды, оговорка 0083), а НЕ «исполнителя
@@ -42,10 +51,13 @@ type BatchHistoryRow = {
 // проверить это утверждение было негде — а имя не показывалось никому,
 // включая владельца (вложенная связь к `profiles` отдаёт null, 0083).
 function Performer({ name }: { name: string | null }) {
+  const t = useT()
+  // Само имя — данные арендатора, оно не переводится никогда. Переводится
+  // только объяснение, почему имени нет.
   return name
     ? <>{name}</>
-    : <span title="Учасника вилучено зі складу команди — сам запис незмінний">
-        імʼя недоступне
+    : <span title={t('journals.performer.gone.title')}>
+        {t('journals.performer.gone')}
       </span>
 }
 
@@ -70,6 +82,7 @@ export function JournalsClient({
   canManage: boolean
   solutions: Solution[]; tasks: Task[]; cycles: Cycle[]
 }) {
+  const t = useT()
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
   const toast = useToast()
@@ -81,8 +94,9 @@ export function JournalsClient({
   const raw = search.get('tab')
   const tab: 'cleaning' | 'solutions' | 'sterilization' | 'actions' =
     raw === 'solutions' || raw === 'sterilization' || raw === 'actions' ? raw : 'cleaning'
-  const setTab = (t: typeof tab) =>
-    router.replace(t === 'cleaning' ? '/app/journals' : `/app/journals?tab=${t}`)
+  // Параметр назван `next`, а не `t`: `t` — переводчик.
+  const setTab = (next: typeof tab) =>
+    router.replace(next === 'cleaning' ? '/app/journals' : `/app/journals?tab=${next}`)
   const [busy, setBusy] = useState<string | null>(null)
   const [err, setErr] = useState('')
   // Отметки, сделанные без сети: показываем «сьогодні ✓» сразу,
@@ -146,6 +160,11 @@ export function JournalsClient({
   // формы
   const [agent, setAgent] = useState(''); const [conc, setConc] = useState('')
   const [vol, setVol] = useState(''); const [hours, setHours] = useState('24')
+  // Назва пристрою — ЗНАЧЕНИЕ, которое уедет в журнал стерилизации и оттуда
+  // в отчёт для проверяющего, а не подпись на экране. Поэтому оно не в
+  // словаре и остаётся украинским при любом языке интерфейса: перевод
+  // умолчания означал бы русскую запись в документе для Держпродспоживслужби
+  // (CLAUDE.md → «Локализация»: данные арендатора не переводятся).
   const [device, setDevice] = useState('сухожарова шафа')
   const [temp, setTemp] = useState('180'); const [mins, setMins] = useState('60')
   const [indicator, setIndicator] = useState(true)
@@ -164,11 +183,15 @@ export function JournalsClient({
       // ТЗ требует офлайн. Отметка ложится в очередь со временем
       // нажатия и уходит сама; галочка загорается сразу.
       if (isNetworkError(e)) {
-        await enqueue('Прибирання: відмітка', {
+        // Подпись очереди берётся на языке, на котором мастер нажал кнопку,
+        // и дальше живёт в IndexedDB как есть: это снимок момента, а не
+        // строка экрана. Переводить её при досылке было бы нечем — в очереди
+        // лежит текст, а не ключ.
+        await enqueue(t('journals.offline.cleaning.label'), {
           kind: 'journal.cleaning', tenantId, taskId, userId,
         })
         setOffDone((prev) => new Set(prev).add(taskId))
-        toast.info('Збережено офлайн', 'Запис піде в журнал, щойно зʼявиться мережа.')
+        toast.info(t('journals.offline.saved'), t('journals.offline.cleaning.desc'))
         return
       }
       setErr(e instanceof Error ? e.message : String(e))
@@ -202,12 +225,14 @@ export function JournalsClient({
     } catch (ex) {
       setBusy(null)
       if (isNetworkError(ex)) {
-        await enqueue(`Дезрозчин: ${agent}`, {
+        // Назва засобу подставляется данными, поэтому строка с подстановкой,
+        // а не склейка: порядок слов в других языках другой.
+        await enqueue(t('journals.offline.solution.label', { agent }), {
           kind: 'journal.solution', tenantId, userId,
           agentName: agent, concentration: conc,
           volume: Number(vol) || null, expiresAt,
         })
-        toast.info('Збережено офлайн', 'Розчин зʼявиться в журналі після синхронізації.')
+        toast.info(t('journals.offline.saved'), t('journals.offline.solution.desc'))
         setAgent(''); setConc(''); setVol('')
         return
       }
@@ -230,12 +255,12 @@ export function JournalsClient({
     } catch (ex) {
       setBusy(null)
       if (isNetworkError(ex)) {
-        await enqueue(`Стерилізація: ${device}`, {
+        await enqueue(t('journals.offline.cycle.label', { device }), {
           kind: 'journal.sterilization', tenantId, userId, device,
           temperatureC: Number(temp), durationMinutes: Number(mins),
           indicatorOk: indicator,
         })
-        toast.info('Збережено офлайн', 'Цикл зʼявиться в журналі після синхронізації.')
+        toast.info(t('journals.offline.saved'), t('journals.offline.cycle.desc'))
         return
       }
       setErr(ex instanceof Error ? ex.message : String(ex))
@@ -245,28 +270,27 @@ export function JournalsClient({
     router.refresh()
   }
 
-  const fmt = (s: string) => new Date(s).toLocaleString('uk-UA', {
-    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
-  })
-
   return (
     <div className="flex flex-col gap-5">
       <div className="rise flex flex-wrap items-center gap-2">
+        {/* Подпись кнопки — интерфейс и переводится. САМ отчёт по этой ссылке
+            собирается всегда по-украински и от языка кабинета не зависит:
+            это документ для Держпродспоживслужби (lib/report/sanitation-report.ts). */}
         <a href="/app/journals/report" target="_blank" rel="noreferrer"
            className="btn-primary t-sm">
-          Звіт для перевірки → PDF
+          {t('journals.report.open')}
         </a>
         <span className="hidden w-px lg:block" />
         {/* На телефоне эти же вкладки живут в нижней панели приложения —
             дублировать их чипсами значит съесть экран дважды. */}
         <button onClick={() => setTab('cleaning')}
-                className={(tab === 'cleaning' ? 'chip-active' : 'chip') + ' hidden lg:inline-flex'}>Прибирання</button>
+                className={(tab === 'cleaning' ? 'chip-active' : 'chip') + ' hidden lg:inline-flex'}>{t('journals.tab.cleaning')}</button>
         <button onClick={() => setTab('solutions')}
-                className={(tab === 'solutions' ? 'chip-active' : 'chip') + ' hidden lg:inline-flex'}>Дезрозчини</button>
+                className={(tab === 'solutions' ? 'chip-active' : 'chip') + ' hidden lg:inline-flex'}>{t('journals.tab.solutions')}</button>
         <button onClick={() => setTab('sterilization')}
-                className={(tab === 'sterilization' ? 'chip-active' : 'chip') + ' hidden lg:inline-flex'}>Стерилізація</button>
+                className={(tab === 'sterilization' ? 'chip-active' : 'chip') + ' hidden lg:inline-flex'}>{t('journals.tab.sterilization')}</button>
         <button onClick={() => setTab('actions')}
-                className={(tab === 'actions' ? 'chip-active' : 'chip') + ' hidden lg:inline-flex'}>Дії</button>
+                className={(tab === 'actions' ? 'chip-active' : 'chip') + ' hidden lg:inline-flex'}>{t('journals.tab.actions')}</button>
       </div>
 
       {err && <p className="field-error rise">{err}</p>}
@@ -277,47 +301,47 @@ export function JournalsClient({
             {tasks.length === 0 ? (
               <div className="empty">
                 {canManage
-                  ? 'Додайте пункти чек-листа нижче — «Кварцування», «Обробка крісла»…'
-                  : 'Чек-лист прибирання ще не заведено.'}
+                  ? t('journals.cleaning.empty.manage')
+                  : t('journals.cleaning.empty.read')}
               </div>
-            ) : tasks.map((t) => (
-              <div key={t.id} className="row px-5">
+            ) : tasks.map((task) => (
+              // Параметр назван `task`, а не `t`: `t` — переводчик.
+              // Название пункта чек-листа и его расписание — данные заклада,
+              // они не переводятся.
+              <div key={task.id} className="row px-5">
                 <div>
-                  <p className="t-md">{t.name}</p>
-                  {t.doneToday && t.doneAt ? (
+                  <p className="t-md">{task.name}</p>
+                  {task.doneToday && task.doneAt ? (
                     <p className="t-xs prose-muted">
-                      {fmt(t.doneAt)} · <Performer name={t.donePerformer} />
+                      {t.dateTime(task.doneAt, AT)} · <Performer name={task.donePerformer} />
                     </p>
-                  ) : t.schedule ? (
-                    <p className="t-xs prose-muted">{t.schedule}</p>
+                  ) : task.schedule ? (
+                    <p className="t-xs prose-muted">{task.schedule}</p>
                   ) : null}
                 </div>
-                {t.doneToday || offDone.has(t.id) ? (
-                  <span className="badge-success">сьогодні ✓</span>
+                {task.doneToday || offDone.has(task.id) ? (
+                  <span className="badge-success">{t('journals.cleaning.doneToday')}</span>
                 ) : canWrite ? (
-                  <button className="btn-secondary t-sm" disabled={busy === t.id}
-                          onClick={() => void markTask(t.id)}>
-                    Виконано
+                  <button className="btn-secondary t-sm" disabled={busy === task.id}
+                          onClick={() => void markTask(task.id)}>
+                    {t('journals.cleaning.mark')}
                   </button>
                 ) : (
-                  <span className="badge">не відмічено</span>
+                  <span className="badge">{t('journals.cleaning.notMarked')}</span>
                 )}
               </div>
             ))}
           </div>
           {canManage && (
             <form onSubmit={addTask} className="rise-2 flex gap-2">
-              <input className="input" placeholder="Новий пункт чек-листа…"
+              <input className="input" placeholder={t('journals.cleaning.newTask.placeholder')}
                      value={newTask} onChange={(e) => setNewTask(e.target.value)} />
               <button className="btn-secondary shrink-0" disabled={!newTask.trim() || busy === 'newtask'}>
-                Додати
+                {t('journals.cleaning.newTask.submit')}
               </button>
             </form>
           )}
-          <p className="field-hint">
-            Кожна відмітка — запис журналу з часом і виконавцем. Виправити
-            або стерти її неможливо — це і є доказ для перевірки.
-          </p>
+          <p className="field-hint">{t('journals.cleaning.hint')}</p>
         </section>
       )}
 
@@ -326,47 +350,51 @@ export function JournalsClient({
           {canWrite && (
           <form onSubmit={addSolution} className="card rise-1 grid gap-3 sm:grid-cols-2">
             <div className="sm:col-span-2">
-              <label className="field-label">Засіб</label>
-              <input required className="input" placeholder="Бланідас-Актив"
+              <label className="field-label">{t('journals.solution.agent.label')}</label>
+              <input required className="input" placeholder={t('journals.solution.agent.placeholder')}
                      value={agent} onChange={(e) => setAgent(e.target.value)} />
             </div>
             <div>
-              <label className="field-label">Концентрація</label>
-              <input required className="input" placeholder="0,5%"
+              <label className="field-label">{t('journals.solution.conc.label')}</label>
+              <input required className="input" placeholder={t('journals.solution.conc.placeholder')}
                      value={conc} onChange={(e) => setConc(e.target.value)} />
             </div>
             <div>
-              <label className="field-label">Обʼєм, л</label>
+              <label className="field-label">{t('journals.solution.volume.label')}</label>
               <input required type="number" step="0.1" min="0.1" className="input"
                      value={vol} onChange={(e) => setVol(e.target.value)} />
             </div>
             <div>
-              <label className="field-label">Придатний, годин</label>
+              <label className="field-label">{t('journals.solution.hours.label')}</label>
               <input required type="number" min="1" className="input"
                      value={hours} onChange={(e) => setHours(e.target.value)} />
             </div>
             <button className="btn-primary self-end" disabled={busy === 'solution'}>
-              Записати приготування
+              {t('journals.solution.submit')}
             </button>
           </form>
           )}
 
           <div className="card rise-2 !p-0">
             {solutions.length === 0 ? (
-              <div className="empty">Журнал порожній</div>
+              <div className="empty">{t('journals.solutions.empty')}</div>
             ) : solutions.map((s) => {
               const active = new Date(s.expires_at) > new Date()
               return (
                 <div key={s.id} className="row px-5">
                   <div>
+                    {/* Назва засобу и концентрация — данные записи журнала. */}
                     <p className="t-md">{s.agent_name} · {s.concentration}</p>
                     <p className="tabular t-xs prose-muted">
-                      {Number(s.volume)} {s.unit} · приготовано {fmt(s.prepared_at)}
+                      {t.number(Number(s.volume))} {s.unit}
+                      {' · '}{t('journals.solution.prepared', { date: t.dateTime(s.prepared_at, AT) })}
                       {' · '}<Performer name={s.performer} />
                     </p>
                   </div>
                   <span className={active ? 'badge-success tabular' : 'badge tabular'}>
-                    {active ? `до ${fmt(s.expires_at)}` : 'непридатний'}
+                    {active
+                      ? t('journals.solution.until', { date: t.dateTime(s.expires_at, AT) })
+                      : t('journals.solution.expired')}
                   </span>
                 </div>
               )
@@ -380,45 +408,50 @@ export function JournalsClient({
           {canWrite && (
           <form onSubmit={addCycle} className="card rise-1 grid gap-3 sm:grid-cols-2">
             <div className="sm:col-span-2">
-              <label className="field-label">Пристрій</label>
+              <label className="field-label">{t('journals.cycle.device.label')}</label>
               <input required className="input" value={device}
                      onChange={(e) => setDevice(e.target.value)} />
             </div>
             <div>
-              <label className="field-label">Температура, °C</label>
+              <label className="field-label">{t('journals.cycle.temp.label')}</label>
               <input required type="number" min="1" className="input"
                      value={temp} onChange={(e) => setTemp(e.target.value)} />
             </div>
             <div>
-              <label className="field-label">Тривалість, хв</label>
+              <label className="field-label">{t('journals.cycle.mins.label')}</label>
               <input required type="number" min="1" className="input"
                      value={mins} onChange={(e) => setMins(e.target.value)} />
             </div>
             <label className="t-md flex items-center gap-2 sm:col-span-2">
               <input type="checkbox" checked={indicator}
                      onChange={(e) => setIndicator(e.target.checked)} />
-              Індикатор змінив колір (цикл успішний)
+              {t('journals.cycle.indicator.label')}
             </label>
             <button className="btn-primary self-end" disabled={busy === 'cycle'}>
-              Записати цикл
+              {t('journals.cycle.submit')}
             </button>
           </form>
           )}
 
           <div className="card rise-2 !p-0">
             {cycles.length === 0 ? (
-              <div className="empty">Циклів поки не записано</div>
+              <div className="empty">{t('journals.cycles.empty')}</div>
             ) : cycles.map((c) => (
               <div key={c.id} className="row px-5">
                 <div>
+                  {/* Назва пристрою — данные записи журнала. */}
                   <p className="t-md">{c.device}</p>
                   <p className="tabular t-xs prose-muted">
-                    {c.temperature_c}°C · {c.duration_minutes} хв · {fmt(c.performed_at)}
+                    {t('journals.cycle.line', {
+                      temp: t.number(c.temperature_c),
+                      mins: t.number(c.duration_minutes),
+                    })}
+                    {' · '}{t.dateTime(c.performed_at, AT)}
                     {' · '}<Performer name={c.performer} />
                   </p>
                 </div>
                 <span className={c.indicator_ok ? 'badge-success' : 'badge-danger'}>
-                  {c.indicator_ok ? 'успішно' : 'провал'}
+                  {c.indicator_ok ? t('journals.cycle.ok') : t('journals.cycle.fail')}
                 </span>
               </div>
             ))}
@@ -432,27 +465,27 @@ export function JournalsClient({
           захист самого власника від «я нічого не міняв». */}
       {tab === 'actions' && (
         <section className="flex flex-col gap-4">
-          <p className="field-hint rise">
-            Сюди автоматично потрапляє кожна зміна: картки засобів, партії,
-            ємності, техкарти, довідники, команда. Записи не можна ні
-            виправити, ні стерти — навіть власнику.
-          </p>
+          <p className="field-hint rise">{t('journals.audit.hint')}</p>
           <div className="card rise-1 !p-0">
             {audit === null ? (
-              <div className="empty">Завантажуємо…</div>
+              <div className="empty">{t('journals.audit.loading')}</div>
             ) : audit.length === 0 ? (
-              <div className="empty">Поки жодної зміни не зафіксовано</div>
+              <div className="empty">{t('journals.audit.empty')}</div>
             ) : audit.map((a) => (
               <div key={a.id} className="row px-5">
                 <div className="min-w-0">
                   <p className="t-md truncate">
-                    {ACTION_UA[a.action] ?? a.action}{' '}
-                    {ENTITY_UA[a.entity] ?? a.entity}
+                    {actionLabel(t, a.action)}{' '}
+                    {entityLabel(t, a.entity)}
+                    {/* `label` — имя изменённой строки (назва засобу, номер
+                        партії): данные арендатора, не переводятся. */}
                     {a.label ? <span className="prose-muted"> · {a.label}</span> : null}
                   </p>
-                  <p className="t-xs prose-muted truncate">{a.actor_email ?? 'система'}</p>
+                  <p className="t-xs prose-muted truncate">
+                    {a.actor_email ?? t('journals.audit.system')}
+                  </p>
                 </div>
-                <span className="badge tabular shrink-0">{fmt(a.at)}</span>
+                <span className="badge tabular shrink-0">{t.dateTime(a.at, AT)}</span>
               </div>
             ))}
           </div>
@@ -462,29 +495,30 @@ export function JournalsClient({
   )
 }
 
-// Словарики журнала действий. Тригер пишет техническое (insert/update,
-// имя таблицы) — человеку показываем человеческое. Неизвестное значение
-// выводится как есть: лучше английское слово, чем спрятанная запись.
-const ACTION_UA: Record<string, string> = {
-  insert: 'Створено',
-  update: 'Змінено',
-  delete: 'Видалено',
-}
-const ENTITY_UA: Record<string, string> = {
-  materials: 'засіб',
-  material_batches: 'партію',
-  material_containers: 'ємність',
-  material_documents: 'документ',
-  material_barcodes: 'штрихкод',
-  tech_cards: 'техкарту',
-  cleaning_tasks: 'пункт чек-листа',
-  customers: 'клієнта',
-  offerings: 'позицію каталогу',
-  offering_variants: 'варіант позиції',
-  variant_materials: 'рецептуру',
-  suppliers: 'постачальника',
-  storage_locations: 'місце зберігання',
-  staff: 'співробітника',
-  tenant_members: 'учасника команди',
-  tenants: 'налаштування закладу',
-}
+// ── Значения базы и подписи к ним — РАЗНЫЕ вещи ────────────────────────────
+//
+// Триггер пишет техническое: действие (`insert`) и имя таблицы
+// (`material_batches`). Это служебные значения, они не переводятся никогда
+// и остаются здесь списком; переводится ПОДПИСЬ к значению, и живёт она
+// в словаре (`journals.audit.action.insert`, `journals.audit.entity.materials`)
+// — тот же приём, что у ролей в `/app/team`.
+//
+// Значение, которого нет в списке, показывается КАК ЕСТЬ: новая таблица
+// попадёт в аудит раньше, чем строка в словарь, и увидеть `shipments`
+// полезнее, чем пустоту.
+const ACTIONS = ['insert', 'update', 'delete'] as const
+type AuditActionKind = (typeof ACTIONS)[number]
+const actionLabel = (t: T, a: string): string =>
+  ((ACTIONS as readonly string[]).includes(a)
+    ? t(`journals.audit.action.${a as AuditActionKind}`) : a)
+
+const ENTITIES = [
+  'materials', 'material_batches', 'material_containers', 'material_documents',
+  'material_barcodes', 'tech_cards', 'cleaning_tasks', 'customers', 'offerings',
+  'offering_variants', 'variant_materials', 'suppliers', 'storage_locations',
+  'staff', 'tenant_members', 'tenants',
+] as const
+type AuditEntity = (typeof ENTITIES)[number]
+const entityLabel = (t: T, e: string): string =>
+  ((ENTITIES as readonly string[]).includes(e)
+    ? t(`journals.audit.entity.${e as AuditEntity}`) : e)

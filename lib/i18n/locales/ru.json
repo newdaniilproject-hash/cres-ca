@@ -1,0 +1,12 @@
+{
+  "common.save": "Сохранить",
+  "common.saving": "Сохраняем…",
+  "common.saved": "Сохранено ✓",
+  "common.cancel": "Отмена",
+  "common.copy": "Скопировать",
+  "common.copied": "Скопировано ✓",
+
+  "team.sessions.count.one": "{n} сеанс",
+  "team.sessions.count.few": "{n} сеанса",
+  "team.sessions.count.many": "{n} сеансов"
+}

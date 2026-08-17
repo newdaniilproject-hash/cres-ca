@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useToast } from '@/components/toast'
+import { useT } from '@/lib/i18n/client'
 
 // Установка на телефон и обновление приложения.
 //
@@ -18,6 +19,7 @@ type InstallEvent = Event & {
 }
 
 export function PwaProvider() {
+  const t = useT()
   const toast = useToast()
   const [deferred, setDeferred] = useState<InstallEvent | null>(null)
   const [iosHint, setIosHint] = useState(false)
@@ -36,11 +38,11 @@ export function PwaProvider() {
             if (sw.state === 'installed' && navigator.serviceWorker.controller) {
               toast.push({
                 kind: 'info',
-                text: 'Вийшла нова версія',
-                detail: 'Оновимо, коли вам буде зручно.',
+                text: t('pwa.update.text'),
+                detail: t('pwa.update.detail'),
                 timeout: 0,
                 action: {
-                  label: 'Оновити зараз',
+                  label: t('pwa.update.action'),
                   run: () => { sw.postMessage('skip-waiting'); window.location.reload() },
                 },
               })
@@ -95,14 +97,16 @@ export function PwaProvider() {
   if (deferred) {
     return (
       <InstallBar
-        text="Встановити на телефон"
-        hint="Відкриватиметься з іконки й працюватиме без мережі"
-        cta="Встановити"
+        text={t('pwa.install.text')}
+        hint={t('pwa.install.hint')}
+        cta={t('pwa.install.cta')}
         onCta={async () => {
           await deferred.prompt()
           const { outcome } = await deferred.userChoice
           setDeferred(null)
-          if (outcome === 'accepted') toast.success('Готово', 'Іконка зʼявилася на екрані телефона.')
+          if (outcome === 'accepted') {
+            toast.success(t('pwa.install.done'), t('pwa.install.done.detail'))
+          }
         }}
         onClose={() => setDeferred(null)}
       />
@@ -112,9 +116,9 @@ export function PwaProvider() {
   if (iosHint) {
     return (
       <InstallBar
-        text="Додайте на екран «Домів»"
-        hint="Кнопка «Поділитися» внизу браузера → «На екран Домів»"
-        cta="Зрозуміло"
+        text={t('pwa.ios.text')}
+        hint={t('pwa.ios.hint')}
+        cta={t('pwa.ios.cta')}
         onCta={() => { localStorage.setItem('pwa-ios-hint', '1'); setIosHint(false) }}
         onClose={() => { localStorage.setItem('pwa-ios-hint', '1'); setIosHint(false) }}
       />
@@ -130,6 +134,7 @@ function InstallBar({
   text: string; hint: string; cta: string
   onCta: () => void | Promise<void>; onClose: () => void
 }) {
+  const t = useT()
   return (
     <div
       className="pointer-events-auto border p-3 rise"
@@ -148,11 +153,9 @@ function InstallBar({
         <button type="button" onClick={() => void onCta()} className="btn-primary h-9 shrink-0 t-sm">
           {cta}
         </button>
-        {/* Зона нажатия — из .btn-icon (var(--tap-min), 44px). Инлайновой
-            поправки здесь быть не должно: она стояла на 32px и резала
-            крестик ниже минимума Apple HIG — по нему промахивались,
-            а промах по «закрыть» человек читает как «полоса не убирается». */}
-        <button type="button" onClick={onClose} aria-label="Закрити" className="btn-icon shrink-0">
+        <button type="button" onClick={onClose} aria-label={t('common.close.aria')}
+                className="btn-icon shrink-0"
+                style={{ minWidth: 32, minHeight: 32 }}>
           ✕
         </button>
       </div>

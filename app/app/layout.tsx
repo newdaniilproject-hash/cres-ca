@@ -2,6 +2,8 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { currentMembership } from '@/lib/tenant'
 import { AppShell } from '@/components/shell'
+import { getLang } from '@/lib/i18n/server'
+import { LangProvider } from '@/lib/i18n/client'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,6 +17,13 @@ export const dynamic = 'force-dynamic'
 // Теперь панель, шапка и заголовок живут в layout, а страницы отдают
 // только содержимое. Скелетоны загрузки рисуют содержимое и ничего
 // больше — накладываться нечему.
+//
+// ЯЗЫК КАБИНЕТА тоже входит сюда, и по той же причине: он один на все
+// двадцать шесть экранов. Кука читается один раз на кабинет, а не на
+// странице (layout не перерисовывается при переходах внутри сегмента),
+// и раздаётся вниз контекстом — клиентские экраны берут его хуком
+// `useT()`, серверные могут звать `getT()` сами. Отдельного запроса
+// и отдельного состояния это не стоит.
 export default async function AppLayout({
   children,
 }: {
@@ -30,9 +39,13 @@ export default async function AppLayout({
   const { data: tenant } = await supabase
     .from('tenants').select('name').eq('id', m.tenantId).maybeSingle()
 
+  const lang = await getLang()
+
   return (
-    <AppShell modules={m.modules} perms={m.perms} shopName={tenant?.name ?? ''}>
-      {children}
-    </AppShell>
+    <LangProvider lang={lang}>
+      <AppShell modules={m.modules} perms={m.perms} shopName={tenant?.name ?? ''}>
+        {children}
+      </AppShell>
+    </LangProvider>
   )
 }

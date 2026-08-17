@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
+import { useT } from '@/lib/i18n/client'
 
 type Point = {
   slug: string; name: string; tagline: string | null
@@ -8,9 +9,59 @@ type Point = {
   lat: number; lng: number; kind: string
 }
 
+// Содержимое всплывающего окна метки.
+//
+// Собирается узлами, а не строкой HTML, и это принципиально: `name`,
+// `tagline`, `address` и `slug` пишет сам продавец в настройках заклада,
+// а страница публичная и индексируется. При сборке строкой любая из этих
+// подстановок — внедрение разметки и скрипта на страницу платформы, и
+// достаточно один раз забыть экранирование в будущей правке, чтобы дыра
+// вернулась. Через `textContent` и `setAttribute` экранирование делает сам
+// разбор документа, забыть его нельзя.
+//
+// Внутри всплывающего окна leaflet рисует свой фон, поэтому текст берёт
+// его цвет, а приглушение даётся прозрачностью, а не цветовой переменной
+// интерфейса — она рассчитана на наши поверхности и на чужой оказалась бы
+// нечитаемой.
+function popupContent(p: Point, openLabel: string): HTMLElement {
+  const box = document.createElement('div')
+  box.setAttribute('style', 'font-family:inherit;min-width:180px')
+
+  const name = document.createElement('strong')
+  name.setAttribute('style', 'font-size:14px')
+  name.textContent = p.name
+  box.append(name, document.createElement('br'))
+
+  const sub = document.createElement('span')
+  sub.setAttribute('style', 'opacity:.68;font-size:12px')
+  sub.textContent = p.tagline ?? ''
+  if (p.address) {
+    sub.append(document.createElement('br'))
+    sub.append(document.createTextNode(p.address))
+  }
+  box.append(sub, document.createElement('br'))
+
+  // Схема адреса задана здесь и не берётся из данных, поэтому `javascript:`
+  // подставить нельзя; `encodeURIComponent` закрывает выход из сегмента пути.
+  const link = document.createElement('a')
+  link.setAttribute('href', `/t/${encodeURIComponent(p.slug)}`)
+  link.setAttribute(
+    'style',
+    'display:inline-block;margin-top:8px;padding:8px 12px;' +
+      'background:var(--color-accent);color:var(--color-accent-text);' +
+      'border-radius:var(--radius-control);' +
+      'font-size:12px;text-decoration:none',
+  )
+  link.textContent = openLabel
+  box.append(link)
+
+  return box
+}
+
 // Leaflet + OpenStreetMap: без ключей и без платных лимитов.
 // Грузится только на клиенте и только на этой странице.
 export function MapView({ points }: { points: Point[] }) {
+  const t = useT()
   const ref = useRef<HTMLDivElement>(null)
   const inited = useRef(false)
 
@@ -55,40 +106,29 @@ export function MapView({ points }: { points: Point[] }) {
         iconAnchor: [17, 30],
       })
 
+      // Название, подзаголовок и адрес заведения — данные продавца:
+      // не переводятся. В словарь уехала только надпись на кнопке.
+      const openLabel = t('public.map.popup.open')
+
       for (const p of points) {
         L.marker([p.lat, p.lng], { icon })
           .addTo(map!)
-          .bindPopup(
-            // Внутри всплывающего окна leaflet рисует свой фон, поэтому
-            // текст берёт его цвет, а приглушение даётся прозрачностью,
-            // а не цветовой переменной интерфейса — она рассчитана на
-            // наши поверхности и на чужой оказалась бы нечитаемой.
-            `<div style="font-family:inherit;min-width:180px">
-               <strong style="font-size:14px">${p.name}</strong><br/>
-               <span style="opacity:.68;font-size:12px">
-                 ${p.tagline ?? ''}${p.address ? `<br/>${p.address}` : ''}
-               </span><br/>
-               <a href="/t/${p.slug}" style="
-                 display:inline-block;margin-top:8px;padding:8px 12px;
-                 background:var(--color-accent);color:var(--color-accent-text);
-                 border-radius:var(--radius-control);
-                 font-size:12px;text-decoration:none">Відкрити сторінку</a>
-             </div>`,
-          )
+          // Содержимое строится по открытию, а не сразу: на карте бывают
+          // сотни закладов, и собирать узлы для всех при загрузке значило
+          // бы платить за то, что человек почти наверняка не откроет.
+          .bindPopup(() => popupContent(p, openLabel))
       }
     })()
 
     return () => { map?.remove(); inited.current = false }
-  }, [points])
+  }, [points, t])
 
   return (
     <div className="relative h-full">
       <div ref={ref} className="h-full w-full" />
       {points.length === 0 && (
         <div className="pointer-events-none absolute inset-x-0 top-6 z-[500] mx-auto max-w-sm px-4">
-          <div className="card t-md text-center rise">
-            Заклади з адресою з’являться тут — платформа щойно відкривається.
-          </div>
+          <div className="card t-md text-center rise">{t('public.map.empty')}</div>
         </div>
       )}
     </div>

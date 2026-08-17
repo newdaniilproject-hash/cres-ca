@@ -2,10 +2,17 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { currentMembership, can } from '@/lib/tenant'
 import { AppShell } from '@/components/shell'
+import { getT } from '@/lib/i18n/server'
 import { ProfileClient } from './profile-client'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Профіль' }
+
+// Заголовок вкладки браузера — строка интерфейса, поэтому из словаря.
+// Разбор решения — в `app/app/journals/page.tsx`.
+export async function generateMetadata() {
+  const t = await getT()
+  return { title: t('profile.meta.title') }
+}
 
 // Профиль внутри кабинета.
 //
@@ -30,8 +37,7 @@ export default async function ProfilePage() {
     ?? [meta.first_name, meta.last_name].filter(Boolean).join(' ')).trim()
 
   return (
-    <AppShell modules={m.modules} perms={m.perms} active="/app/profile" title="Профіль"
-              subtitle="Обліковий запис, безпека та вихід">
+    <AppShell modules={m.modules} perms={m.perms}>
       <ProfileClient
         email={user.email ?? ''}
         name={name}

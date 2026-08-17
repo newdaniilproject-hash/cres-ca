@@ -3,15 +3,24 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { currentMembership, can, hasModule } from '@/lib/tenant'
 import { AppShell } from '@/components/shell'
+import { getT } from '@/lib/i18n/server'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Сьогодні' }
+
+// Заголовок вкладки браузера — строка интерфейса, поэтому из словаря.
+// Разбор решения — в `app/app/journals/page.tsx`.
+export async function generateMetadata() {
+  const t = await getT()
+  return { title: t('home.meta.title') }
+}
 
 // Сводка дня: записи, что заканчивается, что спливає. Мастер открывает
 // это утром — за десять секунд ясно, что требует внимания.
 export default async function AppHome() {
   const m = await currentMembership()
   if (!m) redirect('/register/seller')
+  // Экран серверный, поэтому переводчик берётся `await getT()`, а не хуком.
+  const t = await getT()
   const supabase = await createClient()
 
   // ЭТОТ экран правом не закрывается и закрыт быть не может: он —
@@ -91,7 +100,7 @@ export default async function AppHome() {
   })
 
   return (
-    <AppShell modules={m.modules} perms={m.perms} active="/app" title={shop?.name ?? 'Кабінет'}>
+    <AppShell modules={m.modules} perms={m.perms}>
       {/* Кнопка ведёт на /app/settings, а туда пускает только
           `settings.read`. Показывать её тому, кого экран настроек
           развернёт обратно, значит завести ту самую сломанную
@@ -103,10 +112,10 @@ export default async function AppHome() {
           к блоку настроек, который при выключенном модуле не рисуется. */}
       {shop && shop.status === 'draft' && seeSettings && seeStorefront && (
         <div className="card-flat rise mb-6 flex flex-wrap items-center justify-between gap-3">
-          <p className="t-md">
-            Заклад у чернетці: облік уже працює, публічна сторінка вимкнена.
-          </p>
-          <Link href="/app/settings" className="btn-secondary t-sm">До публікації</Link>
+          <p className="t-md">{t('home.draft.notice')}</p>
+          <Link href="/app/settings" className="btn-secondary t-sm">
+            {t('home.draft.publish')}
+          </Link>
         </div>
       )}
 
@@ -115,27 +124,35 @@ export default async function AppHome() {
         {seeBookings && (
         <section className="card rise-1">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="t-lg">Записи сьогодні</h2>
-            <Link href="/app/bookings" className="btn-ghost t-sm">Усі</Link>
+            <h2 className="t-lg">{t('home.bookings.title')}</h2>
+            <Link href="/app/bookings" className="btn-ghost t-sm">{t('home.bookings.all')}</Link>
           </div>
           {todays.length === 0 ? (
-            <div className="empty !py-8">Сьогодні записів немає</div>
+            <div className="empty !py-8">{t('home.bookings.empty')}</div>
           ) : (
             todays.map((b) => {
-              const t = new Date(String(b.period).match(/"([^"]+)"/)?.[1] ?? '')
+              // Переменная названа `start`, а не `t`: `t` — переводчик.
+              const start = new Date(String(b.period).match(/"([^"]+)"/)?.[1] ?? '')
               return (
                 <div key={b.id} className="row">
                   <div className="flex items-center gap-3">
                     <span className="tabular t-xl" style={{ color: 'var(--color-accent)' }}>
-                      {t.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })}
+                      {t.dateTime(start, { hour: '2-digit', minute: '2-digit' })}
                     </span>
                     <div>
+                      {/* Имя клиента, название услуги и варианта — данные. */}
                       <p className="t-md">{b.contact_name}</p>
                       <p className="t-xs prose-muted">{b.title} · {b.variant_name}</p>
                     </div>
                   </div>
+                  {/* Статус записи — значение перечисления
+                      (`booking_status_transitions`), переводится подпись. */}
                   <span className={b.status === 'confirmed' ? 'badge-success' : 'badge'}>
-                    {b.status === 'booked' ? 'нова' : b.status === 'arrived' ? 'у кріслі' : 'ок'}
+                    {b.status === 'booked'
+                      ? t('home.booking.status.booked')
+                      : b.status === 'arrived'
+                      ? t('home.booking.status.arrived')
+                      : t('home.booking.status.ok')}
                   </span>
                 </div>
               )
@@ -148,7 +165,7 @@ export default async function AppHome() {
         {seeContainers && (
         <section className="card rise-2">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="t-lg">Спливає термін</h2>
+            <h2 className="t-lg">{t('home.expiring.title')}</h2>
             {/* Сам блок стоит на `compliance.read`, а склад за ссылкой —
                 на `stock.read`: `/app/inventory` разворачивает обратно
                 сюда всех, у кого его нет, то есть инспектора. Ссылка,
@@ -158,19 +175,26 @@ export default async function AppHome() {
                 `/app/inventory` отвечает экраном «розділ не підключено»,
                 и ссылка вела бы туда же — в отказ. */}
             {seeStock && (
-              <Link href="/app/inventory" className="btn-ghost t-sm">Склад</Link>
+              <Link href="/app/inventory" className="btn-ghost t-sm">
+                {t('home.expiring.stock')}
+              </Link>
             )}
           </div>
           {(expiring ?? []).length === 0 ? (
-            <div className="empty !py-8">Найближчі два тижні — усе в межах терміну</div>
+            <div className="empty !py-8">{t('home.expiring.empty')}</div>
           ) : (
             (expiring ?? []).map((c) => (
               <div key={c.code} className="row">
                 <div>
+                  {/* Назва засобу і код ємності — данные заклада. */}
                   <p className="t-md">{c.material_name}</p>
-                  <p className="t-xs prose-muted">Ємність {c.code}</p>
+                  <p className="t-xs prose-muted">
+                    {t('home.expiring.container', { code: c.code })}
+                  </p>
                 </div>
-                <span className="badge-warn tabular">до {new Date(c.use_by!).toLocaleDateString('uk-UA')}</span>
+                <span className="badge-warn tabular">
+                  {t('home.expiring.until', { date: t.date(c.use_by) })}
+                </span>
               </div>
             ))
           )}
@@ -181,16 +205,19 @@ export default async function AppHome() {
         {seeStock && (
         <section className="card rise-3 lg:col-span-2">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="t-lg">Що закуповувати</h2>
-            <Link href="/app/inventory" className="btn-ghost t-sm">Залишки</Link>
+            <h2 className="t-lg">{t('home.reorder.title')}</h2>
+            <Link href="/app/inventory" className="btn-ghost t-sm">
+              {t('home.reorder.stock')}
+            </Link>
           </div>
           {(low ?? []).length === 0 ? (
-            <div className="empty !py-8">Запасів достатньо</div>
+            <div className="empty !py-8">{t('home.reorder.empty')}</div>
           ) : (
             <div className="flex flex-wrap gap-2">
+              {/* Назва позиції — данные; переводится только «докупити». */}
               {(low ?? []).map((r, i) => (
                 <span key={i} className="badge-warn tabular">
-                  {r.title} · докупити {Number(r.to_order)}
+                  {r.title} · {t('home.reorder.item', { n: t.number(Number(r.to_order)) })}
                 </span>
               ))}
             </div>

@@ -4,9 +4,16 @@ import { currentMembership, can, hasModule } from '@/lib/tenant'
 import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { CatalogClient } from './catalog-client'
+import { getT } from '@/lib/i18n/server'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Каталог' }
+
+// Заголовок вкладки браузера — строка интерфейса, поэтому из словаря.
+// Разбор решения — в `app/app/journals/page.tsx`.
+export async function generateMetadata() {
+  const t = await getT()
+  return { title: t('catalog.meta.title') }
+}
 
 type MediaRow = { path: string; position: number }
 type VariantRow = { id: string; price: number | null }
@@ -40,7 +47,7 @@ export default async function CatalogPage() {
     .limit(200)
 
   return (
-    <AppShell modules={m.modules} perms={m.perms} active="/app/catalog" title="Каталог">
+    <AppShell modules={m.modules} perms={m.perms}>
       <CatalogClient
         error={error?.message ?? null}
         // `/app/catalog/new` требует `catalog.write` и разворачивает

@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { humanAuthError } from '@/lib/auth-errors'
-import { nextRoute } from '@/lib/where'
 import { AuthShell } from '../auth-shell'
+import { useT } from '@/lib/i18n/client'
 import { PasswordInput, PasswordStrength, SuccessScreen } from '@/components/auth-ui'
 
 // Смена пароля для того, у кого уже есть сессия.
@@ -17,6 +17,7 @@ import { PasswordInput, PasswordStrength, SuccessScreen } from '@/components/aut
 // а не упереться в пустой экран. Без сессии он честно отправляется
 // на /forgot, вместо того чтобы показывать форму, которая не сработает.
 export default function ResetPage() {
+  const t = useT()
   const supabase = createClient()
   const [ready, setReady] = useState(false)
   const [password, setPassword] = useState('')
@@ -24,9 +25,6 @@ export default function ResetPage() {
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(false)
   const [error, setError] = useState('')
-  // Тот же принцип, что и на остальных экранах входа: куда вести,
-  // решает lib/where.ts, а не жёсткий '/account'.
-  const [target, setTarget] = useState('/app')
 
   useEffect(() => {
     let alive = true
@@ -46,8 +44,7 @@ export default function ResetPage() {
     setBusy(true); setError('')
     const { error } = await supabase.auth.updateUser({ password })
     setBusy(false)
-    if (error) { setError(humanAuthError(error.message)); return }
-    setTarget(await nextRoute(supabase, 'web'))
+    if (error) { setError(humanAuthError(t, error.message)); return }
     setDone(true)
   }
 
@@ -55,10 +52,10 @@ export default function ResetPage() {
     return (
       <AuthShell>
         <SuccessScreen
-          title="Пароль змінено"
-          subtitle="Ваш пароль успішно оновлено. Тепер можете увійти з новим паролем."
-          actionLabel="Продовжити"
-          onAction={() => { window.location.href = target }}
+          title={t('auth.done.password.title')}
+          subtitle={t('auth.done.password.desc')}
+          actionLabel={t('auth.done.password.action')}
+          onAction={() => { window.location.href = '/account' }}
         />
       </AuthShell>
     )
@@ -66,31 +63,31 @@ export default function ResetPage() {
 
   if (!ready) {
     return (
-      <AuthShell title="Новий пароль">
+      <AuthShell title={t('auth.newpass.title')}>
         <div className="skeleton" style={{ height: 'var(--h-input)' }} />
       </AuthShell>
     )
   }
 
   return (
-    <AuthShell title="Новий пароль" subtitle="Придумайте пароль — і одразу увійдемо">
+    <AuthShell title={t('auth.newpass.title')} subtitle={t('auth.newpass.subtitle')}>
       <form onSubmit={submit} className="flex flex-col gap-4">
         <div>
-          <label className="field-label" htmlFor="pass">Пароль</label>
+          <label className="field-label" htmlFor="pass">{t('auth.field.password')}</label>
           <PasswordInput id="pass" value={password} onChange={setPassword}
                          autoComplete="new-password" autoFocus />
           <PasswordStrength value={password} />
         </div>
         <div>
-          <label className="field-label" htmlFor="pass2">Підтвердіть пароль</label>
+          <label className="field-label" htmlFor="pass2">{t('auth.field.confirmPassword')}</label>
           <PasswordInput id="pass2" value={confirm} onChange={setConfirm}
                          autoComplete="new-password" invalid={mismatch} />
-          {mismatch && <p className="field-error">Паролі не збігаються</p>}
+          {mismatch && <p className="field-error">{t('auth.field.mismatch')}</p>}
         </div>
         {error && <p className="field-error">{error}</p>}
         <button className="btn-primary btn-tall"
                 disabled={busy || password.length < 8 || password !== confirm}>
-          {busy ? 'Зберігаємо…' : 'Зберегти пароль'}
+          {busy ? t('common.saving') : t('auth.newpass.submit')}
         </button>
       </form>
     </AuthShell>

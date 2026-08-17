@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { PublicHeader, PublicFooter } from '@/components/shell'
+import { PublicHeader, PublicFooter, publicT as t } from '@/components/shell'
 import { OWNER, POLICY_VERSION, POLICY_DATE, Legal, H2, P, Ul } from './legal'
 
 export const metadata = {
@@ -13,6 +13,11 @@ export const metadata = {
 // URL этой страницы не пройти ни Meta Business Verification, ни ревью
 // App Store, ни Google Play. Плюс это первый пункт из списка «что
 // платформа обязана уметь с первого дня» в docs/DOMAIN.md.
+//
+// Текст документа, его название и краткое описание в метаданных НЕ уезжают
+// в словарь: это опубликованный документ с номером редакции, а не экран.
+// Полное обоснование — в шапке `./legal.tsx`. Через словарь идёт только
+// подпись под документом — «Версія … Чинна з …».
 export default async function PrivacyPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -199,7 +204,10 @@ export default async function PrivacyPage() {
         </P>
 
         <p className="t-sm mt-10 prose-muted">
-          Версія {POLICY_VERSION}. Чинна з {POLICY_DATE}.
+          {t('public.legal.version', {
+            version: POLICY_VERSION,
+            date: t.date(POLICY_DATE, { day: 'numeric', month: 'long', year: 'numeric' }),
+          })}
         </p>
       </Legal>
       <PublicFooter />

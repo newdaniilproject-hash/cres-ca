@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useT } from '@/lib/i18n/client'
 
 // Выбор темы хранится в localStorage и ставится классом на <html>.
 // Значений три: 'light', 'dark' и отсутствие ключа — «как есть».
@@ -30,6 +31,7 @@ function apply(choice: Choice) {
 }
 
 export function ThemeToggle({ className = '' }: { className?: string }) {
+  const t = useT()
   const [choice, setChoice] = useState<Choice>('system')
 
   useEffect(() => {
@@ -44,26 +46,28 @@ export function ThemeToggle({ className = '' }: { className?: string }) {
     apply(next)
   }
 
-  const options: { value: Choice; label: string; title: string }[] = [
-    { value: 'light', label: '☀', title: 'Світла' },
-    { value: 'system', label: '◐', title: 'Як у системі' },
-    { value: 'dark', label: '☾', title: 'Темна' },
-  ]
+  // `value` — служебное значение (оно же ключ в localStorage), оно не
+  // переводится. Значок — символ, а не текст. Переводится только подпись.
+  const options = [
+    { value: 'light', label: '☀', title: 'theme.light' },
+    { value: 'system', label: '◐', title: 'theme.system' },
+    { value: 'dark', label: '☾', title: 'theme.dark' },
+  ] as const satisfies readonly { value: Choice; label: string; title: string }[]
 
   return (
     <div
       className={`inline-flex items-center gap-0.5 rounded-full border p-0.5 ${className}`}
       style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface-2)' }}
       role="group"
-      aria-label="Тема оформлення"
+      aria-label={t('theme.aria')}
     >
       {options.map((o) => (
         <button
           key={o.value}
           type="button"
           onClick={() => pick(o.value)}
-          title={o.title}
-          aria-label={o.title}
+          title={t(o.title)}
+          aria-label={t(o.title)}
           aria-pressed={choice === o.value}
           className="btn-icon t-md rounded-full leading-none transition-colors"
           style={

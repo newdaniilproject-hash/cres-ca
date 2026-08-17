@@ -4,6 +4,8 @@ import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useT } from '@/lib/i18n/client'
+import type { T } from '@/lib/i18n/translate'
 
 export type CategoryRow = { id: string; name: string; kind: 'product' | 'service' }
 export type LocationRow = { id: string; name: string }
@@ -110,12 +112,20 @@ type VariantDraft = {
 let keySeq = 0
 const nextKey = () => `new-${(keySeq += 1)}`
 
+// Имя варианта по умолчанию и единица по умолчанию — ДАННЫЕ, которые
+// уезжают в базу, а не строки интерфейса: переведи их — и одна и та же
+// позиция называлась бы по-разному в зависимости от языка того, кто её
+// завёл. В словарь не едут (CLAUDE.md → «Локализация»).
+const DEFAULT_VARIANT = 'Стандарт'
+const DEFAULT_UNIT = 'шт'
+
 const str = (v: number | null | undefined) => (v == null ? '' : String(v))
 // Продавец с телефона набирает «1 200,50» — пробелы и запятая нормальны.
 const toNum = (v: string): number | null => {
-  const t = v.replace(/\s/g, '').replace(',', '.').trim()
-  if (t === '') return null
-  const n = Number(t)
+  // Переменная названа `raw`, а не `t`: `t` в этом файле — переводчик.
+  const raw = v.replace(/\s/g, '').replace(',', '.').trim()
+  if (raw === '') return null
+  const n = Number(raw)
   return Number.isFinite(n) ? n : null
 }
 const toInt = (v: string): number | null => {
@@ -138,7 +148,7 @@ function draftFrom(v: VariantRow): VariantDraft {
 function emptyDraft(kind: 'product' | 'service', name = ''): VariantDraft {
   return {
     key: nextKey(), id: null, name, sku: '', price: '', compareAt: '', cost: '',
-    unit: 'шт', trackStock: kind === 'product', weight: '', barcode: '',
+    unit: DEFAULT_UNIT, trackStock: kind === 'product', weight: '', barcode: '',
     threshold: '0', locationId: '',
     // Услуга без длительности не сохранится: этого требует триггер
     // offering_variants_duration. Ставим час — типовой визит.
@@ -148,9 +158,13 @@ function emptyDraft(kind: 'product' | 'service', name = ''): VariantDraft {
   }
 }
 
-const STATUS_LABEL: Record<string, string> = {
-  draft: 'чернетка', active: 'опубліковано', hidden: 'прихована', archived: 'в архіві',
-}
+// Подписи к состояниям позиции — те же ключи, что в списке каталога.
+// Само значение (`draft`, `archived`) не переводится: это служебное
+// значение перечисления, по нему сверяется база.
+const STATUSES = ['draft', 'active', 'hidden', 'archived'] as const
+type Status = (typeof STATUSES)[number]
+const statusLabel = (t: T, v: string): string =>
+  ((STATUSES as readonly string[]).includes(v) ? t(`catalog.status.${v as Status}`) : v)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Форма
@@ -199,6 +213,7 @@ export function OfferingForm({
   variants?: VariantRow[]
   media?: MediaRow[]
 }) {
+  const t = useT()
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
 
@@ -231,7 +246,7 @@ export function OfferingForm({
   const [drafts, setDrafts] = useState<VariantDraft[]>(
     variants.length > 0
       ? variants.map(draftFrom)
-      : [emptyDraft(offering?.kind ?? 'product', 'Стандарт')],
+      : [emptyDraft(offering?.kind ?? 'product', DEFAULT_VARIANT)],
   )
   const [savedIds, setSavedIds] = useState<string[]>(variants.map((v) => v.id))
 
@@ -278,7 +293,8 @@ export function OfferingForm({
       description: description.trim() || null,
       price: toNum(price),
       compare_at: toNum(compareAt),
-      tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
+      // Параметр назван `tag`, а не `t`: `t` — переводчик.
+      tags: tags.split(',').map((tag) => tag.trim()).filter(Boolean),
       listed,
     }
     if (isService) {
@@ -297,7 +313,7 @@ export function OfferingForm({
     return {
       tenant_id: tenantId,
       offering_id: oid,
-      name: d.name.trim() || 'Стандарт',
+      name: d.name.trim() || DEFAULT_VARIANT,
       sku: d.sku.trim() || null,
       price: toNum(d.price),
       compare_at: toNum(d.compareAt),
@@ -309,7 +325,7 @@ export function OfferingForm({
       // Триггер требует duration_minutes у услуги и null у товара.
       duration_minutes: isService ? (toInt(d.duration) ?? 60) : null,
       buffer_minutes: isService ? (toInt(d.buffer) ?? 0) : 0,
-      unit: isService ? 'шт' : (d.unit.trim() || 'шт'),
+      unit: isService ? DEFAULT_UNIT : (d.unit.trim() || DEFAULT_UNIT),
       weight_g: isService ? null : toInt(d.weight),
       min_stock_threshold: isService ? 0 : (toInt(d.threshold) ?? 0),
       location_id: isService ? null : (d.locationId || null),
@@ -324,7 +340,7 @@ export function OfferingForm({
     setErr(''); setSaved(false); setBusy('save')
 
     if (!title.trim()) {
-      setErr('Вкажіть назву'); setBusy(null); return null
+      setErr(t('catalog.form.error.title')); setBusy(null); return null
     }
     const finalSlug = slugify(slug.trim() || title)
     if (finalSlug !== slug) setSlug(finalSlug)
@@ -332,10 +348,10 @@ export function OfferingForm({
     // У позиции всегда есть хотя бы один вариант — именно его кладут
     // в корзину. Продавец о вариантах думать не обязан, поэтому пустой
     // список превращается в «Стандарт», а не в ошибку.
-    const list = drafts.length > 0 ? drafts : [emptyDraft(kind, 'Стандарт')]
-    const names = list.map((d) => (d.name.trim() || 'Стандарт').toLowerCase())
+    const list = drafts.length > 0 ? drafts : [emptyDraft(kind, DEFAULT_VARIANT)]
+    const names = list.map((d) => (d.name.trim() || DEFAULT_VARIANT).toLowerCase())
     if (new Set(names).size !== names.length) {
-      setErr('Назви варіантів мають бути різними'); setBusy(null); return null
+      setErr(t('catalog.form.error.dupVariants')); setBusy(null); return null
     }
 
     let oid = offeringId
@@ -351,7 +367,11 @@ export function OfferingForm({
         // Публикация — отдельное осознанное действие продавца.
         status: 'draft',
       }).select('id').single()
-      if (error || !data) { setErr(error?.message ?? 'Не вдалося зберегти'); setBusy(null); return null }
+      // `error.message` — текст базы, он показывается как есть.
+      // Из словаря только наш запасной вариант.
+      if (error || !data) {
+        setErr(error?.message ?? t('catalog.form.error.save')); setBusy(null); return null
+      }
       oid = data.id as string
       setCreatedId(oid)
     }
@@ -380,7 +400,10 @@ export function OfferingForm({
       if (d.id) {
         const { error } = await supabase.from('offering_variants').update(payload).eq('id', d.id)
         if (error) {
-          syncIds(); setErr(`Варіант «${d.name || 'Стандарт'}»: ${error.message}`)
+          syncIds()
+          setErr(t('catalog.form.error.variant', {
+            name: d.name || DEFAULT_VARIANT, message: error.message,
+          }))
           setBusy(null); return null
         }
         done.push(d)
@@ -388,7 +411,11 @@ export function OfferingForm({
         const { data, error } = await supabase.from('offering_variants')
           .insert(payload).select('id').single()
         if (error || !data) {
-          syncIds(); setErr(`Варіант «${d.name || 'Стандарт'}»: ${error?.message ?? 'не збережено'}`)
+          syncIds()
+          setErr(t('catalog.form.error.variant', {
+            name: d.name || DEFAULT_VARIANT,
+            message: error?.message ?? t('catalog.form.error.variantSave'),
+          }))
           setBusy(null); return null
         }
         done.push({ ...d, id: data.id as string })
@@ -469,7 +496,7 @@ export function OfferingForm({
         // Файл уже в хранилище, а строки нет — убираем файл сразу,
         // иначе он останется невидимым мусором навсегда.
         await supabase.storage.from('media').remove([path])
-        setMediaErr(error?.message ?? 'Не вдалося зберегти фото')
+        setMediaErr(error?.message ?? t('catalog.form.media.error.save'))
         break
       }
       added.push(data as MediaRow)
@@ -519,41 +546,43 @@ export function OfferingForm({
     <div className="flex flex-col gap-5 pb-8">
       {/* Шапка: где мы и что с позицией */}
       <div className="rise flex flex-wrap items-center gap-3">
-        <Link href="/app/catalog" className="btn-ghost">← Каталог</Link>
+        <Link href="/app/catalog" className="btn-ghost">← {t('catalog.form.back')}</Link>
         {offeringId && (
           <span className={status === 'active' ? 'badge-success'
             : status === 'draft' ? 'badge-warn' : 'badge'}>
-            {STATUS_LABEL[status] ?? status}
+            {statusLabel(t, status)}
           </span>
         )}
         {/* Отметка на том же месте, что в карточке засоба: человек обязан
             понять, почему поля не набираются, не нажав ни одного из них. */}
-        {!canWrite && <span className="badge">лише перегляд</span>}
+        {!canWrite && <span className="badge">{t('catalog.form.readonly.badge')}</span>}
         {canWrite && (
           <div className="ml-auto flex flex-wrap items-center gap-2">
             {saved && (
-              <span className="t-md rise" style={{ color: 'var(--color-success)' }}>Збережено ✓</span>
+              <span className="t-md rise" style={{ color: 'var(--color-success)' }}>
+                {t('common.saved')}
+              </span>
             )}
             <button type="button" className="btn-secondary" disabled={busy !== null}
                     onClick={() => void save()}>
-              {busy === 'save' ? 'Зберігаємо…' : 'Зберегти'}
+              {busy === 'save' ? t('common.saving') : t('common.save')}
             </button>
             {offeringId && status !== 'active' && (
               <button type="button" className="btn-primary" disabled={busy !== null}
                       onClick={() => void changeStatus('active')}>
-                Опублікувати
+                {t('catalog.form.publish')}
               </button>
             )}
             {offeringId && status === 'active' && (
               <button type="button" className="btn-secondary" disabled={busy !== null}
                       onClick={() => void changeStatus('draft')}>
-                Зняти з публікації
+                {t('catalog.form.unpublish')}
               </button>
             )}
             {offeringId && status !== 'archived' && (
               <button type="button" className="btn-danger" disabled={busy !== null}
                       onClick={() => void changeStatus('archived')}>
-                В архів
+                {t('catalog.form.archive')}
               </button>
             )}
           </div>
@@ -561,10 +590,7 @@ export function OfferingForm({
       </div>
 
       {!canWrite && (
-        <p className="field-hint rise !mt-0">
-          Позицію заводить і змінює власник або менеджер. Тут видно все,
-          що бачить покупець, — ціни, варіанти й фото.
-        </p>
+        <p className="field-hint rise !mt-0">{t('catalog.form.readonly.hint')}</p>
       )}
 
       {err && <p className="field-error rise">{err}</p>}
@@ -572,29 +598,34 @@ export function OfferingForm({
       {/* Основное */}
       <section className="card rise-1 grid gap-4 sm:grid-cols-2">
         <div className="sm:col-span-2">
-          <label className="field-label">Що це</label>
+          <label className="field-label">{t('catalog.form.kind.label')}</label>
           {offeringId ? (
             <>
-              <span className="badge-accent">{isService ? 'послуга' : 'товар'}</span>
-              <p className="field-hint">
-                Вид не змінюється після створення: у товару є залишок,
-                а в послуги — тривалість і розклад.
-              </p>
+              <span className="badge-accent">
+                {isService ? t('catalog.kind.service') : t('catalog.kind.product')}
+              </span>
+              <p className="field-hint">{t('catalog.form.kind.hint')}</p>
             </>
           ) : (
             <div className="flex gap-2">
               <button type="button" onClick={() => changeKind('product')} disabled={!canWrite}
-                      className={kind === 'product' ? 'chip-active' : 'chip'}>Товар</button>
+                      className={kind === 'product' ? 'chip-active' : 'chip'}>
+                {t('catalog.form.kind.product')}
+              </button>
               <button type="button" onClick={() => changeKind('service')} disabled={!canWrite}
-                      className={kind === 'service' ? 'chip-active' : 'chip'}>Послуга</button>
+                      className={kind === 'service' ? 'chip-active' : 'chip'}>
+                {t('catalog.form.kind.service')}
+              </button>
             </div>
           )}
         </div>
 
         <div className="sm:col-span-2">
-          <label className="field-label">Назва</label>
+          <label className="field-label">{t('catalog.form.title.label')}</label>
           <input required className="input" value={title} disabled={!canWrite}
-                 placeholder={isService ? 'Класичний манікюр' : 'Пальто вовняне'}
+                 placeholder={isService
+                   ? t('catalog.form.title.placeholder.service')
+                   : t('catalog.form.title.placeholder.product')}
                  onChange={(e) => {
                    setTitle(e.target.value)
                    if (!slugTouched) setSlug(slugify(e.target.value))
@@ -602,7 +633,7 @@ export function OfferingForm({
         </div>
 
         <div className="sm:col-span-2">
-          <label className="field-label">Адреса сторінки</label>
+          <label className="field-label">{t('catalog.form.slug.label')}</label>
           <input className="input" value={slug} disabled={!canWrite}
                  onChange={(e) => { setSlugTouched(true); setSlug(e.target.value) }}
                  onBlur={(e) => setSlug(slugify(e.target.value || title))} />
@@ -611,70 +642,69 @@ export function OfferingForm({
               и обещание ссылки было бы неправдой. Само поле остаётся —
               `slug` уникален внутри заведения и нужен строке в любом
               случае, витрина лишь делает его видимым снаружи. */}
+          {/* Две развилки — две строки словаря целиком, а не общее начало
+              плюс хвост: в другом языке предложение строится иначе. */}
           <p className="field-hint">
             {hasStorefront
-              ? <>Це кінець посилання на позицію: /t/ваш-магазин/{slug || '…'}.{' '}</>
-              : <>Коротка адреса позиції всередині закладу.{' '}</>}
-            Латиниця, цифри й дефіси. Після публікації краще не змінювати —
-            стара адреса перестане відкриватися.
+              ? t('catalog.form.slug.hint.storefront', { slug: slug || '…' })
+              : t('catalog.form.slug.hint.plain')}
           </p>
         </div>
 
         <div className="sm:col-span-2">
-          <label className="field-label">Підпис (одним рядком)</label>
+          <label className="field-label">{t('catalog.form.subtitle.label')}</label>
           <input className="input" value={subtitle} disabled={!canWrite}
                  onChange={(e) => setSubtitle(e.target.value)}
-                 placeholder={isService ? 'з покриттям гель-лаком' : 'кашемір · Італія'} />
+                 placeholder={isService
+                   ? t('catalog.form.subtitle.placeholder.service')
+                   : t('catalog.form.subtitle.placeholder.product')} />
         </div>
 
         <div>
-          <label className="field-label">Категорія</label>
+          <label className="field-label">{t('catalog.form.category.label')}</label>
           <select className="select" value={categoryId} disabled={!canWrite}
                   onChange={(e) => setCategoryId(e.target.value)}>
-            <option value="">Не вибрано</option>
+            <option value="">{t('catalog.form.category.none')}</option>
             {catOptions.map((c) => (
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
-          <p className="field-hint">
-            Категорія спільна для всієї платформи — саме через неї вас
-            знаходять у загальному пошуку.
-          </p>
+          <p className="field-hint">{t('catalog.form.category.hint')}</p>
         </div>
 
         <div>
-          <label className="field-label">Артикул</label>
+          <label className="field-label">{t('catalog.form.sku.label')}</label>
           <input className="input" value={sku} onChange={(e) => setSku(e.target.value)}
                  disabled={!canWrite}
-                 placeholder="необовʼязково" />
+                 placeholder={t('catalog.form.sku.placeholder')} />
         </div>
 
         <div>
-          <label className="field-label">Ціна, ₴</label>
+          <label className="field-label">{t('catalog.form.price.label')}</label>
           <input className="input" inputMode="decimal" value={price} disabled={!canWrite}
                  onChange={(e) => setPrice(e.target.value)} />
-          <p className="field-hint">Показується в каталозі як «від». Точна — у варіанті.</p>
+          <p className="field-hint">{t('catalog.form.price.hint')}</p>
         </div>
 
         <div>
-          <label className="field-label">Стара ціна, ₴</label>
+          <label className="field-label">{t('catalog.form.compareAt.label')}</label>
           <input className="input" inputMode="decimal" value={compareAt}
                  disabled={!canWrite}
                  onChange={(e) => setCompareAt(e.target.value)}
-                 placeholder="для перекресленої" />
+                 placeholder={t('catalog.form.compareAt.placeholder')} />
         </div>
 
         <div className="sm:col-span-2">
-          <label className="field-label">Опис</label>
+          <label className="field-label">{t('catalog.form.description.label')}</label>
           <textarea className="textarea" value={description} disabled={!canWrite}
                     onChange={(e) => setDescription(e.target.value)} />
         </div>
 
         <div className="sm:col-span-2">
-          <label className="field-label">Мітки</label>
+          <label className="field-label">{t('catalog.form.tags.label')}</label>
           <input className="input" value={tags} onChange={(e) => setTags(e.target.value)}
                  disabled={!canWrite}
-                 placeholder="зима, новинка — через кому" />
+                 placeholder={t('catalog.form.tags.placeholder')} />
         </div>
 
         {/* Галка — про витрину, а не про каталог: она решает, попадёт ли
@@ -685,7 +715,7 @@ export function OfferingForm({
         <label className="t-md flex items-center gap-2 sm:col-span-2">
           <input type="checkbox" checked={listed} disabled={!canWrite}
                  onChange={(e) => setListed(e.target.checked)} />
-          Показувати в загальному каталозі маркетплейсу
+          {t('catalog.form.listed.label')}
         </label>
         )}
       </section>
@@ -696,22 +726,22 @@ export function OfferingForm({
           их некому прочитать, а продавец их заполняет и ждёт действия. */}
       {isService && hasBookings && (
         <section className="card rise-2 grid gap-4 sm:grid-cols-3">
-          <h2 className="t-lg sm:col-span-3">Умови запису</h2>
+          <h2 className="t-lg sm:col-span-3">{t('catalog.form.booking.title')}</h2>
           <div>
-            <label className="field-label">Передоплата, %</label>
+            <label className="field-label">{t('catalog.form.booking.deposit.label')}</label>
             <input className="input" inputMode="numeric" value={deposit}
                    disabled={!canWrite}
                    onChange={(e) => setDeposit(e.target.value)} />
-            <p className="field-hint">0 — без передоплати.</p>
+            <p className="field-hint">{t('catalog.form.booking.deposit.hint')}</p>
           </div>
           <div>
-            <label className="field-label">Скасування, годин до візиту</label>
+            <label className="field-label">{t('catalog.form.booking.cancel.label')}</label>
             <input className="input" inputMode="numeric" value={cancelHours}
                    disabled={!canWrite}
                    onChange={(e) => setCancelHours(e.target.value)} />
           </div>
           <div>
-            <label className="field-label">Запис відкрито на, днів</label>
+            <label className="field-label">{t('catalog.form.booking.horizon.label')}</label>
             <input className="input" inputMode="numeric" value={horizon}
                    disabled={!canWrite}
                    onChange={(e) => setHorizon(e.target.value)} />
@@ -723,66 +753,72 @@ export function OfferingForm({
       <section className="card rise-2 flex flex-col gap-4">
         <div className="flex items-center justify-between gap-3">
           <h2 className="t-lg">
-            {isService ? 'Варіанти послуги' : 'Варіанти товару'}
+            {isService
+              ? t('catalog.form.variants.title.service')
+              : t('catalog.form.variants.title.product')}
           </h2>
           {canWrite && (
             <button type="button" className="btn-secondary t-sm"
                     onClick={() => setDrafts([...drafts, emptyDraft(kind)])}>
-              Додати варіант
+              {t('catalog.form.variants.add')}
             </button>
           )}
         </div>
         <p className="field-hint !mt-0">
           {isService
-            ? 'Тривалість у кожного варіанта своя: «манікюр 60 хв» і «манікюр з дизайном 90 хв» — це два варіанти однієї послуги.'
-            : 'Варіант — це те, що кладуть у кошик: розмір, колір, обʼєм. Якщо варіант один, залиште «Стандарт».'}
+            ? t('catalog.form.variants.hint.service')
+            : t('catalog.form.variants.hint.product')}
         </p>
 
         {drafts.map((d, i) => (
           <div key={d.key} className="card-flat grid gap-3 sm:grid-cols-2">
             <div className="sm:col-span-2 flex items-center justify-between gap-3">
-              <span className="tabular t-xs prose-muted">Варіант {i + 1}</span>
+              <span className="tabular t-xs prose-muted">
+                {t('catalog.form.variant.n', { n: i + 1 })}
+              </span>
               <div className="flex items-center gap-3">
                 <label className="t-xs flex items-center gap-2">
                   <input type="checkbox" checked={d.isActive} disabled={!canWrite}
                          onChange={(e) => patchDraft(d.key, { isActive: e.target.checked })} />
-                  У продажу
+                  {t('catalog.form.variant.active')}
                 </label>
                 {canWrite && drafts.length > 1 && (
                   <button type="button" className="btn-ghost !px-2 t-sm"
                           onClick={() => setDrafts(drafts.filter((x) => x.key !== d.key))}>
-                    Прибрати
+                    {t('catalog.form.variant.remove')}
                   </button>
                 )}
               </div>
             </div>
 
             <div>
-              <label className="field-label">Назва варіанта</label>
+              <label className="field-label">{t('catalog.form.variant.name.label')}</label>
               <input className="input" value={d.name} disabled={!canWrite}
-                     placeholder={isService ? '60 хв' : 'M / чорний'}
+                     placeholder={isService
+                       ? t('catalog.form.variant.name.placeholder.service')
+                       : t('catalog.form.variant.name.placeholder.product')}
                      onChange={(e) => patchDraft(d.key, { name: e.target.value })} />
             </div>
             <div>
-              <label className="field-label">Артикул варіанта</label>
+              <label className="field-label">{t('catalog.form.variant.sku.label')}</label>
               <input className="input" value={d.sku} disabled={!canWrite}
                      onChange={(e) => patchDraft(d.key, { sku: e.target.value })} />
             </div>
 
             <div>
-              <label className="field-label">Ціна, ₴</label>
+              <label className="field-label">{t('catalog.form.price.label')}</label>
               <input className="input" inputMode="decimal" value={d.price}
                      disabled={!canWrite}
                      onChange={(e) => patchDraft(d.key, { price: e.target.value })} />
             </div>
             <div>
-              <label className="field-label">Стара ціна, ₴</label>
+              <label className="field-label">{t('catalog.form.compareAt.label')}</label>
               <input className="input" inputMode="decimal" value={d.compareAt}
                      disabled={!canWrite}
                      onChange={(e) => patchDraft(d.key, { compareAt: e.target.value })} />
             </div>
             <div>
-              <label className="field-label">Собівартість, ₴</label>
+              <label className="field-label">{t('catalog.form.variant.cost.label')}</label>
               <input className="input" inputMode="decimal" value={d.cost}
                      disabled={!canWrite}
                      onChange={(e) => patchDraft(d.key, { cost: e.target.value })} />
@@ -791,61 +827,65 @@ export function OfferingForm({
             {isService ? (
               <>
                 <div>
-                  <label className="field-label">Тривалість, хв</label>
+                  <label className="field-label">{t('catalog.form.variant.duration.label')}</label>
                   <input className="input" inputMode="numeric" value={d.duration}
                          disabled={!canWrite}
                          onChange={(e) => patchDraft(d.key, { duration: e.target.value })} />
                 </div>
                 <div>
-                  <label className="field-label">Буфер після, хв</label>
+                  <label className="field-label">{t('catalog.form.variant.buffer.label')}</label>
                   <input className="input" inputMode="numeric" value={d.buffer}
                          disabled={!canWrite}
                          onChange={(e) => patchDraft(d.key, { buffer: e.target.value })} />
-                  <p className="field-hint">Прибрати, провітрити, продезінфікувати.</p>
+                  <p className="field-hint">{t('catalog.form.variant.buffer.hint')}</p>
                 </div>
               </>
             ) : (
               <>
                 <div>
-                  <label className="field-label">Одиниця</label>
+                  <label className="field-label">{t('catalog.form.variant.unit.label')}</label>
                   <input className="input" value={d.unit} disabled={!canWrite}
                          onChange={(e) => patchDraft(d.key, { unit: e.target.value })} />
                 </div>
                 <div>
-                  <label className="field-label">Вага, г</label>
+                  <label className="field-label">{t('catalog.form.variant.weight.label')}</label>
                   <input className="input" inputMode="numeric" value={d.weight}
                          disabled={!canWrite}
                          onChange={(e) => patchDraft(d.key, { weight: e.target.value })} />
                 </div>
                 <div>
-                  <label className="field-label">Штрихкод</label>
+                  <label className="field-label">{t('catalog.form.variant.barcode.label')}</label>
                   <input className="input" value={d.barcode} disabled={!canWrite}
                          onChange={(e) => patchDraft(d.key, { barcode: e.target.value })} />
                 </div>
                 <div>
-                  <label className="field-label">Місце зберігання</label>
+                  <label className="field-label">{t('catalog.form.variant.location.label')}</label>
                   <select className="select" value={d.locationId} disabled={!canWrite}
                           onChange={(e) => patchDraft(d.key, { locationId: e.target.value })}>
-                    <option value="">Не вказано</option>
+                    <option value="">{t('catalog.form.variant.location.none')}</option>
                     {locations.map((l) => (
                       <option key={l.id} value={l.id}>{l.name}</option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label className="field-label">Сповіщати, коли залишиться</label>
+                  <label className="field-label">{t('catalog.form.variant.threshold.label')}</label>
                   <input className="input" inputMode="numeric" value={d.threshold}
                          disabled={!canWrite}
                          onChange={(e) => patchDraft(d.key, { threshold: e.target.value })} />
                 </div>
                 <div>
-                  <label className="field-label">Залишок</label>
+                  <label className="field-label">{t('catalog.form.variant.stock.label')}</label>
                   <div className="flex h-11 items-center gap-2">
                     <span className="badge tabular">
-                      {d.trackStock ? `${d.stockQty} ${d.unit || 'шт'}` : 'без обліку'}
+                      {d.trackStock
+                        ? `${t.number(d.stockQty)} ${d.unit || DEFAULT_UNIT}`
+                        : t('catalog.form.variant.stock.untracked')}
                     </span>
                     {d.reservedQty > 0 && (
-                      <span className="badge tabular">у резерві {d.reservedQty}</span>
+                      <span className="badge tabular">
+                        {t('catalog.form.variant.stock.reserved', { n: t.number(d.reservedQty) })}
+                      </span>
                     )}
                   </div>
                   {/* Правило 5: остаток — кэш журнала движений, вписать его
@@ -853,23 +893,26 @@ export function OfferingForm({
                       Ссылка на «Склад» — только тем, у кого есть `stock.read`:
                       у `accountant` его нет (0001), и раздел молча вернул бы
                       его на «Сьогодні». */}
+                  {/* Ссылка внутри предложения — три ключа: разметки
+                      в словаре не бывает. Ветка без права на склад —
+                      отдельная строка целиком, а не та же с вырезанной
+                      ссылкой: предложение в ней другое. */}
                   <p className="field-hint">
                     {canStock ? (
                       <>
-                        Залишок заводиться через{' '}
-                        <Link href="/app/inventory" className="underline">Склад</Link> —
-                        надходженням або інвентаризацією.
+                        {t('catalog.form.variant.stock.hint.pre')}{' '}
+                        <Link href="/app/inventory" className="underline">
+                          {t('catalog.form.variant.stock.hint.link')}
+                        </Link>{' '}
+                        {t('catalog.form.variant.stock.hint.post')}
                       </>
-                    ) : (
-                      'Залишок заводиться на складі — надходженням або інвентаризацією.'
-                    )}
-                    {' '}Так кожна одиниця має слід.
+                    ) : t('catalog.form.variant.stock.hint.plain')}
                   </p>
                 </div>
                 <label className="t-md flex items-center gap-2 sm:col-span-2">
                   <input type="checkbox" checked={d.trackStock} disabled={!canWrite}
                          onChange={(e) => patchDraft(d.key, { trackStock: e.target.checked })} />
-                  Вести облік залишку
+                  {t('catalog.form.variant.track.label')}
                 </label>
               </>
             )}
@@ -879,18 +922,15 @@ export function OfferingForm({
 
       {/* Фото */}
       <section className="card rise-3 flex flex-col gap-3">
-        <h2 className="t-lg">Фото</h2>
+        <h2 className="t-lg">{t('catalog.form.media.title')}</h2>
 
         {!offeringId ? (
-          <p className="field-hint !mt-0">
-            Фото додасте після збереження — файл кладеться в теку позиції,
-            а її ще не існує.
-          </p>
+          <p className="field-hint !mt-0">{t('catalog.form.media.later')}</p>
         ) : (
           <>
             {canWrite && (
               <label className="btn-secondary w-fit cursor-pointer">
-                {busy === 'media' ? 'Завантажуємо…' : 'Додати фото'}
+                {busy === 'media' ? t('catalog.form.media.uploading') : t('catalog.form.media.add')}
                 <input type="file" accept="image/*" multiple className="hidden"
                        disabled={busy !== null}
                        onChange={(e) => { void upload(e.target.files); e.target.value = '' }} />
@@ -902,8 +942,8 @@ export function OfferingForm({
             {mediaList.length === 0 ? (
               <p className="field-hint !mt-0">
                 {canWrite
-                  ? 'Перше фото стає обкладинкою в каталозі. До 10 МБ, jpg / png / webp.'
-                  : 'Фото ще не додані.'}
+                  ? t('catalog.form.media.empty.write')
+                  : t('catalog.form.media.empty.read')}
               </p>
             ) : (
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -917,19 +957,26 @@ export function OfferingForm({
                     {canWrite && (
                       <div className="flex items-center justify-between">
                         <div className="flex">
-                          <button type="button" className="btn-icon" aria-label="Вище"
+                          <button type="button" className="btn-icon"
+                                  aria-label={t('catalog.form.media.up.aria')}
                                   disabled={i === 0 || busy !== null}
                                   onClick={() => void moveMedia(i, -1)}>↑</button>
-                          <button type="button" className="btn-icon" aria-label="Нижче"
+                          <button type="button" className="btn-icon"
+                                  aria-label={t('catalog.form.media.down.aria')}
                                   disabled={i === mediaList.length - 1 || busy !== null}
                                   onClick={() => void moveMedia(i, 1)}>↓</button>
                         </div>
-                        <button type="button" className="btn-icon" aria-label="Видалити фото"
+                        <button type="button" className="btn-icon"
+                                aria-label={t('catalog.form.media.remove.aria')}
                                 disabled={busy !== null}
                                 onClick={() => void removeMedia(item)}>✕</button>
                       </div>
                     )}
-                    {i === 0 && <p className="t-xs text-center prose-muted">обкладинка</p>}
+                    {i === 0 && (
+                      <p className="t-xs text-center prose-muted">
+                        {t('catalog.form.media.cover')}
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>
@@ -942,13 +989,11 @@ export function OfferingForm({
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" className="btn-primary" disabled={busy !== null}
                   onClick={() => void save()}>
-            {busy === 'save' ? 'Зберігаємо…' : offeringId ? 'Зберегти зміни' : 'Зберегти чернетку'}
+            {busy === 'save' ? t('common.saving')
+              : offeringId ? t('catalog.form.saveChanges') : t('catalog.form.saveDraft')}
           </button>
           {!offeringId && (
-            <p className="field-hint !mt-0">
-              Позиція збережеться чернеткою: покупці її не побачать,
-              поки ви не натиснете «Опублікувати».
-            </p>
+            <p className="field-hint !mt-0">{t('catalog.form.draftHint')}</p>
           )}
         </div>
       )}

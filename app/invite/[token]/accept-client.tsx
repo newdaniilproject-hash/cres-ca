@@ -3,6 +3,8 @@
 import Link from 'next/link'
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useT } from '@/lib/i18n/client'
+import type { T } from '@/lib/i18n/translate'
 
 // Принять приглашение и войти в заведение.
 //
@@ -25,23 +27,27 @@ import { createClient } from '@/lib/supabase/client'
 // `action` решает, какую кнопку показать: одного текста мало —
 // «попросіть нове запрошення» без кнопки «увійти іншою поштою»
 // оставляет человека на странице, с которой некуда идти.
+//
+// ⚠️ ПОДСТРОКИ РАЗБОРА НЕ ПЕРЕВОДЯТСЯ. `m.includes('вже учасник')` и
+// соседние — это текст, которым отвечает САМА БАЗА; он написан
+// по-украински в миграции и от языка интерфейса не зависит. Переведи
+// их — и разбор перестанет срабатывать ни на одном языке, включая
+// украинский. Переводится только ОТВЕТ человеку.
 type Verdict = { text: string; action: 'app' | 'relogin' | 'retry' }
 
-function acceptVerdict(raw: string): Verdict {
+function acceptVerdict(t: T, raw: string): Verdict {
   const m = raw.toLowerCase()
 
   // Членство уже есть: приняли во второй вкладке, или владелец добавил
   // руками. Ошибка базы здесь не ошибка человека — ему просто в кабинет.
   if (m.includes('вже учасник')) return {
-    text: 'Ви вже працюєте в цьому закладі — приймати запрошення вдруге не потрібно. '
-        + 'Відкрийте кабінет, розділи вже доступні.',
+    text: t('invite.error.already'),
     action: 'app',
   }
 
   // Сеанс истёк, пока человек читал письмо.
   if (m.includes('не автентифіковано') || m.includes('jwt') || m.includes('session')) return {
-    text: 'Сеанс завершився, поки ви читали лист. Увійдіть ще раз тією ж поштою — '
-        + 'ми повернемо вас на цю сторінку.',
+    text: t('invite.error.session'),
     action: 'relogin',
   }
 
@@ -49,21 +55,19 @@ function acceptVerdict(raw: string): Verdict {
   // просрочено, чужая почта) — различить их нельзя и не нужно: ответ
   // человеку во всех четырёх один и тот же.
   if (m.includes('недійсне')) return {
-    text: 'Це посилання більше не працює: його вже використали, минули 72 години '
-        + 'або воно виписане на іншу пошту. Попросіть надіслати нове запрошення '
-        + 'і приймайте його з тієї пошти, на яку прийшов лист.',
+    text: t('invite.error.invalid'),
     action: 'relogin',
   }
 
   // Сеть или неизвестный ответ — единственный случай, где повтор осмыслен.
   return {
-    text: 'Не вдалося прийняти запрошення — можливо, зник звʼязок. Спробуйте ще раз, '
-        + 'а якщо не вийде, попросіть надіслати нове запрошення.',
+    text: t('invite.error.generic'),
     action: 'retry',
   }
 }
 
 export function AcceptClient({ token, email }: { token: string; email: string }) {
+  const t = useT()
   const supabase = createClient()
   const [state, setState] = useState<'idle' | 'busy' | 'error'>('idle')
   const [verdict, setVerdict] = useState<Verdict | null>(null)
@@ -71,7 +75,7 @@ export function AcceptClient({ token, email }: { token: string; email: string })
   async function accept() {
     setState('busy'); setVerdict(null)
     const { error } = await supabase.rpc('accept_invitation', { p_token: token })
-    if (error) { setVerdict(acceptVerdict(error.message)); setState('error'); return }
+    if (error) { setVerdict(acceptVerdict(t, error.message)); setState('error'); return }
 
     await supabase.auth.refreshSession()
     window.location.href = '/app'
@@ -91,10 +95,11 @@ export function AcceptClient({ token, email }: { token: string; email: string })
 
   return (
     <div className="card flex flex-col gap-4">
-      <h1 className="display t-2xl">Вас запросили в команду</h1>
+      <h1 className="display t-2xl">{t('invite.title')}</h1>
+      {/* Почта выделена жирным, поэтому предложение разбито на два
+          ключа: разметки в словаре не бывает. Сама почта — данные. */}
       <p className="t-md prose-muted">
-        Ви увійшли як <b>{email}</b>. Запрошення спрацює лише якщо його
-        виписано саме на цю пошту.
+        {t('invite.signedAs.pre')} <b>{email}</b>{t('invite.signedAs.post')}
       </p>
 
       {state === 'error' && verdict && <p className="field-error">{verdict.text}</p>}
@@ -103,26 +108,26 @@ export function AcceptClient({ token, email }: { token: string; email: string })
         {showAccept && (
           <button type="button" className="btn-primary"
                   disabled={state === 'busy'} onClick={accept}>
-            {state === 'busy' ? 'Приймаємо…' : 'Прийняти запрошення'}
+            {state === 'busy' ? t('invite.accepting') : t('invite.accept')}
           </button>
         )}
 
         {verdict?.action === 'app' && (
           <button type="button" className="btn-primary"
                   disabled={state === 'busy'} onClick={openApp}>
-            {state === 'busy' ? 'Відкриваємо…' : 'Відкрити кабінет'}
+            {state === 'busy' ? t('invite.opening') : t('invite.openApp')}
           </button>
         )}
 
         {verdict?.action === 'relogin' && (
           <Link className="btn-primary"
                 href={`/login?next=${encodeURIComponent(`/invite/${token}`)}`}>
-            Увійти іншою поштою
+            {t('invite.relogin')}
           </Link>
         )}
 
         {verdict?.action !== 'app' && (
-          <Link className="btn-secondary" href="/app">Не зараз</Link>
+          <Link className="btn-secondary" href="/app">{t('invite.later')}</Link>
         )}
       </div>
     </div>

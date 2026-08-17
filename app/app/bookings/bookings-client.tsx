@@ -3,6 +3,8 @@
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useT } from '@/lib/i18n/client'
+import type { T } from '@/lib/i18n/translate'
 
 type B = {
   id: string; number: number; title: string; variant: string; start: string
@@ -10,22 +12,32 @@ type B = {
   price: number; deposit: number; staff: string
 }
 
-const NEXT: Record<string, { to: string; label: string; kind: 'primary' | 'secondary' }[]> = {
-  booked:    [{ to: 'confirmed', label: 'Підтвердити', kind: 'primary' },
-              { to: 'cancelled', label: 'Скасувати', kind: 'secondary' }],
-  confirmed: [{ to: 'arrived', label: 'Клієнт прийшов', kind: 'primary' },
-              { to: 'no_show', label: 'Не прийшов', kind: 'secondary' }],
-  arrived:   [{ to: 'completed', label: 'Виконано', kind: 'primary' }],
+// Разрешённые переходы. Подписи здесь больше не лежат: `to` — служебное
+// значение перечисления, оно уезжает в `set_booking_status`, а надпись
+// на кнопке берётся по нему из словаря (`bookings.action.<to>`).
+// Тип `to` не `string` намеренно: забытый ключ ловит `tsc`, а не экран.
+type BookingAction = 'confirmed' | 'cancelled' | 'arrived' | 'no_show' | 'completed'
+const NEXT: Record<string, { to: BookingAction; kind: 'primary' | 'secondary' }[]> = {
+  booked:    [{ to: 'confirmed', kind: 'primary' },
+              { to: 'cancelled', kind: 'secondary' }],
+  confirmed: [{ to: 'arrived', kind: 'primary' },
+              { to: 'no_show', kind: 'secondary' }],
+  arrived:   [{ to: 'completed', kind: 'primary' }],
 }
 
-const LABEL: Record<string, string> = {
-  booked: 'нова', confirmed: 'підтверджена', arrived: 'у кріслі',
-  completed: 'виконана', cancelled: 'скасована', no_show: 'не прийшов',
-}
+// Подпись к состоянию записи. Значение (`no_show`) не переводится —
+// переводится подпись. Незнакомое состояние выводится как есть.
+const STATUSES = [
+  'booked', 'confirmed', 'arrived', 'completed', 'cancelled', 'no_show',
+] as const
+type BookingStatus = (typeof STATUSES)[number]
+const statusLabel = (t: T, v: string): string =>
+  ((STATUSES as readonly string[]).includes(v) ? t(`bookings.status.${v as BookingStatus}`) : v)
 
 // Записи по дням. Кнопки — только разрешённые переходы; финальный
 // «Виконано» сам спишет расходники по техкарте (это делает база).
 export function BookingsClient({ bookings }: { bookings: B[] }) {
+  const t = useT()
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
   const [busy, setBusy] = useState<string | null>(null)
@@ -41,22 +53,24 @@ export function BookingsClient({ bookings }: { bookings: B[] }) {
     router.refresh()
   }
 
+  // Подпись дня собирает `t.date` по локали языка интерфейса, а не
+  // жёсткий 'uk-UA'. Пересчитывается при смене языка — он в зависимостях.
   const byDay = useMemo(() => {
     const map = new Map<string, B[]>()
     for (const b of bookings) {
-      const key = new Date(b.start).toLocaleDateString('uk-UA', {
-        weekday: 'long', day: 'numeric', month: 'long',
-      })
+      const key = t.date(b.start, { weekday: 'long', day: 'numeric', month: 'long' })
       map.set(key, [...(map.get(key) ?? []), b])
     }
     return [...map.entries()]
-  }, [bookings])
+  }, [bookings, t])
 
   if (bookings.length === 0) {
     return (
       <div className="empty card rise">
-        <p className="display t-lg" style={{ color: 'var(--color-text)' }}>Записів немає</p>
-        <p>Поділіться посиланням на вашу сторінку в Instagram — записи зʼявляться тут.</p>
+        <p className="display t-lg" style={{ color: 'var(--color-text)' }}>
+          {t('bookings.empty.title')}
+        </p>
+        <p>{t('bookings.empty.desc')}</p>
       </div>
     )
   }
@@ -72,7 +86,7 @@ export function BookingsClient({ bookings }: { bookings: B[] }) {
               <div key={b.id} className="row flex-wrap px-5">
                 <div className="flex min-w-0 items-center gap-3">
                   <span className="tabular t-xl" style={{ color: 'var(--color-accent)' }}>
-                    {new Date(b.start).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })}
+                    {t.dateTime(b.start, { hour: '2-digit', minute: '2-digit' })}
                   </span>
                   <div className="min-w-0">
                     <p className="t-md truncate">
@@ -81,7 +95,8 @@ export function BookingsClient({ bookings }: { bookings: B[] }) {
                     </p>
                     <p className="tabular t-xs truncate prose-muted">
                       {b.title} · {b.variant} · {b.staff}
-                      {b.deposit > 0 && ` · передоплата ${b.deposit.toLocaleString('uk-UA')} ₴`}
+                      {b.deposit > 0
+                        && ` · ${t('bookings.deposit', { sum: t.money(b.deposit) })}`}
                     </p>
                   </div>
                 </div>
@@ -91,14 +106,14 @@ export function BookingsClient({ bookings }: { bookings: B[] }) {
                     : b.status === 'cancelled' || b.status === 'no_show' ? 'badge'
                     : 'badge-accent'
                   }>
-                    {LABEL[b.status]}
+                    {statusLabel(t, b.status)}
                   </span>
                   {(NEXT[b.status] ?? []).map((a) => (
                     <button key={a.to}
                             className={a.kind === 'primary' ? 'btn-primary t-sm' : 'btn-secondary t-sm'}
                             disabled={busy === b.id}
                             onClick={() => void move(b.id, a.to)}>
-                      {a.label}
+                      {t(`bookings.action.${a.to}`)}
                     </button>
                   ))}
                 </div>

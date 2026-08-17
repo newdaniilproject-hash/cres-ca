@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { flush, list, drop, onQueueChange, type QueuedRecord } from '@/lib/offline/queue'
 import { useOnline, useToast } from '@/components/toast'
+import { useT } from '@/lib/i18n/client'
 
 // Полоса состояния связи и очереди.
 //
@@ -17,6 +18,7 @@ import { useOnline, useToast } from '@/components/toast'
 // держит одной рукой, а верх экрана занят шапкой.
 
 export function OfflineBar() {
+  const t = useT()
   const online = useOnline()
   const toast = useToast()
   const [items, setItems] = useState<QueuedRecord[]>([])
@@ -40,17 +42,18 @@ export function OfflineBar() {
     reload()
     if (res.sent > 0) {
       toast.success(
-        `Надіслано ${res.sent} ${plural(res.sent, 'дію', 'дії', 'дій')}`,
-        'Те, що ви робили без мережі, тепер у базі.',
+        t.plural('offline.sent', res.sent),
+        t('offline.sent.detail'),
       )
     }
     if (res.failed > 0 && !silent) {
+      // Второй строкой — текст отказа базы, он показывается как есть.
       toast.error(
-        `Не вдалося надіслати ${res.failed} ${plural(res.failed, 'дію', 'дії', 'дій')}`,
+        t.plural('offline.failed', res.failed),
         res.errors[0],
       )
     }
-  }, [busy, reload, toast])
+  }, [busy, reload, toast, t])
 
   // Появилась сеть — отправляем сами и молча, если всё прошло.
   // Просить человека нажать кнопку после каждого лифта — издевательство.
@@ -79,8 +82,8 @@ export function OfflineBar() {
   if (online && items.length === 0) return null
 
   const tone = !online
-    ? { bg: 'var(--color-warn-soft)', fg: 'var(--color-warn)', text: 'Немає мережі — працюємо офлайн' }
-    : { bg: 'var(--color-accent-soft)', fg: 'var(--color-accent)', text: 'Є незбережені дії' }
+    ? { bg: 'var(--color-warn-soft)', fg: 'var(--color-warn)', text: t('offline.status.offline') }
+    : { bg: 'var(--color-accent-soft)', fg: 'var(--color-accent)', text: t('offline.status.pending') }
 
   return (
     <div
@@ -101,20 +104,20 @@ export function OfflineBar() {
           <p className="t-md">{tone.text}</p>
           <p className="t-sm mt-0.5 prose-muted">
             {items.length > 0
-              ? `${items.length} ${plural(items.length, 'дія чекає', 'дії чекають', 'дій чекають')} на надсилання`
-              : 'Дії збережуться на телефоні й підуть у базу, щойно звʼязок відновиться'}
+              ? t.plural('offline.waiting', items.length)
+              : t('offline.hint')}
           </p>
         </div>
         {items.length > 0 && (
           <div className="flex shrink-0 gap-2">
             <button type="button" onClick={() => setOpen((v) => !v)}
                     className="btn-ghost t-sm">
-              {open ? 'Сховати' : 'Показати'}
+              {open ? t('offline.hide') : t('offline.show')}
             </button>
             {online && (
               <button type="button" onClick={() => void sync(false)} disabled={busy}
                       className="btn-primary t-sm">
-                {busy ? 'Надсилаємо…' : 'Надіслати'}
+                {busy ? t('offline.sending') : t('offline.send')}
               </button>
             )}
           </div>
@@ -128,8 +131,11 @@ export function OfflineBar() {
               <div className="min-w-0">
                 <p className="t-md truncate">{r.label}</p>
                 <p className="t-sm mt-0.5 prose-muted">
-                  {new Date(r.at).toLocaleString('uk-UA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                  {r.lastError ? ` · помилка: ${r.lastError}` : ''}
+                  {t.dateTime(r.at, {
+                    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+                  })}
+                  {/* `lastError` — текст отказа базы, он идёт как есть. */}
+                  {r.lastError ? ` · ${t('offline.error', { message: r.lastError })}` : ''}
                 </p>
               </div>
               {/* Отменить можно только то, что уже не проходит: иначе
@@ -137,7 +143,7 @@ export function OfflineBar() {
               {r.lastError && (
                 <button type="button" className="btn-ghost shrink-0 t-sm"
                         onClick={() => { void drop(r.id) }}>
-                  Прибрати
+                  {t('offline.drop')}
                 </button>
               )}
             </div>
@@ -148,12 +154,7 @@ export function OfflineBar() {
   )
 }
 
-// Украинские числительные — выбором формы по остатку, без библиотеки:
-// правило короче, чем её подключение.
-function plural(n: number, one: string, few: string, many: string): string {
-  const mod10 = n % 10
-  const mod100 = n % 100
-  if (mod10 === 1 && mod100 !== 11) return one
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few
-  return many
-}
+// Своей `plural` здесь больше нет: правило выбора формы живёт
+// в `lib/i18n/format.ts`, и вызывается через `t.plural`. Вторая копия
+// правила разъехалась бы с первой на первой же правке — а с русским
+// и английским разъехалась бы сразу.

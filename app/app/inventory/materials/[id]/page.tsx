@@ -4,9 +4,15 @@ import { currentMembership, can, hasModule } from '@/lib/tenant'
 import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { MaterialCard } from './material-card'
+import { getT } from '@/lib/i18n/server'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Картка засобу' }
+// Заголовок вкладки — тем же ключом, что и заголовок экрана
+// в оболочке (`components/app-shell.tsx`).
+export async function generateMetadata() {
+  const t = await getT()
+  return { title: t('app.screen.inventory.material.title') }
+}
 
 // Карточка засоба — экран 2 макета и пункт 3.1 ТЗ.
 //
@@ -66,6 +72,7 @@ export default async function MaterialPage({
 
   const { id } = await params
   const supabase = await createClient()
+  const t = await getT()
 
   // Паспорт — из представления, коммерция — из таблицы. Оба запроса
   // уходят всегда; отсутствие права выражается пустым ответом, а не
@@ -90,8 +97,11 @@ export default async function MaterialPage({
 
   if (error) {
     return (
-      <AppShell active="/app/inventory" title="Картка засобу" back="/app/inventory">
-        <p className="field-error rise">Не вдалося відкрити картку: {error.message}</p>
+      <AppShell>
+        {/* Текст отказа базы — её слова, а не наши: в словарь он не едет. */}
+        <p className="field-error rise">
+          {t('inventory.material.openError')}: {error.message}
+        </p>
       </AppShell>
     )
   }
@@ -139,8 +149,7 @@ export default async function MaterialPage({
   ])
 
   return (
-    <AppShell active="/app/inventory" title="Картка засобу"
-              back="/app/inventory" modules={m.modules}>
+    <AppShell modules={m.modules}>
       <MaterialCard
         tenantId={m.tenantId}
         canWrite={can(m, 'stock.write')}

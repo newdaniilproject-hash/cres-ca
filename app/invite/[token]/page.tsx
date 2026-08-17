@@ -1,9 +1,16 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { AcceptClient } from './accept-client'
+import { getT } from '@/lib/i18n/server'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Запрошення' }
+
+// Заголовок вкладки браузера — строка интерфейса, поэтому из словаря.
+// Разбор решения — в `app/app/journals/page.tsx`.
+export async function generateMetadata() {
+  const t = await getT()
+  return { title: t('invite.meta.title') }
+}
 
 // Приём приглашения.
 //
@@ -27,6 +34,7 @@ export const metadata = { title: 'Запрошення' }
 // тому, у кого аккаунт есть; потерянное приглашение дороже.
 export default async function InvitePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params
+  const t = await getT()
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -42,18 +50,16 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
           <AcceptClient token={token} email={user.email ?? ''} />
         ) : (
           <div className="card flex flex-col gap-4">
-            <h1 className="display t-2xl">Вас запросили в команду</h1>
-            <p className="t-md prose-muted">
-              Щоб прийняти запрошення, увійдіть тією поштою, на яку прийшов лист.
-              Запрошення виписане саме на неї й іншій пошті не спрацює.
-            </p>
-            <p className="t-sm prose-muted">
-              Акаунта ще немає? Створіть його — після підтвердження пошти
-              ви повернетесь на цю саму сторінку.
-            </p>
+            <h1 className="display t-2xl">{t('invite.title')}</h1>
+            <p className="t-md prose-muted">{t('invite.guest.desc')}</p>
+            <p className="t-sm prose-muted">{t('invite.guest.noAccount')}</p>
             <div className="flex flex-wrap gap-2">
-              <Link className="btn-primary" href={`/login?next=${next}`}>Увійти</Link>
-              <Link className="btn-secondary" href={`/register?next=${next}`}>Створити акаунт</Link>
+              <Link className="btn-primary" href={`/login?next=${next}`}>
+                {t('invite.guest.login')}
+              </Link>
+              <Link className="btn-secondary" href={`/register?next=${next}`}>
+                {t('invite.guest.register')}
+              </Link>
             </div>
           </div>
         )}

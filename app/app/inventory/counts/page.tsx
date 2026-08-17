@@ -3,9 +3,15 @@ import { createClient } from '@/lib/supabase/server'
 import { currentMembership, can, hasModule } from '@/lib/tenant'
 import { ModuleOff } from '@/components/module-gate'
 import { CountsClient } from './counts-client'
+import { getT } from '@/lib/i18n/server'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Інвентаризація' }
+// Заголовок вкладки — тем же ключом, что и заголовок экрана
+// в оболочке (`components/app-shell.tsx`).
+export async function generateMetadata() {
+  const t = await getT()
+  return { title: t('app.screen.inventory.counts.title') }
+}
 
 // Пересчёт — документ, а не правка остатка. Снимок «сколько было» снимает
 // сама база (start_stock_count), расхождение проводит движением 'adjustment'

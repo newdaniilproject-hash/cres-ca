@@ -6,10 +6,10 @@ import { createClient } from '@/lib/supabase/client'
 import { Sheet } from '@/components/sheet'
 import { useToast } from '@/components/toast'
 import {
-  DOC_EXT_BY_MIME, DOC_KINDS, DOC_KIND_LABEL, DOC_MAX_BYTES,
-  fmtSize, type DocKind,
+  DOC_EXT_BY_MIME, DOC_KINDS, DOC_MAX_BYTES, fmtSize, type DocKind,
 } from '@/lib/documents'
-import { fmtDate } from '@/lib/expiry'
+import { useT } from '@/lib/i18n/client'
+import type { T } from '@/lib/i18n/translate'
 
 type Doc = {
   id: string; kind: DocKind; title: string; path: string
@@ -22,15 +22,24 @@ type Material = {
   notificationDate: string | null
 }
 
+// Вид документа — значение перечисления `material_doc_kind` (0014).
+// Само значение (`msds`) не переводится: по нему сверяется база.
+// Переводится ПОДПИСЬ — полная в выпадающем списке загрузки, короткая
+// в фильтрах и строках.
+//
+// Ключи взяты ТЕ ЖЕ, что на экране всех документов (`documents.kind.*`,
+// см. шапку `app/app/documents/documents-client.tsx`): это подписи одного
+// перечисления, и второй их набор разъехался бы с первым на первой же
+// правке. Из `lib/documents.ts` приходит только НАБОР значений и порядок —
+// украинские списки подписей оттуда удалены 16.08.2026, когда их перестал
+// читать последний экран.
+const kindLabel = (t: T, k: DocKind): string => t(`documents.kind.${k}`)
+const kindShort = (t: T, k: DocKind): string => t(`documents.kind.${k}.short`)
+
 // Фильтры ровно как на макете: «Всі», потом виды, у которых есть файлы.
 // Пустой вид в полосе фильтров — обещание, за которым ничего нет.
-const FILTERS: { key: 'all' | DocKind; label: string }[] = [
-  { key: 'all', label: 'Всі' },
-  { key: 'msds', label: 'MSDS' },
-  { key: 'quality_cert', label: 'Сертифікати' },
-  { key: 'ses_conclusion', label: 'Висновок СЕС' },
-  { key: 'notification', label: 'Нотифікація' },
-  { key: 'other', label: 'Інше' },
+const FILTERS: ('all' | DocKind)[] = [
+  'all', 'msds', 'quality_cert', 'ses_conclusion', 'notification', 'other',
 ]
 
 export function MaterialDocs({
@@ -51,6 +60,7 @@ export function MaterialDocs({
   docs: Doc[]
   loadError: string
 }) {
+  const t = useT()
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
   const toast = useToast()
@@ -78,11 +88,11 @@ export function MaterialDocs({
     if (!file) return
     const ext = DOC_EXT_BY_MIME[file.type]
     if (!ext) {
-      toast.error('Формат не підтримується', 'PDF, JPG, PNG, WEBP, DOC або DOCX')
+      toast.error(t('inventory.docs.error.format.title'), t('inventory.docs.error.format.desc'))
       return
     }
     if (file.size > DOC_MAX_BYTES) {
-      toast.error('Файл більший за 20 МБ', 'Стисніть або розділіть його')
+      toast.error(t('inventory.docs.error.size.title'), t('inventory.docs.error.size.desc'))
       return
     }
 
@@ -97,7 +107,7 @@ export function MaterialDocs({
       .from('documents').upload(path, file, { contentType: file.type })
     if (uploadError) {
       setBusy(null)
-      toast.error('Файл не завантажено', uploadError.message)
+      toast.error(t('inventory.docs.error.upload'), uploadError.message)
       return
     }
 
@@ -111,13 +121,13 @@ export function MaterialDocs({
       // убираем сразу, чтобы не копить мусор в приватном бакете.
       await supabase.storage.from('documents').remove([path])
       setBusy(null)
-      toast.error('Запис не збережено', error.message)
+      toast.error(t('inventory.docs.error.record'), error.message)
       return
     }
 
     setBusy(null)
     setTitle(''); setFile(null); setFileKey((k) => k + 1); setAdd(false)
-    toast.success('Документ завантажено')
+    toast.success(t('inventory.docs.uploaded'))
     router.refresh()
   }
 
@@ -127,7 +137,7 @@ export function MaterialDocs({
   async function signedUrl(doc: Doc, filename?: string): Promise<string | null> {
     const { data, error } = await supabase.storage.from('documents')
       .createSignedUrl(doc.path, 300, filename ? { download: filename } : undefined)
-    if (error) { toast.error('Не вдалося відкрити файл', error.message); return null }
+    if (error) { toast.error(t('inventory.docs.error.open'), error.message); return null }
     return data?.signedUrl ?? null
   }
 
@@ -159,24 +169,26 @@ export function MaterialDocs({
   }
 
   async function remove(doc: Doc) {
-    if (!window.confirm(`Видалити «${doc.title}»? Файл зникне назавжди.`)) return
+    if (!window.confirm(t('inventory.docs.delete.confirm', { title: doc.title }))) return
     setBusy(doc.id)
     // Сначала запись, потом файл. Обратный порядок опаснее: строка
     // реестра, которая обещает инспектору документ, а файла уже нет, —
     // хуже, чем файл, на который никто не ссылается.
     const { error } = await supabase.from('material_documents').delete().eq('id', doc.id)
-    if (error) { setBusy(null); toast.error('Не вдалося видалити', error.message); return }
+    if (error) { setBusy(null); toast.error(t('inventory.docs.error.delete'), error.message); return }
     const { error: storageError } = await supabase.storage.from('documents').remove([doc.path])
     setBusy(null)
-    if (storageError) toast.warn('Запис видалено', `Файл лишився у сховищі: ${storageError.message}`)
-    else toast.success('Документ видалено')
+    if (storageError) {
+      toast.warn(t('inventory.docs.deleted.partial'),
+        `${t('inventory.docs.storageLeft')}: ${storageError.message}`)
+    } else toast.success(t('inventory.docs.deleted'))
     router.refresh()
   }
 
   async function saveMoz(f: { code: string; url: string; date: string }) {
     const url = f.url.trim()
     if (url && !/^https?:\/\//i.test(url)) {
-      toast.error('Посилання має починатися з https://')
+      toast.error(t('inventory.docs.moz.urlError'))
       return
     }
     setBusy('moz')
@@ -186,9 +198,9 @@ export function MaterialDocs({
       notification_date: f.date || null,
     }).eq('id', material.id)
     setBusy(null)
-    if (error) { toast.error('Не збережено', error.message); return }
+    if (error) { toast.error(t('inventory.docs.moz.saveError'), error.message); return }
     setMoz(false)
-    toast.success('Нотифікацію збережено')
+    toast.success(t('inventory.docs.moz.saved'))
     router.refresh()
   }
 
@@ -202,15 +214,16 @@ export function MaterialDocs({
 
       {/* ── Фильтры по виду ──────────────────────────────────── */}
       <div className="rise-1 flex flex-wrap gap-2">
-        {FILTERS.filter((f) => f.key === 'all' || (counts[f.key] ?? 0) > 0).map((f) => (
-          <button key={f.key} type="button" onClick={() => setFilter(f.key)}
-                  className={filter === f.key ? 'chip-active' : 'chip'}>
-            {f.label} {counts[f.key] ?? 0}
+        {FILTERS.filter((f) => f === 'all' || (counts[f] ?? 0) > 0).map((f) => (
+          <button key={f} type="button" onClick={() => setFilter(f)}
+                  className={filter === f ? 'chip-active' : 'chip'}>
+            {f === 'all' ? t('inventory.docs.filter.all') : kindShort(t, f)}
+            {' '}{t.number(counts[f] ?? 0)}
           </button>
         ))}
         {canWrite && (
           <button type="button" className="btn-primary ml-auto t-sm"
-                  onClick={() => setAdd(true)}>+ Документ</button>
+                  onClick={() => setAdd(true)}>{t('inventory.docs.add')}</button>
         )}
       </div>
 
@@ -219,11 +232,11 @@ export function MaterialDocs({
         {shown.length === 0 ? (
           <div className="empty">
             {docs.length === 0
-              ? 'Документів не завантажено. Перевірка вимагає паспорт безпеки, сертифікат якості та висновок СЕС на канекалон.'
-              : 'У цьому фільтрі документів немає.'}
+              ? t('inventory.docs.empty.none')
+              : t('inventory.docs.empty.filter')}
             {canWrite && docs.length === 0 && (
               <button type="button" className="btn-primary" onClick={() => setAdd(true)}>
-                Завантажити перший
+                {t('inventory.docs.uploadFirst')}
               </button>
             )}
           </div>
@@ -236,17 +249,17 @@ export function MaterialDocs({
               <span className="t-md block truncate">{d.title}</span>
               <span className="tabular t-xs block" style={{ color: 'var(--color-faint)' }}>
                 {[
-                  DOC_KIND_LABEL[d.kind],
-                  fmtSize(d.size),
-                  fmtDate(d.createdAt),
+                  kindShort(t, d.kind),
+                  fmtSize(t, d.size),
+                  t.date(d.createdAt),
                 ].filter(Boolean).join(' · ')}
               </span>
             </button>
             <span className="flex shrink-0 items-center gap-1">
-              <button className="btn-icon" aria-label="Завантажити"
+              <button className="btn-icon" aria-label={t('inventory.docs.download.aria')}
                       disabled={busy === d.id} onClick={() => void download(d)}>⤓</button>
               {canWrite && (
-                <button className="btn-icon" aria-label="Видалити"
+                <button className="btn-icon" aria-label={t('common.delete')}
                         disabled={busy === d.id} onClick={() => void remove(d)}>✕</button>
               )}
             </span>
@@ -258,74 +271,78 @@ export function MaterialDocs({
       {material.isCosmetic && (
         <section className="card-flat rise-3">
           <div className="flex items-center justify-between gap-3">
-            <h3 className="t-sm" style={{ color: 'var(--color-faint)' }}>НОТИФІКАЦІЯ МОЗ</h3>
+            <h3 className="t-sm" style={{ color: 'var(--color-faint)' }}>
+              {t('inventory.docs.moz.title')}
+            </h3>
             {canEditMoz && (
               <button type="button" className="btn-ghost t-sm" onClick={() => setMoz(true)}>
-                {material.notificationCode ? 'Змінити' : 'Вказати'}
+                {material.notificationCode
+                  ? t('inventory.docs.moz.change')
+                  : t('inventory.docs.moz.set')}
               </button>
             )}
           </div>
           {material.notificationCode ? (
             <>
-              <p className="tabular t-md mt-2">Код: {material.notificationCode}</p>
+              <p className="tabular t-md mt-2">
+                {t('inventory.docs.moz.code', { code: material.notificationCode })}
+              </p>
               <p className="tabular t-sm" style={{ color: 'var(--color-muted)' }}>
-                Дата реєстрації: {fmtDate(material.notificationDate)}
+                {t('inventory.docs.moz.date', { date: t.date(material.notificationDate) })}
               </p>
               {material.notificationUrl ? (
                 <a href={material.notificationUrl} target="_blank" rel="noreferrer noopener"
-                   className="btn-secondary mt-3 t-sm">Відкрити запис у реєстрі</a>
+                   className="btn-secondary mt-3 t-sm">{t('inventory.docs.moz.open')}</a>
               ) : (
-                <p className="field-hint mt-2">
-                  Посилання не вказане — інспектор перевіряє нотифікацію за
-                  записом у реєстрі, а не за кодом.
-                </p>
+                <p className="field-hint mt-2">{t('inventory.docs.moz.noUrl')}</p>
               )}
             </>
           ) : (
-            <p className="field-hint mt-2">
-              Для косметичного засобу код внесення до Єдиної системи
-              електронної нотифікації МОЗ — обовʼязковий пункт перевірки.
-            </p>
+            <p className="field-hint mt-2">{t('inventory.docs.moz.noCode')}</p>
           )}
         </section>
       )}
 
       {/* ── Загрузка ─────────────────────────────────────────── */}
-      <Sheet open={add} onClose={() => setAdd(false)} title="Новий документ">
+      <Sheet open={add} onClose={() => setAdd(false)} title={t('inventory.docs.sheet.new')}>
         <form onSubmit={upload} className="grid gap-3 sm:grid-cols-2">
           <div className="sm:col-span-2">
-            <label className="field-label">Тип документа</label>
+            <label className="field-label">{t('inventory.docs.field.kind')}</label>
             <select className="select" value={kind}
                     onChange={(e) => setKind(e.target.value as DocKind)}>
-              {DOC_KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
+              {DOC_KINDS.map((k) => (
+                <option key={k} value={k}>{kindLabel(t, k)}</option>
+              ))}
             </select>
           </div>
           <div className="sm:col-span-2">
-            <label className="field-label">Назва</label>
-            <input className="input" placeholder="Сертифікат якості партії 62XS03"
+            <label className="field-label">{t('inventory.docs.field.title.label')}</label>
+            <input className="input" placeholder={t('inventory.docs.field.title.placeholder')}
                    value={title} onChange={(e) => setTitle(e.target.value)} />
-            <p className="field-hint">Порожньо — візьмемо назву файлу.</p>
+            <p className="field-hint">{t('inventory.docs.field.title.hint')}</p>
           </div>
           <div className="sm:col-span-2">
-            <label className="field-label">Файл</label>
+            <label className="field-label">{t('inventory.docs.field.file.label')}</label>
             <input key={fileKey} required type="file" className="input pt-2.5"
                    accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx"
                    onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-            <p className="field-hint">PDF, фото або документ Word, до 20 МБ.</p>
+            <p className="field-hint">{t('inventory.docs.field.file.hint')}</p>
           </div>
           <div className="flex gap-2 sm:col-span-2">
             <button className="btn-primary" disabled={busy === 'upload' || !file}>
-              {busy === 'upload' ? 'Завантажуємо…' : 'Завантажити'}
+              {busy === 'upload'
+                ? t('inventory.docs.upload.busy')
+                : t('inventory.docs.upload.submit')}
             </button>
             <button type="button" className="btn-ghost" onClick={() => setAdd(false)}>
-              Скасувати
+              {t('common.cancel')}
             </button>
           </div>
         </form>
       </Sheet>
 
       {/* ── Нотификация: правка ──────────────────────────────── */}
-      <Sheet open={moz} onClose={() => setMoz(false)} title="Нотифікація МОЗ">
+      <Sheet open={moz} onClose={() => setMoz(false)} title={t('inventory.docs.moz.title')}>
         <MozForm
           code={material.notificationCode ?? ''}
           url={material.notificationUrl ?? ''}
@@ -336,10 +353,7 @@ export function MaterialDocs({
         />
       </Sheet>
 
-      <p className="field-hint rise-3">
-        Файли зберігаються у закритому сховищі: посилання діє пʼять хвилин
-        і працює лише для тих, кому ви відкрили доступ до санітарного обліку.
-      </p>
+      <p className="field-hint rise-3">{t('inventory.docs.hint')}</p>
     </div>
   )
 }
@@ -351,6 +365,7 @@ function MozForm({
   onSave: (f: { code: string; url: string; date: string }) => void
   onCancel: () => void
 }) {
+  const t = useT()
   const [c, setC] = useState(code)
   const [u, setU] = useState(url)
   const [d, setD] = useState(date)
@@ -358,27 +373,25 @@ function MozForm({
     <form className="grid gap-3"
           onSubmit={(e) => { e.preventDefault(); onSave({ code: c, url: u, date: d }) }}>
       <div>
-        <label className="field-label">Код нотифікації</label>
-        <input autoFocus className="input" placeholder="UA.TR.116.003-25"
+        <label className="field-label">{t('inventory.docs.moz.form.code')}</label>
+        <input autoFocus className="input" placeholder={t('inventory.docs.moz.form.code.placeholder')}
                value={c} onChange={(e) => setC(e.target.value)} />
       </div>
       <div>
-        <label className="field-label">Дата внесення до реєстру</label>
+        <label className="field-label">{t('inventory.docs.moz.form.date')}</label>
         <input type="date" className="input" value={d} onChange={(e) => setD(e.target.value)} />
       </div>
       <div>
-        <label className="field-label">Посилання на запис</label>
+        <label className="field-label">{t('inventory.docs.moz.form.url')}</label>
         <input type="url" inputMode="url" className="input" placeholder="https://…"
                value={u} onChange={(e) => setU(e.target.value)} />
-        <p className="field-hint">
-          ТЗ вимагає саме посилання: за кодом інспектор нічого не перевірить.
-        </p>
+        <p className="field-hint">{t('inventory.docs.moz.form.hint')}</p>
       </div>
       <div className="flex gap-2">
         <button className="btn-primary" disabled={busy}>
-          {busy ? 'Зберігаємо…' : 'Зберегти'}
+          {busy ? t('common.saving') : t('common.save')}
         </button>
-        <button type="button" className="btn-ghost" onClick={onCancel}>Скасувати</button>
+        <button type="button" className="btn-ghost" onClick={onCancel}>{t('common.cancel')}</button>
       </div>
     </form>
   )

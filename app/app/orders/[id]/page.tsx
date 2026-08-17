@@ -3,10 +3,17 @@ import { createClient } from '@/lib/supabase/server'
 import { currentMembership, can, hasModule } from '@/lib/tenant'
 import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
+import { getT } from '@/lib/i18n/server'
 import { OrderDetail } from './order-detail'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Замовлення' }
+
+// Заголовок вкладки браузера — строка интерфейса, поэтому из словаря.
+// Разбор решения — в `app/app/journals/page.tsx`.
+export async function generateMetadata() {
+  const t = await getT()
+  return { title: t('orders.item.meta.title') }
+}
 
 export default async function OrderPage({
   params,
@@ -19,6 +26,7 @@ export default async function OrderPage({
   if (!hasModule(m, 'orders')) return <ModuleOff m={m} module="orders" />
 
   const { id } = await params
+  const t = await getT()
   const supabase = await createClient()
 
   // Явный фильтр по арендатору поверх RLS: политика orders_read пускает
@@ -37,8 +45,12 @@ export default async function OrderPage({
 
   if (error) {
     return (
-      <AppShell active="/app/orders" title="Замовлення">
-        <p className="field-error rise">Не вдалося відкрити замовлення: {error.message}</p>
+      <AppShell>
+        {/* `error.message` — текст базы, он показывается как есть;
+            из словаря только рамка вокруг него. */}
+        <p className="field-error rise">
+          {t('orders.detail.error.open', { message: error.message })}
+        </p>
       </AppShell>
     )
   }
@@ -67,13 +79,14 @@ export default async function OrderPage({
   ])
 
   return (
-    <AppShell active="/app/orders" title={`Замовлення №${order.number}`}>
+    <AppShell>
       <OrderDetail
         canWrite={can(m, 'orders.write')}
         userId={user?.id ?? ''}
         loadError={[itemsError?.message, eventsError?.message, transitionsError?.message]
           .filter(Boolean).join(' · ')}
-        allowed={(transitions ?? []).map((t) => String(t.to_status))}
+        // Параметр назван `row`, а не `t`: `t` — переводчик.
+        allowed={(transitions ?? []).map((row) => String(row.to_status))}
         order={{
           id: order.id,
           number: Number(order.number),

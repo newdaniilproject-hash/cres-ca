@@ -4,9 +4,15 @@ import { currentMembership, can, hasModule } from '@/lib/tenant'
 import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { PaoControl } from './pao-control'
+import { getT } from '@/lib/i18n/server'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Контроль відкриття та фасування' }
+// Заголовок вкладки — тем же ключом, что и заголовок экрана
+// в оболочке (`components/app-shell.tsx`).
+export async function generateMetadata() {
+  const t = await getT()
+  return { title: t('app.screen.inventory.materialPao.title') }
+}
 
 // Экраны 4 и 5 макета, пункт ТЗ 3.2 целиком:
 // учёт PAO, кнопка «Відкрити банку», розлив в дозатор с генерацией
@@ -72,8 +78,7 @@ export default async function PaoPage({
   ])
 
   return (
-    <AppShell active="/app/inventory" title="Відкриття та фасування"
-              back={`/app/inventory/materials/${id}`} modules={m.modules}>
+    <AppShell modules={m.modules}>
       <PaoControl
         canOpen={can(m, 'compliance.journal.write') || can(m, 'compliance.write')}
         canPrint={can(m, 'stock.read')}

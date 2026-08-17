@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { currentMembership, can, hasModule } from '@/lib/tenant'
+import { getT } from '@/lib/i18n/server'
 import { reportHtml, type ReportData } from '@/lib/report/sanitation-report'
 
 // Paperless-отчёт для перевірки (Держпродспоживслужба / Держлікслужба).
@@ -38,11 +39,24 @@ import { reportHtml, type ReportData } from '@/lib/report/sanitation-report'
 // подвал документа утверждает: «у кожного запису зафіксовано час
 // та виконавця». Имена приходят из `compliance_actors` (0083) отдельным
 // запросом и склеиваются здесь.
+//
+// ── ЯЗЫК: ОТКАЗ И ДОКУМЕНТ ЖИВУТ ПО РАЗНЫМ ПРАВИЛАМ ───────────────────────
+//
+// Три отказа ниже — это интерфейс: их читает СВОЙ человек, тот, кто нажал
+// кнопку в кабинете, и читает на языке, который сам выбрал. Поэтому они
+// из словаря.
+//
+// А сам документ, который собирает `reportHtml`, ВСЕГДА украинский и куку
+// языка не спрашивает вовсе: его читает не мастер, а проверяющий
+// Держпродспоживслужби. Причина решения — в шапке
+// `lib/report/sanitation-report.ts`; здесь важно одно: `lang` в этот файл
+// не приходит и передавать его в вёрстку отчёта нечем.
 export async function GET(request: Request) {
+  const t = await getT()
   const m = await currentMembership()
-  if (!m) return new NextResponse('Немає доступу', { status: 403 })
+  if (!m) return new NextResponse(t('journals.report.error.noMembership'), { status: 403 })
   if (!can(m, 'compliance.read')) {
-    return new NextResponse('Немає права на звіт для перевірки', { status: 403 })
+    return new NextResponse(t('journals.report.error.noPerm'), { status: 403 })
   }
   // Вторая ось — модуль `compliance`. Право есть у шести ролей, но сам
   // раздел журналов заведение могло не подключать: тогда `/app/journals`
@@ -52,7 +66,7 @@ export async function GET(request: Request) {
   // отказа: его печатают и несут проверяющему. Ответ — 403, а не
   // `ModuleOff` и не редирект, по той же причине, что и правом выше.
   if (!hasModule(m, 'compliance')) {
-    return new NextResponse('Модуль «Журнали, документи та техкарти» не підключено', { status: 403 })
+    return new NextResponse(t('journals.report.error.noModule'), { status: 403 })
   }
 
   // Остаток и поставщик — складские сведения, а не санитарные. В компланс-

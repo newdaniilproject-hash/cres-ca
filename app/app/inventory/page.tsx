@@ -3,10 +3,18 @@ import { createClient } from '@/lib/supabase/server'
 import { currentMembership, can, hasModule } from '@/lib/tenant'
 import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
+import { getT } from '@/lib/i18n/server'
 import { InventoryClient } from './inventory-client'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Склад' }
+
+// Заголовок вкладки — из словаря, тем же ключом, что и заголовок экрана
+// в оболочке (`components/app-shell.tsx`). Функцией, а не константой:
+// константа не может позвать переводчик, а он читает куку языка.
+export async function generateMetadata() {
+  const t = await getT()
+  return { title: t('app.screen.inventory.title') }
+}
 
 // Склад: счётчики сверху, быстрые действия, сканер и поиск, ниже —
 // расходники, ёмкости и товары. Все данные грузим на сервере параллельно.
@@ -88,8 +96,7 @@ export default async function InventoryPage({
   }
 
   return (
-    <AppShell modules={m.modules} perms={m.perms} active="/app/inventory" title="Склад"
-              subtitle="Огляд запасів та матеріалів">
+    <AppShell modules={m.modules} perms={m.perms}>
       <InventoryClient
         initialQuery={sp.q ?? ''}
         initialScan={sp.scan === '1'}

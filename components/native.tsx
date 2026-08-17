@@ -1,9 +1,9 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/toast'
+import { useT } from '@/lib/i18n/client'
 import { haptic } from '@/lib/haptic'
 
 // Нативный слой: то, что оживает только внутри приложения из магазина.
@@ -41,80 +41,6 @@ export function isNative(): boolean {
 function platform(): 'ios' | 'android' | 'web' {
   const p = cap()?.getPlatform?.()
   return p === 'ios' || p === 'android' ? p : 'web'
-}
-
-// Есть ли на этом устройстве чем проверять палец или лицо.
-//
-// Отдельно от verify() СОЗНАТЕЛЬНО, и это не придирка к чистоте.
-// verify() при отсутствии биометрии отвечает «пропускаем» — иначе
-// человек с устройством без Face ID окажется заперт в приложении
-// навсегда. Но «пропускаем» и «проверено» — разные вещи, и предлагать
-// включить замок по такому ответу нельзя: получится обещание защиты,
-// которой нет. Именно так и было до 14.08.2026 на iOS, где плагин
-// @capgo/capacitor-native-biometric снят из сборки 12.08: тумблер
-// говорил «Тепер кабінет відкривається тільки після Face ID»,
-// а не проверялось ровно ничего.
-async function bioAvailable(): Promise<boolean> {
-  const p = platform()
-  if (p === 'android') {
-    const w = window as unknown as { AndroidBiometric?: { available: () => boolean } }
-    try { return w.AndroidBiometric?.available?.() === true } catch { return false }
-  }
-  if (p === 'ios') {
-    const nb = cap()?.Plugins?.NativeBiometric as
-      | { isAvailable: () => Promise<{ isAvailable: boolean }> }
-      | undefined
-    if (!nb) return false
-    try { return (await nb.isAvailable()).isAvailable === true } catch { return false }
-  }
-  return false
-}
-
-// Проверка пальцем или лицом. Уровнем модуля, а не внутри компонента:
-// её зовут и замок при запуске, и тумблер в настройках заведения.
-//
-// Отсутствие биометрии отвечает «пропускаем», и это не оплошность:
-// иначе человек с устройством без Face ID или со сломанным датчиком
-// оказался бы заперт в приложении без выхода. Отличать «пропускаем»
-// от «проверено» умеет bioAvailable() выше — включать замок можно
-// только по нему.
-async function rawVerify(): Promise<boolean> {
-  const p = platform()
-  if (p === 'android') {
-    const w = window as unknown as { AndroidBiometric?: { available: () => boolean; request: () => void } }
-    try {
-      if (!w.AndroidBiometric?.available()) return true // биометрии нет — не запираем
-      return await new Promise((resolve) => {
-        const onResult = (e: Event) => {
-          window.removeEventListener('cres:bio', onResult)
-          const d = (e as CustomEvent).detail
-          resolve(d === 'ok' || d === 'none')
-        }
-        window.addEventListener('cres:bio', onResult)
-        w.AndroidBiometric!.request()
-      })
-    } catch { return true }
-  }
-  if (p === 'ios') {
-    const nb = cap()?.Plugins?.NativeBiometric as
-      | { isAvailable: () => Promise<{ isAvailable: boolean }>
-          verifyIdentity: (o: object) => Promise<void> }
-      | undefined
-    if (!nb) return true
-    try {
-      const { isAvailable } = await nb.isAvailable()
-      if (!isAvailable) return true
-      await nb.verifyIdentity({
-        reason: 'Вхід у Маркет',
-        title: 'Вхід у Маркет',
-        subtitle: 'Підтвердіть, що це ви',
-      })
-      return true
-    } catch {
-      return false
-    }
-  }
-  return true
 }
 
 const BIO_KEY = 'cres:biolock'          // '1' — включён, '0' — отказался
@@ -166,6 +92,7 @@ export function nativeish(): boolean {
 }
 
 export function NativeProvider() {
+  const t = useT()
   const toast = useToast()
 
   // Перевод на родной поток входа. Ловит и случайную ссылку, которую забыли
@@ -214,8 +141,9 @@ export function NativeProvider() {
     try { if (!nativeish()) return } catch { return }
 
     const onTouch = (e: TouchEvent) => {
-      const t = e.target as HTMLElement | null
-      const el = t?.closest?.(
+      // Цель события названа `target`, а не `t`: `t` — переводчик.
+      const target = e.target as HTMLElement | null
+      const el = target?.closest?.(
         'button, a, [role="button"], label, summary, .bottomnav-item, .sidebar-item, .chip, .chip-active',
       ) as HTMLElement | null
       if (!el) return
@@ -294,6 +222,45 @@ export function NativeProvider() {
     return ok
   }, [])
 
+  // Объявление функцией, а не константой: verify() создаётся раньше по коду,
+  // а объявления поднимаются — иначе временная мёртвая зона.
+  async function rawVerify(): Promise<boolean> {
+    const p = platform()
+    if (p === 'android') {
+      const w = window as unknown as { AndroidBiometric?: { available: () => boolean; request: () => void } }
+      if (!w.AndroidBiometric?.available()) return true // биометрии нет — не запираем
+      return new Promise((resolve) => {
+        const onResult = (e: Event) => {
+          window.removeEventListener('cres:bio', onResult)
+          const d = (e as CustomEvent).detail
+          resolve(d === 'ok' || d === 'none')
+        }
+        window.addEventListener('cres:bio', onResult)
+        w.AndroidBiometric!.request()
+      })
+    }
+    if (p === 'ios') {
+      const nb = cap()?.Plugins?.NativeBiometric as
+        | { isAvailable: () => Promise<{ isAvailable: boolean }>
+            verifyIdentity: (o: object) => Promise<void> }
+        | undefined
+      if (!nb) return true
+      try {
+        const { isAvailable } = await nb.isAvailable()
+        if (!isAvailable) return true
+        // Подписи системного окна Face ID: их рисует iOS, но текст наш.
+        await nb.verifyIdentity({
+          reason: t('native.bio.reason'),
+          title: t('native.bio.title'),
+          subtitle: t('native.bio.subtitle'),
+        })
+        return true
+      } catch {
+        return false
+      }
+    }
+    return true
+  }
 
   useEffect(() => {
     // isNative() читает мост, localStorage падает в приватном режиме.
@@ -303,16 +270,10 @@ export function NativeProvider() {
       enabled = localStorage.getItem(BIO_KEY)
     } catch { return }
 
-    // Первый запуск в приложении: один раз предлагаем включить замок —
-    // но ТОЛЬКО если на устройстве есть чем проверять. Предложение там,
-    // где биометрии нет, включает замок, который никого не проверяет,
-    // и человек уверен, что кабинет защищён.
+    // Первый запуск в приложении: один раз предлагаем включить замок.
     if (enabled === null) {
-      let dead = false
-      const t = setTimeout(() => {
-        void bioAvailable().then((ok) => { if (ok && !dead) setOfferBio(true) })
-      }, 1500)
-      return () => { dead = true; clearTimeout(t) }
+      const id = setTimeout(() => setOfferBio(true), 1500)
+      return () => clearTimeout(id)
     }
     if (enabled !== '1') return
 
@@ -342,45 +303,35 @@ export function NativeProvider() {
     return () => document.removeEventListener('visibilitychange', onVis)
   }, [verify])
 
-  if (locked && typeof document !== 'undefined') {
+  if (locked) {
     // Пока системный запрос Face ID открыт — за ним ничего не пишем.
     // Своя надпись под чужим окном выглядит как ошибка вёрстки, а человеку
     // и так понятно, чего от него хотят. Текст и кнопки появляются только
     // если он отменил проверку.
-    //
-    // ПОРТАЛОМ В BODY, И ЭТО ОБЯЗАТЕЛЬНО. NativeProvider живёт в нижнем
-    // стеке оверлеев (layout.tsx → ToastProvider overlay), а у того
-    // z-index 60 и pointer-events: none. Замок, отрисованный внутри,
-    // получал обе беды сразу: шторка разделов (z-index 90) рисовалась
-    // поверх защитного экрана, а кнопки «Розблокувати» и «Вимкнути
-    // замок» не нажимались вовсе — отказ Face ID запирал человека
-    // в приложении насмерть. Портал уносит замок из этого контекста;
-    // высоту слоя задаёт .biolock-layer в globals.css.
-    return createPortal(
-      <div className="biolock-layer">
+    return (
+      <div className="fixed inset-0 z-[80] flex flex-col items-center justify-center gap-5 px-8"
+           style={{ background: 'var(--color-bg)' }}>
+        {/* Знак марки. Название продукта не переводится ни на один язык. */}
         <p className="display t-xl">Маркет<span style={{ color: 'var(--color-gold)' }}>.</span></p>
 
         {denied && (
           <>
-            <p className="t-md text-center prose-muted">
-              Не вдалося підтвердити. Спробуйте ще раз.
-            </p>
+            <p className="t-md text-center prose-muted">{t('native.lock.failed')}</p>
             <button className="btn-primary"
                     onClick={() => void (async () => {
                       setDenied(false)
                       if (await verify()) setLocked(false); else setDenied(true)
                     })()}>
-              Розблокувати
+              {t('native.lock.unlock')}
             </button>
             <button className="t-sm underline underline-offset-2 prose-muted"
                     onClick={() => { localStorage.setItem(BIO_KEY, '0'); setLocked(false); setDenied(false)
-                      toast.info('Замок вимкнено', 'Увімкнути знову можна в налаштуваннях закладу, розділ «Безпека».') }}>
-              Вимкнути замок
+                      toast.info(t('native.lock.off'), t('native.lock.off.detail')) }}>
+              {t('native.lock.disable')}
             </button>
           </>
         )}
-      </div>,
-      document.body,
+      </div>
     )
   }
 
@@ -391,24 +342,24 @@ export function NativeProvider() {
                     background: 'var(--color-surface)', boxShadow: 'var(--shadow-lift)' }}>
         <div className="flex items-center gap-3">
           <div className="min-w-0 flex-1">
-            <p className="t-md">Захистити вхід біометрією?</p>
-            <p className="t-sm mt-0.5 prose-muted">Face ID або відбиток при відкритті застосунку</p>
+            <p className="t-md">{t('native.offer.title')}</p>
+            <p className="t-sm mt-0.5 prose-muted">{t('native.offer.desc')}</p>
           </div>
           <button className="btn-primary h-9 shrink-0 t-sm"
                   onClick={() => void (async () => {
                     setOfferBio(false)
                     if (await verify()) {
                       localStorage.setItem(BIO_KEY, '1')
-                      toast.success('Замок увімкнено', 'Тепер кабінет відкривається тільки після Face ID чи відбитка.')
+                      toast.success(t('native.lock.on'), t('native.lock.on.detail'))
                     } else {
-                      toast.warn('Не вдалося перевірити біометрію', 'Замок не увімкнено — спробуйте в налаштуваннях закладу, розділ «Безпека».')
+                      toast.warn(t('native.offer.failed'), t('native.offer.failed.detail'))
                     }
                   })()}>
-            Увімкнути
+            {t('native.offer.enable')}
           </button>
           <button className="btn-ghost h-9 shrink-0 t-sm"
                   onClick={() => { localStorage.setItem(BIO_KEY, '0'); setOfferBio(false) }}>
-            Ні
+            {t('native.offer.no')}
           </button>
         </div>
       </div>
@@ -416,82 +367,4 @@ export function NativeProvider() {
   }
 
   return null
-}
-
-// ── Тумблер замка для настроек заведения ───────────────────────────
-//
-// Живёт ЗДЕСЬ, а не в экране настроек, и это не вкусовщина: замок —
-// часть нативного модуля, у него свои ключи хранения, своя проверка
-// доступности и свой мост. Экран настроек получает одну строку импорта
-// и одну строку разметки, а вся логика остаётся в модуле, который
-// переносится в другой проект целиком.
-//
-// ЗАЧЕМ ВООБЩЕ ПОЯВИЛСЯ (14.08.2026). Замок дважды говорил человеку
-// «увімкнути знову можна в налаштуваннях безпеки» — при отказе от
-// предложения и при выключении с экрана замка. Тумблера не было
-// НИГДЕ: bioLockEnabled/setBioLockEnabled экспортировались и не
-// использовались ни одной строкой, а /account/security внутри
-// приложения вообще недостижим — путь /account переводится на /app
-// (TWINS выше и native-boot.ts). То есть выключив замок один раз,
-// включить его было нельзя никак, а подсказка отправляла на экран,
-// которого в приложении нет.
-//
-// В браузере не рисуется ничего: замок на вход — свойство приложения,
-// в вебе биометрия доступна только через WebAuthn, а это уже другой
-// способ входа, а не замок поверх него.
-export function BioLockRow() {
-  const [show, setShow] = useState(false)
-  const [on, setOn] = useState(false)
-  const [busy, setBusy] = useState(false)
-
-  useEffect(() => {
-    let dead = false
-    try {
-      if (!isNative()) return
-    } catch { return }
-    void bioAvailable().then((ok) => {
-      if (dead || !ok) return
-      setShow(true)
-      setOn(bioLockEnabled())
-    })
-    return () => { dead = true }
-  }, [])
-
-  if (!show) return null
-
-  async function toggle() {
-    setBusy(true)
-    try {
-      if (on) {
-        // Выключение проверки не требует: человек уже внутри кабинета,
-        // а требовать палец, чтобы снять замок, — это запирать дверь
-        // ключом, который лежит за дверью.
-        setBioLockEnabled(false)
-        setOn(false)
-      } else {
-        // Включение — только после успешной проверки. Иначе замок
-        // встанет на устройстве, которое не умеет его открывать.
-        if (await rawVerify()) { setBioLockEnabled(true); setOn(true) }
-      }
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <div className="card-flat mb-3 flex items-center gap-3">
-      <div className="min-w-0 flex-1">
-        <p className="t-md">Вхід за біометрією</p>
-        <p className="t-sm mt-0.5 prose-muted">
-          {on
-            ? 'Кабінет відкривається після Face ID або відбитка'
-            : 'Захистити кабінет на випадок, якщо телефон потрапить у чужі руки'}
-        </p>
-      </div>
-      <button type="button" className={on ? 'btn-secondary t-sm' : 'btn-primary t-sm'}
-              disabled={busy} onClick={() => void toggle()}>
-        {busy ? '…' : on ? 'Вимкнути' : 'Увімкнути'}
-      </button>
-    </div>
-  )
 }

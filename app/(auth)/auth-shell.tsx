@@ -1,6 +1,13 @@
+'use client'
+
+// Клиентский компонент явно: раскладку входа рисуют только клиентские
+// экраны (`login`, `register`, `forgot`, `reset`), и она давно приезжала
+// в браузерный бандл вместе с ними. Пометка нужна `useT`.
+
 import Link from 'next/link'
 import { ThemeToggle } from '@/components/theme'
 import { Brand } from '@/components/auth-ui'
+import { useT } from '@/lib/i18n/client'
 
 // Раскладка входа взята из первой крес-ки: тонкая верхняя полоса,
 // форма справа, градиентная панель слева. Панель не украшение —
@@ -11,18 +18,21 @@ import { Brand } from '@/components/auth-ui'
 // поэтому страница работает и в тёмной теме, и в светлой без
 // отдельного набора переменных. Именно это в первой версии
 // разъехалось: там у входа была своя палитра.
+// В массиве лежат КЛЮЧИ, а не строки: список обещаний переводится
+// целиком, и порядок пунктов — вёрстка, а не текст.
 const PANEL_FEATURES = [
-  'Вітрина, що відчувається власним сайтом',
-  'Склад із термінами придатності й журналами',
-  'Запис і замовлення в одному кабінеті',
-  'База клієнтів — ваша, з вивантаженням',
-]
+  'auth.panel.feature.storefront',
+  'auth.panel.feature.stock',
+  'auth.panel.feature.bookings',
+  'auth.panel.feature.customers',
+] as const
 
 // title необязателен: экраны-результаты (успех, блокировка) рисуют
 // собственный заголовок под знаком, и второй сверху был бы повтором.
 export function AuthShell({ title, subtitle, children }: {
   title?: string; subtitle?: string; children: React.ReactNode
 }) {
+  const t = useT()
   return (
     <div className="auth-page">
       <div className="auth-topbar">
@@ -31,7 +41,7 @@ export function AuthShell({ title, subtitle, children }: {
         </Link>
         <div className="flex items-center gap-1 sm:gap-2">
           <ThemeToggle />
-          <Link href="/" className="btn-ghost">← На головну</Link>
+          <Link href="/" className="btn-ghost">← {t('auth.shell.home')}</Link>
         </div>
       </div>
 
@@ -49,19 +59,16 @@ export function AuthShell({ title, subtitle, children }: {
             <span aria-hidden>◈</span>
             CRESKO
           </div>
-          <p className="auth-panel-tagline">
-            Одна підписка замість чотирьох сервісів. Без комісії за замовлення,
-            які ви привели самі.
-          </p>
+          <p className="auth-panel-tagline">{t('auth.panel.tagline')}</p>
           <div className="auth-panel-list">
-            {PANEL_FEATURES.map((f) => (
-              <div key={f} className="auth-panel-item">
+            {PANEL_FEATURES.map((key) => (
+              <div key={key} className="auth-panel-item">
                 <span className="auth-panel-check" aria-hidden>✓</span>
-                {f}
+                {t(key)}
               </div>
             ))}
           </div>
-          <p className="auth-panel-foot">Склад для майстрів — облік, терміни, журнали</p>
+          <p className="auth-panel-foot">{t('auth.panel.foot')}</p>
         </aside>
       </div>
     </div>

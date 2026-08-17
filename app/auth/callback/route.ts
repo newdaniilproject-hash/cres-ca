@@ -27,17 +27,12 @@ export async function GET(request: Request) {
     null
   const native = url.searchParams.get('native') === '1'
   const next = url.searchParams.get('next') || ''
-  // s — поверхность, с которой начали вход: 'web' или 'm'. Нужна там,
-  // где next не задан и куда вести решает lib/where.ts: у веба и /m
-  // разные адреса «заведения ещё нет». Просто проносим её насквозь.
-  const surface = url.searchParams.get('s') || ''
 
   if (native) {
     const target = new URL('cresca://auth')
     if (code) target.searchParams.set('code', code)
     if (err) target.searchParams.set('error', err)
     if (next) target.searchParams.set('next', next)
-    if (surface) target.searchParams.set('s', surface)
     return new NextResponse(handoff(target.toString()), {
       headers: {
         'content-type': 'text/html; charset=utf-8',
@@ -50,7 +45,6 @@ export async function GET(request: Request) {
   if (code) finish.searchParams.set('code', code)
   if (err) finish.searchParams.set('error', err)
   if (next) finish.searchParams.set('next', next)
-  if (surface) finish.searchParams.set('s', surface)
   return NextResponse.redirect(finish)
 }
 
@@ -60,6 +54,12 @@ export async function GET(request: Request) {
 // на возврате в приложение мигает белым.
 function handoff(target: string): string {
   const safe = target.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+
+  // Значение для скрипта. Знак «меньше» гасится отдельно: JSON.stringify его
+  // не трогает, и закрывающий тег внутри значения закрыл бы блок скрипта.
+  // Сейчас такого значения не бывает — searchParams кодирует и его, и косую
+  // черту, — но защита стоит здесь, а не в предположении о вызывающем.
+  const inScript = JSON.stringify(target).replace(/</g, '\\u003c')
   return `<!doctype html>
 <html lang="uk"><head>
 <meta charset="utf-8">
@@ -88,7 +88,7 @@ function handoff(target: string): string {
  <a id="b" href="${safe}">Відкрити застосунок</a>
 </div>
 <script>
- var t=${JSON.stringify(target)};
+ var t=${inScript};
  location.replace(t);
  // Если система не подхватила схему за полторы секунды — показываем
  // кнопку. Молча висящий спиннер человек читает как поломку.

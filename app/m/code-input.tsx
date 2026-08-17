@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { useT } from '@/lib/i18n/client'
 
 // Поле кода из письма: шесть цифр одной группой.
 //
@@ -32,14 +33,16 @@ export function CodeInput({
   disabled?: boolean
   invalid?: boolean
 }) {
+  const t = useT()
   const ref = useRef<HTMLInputElement>(null)
   const [focused, setFocused] = useState(false)
 
   // Экран кода открывается сразу после отправки письма — клавиатура
   // должна подняться сама, иначе первое действие человека это лишний тап.
+  // Таймер назван `id`, а не `t`: `t` — переводчик.
   useEffect(() => {
-    const t = setTimeout(() => ref.current?.focus(), 60)
-    return () => clearTimeout(t)
+    const id = setTimeout(() => ref.current?.focus(), 60)
+    return () => clearTimeout(id)
   }, [])
 
   const cells = Array.from({ length }, (_, i) => i)
@@ -98,7 +101,7 @@ export function CodeInput({
         // из только что пришедшего письма над клавиатурой.
         autoComplete="one-time-code"
         maxLength={length}
-        aria-label="Код з листа"
+        aria-label={t('m.code.aria')}
         className="absolute inset-0 w-full"
         style={{
           opacity: 0,

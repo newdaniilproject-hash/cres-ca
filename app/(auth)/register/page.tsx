@@ -8,6 +8,7 @@ import { LEGAL_VERSION, LEGAL_DOCS } from '@/lib/legal'
 import { signupSource } from '@/lib/consent'
 import { humanAuthError, codeErrorText } from '@/lib/auth-errors'
 import { nextRoute } from '@/lib/where'
+import { useT } from '@/lib/i18n/client'
 import { AuthShell } from '../auth-shell'
 import { GoogleButton } from '../google-button'
 import { CodeInput } from '@/app/m/code-input'
@@ -39,6 +40,7 @@ const RESEND_SECONDS = 60
 type Step = 'form' | 'sent' | 'code' | 'done'
 
 function RegisterInner() {
+  const t = useT()
   const supabase = createClient()
 
   // Адрес возврата. Приходит из ссылки (`/register?next=/invite/<token>`)
@@ -125,7 +127,7 @@ function RegisterInner() {
     })
 
     setBusy(false)
-    if (error) { setError(humanAuthError(error.message)); return }
+    if (error) { setError(humanAuthError(t, error.message)); return }
 
     // ГРАБЛИ. Здесь напрашивается проверка data.user.identities.length === 0
     // как признак «такой уже есть». Делать её нельзя: Supabase намеренно
@@ -137,7 +139,7 @@ function RegisterInner() {
 
     // Подтверждение отключено в настройках — сессия выдана сразу.
     if (data.session) {
-      window.location.href = next ?? await nextRoute(supabase, 'web')
+      window.location.href = next ?? await nextRoute(supabase)
       return
     }
 
@@ -153,13 +155,13 @@ function RegisterInner() {
     })
     if (error) {
       setBusy(false)
-      setCodeError(codeErrorText(error.message))
+      setCodeError(codeErrorText(t, error.message))
       setCode('')
       return
     }
     setBusy(false)
     // verifyOtp с type:'signup' уже выдал сессию — членства читаемы.
-    setTarget(next ?? await nextRoute(supabase, 'web'))
+    setTarget(next ?? await nextRoute(supabase))
     setStep('done')
   }
 
@@ -168,8 +170,8 @@ function RegisterInner() {
     setBusy(true); setError(''); setNote(''); setCodeError('')
     const { error } = await supabase.auth.resend({ type: 'signup', email: email.trim() })
     setBusy(false)
-    if (error) { setError(humanAuthError(error.message)); return }
-    setNote('Надіслали новий код.')
+    if (error) { setError(humanAuthError(t, error.message)); return }
+    setNote(t('auth.register.resent'))
     setLeft(RESEND_SECONDS)
   }
 
@@ -182,11 +184,11 @@ function RegisterInner() {
     return (
       <AuthShell>
         <SuccessScreen
-          title="Email підтверджено!"
+          title={t('auth.register.done.title')}
           subtitle={next
-            ? 'Ваш акаунт активовано. Повертаємо вас туди, звідки ви прийшли.'
-            : 'Акаунт активовано. Залишився останній крок — ваш заклад.'}
-          actionLabel="Продовжити"
+            ? t('auth.register.done.desc.next')
+            : t('auth.register.done.desc.plain')}
+          actionLabel={t('common.continue')}
           onAction={() => { window.location.href = target }}
         />
         <Redirect to={target} />
@@ -203,12 +205,14 @@ function RegisterInner() {
       <AuthShell>
         <div className="auth-result">
           <span className="hero-circle rise" aria-hidden><MailIcon size={36} /></span>
-          <h1 className="display rise-1 t-2xl mt-6 text-center">Перевірте свою пошту</h1>
+          <h1 className="display rise-1 t-2xl mt-6 text-center">
+            {t('auth.register.sent.title')}
+          </h1>
           <p className="rise-2 t-md mt-2 text-center prose-muted" style={{ lineHeight: 1.5 }}>
-            Ми надіслали лист для підтвердження на {email.trim()}
+            {t('auth.register.sent.desc', { email: email.trim() })}
           </p>
           <p className="rise-2 t-sm mt-2 text-center" style={{ color: 'var(--color-faint)' }}>
-            Введіть код із листа, щоб активувати акаунт
+            {t('auth.register.sent.hint')}
           </p>
 
           {error && <p className="field-error">{error}</p>}
@@ -217,19 +221,23 @@ function RegisterInner() {
           <div className="rise-3 auth-result-actions">
             <button type="button" className="btn-primary btn-tall"
                     onClick={() => { setCode(''); setCodeError(''); setStep('code') }}>
-              Ввести код із листа
+              {t('auth.register.sent.enterCode')}
             </button>
             {gmail && (
               <a className="btn-secondary btn-tall" href="https://mail.google.com/"
                  target="_blank" rel="noopener noreferrer">
-                Відкрити Gmail
+                {t('auth.register.sent.gmail')}
               </a>
             )}
             <button type="button" className="link-quiet" onClick={() => void resend()}
                     disabled={left > 0 || busy}>
-              {left > 0 ? `Надіслати лист повторно через ${left} с` : 'Надіслати лист повторно'}
+              {left > 0
+                ? t('auth.register.sent.resendIn', { n: left })
+                : t('auth.register.sent.resend')}
             </button>
-            <Link href={loginHref} className="link-quiet">Повернутися до входу</Link>
+            <Link href={loginHref} className="link-quiet">
+              {t('auth.register.sent.backToLogin')}
+            </Link>
           </div>
         </div>
       </AuthShell>
@@ -239,8 +247,8 @@ function RegisterInner() {
   // ── Код ──────────────────────────────────────────────────────
   if (step === 'code') {
     return (
-      <AuthShell title="Підтвердження входу"
-                 subtitle={`Ми надіслали 6-значний код на ${email.trim()}`}>
+      <AuthShell title={t('auth.register.code.title')}
+                 subtitle={t('auth.code.sentTo', { email: email.trim(), n: CODE_LENGTH })}>
         <CodeInput
           value={code}
           disabled={busy}
@@ -253,30 +261,31 @@ function RegisterInner() {
         />
 
         {codeError && <p className="field-error text-center">{codeError}</p>}
-        {busy && !codeError && <p className="t-sm mt-3 text-center prose-muted">Перевіряємо…</p>}
+        {busy && !codeError && (
+          <p className="t-sm mt-3 text-center prose-muted">{t('auth.code.checking')}</p>
+        )}
 
         <p className="code-countdown">
-          {left > 0 ? `Повторно надіслати код через ${mmss(left)}` : 'Код можна надіслати повторно'}
+          {left > 0
+            ? t('auth.code.resendIn', { time: mmss(left) })
+            : t('auth.code.resendReady')}
         </p>
 
         <div className="auth-result-actions">
           <button type="button" className="btn-primary btn-tall"
                   disabled={busy || code.length !== CODE_LENGTH}
                   onClick={() => void verify(code)}>
-            {busy ? 'Перевіряємо…' : 'Підтвердити'}
+            {busy ? t('auth.code.checking') : t('auth.code.submit')}
           </button>
           <button type="button" className="link-quiet link-accent"
                   disabled={left > 0 || busy} onClick={() => void resend()}>
-            Надіслати код повторно
+            {t('auth.code.resend')}
           </button>
         </div>
 
         <div className="note note-row">
           <span style={{ color: 'var(--color-muted)' }}><MailIcon size={20} /></span>
-          <span>
-            Не отримали лист? Перевірте папку «Вхідні» та «Спам».
-            Або повторіть через хвилину.
-          </span>
+          <span>{t('auth.code.noMail')}</span>
         </div>
       </AuthShell>
     )
@@ -284,20 +293,21 @@ function RegisterInner() {
 
   // ── Анкета ───────────────────────────────────────────────────
   return (
-    <AuthShell title="Реєстрація"
-               subtitle="Створіть акаунт, щоб користуватися всіма можливостями CRESKO">
+    <AuthShell title={t('auth.register.title')} subtitle={t('auth.register.subtitle')}>
       <form onSubmit={submitForm} className="flex flex-col gap-4">
         <div>
-          <label className="field-label" htmlFor="first">Імʼя</label>
+          <label className="field-label" htmlFor="first">{t('auth.field.firstName')}</label>
           <input id="first" required className="input" autoComplete="given-name"
                  autoCapitalize="words"
-                 value={first} onChange={(e) => setFirst(e.target.value)} placeholder="Марія" />
+                 value={first} onChange={(e) => setFirst(e.target.value)}
+                 placeholder={t('auth.register.first.placeholder')} />
         </div>
         <div>
-          <label className="field-label" htmlFor="last">Прізвище</label>
+          <label className="field-label" htmlFor="last">{t('auth.field.lastName')}</label>
           <input id="last" required className="input" autoComplete="family-name"
                  autoCapitalize="words"
-                 value={last} onChange={(e) => setLast(e.target.value)} placeholder="Коваленко" />
+                 value={last} onChange={(e) => setLast(e.target.value)}
+                 placeholder={t('auth.register.last.placeholder')} />
         </div>
         <div>
           <label className="field-label" htmlFor="email">Email</label>
@@ -306,18 +316,18 @@ function RegisterInner() {
                  value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
         </div>
         <div>
-          <label className="field-label" htmlFor="pass">Пароль</label>
+          <label className="field-label" htmlFor="pass">{t('auth.field.password')}</label>
           <PasswordInput id="pass" value={password} onChange={setPassword}
                          autoComplete="new-password" />
           <p className={password.length > 0 && password.length < 8 ? 'field-error' : 'field-hint'}>
-            Мінімум 8 символів
+            {t('auth.password.min')}
           </p>
         </div>
         <div>
-          <label className="field-label" htmlFor="pass2">Підтвердіть пароль</label>
+          <label className="field-label" htmlFor="pass2">{t('auth.field.confirmPassword')}</label>
           <PasswordInput id="pass2" value={confirm} onChange={setConfirm}
                          autoComplete="new-password" invalid={mismatch} />
-          {mismatch && <p className="field-error">Паролі не збігаються</p>}
+          {mismatch && <p className="field-error">{t('auth.field.mismatch')}</p>}
         </div>
 
         {/* Согласие с версией: без terms_version запись в журнале
@@ -327,11 +337,16 @@ function RegisterInner() {
         <label className="checkline">
           <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
           <span>
-            Я ознайомився(-лась) та погоджуюсь з{' '}
+            {t('auth.register.agree.lead')}{' '}
+            {/* Названия документов приходят из `lib/legal.ts` — это
+                перечень юридических документов, а не строки интерфейса:
+                они называются так, как называется сам документ. */}
             {LEGAL_DOCS.map((d, i) => (
               <span key={d.href}>
                 <Link href={d.href}>{d.label.toLowerCase()}</Link>
-                {i < LEGAL_DOCS.length - 2 ? ', ' : i === LEGAL_DOCS.length - 2 ? ' і ' : ''}
+                {i < LEGAL_DOCS.length - 2
+                  ? ', '
+                  : i === LEGAL_DOCS.length - 2 ? ` ${t('auth.register.agree.and')} ` : ''}
               </span>
             ))}
             .
@@ -341,15 +356,17 @@ function RegisterInner() {
         {error && <p className="field-error">{error}</p>}
 
         <button className="btn-primary btn-tall" disabled={busy || !ready}>
-          {busy ? 'Створюємо…' : 'Зареєструватися'}
+          {busy ? t('auth.register.busy') : t('auth.register.submit')}
         </button>
       </form>
 
       <GoogleButton next={next ?? undefined} />
 
       <p className="t-md mt-6 text-center prose-muted">
-        Вже є акаунт?{' '}
-        <Link href={loginHref} className="underline underline-offset-2">Увійти</Link>
+        {t('auth.register.haveAccount')}{' '}
+        <Link href={loginHref} className="underline underline-offset-2">
+          {t('auth.register.login')}
+        </Link>
       </p>
     </AuthShell>
   )

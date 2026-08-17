@@ -4,6 +4,13 @@ import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useT } from '@/lib/i18n/client'
+
+// Дата выпуска версии — «12 січ. 2024». Набор опций, а не своя `fmt`:
+// форматирует `t.date`, то есть локаль, а не экран.
+const DAY: Intl.DateTimeFormatOptions = {
+  day: 'numeric', month: 'short', year: 'numeric',
+}
 
 type Card = {
   id: string; title: string; version: number; steps: unknown
@@ -79,6 +86,7 @@ export function TechCardsClient({
   canWrite: boolean
   cards: Card[]; services: Service[]; loadError: string
 }) {
+  const t = useT()
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
   const [draft, setDraft] = useState<Draft | null>(null)
@@ -160,8 +168,8 @@ export function TechCardsClient({
         note: s.note.trim() || null,
       }))
       .filter((s) => s.step.length > 0)
-    if (!title) { setErr('Вкажіть назву техкарти'); return }
-    if (steps.length === 0) { setErr('Додайте хоча б один крок із назвою'); return }
+    if (!title) { setErr(t('techcards.error.noTitle')); return }
+    if (steps.length === 0) { setErr(t('techcards.error.noSteps')); return }
 
     setBusy(true); setErr('')
     const { error } = await supabase.from('tech_cards').insert({
@@ -186,24 +194,21 @@ export function TechCardsClient({
 
     setBusy(false)
     setDraft(null)
-    if (offError) setErr(`Версію збережено, але попередні лишились активними: ${offError.message}`)
+    // Текст отказа базы подставляется КАК ЕСТЬ — он её, а не наш.
+    if (offError) setErr(t('techcards.error.activeLeft', { error: offError.message }))
     router.refresh()
   }
-
-  const fmt = (s: string) => new Date(s).toLocaleDateString('uk-UA', {
-    day: 'numeric', month: 'short', year: 'numeric',
-  })
 
   return (
     <div className="flex flex-col gap-5">
       <div className="rise flex flex-wrap items-center gap-2">
         {canWrite && (
           <button className="btn-primary t-sm" onClick={startNew} disabled={draft !== null}>
-            Нова техкарта
+            {t('techcards.new')}
           </button>
         )}
-        <Link href="/app/journals" className="btn-ghost">← Санітарні журнали</Link>
-        <Link href="/app/documents" className="btn-ghost">Документи на матеріали</Link>
+        <Link href="/app/journals" className="btn-ghost">{t('techcards.nav.journals')}</Link>
+        <Link href="/app/documents" className="btn-ghost">{t('techcards.nav.documents')}</Link>
       </div>
 
       {loadError && <p className="field-error rise">{loadError}</p>}
@@ -213,35 +218,39 @@ export function TechCardsClient({
         <form onSubmit={save} className="card rise-1 flex flex-col gap-4">
           <div className="flex items-center justify-between gap-3">
             <h2 className="display t-lg">
-              {draft.lockTitle ? `Нова версія: ${draft.title}` : 'Нова техкарта'}
+              {/* Назва техкарти — данные заклада, она приезжает подстановкой. */}
+              {draft.lockTitle
+                ? t('techcards.draft.newVersion', { title: draft.title })
+                : t('techcards.new')}
             </h2>
-            <span className="badge-accent tabular">версія {draft.version}</span>
+            <span className="badge-accent tabular">
+              {t('techcards.draft.version', { n: t.number(draft.version) })}
+            </span>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <label className="field-label">Назва</label>
+              <label className="field-label">{t('techcards.field.title.label')}</label>
               <input
-                required className="input" placeholder="Підготовка канекалону"
+                required className="input" placeholder={t('techcards.field.title.placeholder')}
                 value={draft.title} disabled={draft.lockTitle}
                 onChange={(e) => setDraft({ ...draft, title: e.target.value })}
               />
               {draft.lockTitle && (
-                <p className="field-hint">
-                  Назва звʼязує версії між собою, тому в новій версії вона незмінна.
-                </p>
+                <p className="field-hint">{t('techcards.field.title.hint')}</p>
               )}
             </div>
             <div>
-              <label className="field-label">Послуга</label>
+              <label className="field-label">{t('techcards.field.service.label')}</label>
               <select
                 className="select" value={draft.offeringId}
                 onChange={(e) => setDraft({ ...draft, offeringId: e.target.value })}
               >
-                <option value="">Загальна для салону</option>
+                <option value="">{t('techcards.field.service.general')}</option>
+                {/* Назви послуг — данные каталога заклада. */}
                 {services.map((s) => <option key={s.id} value={s.id}>{s.title}</option>)}
               </select>
-              <p className="field-hint">Необовʼязково: карта може стосуватись усього салону.</p>
+              <p className="field-hint">{t('techcards.field.service.hint')}</p>
             </div>
           </div>
 
@@ -249,19 +258,22 @@ export function TechCardsClient({
             {draft.steps.map((step, i) => (
               <div key={i} className="card-flat grid gap-3 sm:grid-cols-[1fr_1fr_7rem]">
                 <div className="sm:col-span-3 flex items-center justify-between gap-2">
-                  <span className="badge tabular">крок {i + 1}</span>
+                  <span className="badge tabular">
+                    {t('techcards.step.badge', { n: t.number(i + 1) })}
+                  </span>
+                  {/* Подписи для скринридера: стрелку и крестик он не прочтёт. */}
                   <span className="flex gap-1">
-                    <button type="button" className="btn-icon" aria-label="Вище"
+                    <button type="button" className="btn-icon" aria-label={t('techcards.step.up.aria')}
                             disabled={i === 0} onClick={() => moveStep(i, -1)}>↑</button>
-                    <button type="button" className="btn-icon" aria-label="Нижче"
+                    <button type="button" className="btn-icon" aria-label={t('techcards.step.down.aria')}
                             disabled={i === draft.steps.length - 1} onClick={() => moveStep(i, 1)}>↓</button>
-                    <button type="button" className="btn-icon" aria-label="Видалити"
+                    <button type="button" className="btn-icon" aria-label={t('common.delete')}
                             onClick={() => removeStep(i)}>✕</button>
                   </span>
                 </div>
                 <div>
-                  <label className="field-label">Дія</label>
-                  <input className="input" placeholder="Замочування"
+                  <label className="field-label">{t('techcards.step.action.label')}</label>
+                  <input className="input" placeholder={t('techcards.step.action.placeholder')}
                          value={step.step}
                          onChange={(e) => patchStep(i, { step: e.target.value })} />
                 </div>
@@ -269,26 +281,27 @@ export function TechCardsClient({
                     ТЗ 3.4 называет их порознь, и отчёт для проверяющего печатает
                     их порознь: «Замочування — розчин соди, пропорція 1:10, 15 хв». */}
                 <div>
-                  <label className="field-label">Розчин</label>
-                  <input className="input" placeholder="Розчин соди"
+                  <label className="field-label">{t('techcards.step.solution.label')}</label>
+                  <input className="input" placeholder={t('techcards.step.solution.placeholder')}
                          value={step.solution}
                          onChange={(e) => patchStep(i, { solution: e.target.value })} />
                 </div>
                 <div>
-                  <label className="field-label">Пропорція</label>
-                  <input className="input" placeholder="1:10"
+                  <label className="field-label">{t('techcards.step.proportion.label')}</label>
+                  <input className="input" placeholder={t('techcards.step.proportion.placeholder')}
                          value={step.proportion}
                          onChange={(e) => patchStep(i, { proportion: e.target.value })} />
                 </div>
                 <div>
-                  <label className="field-label">Хвилин</label>
-                  <input className="input" type="number" min="1" placeholder="15"
+                  <label className="field-label">{t('techcards.step.minutes.label')}</label>
+                  <input className="input" type="number" min="1"
+                         placeholder={t('techcards.step.minutes.placeholder')}
                          value={step.minutes}
                          onChange={(e) => patchStep(i, { minutes: e.target.value })} />
                 </div>
                 <div>
-                  <label className="field-label">Примітка</label>
-                  <input className="input" placeholder="Температура 40°C"
+                  <label className="field-label">{t('techcards.step.note.label')}</label>
+                  <input className="input" placeholder={t('techcards.step.note.placeholder')}
                          value={step.note}
                          onChange={(e) => patchStep(i, { note: e.target.value })} />
                 </div>
@@ -296,35 +309,30 @@ export function TechCardsClient({
             ))}
             <button type="button" className="btn-secondary self-start"
                     onClick={() => setDraft({ ...draft, steps: [...draft.steps, { ...EMPTY_STEP }] })}>
-              Додати крок
+              {t('techcards.step.add')}
             </button>
           </div>
 
           <div className="flex flex-wrap gap-2">
             <button className="btn-primary" disabled={busy}>
-              {busy ? 'Зберігаємо…' : `Затвердити версію ${draft.version}`}
+              {busy
+                ? t('common.saving')
+                : t('techcards.submit', { n: t.number(draft.version) })}
             </button>
             <button type="button" className="btn-secondary" disabled={busy}
                     onClick={() => { setDraft(null); setErr('') }}>
-              Скасувати
+              {t('common.cancel')}
             </button>
           </div>
-          <p className="field-hint">
-            Після збереження цю версію не можна буде змінити — тільки випустити
-            наступну. Так і має бути: по затвердженій карті вже працювали, і саме
-            вона є доказом для перевірки.
-          </p>
+          <p className="field-hint">{t('techcards.form.hint')}</p>
         </form>
       )}
 
       {groups.length === 0 ? (
         <div className="card rise-2">
           <div className="empty">
-            <p>Техкарт ще немає.</p>
-            <p className="prose-muted">
-              Техкарта — це регламент обробки: чим замочуємо, у якій пропорції
-              та скільки хвилин. Перевірка запитує саме її.
-            </p>
+            <p>{t('techcards.empty.title')}</p>
+            <p className="prose-muted">{t('techcards.empty.desc')}</p>
           </div>
         </div>
       ) : (
@@ -333,6 +341,7 @@ export function TechCardsClient({
             <section key={g.title} className="card rise-2 flex flex-col gap-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
+                  {/* Назва техкарти і назва послуги — данные заклада. */}
                   <h2 className="display t-lg">{g.title}</h2>
                   {/* «Загальна для салону» — только когда услуги и правда
                       нет. Название приходит из `compliance_offerings`
@@ -343,14 +352,17 @@ export function TechCardsClient({
                       про регламент. */}
                   <p className="tabular t-xs prose-muted">
                     {g.latest.offeringTitle
-                      ?? (g.latest.offeringId ? 'Привʼязана до послуги' : 'Загальна для салону')}
-                    {' · '}версій: {g.versions.length}
+                      ?? (g.latest.offeringId
+                        ? t('techcards.card.linked')
+                        : t('techcards.field.service.general'))}
+                    {' · '}
+                    {t('techcards.card.versions', { n: t.number(g.versions.length) })}
                   </p>
                 </div>
                 {canWrite && (
                   <button className="btn-secondary t-sm" disabled={draft !== null}
                           onClick={() => startNextVersion(g)}>
-                    Створити нову версію
+                    {t('techcards.card.newVersion')}
                   </button>
                 )}
               </div>
@@ -365,24 +377,40 @@ export function TechCardsClient({
                         <button className="btn-ghost tabular !px-0"
                                 onClick={() => setOpenVersion(open ? null : v.id)}>
                           <span aria-hidden>{open ? '▾' : '▸'}</span>
-                          Версія {v.version} · {fmt(v.createdAt)} · кроків: {steps.length}
+                          {t('techcards.version.line', {
+                            n: t.number(v.version),
+                            date: t.date(v.createdAt, DAY),
+                            steps: t.number(steps.length),
+                          })}
                         </button>
                         <span className={v.id === g.currentId ? 'badge-success' : 'badge'}>
-                          {v.id === g.currentId ? 'чинна' : 'архів'}
+                          {v.id === g.currentId
+                            ? t('techcards.version.current')
+                            : t('techcards.version.archived')}
                         </span>
                       </div>
                       {open && (
                         <ol className="t-md flex flex-col gap-2 pb-3 pl-5">
-                          {steps.length === 0 && <li className="prose-muted">Кроків не записано</li>}
+                          {steps.length === 0 && (
+                            <li className="prose-muted">{t('techcards.steps.empty')}</li>
+                          )}
+                          {/* Текст шага, раствор, пропорция и примечание —
+                              регламент заклада, то есть данные: они не
+                              переводятся. Переводится только обвязка. */}
                           {steps.map((s, i) => (
                             <li key={i}>
                               <span className="font-medium">{i + 1}. {s.step}</span>
-                              {s.minutes && <span className="prose-muted"> · {s.minutes} хв</span>}
+                              {s.minutes && (
+                                <span className="prose-muted">
+                                  {' · '}{t('techcards.step.minutesShort', { n: s.minutes })}
+                                </span>
+                              )}
                               {(s.solution || s.proportion) && (
                                 <p className="t-xs prose-muted">
                                   {s.solution}
                                   {s.solution && s.proportion ? ', ' : ''}
-                                  {s.proportion && `пропорція ${s.proportion}`}
+                                  {s.proportion
+                                    && t('techcards.step.proportionShort', { value: s.proportion })}
                                 </p>
                               )}
                               {s.note && <p className="t-xs prose-muted">{s.note}</p>}
@@ -399,11 +427,7 @@ export function TechCardsClient({
         </div>
       )}
 
-      <p className="field-hint rise-3">
-        Стару версію неможливо ані виправити, ані видалити: по ній уже працювали,
-        і вона доводить, за яким регламентом оброблявся матеріал у той період.
-        Зміна регламенту — це завжди нова версія, попередня лишається в історії.
-      </p>
+      <p className="field-hint rise-3">{t('techcards.footer')}</p>
     </div>
   )
 }

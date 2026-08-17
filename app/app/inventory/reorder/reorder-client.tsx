@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
+import { useT } from '@/lib/i18n/client'
 
 export type LowItem = {
   kind: string
@@ -14,12 +15,16 @@ export type LowItem = {
   supplier: string | null
 }
 
-const NO_SUPPLIER = 'Без постачальника'
+// Ключ группы «поставщик не указан». Пустая строка, а не подпись:
+// подпись переводится, а ключ — нет, иначе смена языка перетасовала бы
+// группировку и порядок блоков.
+const NO_SUPPLIER = ''
 
 // Список заказывают одному поставщику целиком, а не по одной позиции —
 // поэтому группировка по поставщику здесь не украшение, а способ работы:
 // один блок = одно сообщение в вайбер.
 export function ReorderClient({ items, error }: { items: LowItem[]; error: string }) {
+  const t = useT()
   const [copied, setCopied] = useState<string | null>(null)
   const [copyError, setCopyError] = useState('')
 
@@ -45,10 +50,16 @@ export function ReorderClient({ items, error }: { items: LowItem[]; error: strin
   // Текст пишется так, чтобы его можно было отправить как есть: получатель
   // не видит нашей таблицы и не знает слова «поріг».
   function textFor(supplier: string, list: LowItem[]): string {
-    const head = supplier === NO_SUPPLIER ? 'Замовлення' : `Замовлення · ${supplier}`
+    const head = supplier === NO_SUPPLIER
+      ? t('inventory.reorder.copy.head')
+      : t('inventory.reorder.copy.headSupplier', { supplier })
     const lines = list.map((it) => (it.toOrder > 0
-      ? `— ${it.title}: ${it.toOrder} ${it.unit}`.trim()
-      : `— ${it.title}: залишок на межі (${it.stock} ${it.unit})`.trim()))
+      ? t('inventory.reorder.copy.item', {
+        title: it.title, qty: t.number(it.toOrder), unit: it.unit,
+      }).trim()
+      : t('inventory.reorder.copy.itemEdge', {
+        title: it.title, stock: t.number(it.stock), unit: it.unit,
+      }).trim()))
     return [head, ...lines].join('\n')
   }
 
@@ -62,7 +73,7 @@ export function ReorderClient({ items, error }: { items: LowItem[]; error: strin
       // Буфер обмена доступен только в защищённом контексте и только по
       // жесту пользователя. Если браузер отказал — не молчим, а говорим,
       // что список придётся выделить руками.
-      setCopyError('Браузер не дав доступ до буфера — виділіть список і скопіюйте вручну.')
+      setCopyError(t('inventory.reorder.copyError'))
     }
   }
 
@@ -71,38 +82,44 @@ export function ReorderClient({ items, error }: { items: LowItem[]; error: strin
   return (
     <div className="flex flex-col gap-5">
       <div className="rise flex flex-wrap items-center gap-2">
-        <Link href="/app/inventory" className="btn-ghost">← Склад</Link>
+        <Link href="/app/inventory" className="btn-ghost">← {t('inventory.link.stock')}</Link>
         {groups.length > 1 && (
           <button type="button" className="btn-secondary ml-auto t-md"
                   onClick={() => void copy('all', allText)}>
-            {copied === 'all' ? 'Скопійовано' : 'Скопіювати все'}
+            {copied === 'all' ? t('common.copied') : t('inventory.reorder.copyAll')}
           </button>
         )}
       </div>
 
-      {error && <p className="field-error rise">Не вдалося завантажити список: {error}</p>}
+      {/* Текст отказа базы показывается как есть — это её слова, не наши. */}
+      {error && (
+        <p className="field-error rise">{t('inventory.reorder.loadError')}: {error}</p>
+      )}
       {copyError && <p className="field-error rise">{copyError}</p>}
 
       {items.length === 0 ? (
         <section className="card rise-1">
           <div className="empty">
-            Все на місці — нічого не опустилося до мінімуму.
-            <span className="prose-muted">
-              Позиція зʼявиться тут сама, щойно залишок дійде до порога,
-              який ви їй задали.
-            </span>
+            {t('inventory.reorder.empty.title')}
+            <span className="prose-muted">{t('inventory.reorder.empty.desc')}</span>
           </div>
         </section>
       ) : groups.map((g, i) => (
-        <section key={g.supplier} className={`card !p-0 ${i === 0 ? 'rise-1' : 'rise-2'}`}>
+        <section key={g.supplier || 'no-supplier'}
+                 className={`card !p-0 ${i === 0 ? 'rise-1' : 'rise-2'}`}>
           <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-5">
             <div className="min-w-0">
-              <p className="t-lg truncate">{g.supplier}</p>
-              <p className="tabular t-xs mt-0.5 prose-muted">позицій: {g.list.length}</p>
+              {/* Имя поставщика — данные арендатора, не переводится. */}
+              <p className="t-lg truncate">
+                {g.supplier === NO_SUPPLIER ? t('inventory.reorder.noSupplier') : g.supplier}
+              </p>
+              <p className="tabular t-xs mt-0.5 prose-muted">
+                {t('inventory.reorder.group.count', { n: t.number(g.list.length) })}
+              </p>
             </div>
             <button type="button" className="btn-secondary t-md"
                     onClick={() => void copy(g.supplier, textFor(g.supplier, g.list))}>
-              {copied === g.supplier ? 'Скопійовано' : 'Скопіювати список'}
+              {copied === g.supplier ? t('common.copied') : t('inventory.reorder.copyList')}
             </button>
           </div>
 
@@ -112,12 +129,20 @@ export function ReorderClient({ items, error }: { items: LowItem[]; error: strin
                 <div className="min-w-0">
                   <p className="t-md truncate">{it.title}</p>
                   <p className="tabular t-xs mt-0.5 prose-muted">
-                    {it.kind === 'material' ? 'витратний засіб' : 'товар'}
-                    {' · '}залишок {it.stock} {it.unit} з мінімуму {it.threshold}
+                    {it.kind === 'material'
+                      ? t('inventory.kind.material')
+                      : t('inventory.kind.goods')}
+                    {' · '}{t('inventory.reorder.row.stock', {
+                      stock: t.number(it.stock),
+                      unit: it.unit,
+                      threshold: t.number(it.threshold),
+                    })}
                   </p>
                 </div>
                 <span className={`tabular ${it.stock <= 0 ? 'badge-danger' : 'badge-warn'}`}>
-                  {it.toOrder > 0 ? `+${it.toOrder} ${it.unit}` : 'на межі'}
+                  {it.toOrder > 0
+                    ? `+${t.number(it.toOrder)} ${it.unit}`
+                    : t('inventory.reorder.row.edge')}
                 </span>
               </div>
             ))}
@@ -128,18 +153,10 @@ export function ReorderClient({ items, error }: { items: LowItem[]; error: strin
       ))}
 
       {items.length > 0 && (
-        <p className="field-hint">
-          Скопійований текст — готове повідомлення постачальнику: назва
-          і скільки взяти. Замовлення це не створює: прихід зʼявиться на складі
-          тоді, коли ви проведете приймання привезеного.
-        </p>
+        <p className="field-hint">{t('inventory.reorder.hint.copy')}</p>
       )}
 
-      <p className="field-hint">
-        Позиція потрапляє сюди, лише якщо їй заданий мінімальний залишок
-        більший за нуль. Порожній список при порожніх полицях означає,
-        що мінімуми ще не проставлені.
-      </p>
+      <p className="field-hint">{t('inventory.reorder.hint.threshold')}</p>
     </div>
   )
 }

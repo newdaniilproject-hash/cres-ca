@@ -97,6 +97,8 @@ export function NotifyBanner() {
       const n = e.notification ?? {}
       const extra = n.additionalData ?? n.data
       try { e.preventDefault?.() } catch { /* необязательно */ }
+      // Запасной заголовок пуша — имя приложения. Название продукта
+      // не переводится ни на один язык, поэтому в словарь не едет.
       push(n.title ?? 'Маркет', n.body, extra?.url ?? extra?.href)
     }
 

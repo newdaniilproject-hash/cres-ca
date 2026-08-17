@@ -2,18 +2,25 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useT } from '@/lib/i18n/client'
+
+// Язык здесь тот же, что у остальной витрины, и приходит тем же путём:
+// публичные страницы не обёрнуты `LangProvider`, поэтому `useT()` отдаёт
+// `DEFAULT_LANG`. Почему витрина закреплена на украинском — в шапке
+// `components/shell.tsx`; когда появится сегмент адреса, провайдер встанет
+// над витриной и этот экран поедет за ним, ничего здесь не меняя.
+//
+// Своих `names` для дней недели и своего `toISOString().slice(0,10)` тут
+// больше нет. Первое было списком украинских сокращений, который в русском
+// и английском остался бы украинским навсегда; второе — ошибка, названная
+// в `lib/i18n/format.ts`: срез идёт по UTC, и при отрицательном смещении
+// человек выбирал 5-е, а слоты запрашивались на 4-е.
 
 type Variant = { id: string; name: string; price: number | null; minutes: number }
 type Slot = { staff_id: string; staff_name: string; starts_at: string }
 type Booked = { number: number; deposit_due: number; contact_phone: string | null }
 
 const DAYS = 10
-
-function dayLabel(d: Date) {
-  const names = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб']
-  return { top: names[d.getDay()], bottom: d.getDate() }
-}
-function iso(d: Date) { return d.toISOString().slice(0, 10) }
 
 export function BookingFlow({
   tenantId, variants, depositPercent, cancelWindow,
@@ -23,6 +30,7 @@ export function BookingFlow({
   depositPercent: number
   cancelWindow: number
 }) {
+  const t = useT()
   const supabase = useMemo(() => createClient(), [])
   const [variant, setVariant] = useState<Variant | null>(variants.length === 1 ? variants[0] : null)
   const [day, setDay] = useState<Date | null>(null)
@@ -42,6 +50,10 @@ export function BookingFlow({
     return out
   }, [])
 
+  // `t.inputDay` — ГГГГ-ММ-ДД по местным частям даты. Не локализуется
+  // намеренно: это формат значения для базы, а не текст на экране.
+  const iso = t.inputDay
+
   const loadSlots = useCallback(async (v: Variant, d: Date) => {
     setSlots(null); setSlot(null)
     const { data } = await supabase.rpc('available_slots', {
@@ -49,7 +61,7 @@ export function BookingFlow({
       p_from: iso(d), p_to: iso(d),
     })
     setSlots((data ?? []) as Slot[])
-  }, [supabase, tenantId])
+  }, [supabase, tenantId, iso])
 
   useEffect(() => {
     if (variant && day) void loadSlots(variant, day)
@@ -83,19 +95,26 @@ export function BookingFlow({
              style={{ borderRadius: '50%', background: 'var(--color-success-soft)', color: 'var(--color-success)' }}>
           ✓
         </div>
-        <h2 className="display t-xl tabular">Запис №{booked.number} створено</h2>
+        {/* Номер записи подставляется строкой, а не `t.number`: это номер
+            документа, разделитель разрядов сделал бы из №1024 «№1 024». */}
+        <h2 className="display t-xl tabular">
+          {t('public.book.done.title', { n: String(booked.number) })}
+        </h2>
+        {/* Название варианта и имя мастера — данные заведения, не переводятся. */}
         <p className="t-md mt-2 prose-muted">
-          {variant?.name}{when ? ` · ${when.toLocaleDateString('uk-UA', { day: 'numeric', month: 'long' })}, ${when.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })}` : ''}
+          {variant?.name}
+          {when ? ` · ${t.date(when, { day: 'numeric', month: 'long' })}, `
+            + `${t.dateTime(when, { hour: '2-digit', minute: '2-digit' })}` : ''}
           {slot ? ` · ${slot.staff_name}` : ''}
         </p>
         {booked.deposit_due > 0 && (
           <p className="badge-warn tabular mx-auto mt-4">
-            Передоплата {Number(booked.deposit_due).toLocaleString('uk-UA')} ₴ — заклад надішле реквізити
+            {t('public.book.done.deposit', { sum: t.money(Number(booked.deposit_due)) })}
           </p>
         )}
         <p className="t-xs mt-4 prose-muted">
-          Нагадаємо за добу та за 2 години. Скасувати чи перенести можна
-          не пізніше ніж за {cancelWindow} год до візиту.
+          {t('public.book.done.remind')}{' '}
+          {t.plural('public.book.done.cancelHours', cancelWindow)}
         </p>
       </div>
     )
@@ -105,7 +124,7 @@ export function BookingFlow({
     <form onSubmit={submit} className="mt-8 flex flex-col gap-8 pb-8">
       {/* Шаг 1: вариант */}
       <section className="rise-1">
-        <p className="field-label">Оберіть варіант</p>
+        <p className="field-label">{t('public.book.variant.label')}</p>
         <div className="flex flex-col gap-2">
           {variants.map((v) => (
             <button key={v.id} type="button"
@@ -116,9 +135,9 @@ export function BookingFlow({
                 : undefined}>
               <span className="t-md">{v.name}</span>
               <span className="tabular t-md flex items-center gap-3 prose-muted">
-                <span>{v.minutes} хв</span>
+                <span>{t('public.book.duration', { n: v.minutes })}</span>
                 {v.price != null && <span className="font-medium" style={{ color: 'var(--color-text)' }}>
-                  {v.price.toLocaleString('uk-UA')} ₴
+                  {t.money(v.price)}
                 </span>}
               </span>
             </button>
@@ -129,10 +148,9 @@ export function BookingFlow({
       {/* Шаг 2: день */}
       {variant && (
         <section className="rise">
-          <p className="field-label">День</p>
+          <p className="field-label">{t('public.book.day.label')}</p>
           <div className="flex gap-2 overflow-x-auto pb-1">
             {days.map((d) => {
-              const l = dayLabel(d)
               const active = day && iso(day) === iso(d)
               return (
                 <button key={iso(d)} type="button" onClick={() => setDay(d)}
@@ -143,8 +161,10 @@ export function BookingFlow({
                     background: active ? 'var(--color-accent)' : 'var(--color-surface)',
                     color: active ? 'var(--color-accent-text)' : 'var(--color-text)',
                   }}>
-                  <span className="t-xs opacity-70">{l.top}</span>
-                  <span className="tabular font-semibold">{l.bottom}</span>
+                  {/* Сокращение дня недели и число месяца даёт Intl, а не
+                      свой список: в русском и английском они другие. */}
+                  <span className="t-xs opacity-70">{t.date(d, { weekday: 'short' })}</span>
+                  <span className="tabular font-semibold">{t.date(d, { day: 'numeric' })}</span>
                 </button>
               )
             })}
@@ -155,17 +175,19 @@ export function BookingFlow({
       {/* Шаг 3: время */}
       {variant && day && (
         <section className="rise">
-          <p className="field-label">Час</p>
+          <p className="field-label">{t('public.book.time.label')}</p>
           {slots === null ? (
             <div className="grid grid-cols-4 gap-2">
               {Array.from({ length: 8 }).map((_, i) => <div key={i} className="skeleton h-11" />)}
             </div>
           ) : slots.length === 0 ? (
-            <div className="empty card-flat !py-8">На цей день вільного часу немає — оберіть інший</div>
+            <div className="empty card-flat !py-8">{t('public.book.time.empty')}</div>
           ) : (
             <div className="grid grid-cols-4 gap-2 sm:grid-cols-5">
               {slots.map((s) => {
-                const t = new Date(s.starts_at)
+                // Переменная называется `at`, а не `t`: `t` — переводчик,
+                // и прежнее имя затеняло бы его внутри этого блока.
+                const at = new Date(s.starts_at)
                 const active = slot?.starts_at === s.starts_at && slot?.staff_id === s.staff_id
                 return (
                   <button key={`${s.staff_id}-${s.starts_at}`} type="button"
@@ -178,13 +200,17 @@ export function BookingFlow({
                       background: active ? 'var(--color-accent)' : 'var(--color-surface)',
                       color: active ? 'var(--color-accent-text)' : 'var(--color-text)',
                     }}>
-                    {t.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })}
+                    {t.dateTime(at, { hour: '2-digit', minute: '2-digit' })}
                   </button>
                 )
               })}
             </div>
           )}
-          {slot && <p className="field-hint">Майстер: {slot.staff_name}</p>}
+          {slot && (
+            <p className="field-hint">
+              {t('public.book.staff.hint', { name: slot.staff_name })}
+            </p>
+          )}
         </section>
       )}
 
@@ -192,28 +218,39 @@ export function BookingFlow({
       {slot && (
         <section className="rise flex flex-col gap-4">
           <div>
-            <label className="field-label" htmlFor="bname">Ваше імʼя</label>
+            <label className="field-label" htmlFor="bname">
+              {t('public.book.name.label')}
+            </label>
             <input id="bname" required className="input" value={name}
-                   onChange={(e) => setName(e.target.value)} placeholder="Марія" />
+                   onChange={(e) => setName(e.target.value)}
+                   placeholder={t('public.book.name.placeholder')} />
           </div>
           <div>
-            <label className="field-label" htmlFor="bphone">Телефон</label>
+            <label className="field-label" htmlFor="bphone">
+              {t('public.book.phone.label')}
+            </label>
+            {/* Маска телефона — формат поля, а не текст: в словарь
+                не уезжает по той же причине, что и `t.inputDay`. */}
             <input id="bphone" type="tel" className="input" value={phone}
                    onChange={(e) => setPhone(e.target.value)} placeholder="+380 __ ___ __ __" />
-            <p className="field-hint">Щоб нагадати про візит у Viber</p>
+            <p className="field-hint">{t('public.book.phone.hint')}</p>
           </div>
 
           {variant && depositPercent > 0 && variant.price != null && (
             <p className="badge-warn tabular self-start">
-              Передоплата {Math.round(variant.price * depositPercent / 100).toLocaleString('uk-UA')} ₴
-              підтверджує запис
+              {t('public.book.deposit.note', {
+                sum: t.money(Math.round(variant.price * depositPercent / 100)),
+              })}
             </p>
           )}
 
+          {/* Отказ базы показывается как есть: он уже написан по-украински
+              и для человека, а перевод здесь завёл бы второй источник
+              правды об ошибках (`lib/i18n/dict.ts`). */}
           {state === 'error' && <p className="field-error">{error}</p>}
 
           <button className="btn-primary" disabled={state === 'sending' || !name.trim()}>
-            {state === 'sending' ? 'Бронюємо…' : 'Підтвердити запис'}
+            {state === 'sending' ? t('public.book.submit.sending') : t('public.book.submit')}
           </button>
         </section>
       )}

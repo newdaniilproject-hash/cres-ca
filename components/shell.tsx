@@ -1,6 +1,46 @@
 import Link from 'next/link'
 import { ThemeToggle } from '@/components/theme'
-import { Brand } from '@/components/auth-ui'
+import { DEFAULT_LANG } from '@/lib/i18n/dict'
+import { createT, type T } from '@/lib/i18n/translate'
+
+// ── ЯЗЫК ВИТРИНЫ ЗАКРЕПЛЁН НА УКРАИНСКОМ. Это решение, а не недоделка ───────
+//
+// Витрина — единственная часть продукта, которую ИНДЕКСИРУЮТ (`app/robots.ts`
+// открывает `/`, `/search`, `/map`, `/t/<slug>`, `app/sitemap.ts` зовёт бота
+// именно на них). Каркас локализации выбирает язык кукой, и для кабинета это
+// верно; здесь — нет, по причине, уже записанной в `lib/i18n/cookie.ts`:
+// один адрес, отдающий три языка по куке, для робота означает адрес со
+// случайным содержимым. `hreflang` приделать не к чему, канонический адрес
+// у трёх версий один, и в выдачу попадёт тот язык, с которым робот пришёл
+// первым. Витрине нужен СЕГМЕНТ адреса (`/uk/t/<slug>`), и он приезжает
+// вместе с её переделкой — вместе с `robots.ts`, `sitemap.ts`, `hreflang`,
+// ссылками в шапках Instagram и наклейками QR, которые уже напечатаны.
+// Это отдельная работа, а не побочный эффект перевода строк.
+//
+// Поэтому строки уехали в словарь СЕЙЧАС, а язык остался один. Обратный
+// порядок («переведём вместе с переделкой») — это ровно тот случай, из-за
+// которого захардкоженная строка остаётся навсегда (CLAUDE.md → «Язык»).
+//
+// ЧТО ЭТО ЗНАЧИТ ДЛЯ ЧЕЛОВЕКА. Выбравший русский в кабинете видит витрину
+// по-украински. Переключателя языка на публичных страницах нет и не было
+// (`LangSwitch` живёт только в `components/app-shell.tsx`), то есть мы не
+// показываем управление, которое ничего не делает, — расхождение видно
+// только при переходе кабинет → витрина и читается как «это другой сайт»,
+// чем витрина продавца и является.
+//
+// ЦЕНА. Ноль. `getLang()` зовёт `cookies()` и сделал бы страницу
+// динамической — но `/`, `/t/<slug>` и `/map` УЖЕ динамические: они зовут
+// `createClient()` (тот тоже читает куки) ради `authed` в этой шапке,
+// и объявленный на них `revalidate` не действует. То есть кэш витрины,
+// которого требует `docs/PERFORMANCE.md` (правило 7), потерян до нас
+// и не этой правкой. Подробности — в отчёте; чинится это разделением
+// шапки на кэшируемую и клиентскую часть, а не словарём.
+//
+// Один переводчик на модуль, а не `createT` в каждом файле: когда появится
+// сегмент, менять надо будет одно место. Клиентские компоненты витрины
+// (`map-view`, `booking-flow`) зовут `useT()` — публичные страницы не
+// обёрнуты `LangProvider`, и контекст отдаёт им тот же `DEFAULT_LANG`.
+export const publicT: T = createT(DEFAULT_LANG)
 
 // Публичная шапка. Ссылок мало сознательно: поиск — главный вход.
 //
@@ -10,41 +50,39 @@ import { Brand } from '@/components/auth-ui'
 // больше нет (CLAUDE.md → «Мобильная версия»), поэтому остался один
 // хром — вебовый, а классы `.web-only` / `.native-only` удалены
 // по правилу 8 вместе с механизмом, который их различал.
-// cabinet — эта же шапка над личным кабинетом (/account). Отличается
-// одним: подписью. Кабинет — часть CRESKO и подписан им, как экраны
-// входа и шапка /app; публичная витрина остаётся «Маркет.» до отдельного
-// решения владельца о её имени. Пока имени два, флаг честнее, чем два
-// почти одинаковых компонента: разъедутся именно они, а не строка.
-export function PublicHeader({ authed, cabinet = false }: { authed: boolean; cabinet?: boolean }) {
+export function PublicHeader({ authed }: { authed: boolean }) {
+  const t = publicT
   return (
     <header className="topbar">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
-        {cabinet ? (
-          <Link href="/app" className="brand-topbar">
-            <Brand />
-          </Link>
-        ) : (
-          <Link href="/" className="display t-xl">
-            Маркет<span style={{ color: 'var(--color-gold)' }}>.</span>
-          </Link>
-        )}
+        {/* Словесный знак — в словаре, а не в разметке: имя как бренд ещё
+            не утверждено (CLAUDE.md → «Что НЕ решено»), и когда оно поменяется
+            или получит латинское начертание для английской версии, менять
+            придётся одну строку словаря, а не шапку и три юридических
+            документа. Переводчик его не переводит — он его ПИШЕТ на своём
+            языке, как имя пишут на своём языке. */}
+        <Link href="/" className="display t-xl">
+          {t('public.chrome.brand')}<span style={{ color: 'var(--color-gold)' }}>.</span>
+        </Link>
         <nav className="flex items-center gap-1 sm:gap-2">
-          <Link href="/map" className="btn-ghost">Мапа</Link>
-          <Link href="/search" className="btn-ghost hidden sm:inline-flex">Пошук</Link>
+          <Link href="/map" className="btn-ghost">{t('public.chrome.map')}</Link>
+          <Link href="/search" className="btn-ghost hidden sm:inline-flex">
+            {t('public.chrome.search')}
+          </Link>
           <ThemeToggle className="hidden sm:inline-flex" />
           {authed ? (
-            <Link href="/account" className="btn-secondary">Кабінет</Link>
+            <Link href="/account" className="btn-secondary">{t('public.chrome.account')}</Link>
           ) : (
             <>
-              <Link href="/login" className="btn-ghost">Увійти</Link>
+              <Link href="/login" className="btn-ghost">{t('public.chrome.signIn')}</Link>
               {/* Регистрация покупателя нужна отдельной ссылкой: без неё
                   единственный вход в неё — со страницы логина, то есть
                   на клик глубже, чем регистрация продавца. */}
               <Link href="/register" className="btn-ghost hidden sm:inline-flex">
-                Реєстрація
+                {t('public.chrome.signUp')}
               </Link>
               <Link href="/register/seller" className="btn-primary hidden sm:inline-flex">
-                Для бізнесу
+                {t('public.chrome.forBusiness')}
               </Link>
             </>
           )}
@@ -56,19 +94,26 @@ export function PublicHeader({ authed, cabinet = false }: { authed: boolean; cab
 
 // Подвал сайта: «Відкрити бізнес», «Вхід», юридические ссылки.
 export function PublicFooter() {
+  const t = publicT
   return (
     <footer className="divider mt-20">
       <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-10 t-sm sm:flex-row sm:items-center sm:justify-between sm:px-6 prose-muted">
-        <p>© {new Date().getFullYear()} · Платформа для українських підприємців</p>
+        {/* Год подставляется строкой, а не `t.number`: разделитель разрядов
+            превратил бы 2026 в «2 026». Это номер, а не количество. */}
+        <p>{t('public.footer.rights', { year: String(new Date().getFullYear()) })}</p>
         {/* Ссылки на политику и удаление данных обязаны быть видны с любой
             страницы: этого требуют и Meta при верификации бизнеса, и обе
             магазинные проверки. Прятать их в подвале второго уровня —
             повод для отказа. */}
         <div className="flex flex-wrap gap-x-5 gap-y-2">
-          <Link href="/register/seller" className="hover:underline">Відкрити бізнес</Link>
-          <Link href="/login" className="hover:underline">Вхід</Link>
-          <Link href="/privacy" className="hover:underline">Конфіденційність</Link>
-          <Link href="/privacy/delete" className="hover:underline">Видалення даних</Link>
+          <Link href="/register/seller" className="hover:underline">
+            {t('public.footer.openBusiness')}
+          </Link>
+          <Link href="/login" className="hover:underline">{t('public.footer.signIn')}</Link>
+          <Link href="/privacy" className="hover:underline">{t('public.footer.privacy')}</Link>
+          <Link href="/privacy/delete" className="hover:underline">
+            {t('public.footer.dataDelete')}
+          </Link>
         </div>
       </div>
     </footer>

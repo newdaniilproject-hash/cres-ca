@@ -4,9 +4,15 @@ import { currentMembership, can, hasModule } from '@/lib/tenant'
 import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { MaterialDocs } from './material-docs'
+import { getT } from '@/lib/i18n/server'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Документи та сертифікати' }
+// Заголовок вкладки — тем же ключом, что и заголовок экрана
+// в оболочке (`components/app-shell.tsx`).
+export async function generateMetadata() {
+  const t = await getT()
+  return { title: t('app.screen.inventory.materialDocs.title') }
+}
 
 // Экран 3 макета и документальный блок ТЗ 3.1.
 //
@@ -58,8 +64,7 @@ export default async function MaterialDocsPage({
   const { data: { user } } = await supabase.auth.getUser()
 
   return (
-    <AppShell active="/app/inventory" title="Документи"
-              back={`/app/inventory/materials/${id}`} modules={m.modules}>
+    <AppShell modules={m.modules}>
       <MaterialDocs
         tenantId={m.tenantId}
         userId={user!.id}

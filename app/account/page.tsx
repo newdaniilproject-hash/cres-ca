@@ -3,11 +3,19 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getMemberships } from '@/lib/tenant'
 import { PublicHeader, PublicFooter } from '@/components/shell'
+import { getT } from '@/lib/i18n/server'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Кабінет' }
+
+// Заголовок вкладки браузера — строка интерфейса, поэтому из словаря.
+// Разбор решения — в `app/app/journals/page.tsx`.
+export async function generateMetadata() {
+  const t = await getT()
+  return { title: t('account.meta.title') }
+}
 
 export default async function AccountPage() {
+  const t = await getT()
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -27,40 +35,47 @@ export default async function AccountPage() {
 
   const name = (user.user_metadata?.full_name as string | undefined) ?? user.email
 
-  const ORDER_LABELS: Record<string, string> = {
-    new: 'новий', confirmed: 'підтверджено', awaiting_payment: 'очікує оплати',
-    paid: 'оплачено', packing: 'збирається', shipped: 'відправлено',
-    delivered: 'доставлено', completed: 'виконано', cancelled: 'скасовано', returned: 'повернення',
-  }
-  const BOOKING_LABELS: Record<string, string> = {
-    booked: 'заброньовано', confirmed: 'підтверджено', arrived: 'ви прийшли',
-    completed: 'виконано', cancelled: 'скасовано', no_show: 'пропущено',
-  }
+  // Подписи к состояниям — свои, покупательские: продавец видит
+  // «нове замовлення», покупатель — «новий». Значения перечислений
+  // (`awaiting_payment`, `no_show`) не переводятся: это ключи базы.
+  const ORDER_STATUSES = [
+    'new', 'confirmed', 'awaiting_payment', 'paid', 'packing',
+    'shipped', 'delivered', 'completed', 'cancelled', 'returned',
+  ] as const
+  const BOOKING_STATUSES = [
+    'booked', 'confirmed', 'arrived', 'completed', 'cancelled', 'no_show',
+  ] as const
+  const orderLabel = (v: string) =>
+    ((ORDER_STATUSES as readonly string[]).includes(v)
+      ? t(`account.order.status.${v as (typeof ORDER_STATUSES)[number]}`) : v)
+  const bookingLabel = (v: string) =>
+    ((BOOKING_STATUSES as readonly string[]).includes(v)
+      ? t(`account.booking.status.${v as (typeof BOOKING_STATUSES)[number]}`) : v)
 
   return (
     <>
-      <PublicHeader authed cabinet />
+      <PublicHeader authed />
       <main className="mx-auto max-w-3xl px-4 pt-10 sm:px-6">
         <div className="rise flex items-center justify-between gap-4">
           <div>
             <h1 className="display t-2xl">{name}</h1>
             <p className="t-sm mt-0.5 prose-muted">{user.email}</p>
           </div>
-          <Link href="/account/security" className="btn-secondary">Безпека</Link>
+          <Link href="/account/security" className="btn-secondary">{t('account.link.security')}</Link>
         </div>
 
         {memberships.length > 0 && (
           <Link href="/app" className="card-link rise-1 mt-6 flex items-center justify-between">
             <div>
-              <p className="t-lg">Кабінет підприємця</p>
-              <p className="t-sm mt-0.5 prose-muted">Склад, записи, клієнти</p>
+              <p className="t-lg">{t('account.business.title')}</p>
+              <p className="t-sm mt-0.5 prose-muted">{t('account.business.desc')}</p>
             </div>
-            <span className="btn-primary">Відкрити</span>
+            <span className="btn-primary">{t('account.business.open')}</span>
           </Link>
         )}
 
         <section className="rise-2 mt-8">
-          <h2 className="display mb-3 t-xl">Мої записи</h2>
+          <h2 className="display mb-3 t-xl">{t('account.bookings.title')}</h2>
           {bookings && bookings.length > 0 ? (
             <div className="card !p-0">
               {bookings.map((b) => (
@@ -68,43 +83,44 @@ export default async function AccountPage() {
                   <div className="min-w-0">
                     <p className="t-md truncate">{b.title} · {b.variant_name}</p>
                     <p className="tabular t-sm mt-0.5 prose-muted">
-                      {new Date(String(b.period).slice(2, 27)).toLocaleString('uk-UA', {
+                      {t.dateTime(String(b.period).slice(2, 27), {
                         day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit',
                       })}
                     </p>
                   </div>
                   <span className={b.status === 'cancelled' ? 'badge' : 'badge-accent'}>
-                    {BOOKING_LABELS[b.status] ?? b.status}
+                    {bookingLabel(b.status)}
                   </span>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="empty card">Записів поки немає — знайдіть майстра через пошук</div>
+            <div className="empty card">{t('account.bookings.empty')}</div>
           )}
         </section>
 
         <section className="rise-3 mt-8 pb-8">
-          <h2 className="display mb-3 t-xl">Мої замовлення</h2>
+          <h2 className="display mb-3 t-xl">{t('account.orders.title')}</h2>
           {orders && orders.length > 0 ? (
             <div className="card !p-0">
               {orders.map((o) => (
                 <div key={`${o.tenant_id}-${o.number}`} className="row px-5">
                   <div>
-                    <p className="tabular t-md">Замовлення №{o.number}</p>
-                    <p className="tabular t-sm mt-0.5 prose-muted">
-                      {new Date(o.created_at).toLocaleDateString('uk-UA')}
+                    <p className="tabular t-md">
+                      {t('account.order.number', { number: Number(o.number) })}
                     </p>
+                    <p className="tabular t-sm mt-0.5 prose-muted">{t.date(o.created_at)}</p>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="badge">{ORDER_LABELS[o.status] ?? o.status}</span>
-                    <p className="tabular t-md">{Number(o.total).toLocaleString('uk-UA')} ₴</p>
+                    <span className="badge">{orderLabel(o.status)}</span>
+                    {/* Символ валюты ставит Intl (`t.money`), а не подстановка «₴». */}
+                    <p className="tabular t-md">{t.money(Number(o.total), o.currency)}</p>
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="empty card">Замовлень поки немає</div>
+            <div className="empty card">{t('account.orders.empty')}</div>
           )}
         </section>
       </main>

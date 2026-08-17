@@ -7,6 +7,10 @@ export const metadata = {
   description: 'Які cookie використовує «Маркет» і навіщо.',
 }
 
+// Текст документа в словарь не уезжает — по той же причине, что и оферта:
+// это опубликованная редакция с номером (`LEGAL_VERSION`), а не экран.
+// Полное обоснование — в шапке `app/terms/page.tsx`. Интерфейс каркаса
+// (кнопка «назад», строка с датой редакции) переведён в `components/legal.tsx`.
 export default function CookiesPage() {
   return (
     <LegalDoc title="Політика cookie" version={LEGAL_VERSION}>
