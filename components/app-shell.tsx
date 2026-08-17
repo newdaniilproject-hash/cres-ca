@@ -132,6 +132,10 @@ const HEADINGS: [string, Key, Key][] = [
   ['/app/inventory/materials/*/docs', 'app.screen.inventory.materialDocs.title', 'app.screen.inventory.materialDocs.desc'],
   ['/app/inventory/materials/*/pao', 'app.screen.inventory.materialPao.title', 'app.screen.inventory.materialPao.desc'],
   ['/app/bookings', 'app.screen.bookings.title', 'app.screen.bookings.desc'],
+  // Мастера живут ВНУТРИ раздела записей, а не отдельным пунктом панели:
+  // снизу лежит только то, между чем прыгают за смену. Отсюда и адрес.
+  ['/app/bookings/staff', 'app.screen.staff.title', 'app.screen.staff.desc'],
+  ['/app/bookings/staff/*', 'app.screen.staffCard.title', 'app.screen.staffCard.desc'],
   ['/app/catalog', 'app.screen.catalog.title', 'app.screen.catalog.desc'],
   ['/app/catalog/new', 'app.screen.catalog.new.title', 'app.screen.catalog.new.desc'],
   ['/app/catalog/*', 'app.screen.catalog.item.title', 'app.screen.catalog.item.desc'],
@@ -156,7 +160,7 @@ function matches(pattern: string, pathname: string): boolean {
 }
 
 // Существует ли такой экран. Оракул — сам HEADINGS: в нём ровно двадцать
-// шесть страниц кабинета, потому что заголовок нужен КАЖДОЙ, и новый
+// восемь страниц кабинета, потому что заголовок нужен КАЖДОЙ, и новый
 // экран без строки здесь приезжает без названия — это замечают сразу.
 // Отдельного списка «а вот этих адресов нет» не заводим: он устареет на
 // первом же экране, который добавят, а этот список — нет.
