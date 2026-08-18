@@ -37,7 +37,25 @@ export async function sendEmail(to: string, subject: string, text?: string, html
   }
 }
 
-export async function sendPush(userId: string, message: string) {
+/**
+ * Пуш одному человеку.
+ *
+ * ⚠️ ПОЛЯ `url` ЗДЕСЬ НЕТ И ЗАВОДИТЬ ЕГО НЕЛЬЗЯ. У OneSignal `url` означает
+ * «открыть в БРАУЗЕРЕ»: приложение при таком пуше не открывается вовсе,
+ * человек оказывается в Chrome с формой входа. Проверено на живом устройстве
+ * 18.08.2026. Адрес экрана уходит в `data.url`, и его читает обработчик
+ * тапа внутри приложения (`scripts/patch-android.sh`, MainActivity) —
+ * он же открывает путь внутри веб-вью, не выходя наружу.
+ *
+ * До 18.08.2026 не отправлялось НИ заголовка, НИ адреса: пуш приходил
+ * без темы, а тап по нему не вёл никуда, потому что обработчик искал
+ * `additionalData.url`, которого никто не клал.
+ */
+export async function sendPush(
+  userId: string,
+  message: string,
+  opts?: { title?: string; url?: string },
+) {
   const appId = process.env.ONESIGNAL_APP_ID
   const key = process.env.ONESIGNAL_API_KEY
   if (!appId || !key) throw new Error('канал push не настроен: нет ONESIGNAL_APP_ID/ONESIGNAL_API_KEY')
@@ -50,6 +68,10 @@ export async function sendPush(userId: string, message: string) {
       include_aliases: { external_id: [userId] },
       target_channel: 'push',
       contents: { en: message, uk: message },
+      // Заголовок обязателен для читаемости: без него система подставляет
+      // имя приложения, и три разных уведомления выглядят одинаково.
+      ...(opts?.title ? { headings: { en: opts.title, uk: opts.title } } : {}),
+      ...(opts?.url ? { data: { url: opts.url } } : {}),
     }),
   })
   if (!res.ok) {
