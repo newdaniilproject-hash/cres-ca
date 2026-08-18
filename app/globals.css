@@ -255,9 +255,16 @@ html.dark {
   }
 }
 
-/* ── Появление: мягкий подъём с лёгким запаздыванием по порядку ── */
+/* ── Появление: мягкий подъём с лёгким запаздыванием по порядку ──
+   Быстрое и короткое — намеренно. `both` держит нулевую прозрачность
+   всё время задержки, то есть каждая лишняя миллисекунда здесь это
+   миллисекунда ПУСТОГО экрана. При прежних 400ms и задержках до 280ms
+   последний блок дорисовывался через 680ms после загрузки, и на тёмной
+   теме это читалось как «экран потемнел на секунду» — так владелец
+   это и описал 18.08.2026. Сдвиг тоже уменьшен: 14px при короткой
+   длительности превращаются из подъёма в рывок. */
 @keyframes rise {
-  from { opacity: 0; transform: translateY(14px); }
+  from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: none; }
 }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
@@ -280,11 +287,15 @@ html.dark {
     letter-spacing: -0.01em;
   }
 
-  .rise   { animation: rise var(--dur-slow) var(--ease-out-soft) both; }
-  .rise-1 { animation: rise var(--dur-slow) var(--ease-out-soft) 60ms both; }
-  .rise-2 { animation: rise var(--dur-slow) var(--ease-out-soft) 130ms both; }
-  .rise-3 { animation: rise var(--dur-slow) var(--ease-out-soft) 200ms both; }
-  .rise-4 { animation: rise var(--dur-slow) var(--ease-out-soft) 280ms both; }
+  /* Длительность `--dur-base`, а не `--dur-slow`, и задержки вчетверо
+     короче прежних: см. комментарий у @keyframes rise. Последний блок
+     теперь дорисовывается через 420ms вместо 680ms, а первый начинает
+     появляться сразу, а не через 60ms. */
+  .rise   { animation: rise var(--dur-base) var(--ease-out-soft) both; }
+  .rise-1 { animation: rise var(--dur-base) var(--ease-out-soft) 40ms both; }
+  .rise-2 { animation: rise var(--dur-base) var(--ease-out-soft) 80ms both; }
+  .rise-3 { animation: rise var(--dur-base) var(--ease-out-soft) 120ms both; }
+  .rise-4 { animation: rise var(--dur-base) var(--ease-out-soft) 160ms both; }
 
   /* Кнопки */
   .btn-primary {

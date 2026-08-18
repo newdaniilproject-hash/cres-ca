@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useRef, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { haptic } from '@/lib/haptic'
 
 // Повадки, которых человек не замечает, пока их нет, и замечает сразу,
@@ -13,6 +14,21 @@ import { haptic } from '@/lib/haptic'
 //   2. Потянуть список вниз — обновить (pull to refresh).
 //   3. Появление экрана — коротким сдвигом, а не мгновенной подменой.
 export function NativeFeel() {
+  const router = useRouter()
+  const [pending, startTransition] = useTransition()
+  // Кружок жеста живёт между отрисовками: его создаёт обработчик касания,
+  // а убирает эффект, когда обновление закончилось. Локальной переменной
+  // внутри useEffect тут уже мало.
+  const barRef = useRef<HTMLDivElement | null>(null)
+
+  // Обновление закончилось — снимаем кружок. Отдельным эффектом, потому
+  // что момент окончания знает React, а не обработчик касания.
+  useEffect(() => {
+    if (pending) return
+    barRef.current?.remove()
+    barRef.current = null
+  }, [pending])
+
   useEffect(() => {
     if (typeof document === 'undefined') return
     if (!document.documentElement.hasAttribute('data-native')) return
@@ -35,6 +51,22 @@ export function NativeFeel() {
     // ── 2. Потянуть вниз — обновить ──────────────────────────────
     // Работает только когда список уже прокручен в самый верх,
     // иначе жест «вниз» — это обычная прокрутка.
+    //
+    // ⚠️ ОБНОВЛЯЕМ ЧЕРЕЗ `router.refresh()`, А НЕ `location.reload()`.
+    // Полная перезагрузка сносит документ целиком: всё, что появляется
+    // анимацией `.rise`, начинается с нулевой прозрачности, и человек
+    // на полсекунды видит голый фон. Владелец описал это как «экран
+    // темнеет на секунду, а должно быть бесшовно» (18.08.2026) — и это
+    // точное описание того, что делал код.
+    //
+    // `router.refresh()` перезапрашивает серверную часть и подменяет
+    // содержимое НА МЕСТЕ: узлы не пересоздаются, анимации не стартуют
+    // заново, прокрутка остаётся где была. Кружок крутится, пока идёт
+    // переход, — его снимает эффект выше по `pending`.
+    //
+    // Новую СБОРКУ этот путь не подтянет: бандл остаётся прежним. Так и
+    // задумано — про новую версию сообщает своё уведомление из
+    // `components/pwa.tsx`, и вот у него перезагрузка полная и уместная.
     let startY = 0
     let pulling = false
     let dist = 0
@@ -74,6 +106,7 @@ export function NativeFeel() {
         bar.className = 'pull-refresh'
         bar.innerHTML = '<span class="pull-spinner"></span>'
         document.body.appendChild(bar)
+        barRef.current = bar
       }
       bar.style.transform = `translateY(${dist - 44}px)`
       bar.style.opacity = String(Math.min(1, dist / THRESHOLD))
@@ -86,12 +119,18 @@ export function NativeFeel() {
       pulling = false
       if (armed) {
         bar?.classList.add('spinning')
+        // Кружок возвращается наверх сам: пока он висел на пальце,
+        // `transform` держал его смещение, и без сброса он остался бы
+        // болтаться посреди экрана на всё время обновления.
+        if (bar) { bar.style.transform = 'translateY(0)'; bar.style.opacity = '1' }
         haptic.select()
-        setTimeout(() => window.location.reload(), 180)
+        startTransition(() => router.refresh())
+        bar = null
         return
       }
       bar?.remove()
       bar = null
+      barRef.current = null
     }
 
     document.addEventListener('touchstart', onStart, { passive: true })
@@ -105,8 +144,15 @@ export function NativeFeel() {
       document.removeEventListener('touchmove', onMove)
       document.removeEventListener('touchend', onEnd)
       document.removeEventListener('touchcancel', onEnd)
+      // Через `barRef`, а не через `bar`: после запуска обновления
+      // локальная переменная обнулена, а узел ещё висит на странице.
+      barRef.current?.remove()
+      barRef.current = null
       bar?.remove()
     }
+    // Слушатели ставятся один раз на всё время жизни приложения.
+    // `router` и `startTransition` в Next стабильны между отрисовками.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return null
