@@ -808,11 +808,17 @@ Supabase отдают `{{ .Token }}`, ссылки в письме нет вов
    из Google Cloud Console; callback выдаёт сам Supabase.
 4. Supabase → Project Settings → Authentication → SMTP — Resend, см. раздел
    «Почта». Без этого письма при регистрации не доходят.
-5. Переменные окружения на хостинге: `SUPABASE_SERVICE_ROLE_KEY`,
+5. **Vercel → Settings → Functions → Function Region → Dublin (`dub1`).**
+   По умолчанию стоит `iad1` (Вашингтон), а база Supabase — в `eu-west-1`
+   (Ирландия). То есть каждый серверный запрос к базе пересекает Атлантику,
+   и на странице их четыре-шесть. Это 300–500 мс на переход экрана,
+   в которых не виноваты ни код, ни индексы. Разбор с числами —
+   `docs/PERFORMANCE.md`, раздел «География».
+6. Переменные окружения на хостинге: `SUPABASE_SERVICE_ROLE_KEY`,
    `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `CRON_SECRET` (должен совпадать
    с зашитым в расписании `pg_cron`), `ONESIGNAL_APP_ID`, `ONESIGNAL_API_KEY`.
-6. OneSignal — приложение создаётся только через их дашборд, API этого не умеет.
-7. **Секреты GitHub Actions** — Settings → Secrets and variables → Actions.
+7. OneSignal — приложение создаётся только через их дашборд, API этого не умеет.
+8. **Секреты GitHub Actions** — Settings → Secrets and variables → Actions.
 
    **Обязателен ровно один: `SUPABASE_DB_URL`.** С ним работают пять
    заданий, ходящих в базу: резервное копирование, проверка копии
