@@ -2349,3 +2349,216 @@ body.kb-open .m-actionbar {
   color: var(--color-muted);
   font-variant-numeric: tabular-nums;
 }
+
+/* ============================================================
+   МАСТЕР РЕГИСТРАЦИИ ПРОДАВЦА. Раскладка по макетам «регистрация
+   салона» и «регистрация мастера», переданным 18.08.2026.
+
+   Почему НЕ `.auth-split`. У входа две колонки: форма справа,
+   градиентная панель слева — она объясняет, куда человек попал.
+   Здесь объяснять уже не надо: человек нажал «Почати безкоштовно»
+   и знает, куда идёт. Зато появилось то, чего у входа нет, —
+   ДЛИНА: семь шагов, и на каждом надо видеть, сколько осталось.
+   Поэтому колонка одна и узкая, а сверху и снизу живёт счётчик
+   шагов. Панель рядом с семишаговой формой означала бы, что
+   половину экрана занимает то, что человек прочитал один раз.
+   ============================================================ */
+
+@layer components {
+
+  .wiz { @apply flex min-h-dvh flex-col; background: var(--color-bg); }
+
+  /* Верхняя полоса: знак — название потока — номер шага.
+     Название потока в центре, а не слева под знаком: оно отвечает
+     на «что я вообще заполняю», и на середине его читают первым. */
+  .wiz-top {
+    @apply sticky top-0 z-30 flex items-center gap-4 border-b px-4 sm:px-6;
+    height: 60px;
+    padding-top: env(safe-area-inset-top);
+    border-color: var(--color-border);
+    background: color-mix(in srgb, var(--color-surface) 88%, transparent);
+    backdrop-filter: blur(12px);
+  }
+  .wiz-top-title {
+    @apply hidden flex-1 text-center text-sm font-medium sm:block;
+    color: var(--color-muted);
+  }
+  .wiz-step {
+    @apply text-sm tabular-nums;
+    color: var(--color-faint);
+  }
+
+  .wiz-main { @apply flex flex-1 justify-center px-4 py-10 sm:px-6; }
+  /* 560px — ширина, на которой поле в одну строку остаётся полем,
+     а не полосой во весь экран. Шире форма перестаёт читаться
+     сверху вниз, и глаз начинает искать вторую колонку. */
+  .wiz-col { @apply w-full; max-width: 560px; }
+  /* Экран «Хто ви?» шире остальных: на нём не форма, а две карточки
+     со списками, и в 560px они сжимаются до двух узких колонок,
+     где каждая подпись переносится на вторую строку. */
+  .wiz-col[data-wide='true'] { max-width: 800px; }
+
+  .wiz-title {
+    font-family: var(--font-heading);
+    font-weight: var(--heading-weight);
+    letter-spacing: -0.03em;
+    font-size: 28px;
+    line-height: 1.2;
+    text-align: center;
+    color: var(--color-text);
+  }
+  .wiz-sub { @apply mt-2 text-center text-sm; color: var(--color-muted); }
+
+  /* Полоса выполнения — сегментами, а не сплошной заливкой: человек
+     считает не проценты, а «сколько экранов осталось». Сегмент = шаг. */
+  .wiz-progress { @apply mt-8 flex items-center gap-1.5; }
+  .wiz-progress-seg {
+    height: 4px;
+    flex: 1;
+    border-radius: 999px;
+    background: var(--color-border);
+    transition: background var(--dur-base);
+  }
+  .wiz-progress-seg[data-done='true'] { background: var(--color-accent); }
+
+  /* ── «Хто ви?»: две большие карточки ──────────────────────
+     Карточка, а не переключатель: выбор определяет весь дальнейший
+     поток, и цена ошибки здесь выше, чем у обычного поля. Поэтому
+     под каждым вариантом стоит список того, что человек получит. */
+  .role-grid { @apply grid gap-4 sm:grid-cols-2; }
+  .role-card {
+    @apply flex flex-col items-center gap-3 border text-center;
+    padding: 28px 22px;
+    border-radius: var(--radius-hero);
+    border-color: var(--color-border);
+    background: var(--color-surface);
+    transition: border-color var(--dur-fast), box-shadow var(--dur-base),
+                transform var(--dur-base) var(--ease-out-soft);
+  }
+  .role-card:hover {
+    transform: translateY(-3px);
+    border-color: var(--color-border-strong);
+    box-shadow: var(--shadow-card);
+  }
+  .role-icon {
+    @apply grid place-items-center;
+    width: 88px; height: 88px;
+    border-radius: 999px;
+    background: var(--color-accent-soft);
+    color: var(--color-accent-ink);
+  }
+  .role-list { @apply flex w-full flex-col gap-2 border-t pt-4; border-color: var(--color-border); }
+  .role-list-item { @apply flex items-center gap-2.5 text-left text-sm; color: var(--color-text); }
+  .role-check {
+    @apply grid shrink-0 place-items-center;
+    width: 18px; height: 18px;
+    border-radius: 999px;
+    font-size: 11px;
+    background: var(--color-accent-soft);
+    color: var(--color-accent-ink);
+  }
+
+  /* ── Плитка выбора: услуга, специальность ─────────────────
+     Не `.chip`: у чипа нет места под значок и он рассчитан на
+     одну строку. Здесь подпись может занять две, и плитки
+     обязаны стоять сеткой ровно.                              */
+  .pick {
+    @apply flex items-center gap-2.5 border text-left text-sm;
+    min-height: var(--tap-min);
+    padding: 10px 12px;
+    border-radius: var(--radius-control);
+    border-color: var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-text);
+    transition: border-color var(--dur-fast), background var(--dur-fast);
+  }
+  .pick:hover { border-color: var(--color-border-strong); }
+  .pick[data-on='true'] {
+    border-color: var(--color-accent);
+    background: var(--color-accent-soft);
+    color: var(--color-accent-ink);
+    font-weight: 600;
+  }
+  .pick-box {
+    @apply grid shrink-0 place-items-center border;
+    width: 18px; height: 18px;
+    border-radius: 5px;
+    border-color: var(--color-border-strong);
+    font-size: 11px;
+    color: transparent;
+  }
+  .pick[data-on='true'] .pick-box {
+    border-color: var(--color-accent);
+    background: var(--color-accent);
+    color: var(--color-accent-text);
+  }
+
+  /* ── Строка дня в графике работы ──────────────────────────
+     День, выключатель, «с», «до». Сетка, а не флекс: колонки
+     обязаны совпасть по вертикали у всех семи дней, иначе
+     таблица читается как семь разных строк.                   */
+  .day-row {
+    @apply grid items-center gap-2 border-b py-2;
+    grid-template-columns: 92px 40px minmax(0, 1fr) 10px minmax(0, 1fr) auto;
+    border-color: var(--color-border);
+  }
+  .day-row:last-child { border-bottom: none; }
+  .day-name { @apply text-sm; color: var(--color-text); }
+  .day-off { @apply text-sm; color: var(--color-faint); grid-column: 3 / -1; }
+  /* Перерыв. Пока его нет — кнопка «+ Перерва» стоит В ТОЙ ЖЕ строке
+     шестой колонкой: семь дней по две строки превращают короткий
+     список в простыню, в которой не видно ни одного дня целиком.
+     Появился перерыв — под днём разворачивается вторая строка. */
+  .day-break { @apply flex items-center gap-2 pt-1 pb-1; grid-column: 3 / -1; }
+  .day-break-label { @apply shrink-0 text-xs; color: var(--color-faint); }
+
+  /* Выключатель. Своим компонентом, а не чекбоксом: чекбокс в этой
+     системе значит «отметить», а здесь смысл другой — включить день. */
+  .switch {
+    @apply relative shrink-0;
+    width: 38px; height: 22px;
+    border-radius: 999px;
+    background: var(--color-border-strong);
+    transition: background var(--dur-fast);
+  }
+  .switch[data-on='true'] { background: var(--color-accent); }
+  .switch::after {
+    content: '';
+    position: absolute;
+    top: 3px; left: 3px;
+    width: 16px; height: 16px;
+    border-radius: 999px;
+    background: #ffffff;
+    transition: transform var(--dur-fast) var(--ease-out-soft);
+  }
+  .switch[data-on='true']::after { transform: translateX(16px); }
+
+  /* ── Кружок под фото ──────────────────────────────────────
+     Файл выбирается здесь, а уезжает в хранилище ПОСЛЕ создания
+     заведения: путь в бакете начинается с `tenant_id`, а его
+     до создания не существует (правило 1).                     */
+  .photo-drop {
+    @apply mx-auto grid place-items-center border border-dashed text-center;
+    width: 104px; height: 104px;
+    border-radius: 999px;
+    border-color: var(--color-border-strong);
+    background: var(--color-surface-2);
+    color: var(--color-muted);
+    transition: border-color var(--dur-fast), color var(--dur-fast);
+  }
+  .photo-drop:hover { border-color: var(--color-accent); color: var(--color-accent-ink); }
+  .photo-drop img { width: 100%; height: 100%; border-radius: 999px; object-fit: cover; }
+
+  /* Итог последнего шага: строка «подпись — значение». */
+  .sum-row {
+    @apply flex items-start gap-3 border-b py-3 text-sm;
+    border-color: var(--color-border);
+  }
+  .sum-row:last-child { border-bottom: none; }
+  .sum-label { width: 108px; flex-shrink: 0; color: var(--color-muted); }
+
+  @media (min-width: 640px) {
+    .wiz-main { @apply py-14; }
+    .wiz-title { font-size: 32px; }
+  }
+}
