@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { currentMembership, can, hasModule } from '@/lib/tenant'
+import { currentMembership, can, hasModule, currentUserId } from '@/lib/tenant'
 import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { getT } from '@/lib/i18n/server'
@@ -34,7 +34,7 @@ export default async function DocumentsPage() {
   if (!hasModule(m, 'compliance')) return <ModuleOff m={m} module="compliance" />
 
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const userId = await currentUserId()
 
   // Материалы и документы тянем отдельно, а не вложенным select:
   // материал без документов — главный сигнал этого экрана, и он обязан
@@ -66,7 +66,7 @@ export default async function DocumentsPage() {
     <AppShell modules={m.modules} perms={m.perms}>
       <DocumentsClient
         tenantId={m.tenantId}
-        userId={user!.id}
+        userId={userId ?? ''}
         canWrite={can(m, 'compliance.write')}
         canStock={can(m, 'stock.read')}
         loadError={materialsError?.message ?? docsError?.message ?? ''}

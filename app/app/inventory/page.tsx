@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { currentMembership, can, hasModule } from '@/lib/tenant'
+import { currentMembership, can, hasModule, currentUserId } from '@/lib/tenant'
 import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { getT } from '@/lib/i18n/server'
@@ -41,7 +41,7 @@ export default async function InventoryPage({
   const supabase = await createClient()
   // created_by у партии и ёмкости обязателен и сверяется политикой RLS
   // с auth.uid() — без этого id форма не сможет ничего записать.
-  const { data: { user } } = await supabase.auth.getUser()
+  const userId = await currentUserId()
 
   const [
     { data: containers }, { data: materials }, { data: variants }, { data: value },
@@ -101,7 +101,7 @@ export default async function InventoryPage({
         initialQuery={sp.q ?? ''}
         initialScan={sp.scan === '1'}
         tenantId={m.tenantId}
-        userId={user!.id}
+        userId={userId ?? ''}
         containers={(containers ?? []).map((c) => ({
           id: c.id, code: c.code, status: c.status,
           useBy: c.use_by, openedAt: c.opened_at,

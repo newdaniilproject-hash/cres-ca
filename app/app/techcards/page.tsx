@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { currentMembership, can, hasModule } from '@/lib/tenant'
+import { currentMembership, can, hasModule, currentUserId } from '@/lib/tenant'
 import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { getT } from '@/lib/i18n/server'
@@ -30,7 +30,7 @@ export default async function TechCardsPage() {
   if (!hasModule(m, 'compliance')) return <ModuleOff m={m} module="compliance" />
 
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const userId = await currentUserId()
 
   // Привязывать карту к услуге можно только с `catalog.read`: список для
   // выпадающего списка читается из самой `offerings`. У инспектора этого
@@ -76,7 +76,7 @@ export default async function TechCardsPage() {
     <AppShell modules={m.modules} perms={m.perms}>
       <TechCardsClient
         tenantId={m.tenantId}
-        userId={user!.id}
+        userId={userId ?? ''}
         // Выпуск версии — `compliance.write` (`tech_cards_write`, 0014).
         // Мастер с одним `compliance.journal.write` (0039) сюда не входит:
         // регламент утверждает заведение, а не смена. Инспектор — тем более.

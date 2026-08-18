@@ -80,6 +80,36 @@ function jwtPayload(accessToken: string): Record<string, unknown> {
   }
 }
 
+/**
+ * Идентификатор вошедшего — из УЖЕ РАЗОБРАННОГО токена, без сети.
+ *
+ * Зачем понадобилось. Экраны кабинета брали его через
+ * `supabase.auth.getUser()`, а это ОБРАЩЕНИЕ ПО СЕТИ к серверу
+ * авторизации: он сверяет подпись у себя. На каждый серверный рендер
+ * получался лишний круг к Ирландии — и это при том, что на той же
+ * странице `currentMembership()` уже прочитал тот же самый токен
+ * локально. Замер держится в `docs/PERFORMANCE.md`.
+ *
+ * Почему это не ослабление. Значение идёт в формы как `created_by`,
+ * то есть УЖЕ приходит от клиента и уже может быть подделано в запросе.
+ * Отсекает подделку не оно, а политика RLS, сверяющая `created_by`
+ * с `auth.uid()` внутри базы. Прочитать id из токена ровно так же
+ * безопасно, как спросить его у сервера, — граница доверия в обоих
+ * случаях одна и та же и лежит не здесь.
+ *
+ * `getUser()` остаётся уместным там, где решение принимается ПО ФАКТУ
+ * существования пользователя и цена ошибки — доступ (серверные роуты,
+ * запись сервисным ключом). Для «подставь id в скрытое поле» он
+ * избыточен.
+ */
+export async function currentUserId(): Promise<string | null> {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return null
+  const sub = jwtPayload(session.access_token).sub
+  return typeof sub === 'string' ? sub : null
+}
+
 export async function getMemberships(): Promise<Membership[]> {
   const supabase = await createClient()
   const { data: { session } } = await supabase.auth.getSession()
