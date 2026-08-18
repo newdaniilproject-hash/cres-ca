@@ -1,30 +1,32 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useToast } from '@/components/toast'
 import { useT } from '@/lib/i18n/client'
 
-// Установка на телефон и обновление приложения.
+// Service worker и предложение обновиться.
 //
-// Android/Chrome сам присылает событие beforeinstallprompt — там кнопка
-// работает по-настоящему. iOS его не присылает и никогда не присылал:
-// там установка идёт через «Поділитися → На екран Домів», и единственное,
-// что можно сделать честно — показать эту инструкцию словами. Молча
-// не показывать ничего означало бы, что половина мастеров не узнает,
-// что приложение вообще ставится.
-
-type InstallEvent = Event & {
-  prompt: () => Promise<void>
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
-}
+// ── ПРЕДЛОЖЕНИЯ «ВСТАНОВИТИ НА ТЕЛЕФОН» ЗДЕСЬ БОЛЬШЕ НЕТ ─────────────────────
+//
+// Убрано решением владельца 18.08.2026, и не «спрятано под флаг», а удалено
+// вместе с полосой, обработчиком `beforeinstallprompt`, подсказкой для iOS
+// и своими ключами словаря (правило 8: выключено — значит удалено).
+//
+// Причина не вкусовая. Полоса всплывала поверх формы входа и перекрывала её
+// нижнюю часть — на снимке экрана 18.08.2026 она закрывала «Забули пароль?»
+// и «Створити». Предлагать установку человеку, который ещё не вошёл, значит
+// мешать ему сделать единственное, зачем он пришёл. У продавцов есть
+// настоящее приложение из магазина; PWA-установка была подстраховкой,
+// которая стоила дороже, чем давала.
+//
+// Сам service worker остаётся: без него не будет запасного экрана «немає
+// мережі», а он в ТЗ. Манифест и иконки тоже остаются — установка через
+// меню браузера продолжает работать, мы просто перестали её навязывать.
 
 export function PwaProvider() {
   const t = useT()
   const toast = useToast()
-  const [deferred, setDeferred] = useState<InstallEvent | null>(null)
-  const [iosHint, setIosHint] = useState(false)
 
-  // Регистрация service worker.
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return
     const onLoad = () => {
@@ -60,105 +62,5 @@ export function PwaProvider() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  useEffect(() => {
-    // Внутри приложения из магазина предложение «встановити на телефон»
-    // выглядит как признак того, что перед человеком сайт. Признак
-    // приложения ставится на <html> до первой отрисовки, поэтому здесь
-    // он уже есть — Capacitor на Android при удалённом server.url
-    // проверить нечем.
-    if (document.documentElement.hasAttribute('data-native')) return
-    const onPrompt = (e: Event) => {
-      e.preventDefault()
-      setDeferred(e as InstallEvent)
-    }
-    window.addEventListener('beforeinstallprompt', onPrompt)
-    return () => window.removeEventListener('beforeinstallprompt', onPrompt)
-  }, [])
-
-  // iOS: события нет, определяем по браузеру и по тому, что мы ещё
-  // не запущены как установленное приложение.
-  useEffect(() => {
-    // Внутри приложения из магазина PWA-подсказки бессмысленны и вредны.
-    // Мост и localStorage — под try: компонент живёт в корневом макете,
-    // и бросок отсюда снёс бы всё дерево (см. правило в deep-link.tsx).
-    try {
-      if (document.documentElement.hasAttribute('data-native')) return
-      const w = window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }
-      if (w.Capacitor?.isNativePlatform?.()) return
-      const ua = navigator.userAgent
-      const isIos = /iPad|iPhone|iPod/.test(ua)
-      const standalone =
-        window.matchMedia('(display-mode: standalone)').matches ||
-        (navigator as unknown as { standalone?: boolean }).standalone === true
-      if (isIos && !standalone && !localStorage.getItem('pwa-ios-hint')) setIosHint(true)
-    } catch { /* подсказка об установке не обязательна */ }
-  }, [])
-
-  if (deferred) {
-    return (
-      <InstallBar
-        text={t('pwa.install.text')}
-        hint={t('pwa.install.hint')}
-        cta={t('pwa.install.cta')}
-        onCta={async () => {
-          await deferred.prompt()
-          const { outcome } = await deferred.userChoice
-          setDeferred(null)
-          if (outcome === 'accepted') {
-            toast.success(t('pwa.install.done'), t('pwa.install.done.detail'))
-          }
-        }}
-        onClose={() => setDeferred(null)}
-      />
-    )
-  }
-
-  if (iosHint) {
-    return (
-      <InstallBar
-        text={t('pwa.ios.text')}
-        hint={t('pwa.ios.hint')}
-        cta={t('pwa.ios.cta')}
-        onCta={() => { localStorage.setItem('pwa-ios-hint', '1'); setIosHint(false) }}
-        onClose={() => { localStorage.setItem('pwa-ios-hint', '1'); setIosHint(false) }}
-      />
-    )
-  }
-
   return null
-}
-
-function InstallBar({
-  text, hint, cta, onCta, onClose,
-}: {
-  text: string; hint: string; cta: string
-  onCta: () => void | Promise<void>; onClose: () => void
-}) {
-  const t = useT()
-  return (
-    <div
-      className="pointer-events-auto border p-3 rise"
-      style={{
-        borderRadius: 'var(--radius-card)',
-        borderColor: 'var(--color-border-strong)',
-        background: 'var(--color-surface)',
-        boxShadow: 'var(--shadow-lift)',
-      }}
-    >
-      <div className="flex items-center gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="t-md">{text}</p>
-          <p className="t-sm mt-0.5 prose-muted">{hint}</p>
-        </div>
-        <button type="button" onClick={() => void onCta()} className="btn-primary h-9 shrink-0 t-sm">
-          {cta}
-        </button>
-        <button type="button" onClick={onClose} aria-label={t('common.close.aria')}
-                className="btn-icon shrink-0"
-                style={{ minWidth: 32, minHeight: 32 }}>
-          ✕
-        </button>
-      </div>
-    </div>
-  )
 }
