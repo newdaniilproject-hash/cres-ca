@@ -1905,6 +1905,10 @@
 
 
   "theme.aria": "Тема оформлення",
+
+  "textsize.title": "Розмір тексту",
+  "textsize.aria": "Розмір тексту у застосунку",
+  "textsize.reset": "Звичайний розмір",
   "theme.light": "Світла",
   "theme.dark": "Темна",
 

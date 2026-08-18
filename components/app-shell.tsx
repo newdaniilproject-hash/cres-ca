@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, createContext, useContext, useEffect, useRef, useState, useTransition } from 'react'
 import { ThemeToggle } from '@/components/theme'
+import { TextSize } from '@/components/text-size'
 import { LangSwitch } from '@/components/lang-switch'
 import { Sheet } from '@/components/sheet'
 import { createClient } from '@/lib/supabase/client'
@@ -574,6 +575,13 @@ function AppShellInner({
           <div className="flex flex-wrap items-center gap-2">
             <ThemeToggle />
             <LangSwitch />
+          </div>
+          {/* Размер текста — рядом с темой и языком: это третья настройка
+              того же рода («как мне это видно»), и искать её в другом
+              месте человек не станет. Ползунком, а не тремя кнопками:
+              шаг в 5% кнопками не выберешь. */}
+          <div className="mt-3 border-t pt-3" style={{ borderColor: 'var(--color-border)' }}>
+            <TextSize />
           </div>
           <button type="button" onClick={() => void signOut()}
                   className="drawer-item mt-1 w-full text-left"

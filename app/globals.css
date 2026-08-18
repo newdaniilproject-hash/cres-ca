@@ -147,13 +147,34 @@
      Основной размер 16px и не ниже: iOS зумит страницу на любом
      поле мельче и обратно не отъезжает. Заголовки гротеском,
      вес и разрядка уже заданы выше.                            */
-  --text-xs: 12px;     --lh-xs: 1.4;    /* подсказка, ошибка поля */
-  --text-sm: 14px;     --lh-sm: 1.5;    /* вторичный текст, подпись */
-  --text-base: 16px;   --lh-base: 1.55; /* основной текст, поля */
-  --text-lg: 18px;     --lh-lg: 1.4;    /* заголовок карточки */
-  --text-xl: 22px;     --lh-xl: 1.3;    /* заголовок экрана */
-  --text-2xl: 28px;    --lh-2xl: 1.25;  /* заголовок раздела */
-  --text-3xl: 36px;    --lh-3xl: 1.15;  /* витрина, крупные цифры */
+  /* ── Размер текста: ОДИН множитель на весь продукт ──────────
+     Решение владельца 18.08.2026: человек должен уметь сделать
+     шрифт крупнее или мельче ползунком.
+
+     Множитель, а не вторая шкала. Мастеру за сорок нужен весь
+     текст крупнее, а не «крупный заголовок при прежней подписи»;
+     вторая шкала к тому же разъедется с первой на первой правке.
+
+     Почему это работает одной строкой: `--text-*` лежат в `@theme`,
+     то есть Tailwind берёт их КАК СВОЮ шкалу — `text-sm` внутри
+     `@apply` разворачивается в `var(--text-sm)`. Проверено отдельно:
+     ни один компонент не пишет `text-sm` сам, все 54 употребления
+     живут здесь же, в этом файле. Значит множитель, поставленный
+     здесь, доходит до каждого поля, значка и метки разом.
+
+     Отступы, высоты и зона нажатия НЕ масштабируются намеренно:
+     они в пикселях и остаются такими. Растянуть заодно и раскладку
+     значит проверять заново каждый экран — а `--tap-min` и так
+     44px, то есть крупному тексту есть где стоять.                */
+  --type-scale: 1;
+
+  --text-xs: calc(12px * var(--type-scale));   --lh-xs: 1.4;    /* подсказка, ошибка поля */
+  --text-sm: calc(14px * var(--type-scale));   --lh-sm: 1.5;    /* вторичный текст, подпись */
+  --text-base: calc(16px * var(--type-scale)); --lh-base: 1.55; /* основной текст, поля */
+  --text-lg: calc(18px * var(--type-scale));   --lh-lg: 1.4;    /* заголовок карточки */
+  --text-xl: calc(22px * var(--type-scale));   --lh-xl: 1.3;    /* заголовок экрана */
+  --text-2xl: calc(28px * var(--type-scale));  --lh-2xl: 1.25;  /* заголовок раздела */
+  --text-3xl: calc(36px * var(--type-scale));  --lh-3xl: 1.15;  /* витрина, крупные цифры */
 
   /* Цифры в таблицах и списках не должны прыгать при обновлении:
      моноширинные цифры дают ровный столбец.                    */
@@ -471,6 +492,22 @@ html.dark {
   }
   .input:focus, .select:focus { border-color: var(--color-accent); box-shadow: 0 0 0 3px var(--color-accent-soft); }
   .input::placeholder { color: var(--color-faint); }
+
+  /* ── ПОЛ В 16px ДЛЯ ПОЛЕЙ НА ТЕЛЕФОНЕ ────────────────────────
+     Ползунок размера текста умеет и УМЕНЬШАТЬ, а это ровно тот
+     случай, ради которого в проекте записано «поля не мельче 16px»:
+     iOS сам зумит страницу на любом поле мельче и обратно не
+     отъезжает. Без этого пола человек, сделавший шрифт мельче,
+     получил бы уехавшую вбок страницу на первом же нажатии
+     в поле — и не связал бы одно с другим.
+
+     `max()`, а не отмена масштаба: УВЕЛИЧИВАТЬ поля можно и нужно,
+     запрещено только опускать их ниже порога. Правило висит на
+     касательных устройствах — на столе зума по фокусу нет,
+     и там мелкое поле это просто мелкое поле.                    */
+  @media (hover: none) and (pointer: coarse) {
+    .input, .select, textarea { font-size: max(16px, var(--text-base)); }
+  }
 
   .select { @apply appearance-none pr-9; }
   .textarea {
@@ -835,15 +872,19 @@ html.dark {
      с размером, отрицательный трекинг — тоже: на 11px он ноль,
      на 56px уже −0.04em. Промежуточные веса 550 и 650 вместо
      привычных 500 и 700 — именно они читаются как «сделано руками». */
-  .t-xs   { font-size: 11px; line-height: 14px; font-weight: 500; }
-  .t-sm   { font-size: 12px; line-height: 16px; font-weight: 500; }
-  .t-base { font-size: 13px; line-height: 18px; font-weight: 500; }
-  .t-md   { font-size: 14px; line-height: 20px; font-weight: 550; }
-  .t-lg   { font-size: 16px; line-height: 22px; font-weight: 600; letter-spacing: -0.01em; }
-  .t-xl   { font-size: 19px; line-height: 24px; font-weight: 650; letter-spacing: -0.015em; }
-  .t-2xl  { font-size: 22px; line-height: 28px; font-weight: 700; letter-spacing: -0.02em; }
-  .t-3xl  { font-size: 28px; line-height: 34px; font-weight: 700; letter-spacing: -0.025em; }
-  .t-4xl  { font-size: 40px; line-height: 48px; font-weight: 800; letter-spacing: -0.03em; }
+  /* Размеры и интерлиньяж — через `--type-scale` (см. шкалу в @theme).
+     Интерлиньяж масштабируется ВМЕСТЕ с кеглем: оставить его в пикселях
+     значит получить наползающие строки на крупном шрифте. Вес, трекинг
+     и всё остальное множитель не трогает. */
+  .t-xs   { font-size: calc(11px * var(--type-scale)); line-height: calc(14px * var(--type-scale)); font-weight: 500; }
+  .t-sm   { font-size: calc(12px * var(--type-scale)); line-height: calc(16px * var(--type-scale)); font-weight: 500; }
+  .t-base { font-size: calc(13px * var(--type-scale)); line-height: calc(18px * var(--type-scale)); font-weight: 500; }
+  .t-md   { font-size: calc(14px * var(--type-scale)); line-height: calc(20px * var(--type-scale)); font-weight: 550; }
+  .t-lg   { font-size: calc(16px * var(--type-scale)); line-height: calc(22px * var(--type-scale)); font-weight: 600; letter-spacing: -0.01em; }
+  .t-xl   { font-size: calc(19px * var(--type-scale)); line-height: calc(24px * var(--type-scale)); font-weight: 650; letter-spacing: -0.015em; }
+  .t-2xl  { font-size: calc(22px * var(--type-scale)); line-height: calc(28px * var(--type-scale)); font-weight: 700; letter-spacing: -0.02em; }
+  .t-3xl  { font-size: calc(28px * var(--type-scale)); line-height: calc(34px * var(--type-scale)); font-weight: 700; letter-spacing: -0.025em; }
+  .t-4xl  { font-size: calc(40px * var(--type-scale)); line-height: calc(48px * var(--type-scale)); font-weight: 800; letter-spacing: -0.03em; }
   .t-5xl  { font-size: clamp(40px, 7vw, 56px); line-height: 1.05; font-weight: 800; letter-spacing: -0.04em; }
 
   /* Цифры, которые обновляются: цены, остатки, счётчики, время.
@@ -861,14 +902,14 @@ html.dark {
      на телефоне 34px переносится на вторую строку у половины
      разделов («Налаштування магазину»).                          */
   .page-title {
-    font-size: 28px;
-    line-height: 32px;
+    font-size: calc(28px * var(--type-scale));
+    line-height: calc(32px * var(--type-scale));
     font-weight: 750;
     letter-spacing: -0.025em;
     color: var(--color-text);
   }
   @media (min-width: 640px) {
-    .page-title { font-size: 34px; line-height: 40px; }
+    .page-title { font-size: calc(34px * var(--type-scale)); line-height: calc(40px * var(--type-scale)); }
   }
   .page-subtitle {
     margin-top: 2px;
@@ -907,7 +948,7 @@ html.dark {
   .stat-tile-icon[data-tone='emerald'] { background: var(--tone-emerald-soft); color: var(--tone-emerald); }
   .stat-tile-icon[data-tone='violet']  { background: var(--tone-violet-soft);  color: var(--tone-violet); }
   .stat-tile-value {
-    font-size: 22px; line-height: 26px; font-weight: 700;
+    font-size: calc(22px * var(--type-scale)); line-height: calc(26px * var(--type-scale)); font-weight: 700;
     letter-spacing: -0.02em;
     font-variant-numeric: tabular-nums;
     color: var(--color-text);
