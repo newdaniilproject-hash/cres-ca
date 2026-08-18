@@ -330,8 +330,38 @@ function AppShellInner({
     return () => { alive = false }
   }, [])
 
-  const active = (i: Item) =>
-    i.exact ? pathname === i.href : pathname.startsWith(i.href)
+  // ── Подсветка пункта. Оптимистичная, а не по факту перехода ──────────
+  //
+  // Отзыв владельца 18.08.2026: «переход между табами прогружается где-то
+  // секунду, а должен быть мгновенным». Секунда — это серверная отрисовка
+  // страницы кабинета: все они `force-dynamic` и ходят в базу в Ирландии,
+  // и убрать её отсюда нельзя. Но ЖДАЛ он не её, а хоть какого-нибудь
+  // ответа на нажатие: `usePathname()` меняется только КОГДА переход уже
+  // совершился, поэтому всю эту секунду нажатая вкладка выглядела
+  // ненажатой. Палец попал, а панель это никак не показала — читается
+  // как «не сработало», и человек жмёт второй раз.
+  //
+  // Поэтому подсветка переезжает в момент нажатия, а `pathname` её потом
+  // подтверждает. Если переход не состоялся (отказ прав, redirect),
+  // намерение снимается эффектом ниже, и подсветка возвращается на место —
+  // соврать надолго она не может.
+  const [going, setGoing] = useState<string | null>(null)
+  useEffect(() => { setGoing(null) }, [pathname])
+  // Страховка от застрявшего намерения. Переход может не состояться вовсе —
+  // порвалась сеть, человек ушёл из приложения на середине, — и тогда
+  // `pathname` не сменится НИКОГДА, а подсветка так и останется на разделе,
+  // где мы не находимся. Оптимистичная подсветка имеет право забежать
+  // вперёд на время перехода, но не имеет права врать бессрочно.
+  useEffect(() => {
+    if (going === null) return
+    const id = setTimeout(() => setGoing(null), 5000)
+    return () => clearTimeout(id)
+  }, [going])
+
+  const active = (i: Item) => {
+    if (going !== null) return i.exact ? going === i.href : going.startsWith(i.href)
+    return i.exact ? pathname === i.href : pathname.startsWith(i.href)
+  }
 
   async function signOut() {
     await createClient().auth.signOut()
@@ -359,6 +389,7 @@ function AppShellInner({
           <nav className="flex flex-col gap-1">
             {[...menuItems.slice(0, 1), ...tabs, ...menuItems.slice(1)].map((s) => (
               <Link key={s.href + s.label} href={s.href} className="sidebar-item"
+                    onClick={() => setGoing(s.href)}
                     data-active={active(s)}>
                 <span aria-hidden className="flex w-5 justify-center">
                   <s.icon size={18} />
@@ -454,6 +485,7 @@ function AppShellInner({
               и тень над ним ломала бы подписи прямо здесь. */}
           {tabs.map((tab) => (
             <Link key={tab.href} href={tab.href} className="bottomnav-item flex-1"
+                  onClick={() => setGoing(tab.href)}
                   data-active={active(tab)}>
               <span aria-hidden><tab.icon size={22} /></span>
               {t(tab.label)}
@@ -467,6 +499,7 @@ function AppShellInner({
         <div className="flex flex-col gap-1">
           {menuItems.map((s) => (
             <Link key={s.href + s.label} href={s.href} className="drawer-item"
+                  onClick={() => setGoing(s.href)}
                   data-active={active(s)}>
               <span aria-hidden className="flex w-6 justify-center">
                 <s.icon size={20} />
