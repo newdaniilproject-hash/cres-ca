@@ -1102,6 +1102,62 @@ html.dark {
     overflow: hidden;
   }
 
+  /* ── Карточка-герой «Сьогодні» ────────────────────────────────
+     Из прототипа: сплошная акцентная плашка наверху экрана «Сьогодні»
+     с одним-двумя числами — «що вже призначено» и «що потребує уваги».
+     Заливка АКЦЕНТОМ, а не мягким тоном: это единственное место
+     в кабинете, где акцент используется как фон целого блока, а не
+     только кнопки, — и это осознанно повторяет прототип, а не
+     разошедшийся с системой цвет по месту. Текст поверх — всегда белый,
+     в обеих темах: `--color-accent-text`, а не `--color-text`.        */
+  .today-hero {
+    @apply flex flex-col gap-4;
+    padding: var(--space-5);
+    border-radius: var(--radius-hero);
+    background: var(--color-accent);
+    color: var(--color-accent-text);
+  }
+  .today-hero-eyebrow {
+    @apply text-xs font-bold uppercase;
+    letter-spacing: 0.1em;
+    opacity: 0.75;
+  }
+  .today-hero-row { @apply flex items-center gap-6; }
+  .today-hero-stat { @apply flex items-center gap-3; }
+  .today-hero-icon {
+    width: 44px; height: 44px;
+    border-radius: 999px;
+    display: grid; place-items: center;
+    background: rgb(255 255 255 / 0.18);
+    flex-shrink: 0;
+  }
+  .today-hero-value {
+    font-size: calc(24px * var(--type-scale));
+    line-height: calc(28px * var(--type-scale));
+    font-weight: 750;
+    letter-spacing: -0.02em;
+  }
+  .today-hero-label {
+    font-size: calc(13px * var(--type-scale));
+    line-height: calc(17px * var(--type-scale));
+    opacity: 0.85;
+  }
+
+  /* ── Точка статуса записи ─────────────────────────────────────
+     Из прототипа: перед временем стоит закрашенный кружок — состояние
+     видно ДО того, как прочитана хоть одна буква. Три тона, а не
+     повторение всей палитры бейджей: этого достаточно, чтобы отличить
+     «горит» (очікує) от «в порядке» (решено) от «закрыто» (отмена/неявка/
+     выполнено — эти три уже не требуют действия, и цвет у них общий,
+     нейтральный). */
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 999px; flex-shrink: 0;
+    background: var(--color-faint);
+  }
+  .status-dot[data-tone='accent'] { background: var(--color-accent); }
+  .status-dot[data-tone='warn']   { background: var(--tone-amber); }
+  .status-dot[data-tone='success']{ background: var(--tone-emerald); }
+
   /* ── Плавающая кнопка ───────────────────────────────────────
      Главное действие экрана. Поднята над нижней панелью на её
      высоту плюс вырез — иначе на айфоне она садится ровно на

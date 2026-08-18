@@ -129,6 +129,15 @@
   "home.draft.notice": "Заклад у чернетці: облік уже працює, публічна сторінка вимкнена.",
   "home.draft.publish": "До публікації",
 
+  "home.greeting": "Вітаємо, {name}!",
+
+  "home.hero.eyebrow": "Сьогодні",
+  "home.hero.attention": "потребують уваги",
+
+  "home.hero.bookings.one": "запис",
+  "home.hero.bookings.few": "записи",
+  "home.hero.bookings.many": "записів",
+
   "home.bookings.title": "Записи сьогодні",
   "home.bookings.all": "Усі",
   "home.bookings.empty": "Сьогодні записів немає",
@@ -934,6 +943,12 @@
   "catalog.status.hidden": "прихована",
   "catalog.status.archived": "в архіві",
 
+  "catalog.stats.total": "Позицій",
+  "catalog.stats.active": "Активні",
+  "catalog.stats.services": "Послуги",
+  "catalog.stats.products": "Товари",
+  "catalog.duration": "{n} хв",
+
   "catalog.filter.all": "Усі",
   "catalog.filter.products": "Товари",
   "catalog.filter.services": "Послуги",
@@ -1448,7 +1463,7 @@
   "profile.settings.desc": "Назва, адреса, публікація, команда",
 
   "profile.theme.title": "Оформлення",
-  "profile.theme.desc": "Світла, темна або як у системі",
+  "profile.theme.desc": "Світла або темна",
   "profile.signOut": "Вийти з акаунту",
   "profile.delete.open": "Видалити акаунт",
 

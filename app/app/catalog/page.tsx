@@ -16,7 +16,7 @@ export async function generateMetadata() {
 }
 
 type MediaRow = { path: string; position: number }
-type VariantRow = { id: string; price: number | null }
+type VariantRow = { id: string; price: number | null; duration_minutes: number | null }
 
 // Обложка и число вариантов приходят вложенными выборками, а не отдельными
 // запросами: список каталога открывают чаще любого другого экрана кабинета,
@@ -40,7 +40,7 @@ export default async function CatalogPage() {
     .from('offerings')
     .select(
       `id, kind, status, title, subtitle, price, currency, slug, listed,
-       offering_media(path, position), offering_variants(id, price)`,
+       offering_media(path, position), offering_variants(id, price, duration_minutes)`,
     )
     .eq('tenant_id', m.tenantId)
     .order('updated_at', { ascending: false })
@@ -67,6 +67,12 @@ export default async function CatalogPage() {
           const fromVariants = variants
             .map((v) => (v.price == null ? null : Number(v.price)))
             .filter((p): p is number => p !== null)
+          // Тривалість — тільки для послуг, і тільки коли задана хоч
+          // на одному варіанті: у товару це поле завжди порожнє
+          // (тригер `offering_variants_duration`, 0010).
+          const durations = variants
+            .map((v) => v.duration_minutes)
+            .filter((d): d is number => d != null)
 
           return {
             id: o.id as string,
@@ -80,6 +86,7 @@ export default async function CatalogPage() {
             price: o.price != null
               ? Number(o.price)
               : fromVariants.length > 0 ? Math.min(...fromVariants) : null,
+            durationMinutes: durations.length > 0 ? Math.min(...durations) : null,
             variants: variants.length,
             cover: media[0]?.path ?? null,
           }
