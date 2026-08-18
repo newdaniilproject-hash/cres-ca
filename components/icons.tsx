@@ -188,3 +188,128 @@ export function IconClose({ size = 20, className }: P) {
     </svg>
   )
 }
+
+// ── Склад ───────────────────────────────────────────────────────
+//
+// Заведены 18.08.2026 вместе с переборкой экрана склада. До этого дня
+// он рисовал состояния и разделы ТЕКСТОВЫМИ ЗНАКАМИ — «◫ ◷ ⊘ ⌄ ⌗ ⬓ ⇅ ☰».
+// Ровно то, о чём предупреждает шапка этого файла: на телефоне владельца
+// половина из них вышла квадратами и решётками, и счётчик «Прострочені»
+// был подписан знаком, который читается как «нет глифа», а не как беда.
+//
+// Тон плитки несёт смысл (globals.css, `.stat-tile`), и значок обязан
+// его повторять, а не спорить с ним: часы — «скоро», треугольник —
+// «уже сломалось». Значок, выбранный по красоте, отменяет цвет.
+
+/** Стопка — общее число позиций. */
+export function IconLayers({ size = 22, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M12 3l9 4.5-9 4.5-9-4.5L12 3z" />
+      <path d="M3 12.5l9 4.5 9-4.5" />
+      <path d="M3 17l9 4.5 9-4.5" />
+    </svg>
+  )
+}
+
+/** Часы — срок ещё не вышел, но выйдет. */
+export function IconClock({ size = 22, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7.5V12l3 1.8" />
+    </svg>
+  )
+}
+
+/** Треугольник с восклицанием — срок вышел. */
+export function IconAlert({ size = 22, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M12 4.2L21 19.5H3L12 4.2z" />
+      <path d="M12 10v3.6M12 16.6h.01" />
+    </svg>
+  )
+}
+
+/** Стрелка вниз к черте — остаток у порога. */
+export function IconLow({ size = 22, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M12 4v10M8 10.5l4 4 4-4" />
+      <path d="M4.5 19.5h15" />
+    </svg>
+  )
+}
+
+/** Лоток со стрелкой внутрь — приёмка. */
+export function IconInbox({ size = 22, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M3.5 13.5h4l1.5 2.5h6l1.5-2.5h4" />
+      <path d="M5.5 5.5h13l2 8v4a1.5 1.5 0 01-1.5 1.5h-14A1.5 1.5 0 013.5 17.5v-4l2-8z" />
+    </svg>
+  )
+}
+
+/** Две стрелки — журнал движений. */
+export function IconArrows({ size = 22, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M7.5 4.5v15M4 8l3.5-3.5L11 8" />
+      <path d="M16.5 19.5v-15M13 16l3.5 3.5L20 16" />
+    </svg>
+  )
+}
+
+/** Планшет с зажимом — инвентаризация. */
+export function IconClipboard({ size = 22, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M9 4.5H7a1.5 1.5 0 00-1.5 1.5v13A1.5 1.5 0 007 20.5h10a1.5 1.5 0 001.5-1.5V6A1.5 1.5 0 0017 4.5h-2" />
+      <rect x="9" y="2.8" width="6" height="3.4" rx="1.2" />
+      <path d="M8.8 12.5l1.8 1.8 3.6-3.6" />
+    </svg>
+  )
+}
+
+/** QR — наклейка на ёмкости. */
+export function IconQr({ size = 22, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1.4" />
+      <rect x="14" y="3.5" width="6.5" height="6.5" rx="1.4" />
+      <rect x="3.5" y="14" width="6.5" height="6.5" rx="1.4" />
+      <path d="M14 14h3v3h-3zM20.5 14v3M17.5 20.5h3" />
+    </svg>
+  )
+}
+
+/** Штрихкод — заводские коды. */
+export function IconBarcode({ size = 22, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M3.5 6.5v11M7 6.5v11M10.5 6.5v11M14 6.5v11M17.5 6.5v11M20.5 6.5v11" />
+    </svg>
+  )
+}
+
+/** Колба — рецептура. */
+export function IconBeaker({ size = 22, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M9.5 3.5v6L4.8 17.6A1.6 1.6 0 006.2 20h11.6a1.6 1.6 0 001.4-2.4L14.5 9.5v-6" />
+      <path d="M8.5 3.5h7M7.4 14.5h9.2" />
+    </svg>
+  )
+}
+
+/** Список — справочники. */
+export function IconList({ size = 22, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M9 6.5h11M9 12h11M9 17.5h11" />
+      <path d="M4.5 6.5h.01M4.5 12h.01M4.5 17.5h.01" />
+    </svg>
+  )
+}
