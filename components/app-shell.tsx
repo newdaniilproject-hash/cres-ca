@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { Suspense, createContext, useContext, useEffect, useState } from 'react'
+import { Suspense, createContext, useContext, useEffect, useRef, useState, useTransition } from 'react'
 import { ThemeToggle } from '@/components/theme'
 import { LangSwitch } from '@/components/lang-switch'
 import { Sheet } from '@/components/sheet'
@@ -358,6 +358,53 @@ function AppShellInner({
     return () => clearTimeout(id)
   }, [going])
 
+  // ── Переход без сети: показать сразу, обновить тихо ───────────────────
+  //
+  // Требование владельца 18.08.2026: «должно сразу всё мгновенно
+  // и бесшовно, молниеносно как в инсте, телеграмме». Так вот, ни инстаграм,
+  // ни телеграм в момент нажатия НИКУДА НЕ ХОДЯТ: экран рисуется из того,
+  // что уже лежит на устройстве, а сеть догоняет потом и правит его молча.
+  // Мгновенность — это не быстрый запрос, это отсутствие запроса.
+  //
+  // Здесь то же самое, двумя частями:
+  //
+  //   1. Панель просит ПОЛНЫЙ упреждающий запрос (`prefetch` у вкладок).
+  //      Четыре вкладки всегда на экране, значит их ответы приезжают,
+  //      пока человек смотрит на первую. Нажатие потом не ходит в сеть
+  //      вовсе — страница уже в памяти маршрутизатора.
+  //   2. `staleTimes.static` (next.config.ts) держит эти ответы три минуты,
+  //      иначе Next выбросил бы их почти сразу и упреждать было бы незачем.
+  //
+  // Чем это честно платится: показанное могло устареть. Поэтому — тихое
+  // обновление. Оно не блокирует отрисовку и не показывает скелетон:
+  // человек уже видит экран, данные в нём меняются сами.
+  //
+  // Два условия, оба обязательны:
+  //   • не чаще, чем раз в 20 секунд на адрес (иначе каждый прыжок
+  //     склад → записи → склад стоил бы серверу столько же, сколько
+  //     стоил бы БЕЗ всего этого кеша — и смысл пропадает);
+  //   • при возвращении в приложение обновляем всегда: телефон мог
+  //     пролежать в кармане час, и три минуты окна давно вышли.
+  const seen = useRef(new Map<string, number>())
+  const [, startRefresh] = useTransition()
+  useEffect(() => {
+    const fresh = (force = false) => {
+      // Без сети обновлять нечем. Мастер у кресла работает офлайн штатно
+      // (очередь действий, М12) — тихий запрос в никуда там не нужен.
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return
+      const now = Date.now()
+      const last = seen.current.get(pathname) ?? 0
+      if (!force && now - last < 20_000) return
+      seen.current.set(pathname, now)
+      startRefresh(() => router.refresh())
+    }
+    // После отрисовки, а не вместо неё: экран обязан появиться первым.
+    const id = setTimeout(() => fresh(), 300)
+    const onShow = () => { if (document.visibilityState === 'visible') fresh(true) }
+    document.addEventListener('visibilitychange', onShow)
+    return () => { clearTimeout(id); document.removeEventListener('visibilitychange', onShow) }
+  }, [pathname, router])
+
   const active = (i: Item) => {
     if (going !== null) return i.exact ? going === i.href : going.startsWith(i.href)
     return i.exact ? pathname === i.href : pathname.startsWith(i.href)
@@ -389,6 +436,9 @@ function AppShellInner({
           <nav className="flex flex-col gap-1">
             {[...menuItems.slice(0, 1), ...tabs, ...menuItems.slice(1)].map((s) => (
               <Link key={s.href + s.label} href={s.href} className="sidebar-item"
+                    // Тот же полный запрос — но только у четырёх разделов
+                    // панели, не у всего сайдбара (см. нижнюю панель).
+                    prefetch={TABS.some((x) => x.href === s.href) ? true : undefined}
                     onClick={() => setGoing(s.href)}
                     data-active={active(s)}>
                 <span aria-hidden className="flex w-5 justify-center">
@@ -485,6 +535,16 @@ function AppShellInner({
               и тень над ним ломала бы подписи прямо здесь. */}
           {tabs.map((tab) => (
             <Link key={tab.href} href={tab.href} className="bottomnav-item flex-1"
+                  // ПОЛНЫЙ упреждающий запрос, а не умолчание. По умолчанию
+                  // Next для динамического адреса тянет только до ближайшего
+                  // `loading.tsx` — то есть заранее приезжает скелетон,
+                  // а данные всё равно едут в момент нажатия. Здесь нужен
+                  // именно ответ целиком: тогда нажатие не ходит в сеть.
+                  // Просят его только ЧЕТЫРЕ вкладки панели — они всегда
+                  // на экране и между ними прыгают всю смену. Ставить то же
+                  // самое на девять пунктов под аватаром значит греть
+                  // на открытии девять страниц, которые открывают раз в день.
+                  prefetch
                   onClick={() => setGoing(tab.href)}
                   data-active={active(tab)}>
               <span aria-hidden><tab.icon size={22} /></span>
