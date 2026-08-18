@@ -36,6 +36,7 @@ export function CodeInput({
   const t = useT()
   const ref = useRef<HTMLInputElement>(null)
   const [focused, setFocused] = useState(false)
+  const [canPaste, setCanPaste] = useState(false)
 
   // Экран кода открывается сразу после отправки письма — клавиатура
   // должна подняться сама, иначе первое действие человека это лишний тап.
@@ -45,9 +46,46 @@ export function CodeInput({
     return () => clearTimeout(id)
   }, [])
 
+  // ── «Вставити код» ──────────────────────────────────────────────────
+  //
+  // Чего эта кнопка НЕ делает и почему. Владелец просил, чтобы код сам
+  // всплывал над клавиатурой, «не открывая письмо». Строка
+  // `autocomplete="one-time-code"` выше ровно за это и отвечает — но
+  // подставляет код туда ОПЕРАЦИОННАЯ СИСТЕМА, а она читает только
+  // «Повідомлення» и родную «Пошту» Apple. Письмо приходит в Gmail,
+  // и его содержимое iOS не видит принципиально: стороннее приложение
+  // не отдаёт тексты писем в автозаполнение. Ни одна строка нашего кода
+  // этого не меняет — обещать «код появится сам» было бы неправдой.
+  //
+  // Что в наших руках: как только код оказался в буфере (в Gmail это
+  // долгое нажатие → «Копіювати»), iOS и сам предложит его в полосе
+  // над клавиатурой. Эта кнопка — второй путь к тому же, на один тап
+  // и без поиска глазами по полосе автозамены.
+  //
+  // Показывается ТОЛЬКО пока поле пустое: над заполненным кодом она
+  // предлагала бы затереть уже введённое.
+  useEffect(() => {
+    setCanPaste(typeof navigator !== 'undefined' && !!navigator.clipboard?.readText)
+  }, [])
+
+  async function paste() {
+    try {
+      const text = await navigator.clipboard.readText()
+      const hit = text.replace(/\D/g, '').match(new RegExp(`\\d{${length}}`))
+      if (hit) { onChange(hit[0]); return }
+    } catch {
+      // Отказ в доступе к буферу — обычное дело: на iOS его сначала
+      // подтверждают системной кнопкой. Ругаться не на что.
+    }
+    // Кода в буфере нет — открываем клавиатуру, чтобы нажатие
+    // хоть чем-то закончилось.
+    ref.current?.focus()
+  }
+
   const cells = Array.from({ length }, (_, i) => i)
 
   return (
+    <>
     <div
       className="relative"
       onClick={() => ref.current?.focus()}
@@ -115,6 +153,18 @@ export function CodeInput({
         }}
       />
     </div>
+
+    {/* Кнопка стоит СНАРУЖИ рамки с клетками, а не внутри: настоящее
+        поле растянуто по ней целиком (`absolute inset-0`) и перехватило
+        бы нажатие на себя. */}
+    {canPaste && !disabled && value.length === 0 && (
+      <div className="mt-3 flex justify-center">
+        <button type="button" onClick={() => void paste()} className="btn-ghost t-sm">
+          {t('m.code.paste')}
+        </button>
+      </div>
+    )}
+    </>
   )
 }
 

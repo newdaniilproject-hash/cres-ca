@@ -51,11 +51,23 @@ type Props = {
   onClose: () => void
   /** Код распознан. Шторка закрывается сама — экрану остаётся только поиск. */
   onResult: (code: string) => void
+  /**
+   * Ручной ввод кода. Три подписи об ошибке здесь ЗОВУТ вводить код руками
+   * («дозвольте доступ… або введіть код вручну»), а пути к этому вводу
+   * в самой шторке не было: человек упирался в отказ камеры и в «Скасувати».
+   * Пока рядом на экране склада стояло второе поле ввода, дефект не был
+   * виден; после его удаления 18.08.2026 он стал тупиком, и выход из него
+   * обязан жить там же, где отказ.
+   *
+   * Необязательный: экрану штрихкодов ручной ввод не нужен — он и так
+   * состоит из поля.
+   */
+  onManual?: () => void
 }
 
 type Phase = 'starting' | 'scanning' | 'denied' | 'nocamera' | 'failed'
 
-export function Scanner({ open, onClose, onResult }: Props) {
+export function Scanner({ open, onClose, onResult, onManual }: Props) {
   const t = useT()
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -216,6 +228,17 @@ export function Scanner({ open, onClose, onResult }: Props) {
             {t('common.cancel')}
           </button>
         </div>
+
+        {/* Ручной ввод — запасной путь, и он стоит НИЖЕ отмены намеренно:
+            основной путь здесь камера, а это то, к чему обращаются, когда
+            наклейка стёрта или камера отказала. Шторка закрывается сама —
+            две шторки одна поверх другой на телефоне не читаются. */}
+        {onManual && (
+          <button type="button" className="btn-ghost w-full"
+                  onClick={() => { onClose(); onManual() }}>
+            {t('scan.manual')}
+          </button>
+        )}
       </div>
     </Sheet>
   )

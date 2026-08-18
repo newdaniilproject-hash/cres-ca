@@ -175,21 +175,32 @@
 
   "inventory.scan.camera.aria": "Сканувати камерою",
   "inventory.scan.notFound": "Код «{code}» не знайдено",
+  "inventory.scan.close": "Прибрати результат сканування",
 
   "inventory.stats.total": "Усі позиції",
   "inventory.stats.soon": "Закінчуються",
   "inventory.stats.expired": "Прострочені",
   "inventory.stats.low": "Мало на складі",
 
-  "inventory.quick.scan": "Сканувати",
   "inventory.quick.receipts": "Надходження",
   "inventory.quick.movements": "Рухи",
   "inventory.quick.counts": "Інвентаризація",
 
-  "inventory.search.placeholder": "Пошук у складі або код наліпки…",
   "inventory.search.find": "Знайти",
-  "inventory.search.mode": "Пошук",
   "inventory.search.empty": "За цим запитом нічого не знайшлося",
+
+  "inventory.filter.query": "Пошук: {q}",
+  "inventory.filter.reset": "Показати все",
+
+  "inventory.empty.title": "Склад порожній",
+  "inventory.empty.desc": "Заведіть перший витратний засіб — далі партії, банки та QR-наліпки додаються з його картки.",
+  "inventory.empty.filtered": "Спробуйте інший запит або зніміть фільтр стану.",
+
+  "inventory.more.title": "Ще у складі",
+
+  "inventory.manual.title": "Ввести код вручну",
+  "inventory.manual.hint": "Якщо наліпка стерлася або камера не працює — наберіть код із наліпки чи заводський штрихкод.",
+  "inventory.manual.placeholder": "Код наліпки або штрихкод",
 
   "inventory.container.open": "Відкрити банку",
   "inventory.container.openShort": "Відкрити",
@@ -222,20 +233,15 @@
   "inventory.action.addContainer": "+ Банка",
   "inventory.action.addInCatalog": "Додати в каталозі",
 
-  "inventory.materials.empty": "Витратних засобів поки немає",
   "inventory.materials.add": "Додати засіб",
   "inventory.materials.batch": "Партія: {number}",
   "inventory.materials.until": "до {date}",
   "inventory.materials.pao": "PAO {n} міс",
 
-  "inventory.containers.empty": "Ємностей поки немає. Заведіть банку — і наклейте на неї QR із кодом.",
-  "inventory.containers.searchEmpty": "За цим запитом ємностей немає",
-  "inventory.containers.add": "Завести банку",
 
   "inventory.goods.units": "Одиниць",
   "inventory.goods.cost": "Собівартість",
   "inventory.goods.retail": "У продажу",
-  "inventory.goods.searchEmpty": "За цим запитом товарів немає",
   "inventory.goods.reserved": "у резерві: {n}",
   "inventory.goods.untracked": "без обліку",
 
@@ -1690,6 +1696,7 @@
 
   "m.nav.back.aria": "Назад",
   "m.code.aria": "Код з листа",
+  "m.code.paste": "Вставити код із буфера",
   "m.field.email": "Пошта",
   "m.field.password": "Пароль",
 
@@ -2267,5 +2274,6 @@
   "scan.nocamera": "Камери не знайдено. Введіть код вручну.",
   "scan.failed": "Камера не запустилася. Спробуйте ще раз або введіть код вручну.",
   "scan.torch.on": "Ліхтарик",
-  "scan.torch.off": "Вимкнути ліхтарик"
+  "scan.torch.off": "Вимкнути ліхтарик",
+  "scan.manual": "Ввести код вручну"
 }
