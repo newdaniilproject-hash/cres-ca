@@ -2562,3 +2562,270 @@ body.kb-open .m-actionbar {
     .wiz-title { font-size: 32px; }
   }
 }
+
+/* ============================================================
+   КАБИНЕТ НА СТОЛЕ: три колонки. По макетам «салон страница
+   сегодня» и «склад», переданным 18.08.2026.
+
+   Что было: сайдбар 208px и содержимое, всё зажато в `max-w-6xl`
+   (1152px). На мониторе 1440 это оставляло 300px пустого поля
+   с каждой стороны, а таблица склада — семь колонок — не влезала
+   и переносилась.
+
+   Что стало: полноширинная верхняя полоса, слева навигация,
+   справа рельс быстрых действий. Рельс — СЛОТ страницы, а не
+   список, который оболочка подбирает по адресу: второй источник
+   правды рядом с `HEADINGS` разъехался бы на первом же новом
+   экране. Страница кладёт в `children` элемент с классом `.rail`,
+   сетка сама уводит его во вторую колонку, а страница без рельса
+   получает одну колонку во всю ширину (`:has()`).
+
+   ТЕЛЕФОН ЭТОТ БЛОК НЕ ТРОГАЕТ ВООБЩЕ. Всё, что ниже, живёт
+   от `lg` и выше; нижняя панель, шторка под аватаром и верхняя
+   строка с поиском остаются ровно теми же, какими их сделало
+   решение владельца 15.08.2026.
+   ============================================================ */
+
+@layer components {
+
+  /* Ширины колонок — токенами: их знают и полоса сверху (чтобы знак
+     встал ровно над навигацией), и сетка ниже. Разъехавшись, эти
+     два числа дадут знак, висящий над содержимым. */
+  :root {
+    --nav-w: 232px;
+    --rail-w: 300px;
+    --appbar-h: 64px;
+  }
+
+  .appbar {
+    @apply sticky top-0 z-40 hidden items-center gap-4 border-b lg:flex;
+    height: var(--appbar-h);
+    padding-inline: var(--space-5);
+    border-color: var(--color-border);
+    background: color-mix(in srgb, var(--color-surface) 92%, transparent);
+    backdrop-filter: blur(12px);
+  }
+  /* Знак занимает ровно ширину навигации, поэтому стоит над ней,
+     а не над содержимым. */
+  .appbar-brand { width: calc(var(--nav-w) - var(--space-5)); flex-shrink: 0; }
+
+  /* Поиск по центру полосы и ограничен по ширине: растянутый на
+     всю полосу он читается как адресная строка браузера. */
+  .appbar-search { @apply mx-auto w-full; max-width: 620px; }
+
+  /* Подсказка сочетания клавиш. Не украшение: без неё про ⌘K
+     не знает никто, а с ней поиск открывают, не касаясь мыши. */
+  .kbd {
+    @apply shrink-0 rounded px-1.5 py-0.5 text-xs tabular-nums;
+    border: 1px solid var(--color-border);
+    color: var(--color-faint);
+    background: var(--color-surface-2);
+  }
+
+  /* Колокол с точкой непрочитанного. Точка, а не число: числа
+     на значке требуют счётчика, которого в базе нет. */
+  .bellbtn { @apply relative; }
+  .bellbtn[data-unread='true']::after {
+    content: '';
+    position: absolute;
+    top: 9px; right: 10px;
+    width: 8px; height: 8px;
+    border-radius: 999px;
+    background: var(--color-danger);
+    border: 2px solid var(--color-surface);
+  }
+
+  /* Блок пользователя: буква, имя заведения, роль, шеврон. */
+  .userbtn {
+    @apply flex shrink-0 items-center gap-2.5 pl-1.5 pr-2.5;
+    height: 46px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    transition: border-color var(--dur-fast), background var(--dur-fast);
+  }
+  .userbtn:hover { border-color: var(--color-border); background: var(--color-surface-2); }
+  .userbtn-name { @apply block max-w-[168px] truncate text-sm font-semibold; color: var(--color-text); }
+  .userbtn-role { @apply block text-xs; color: var(--color-faint); }
+
+  .usermenu {
+    @apply absolute right-0 z-50 flex flex-col p-1.5;
+    top: calc(100% + 6px);
+    width: 268px;
+    border-radius: var(--radius-card);
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+    box-shadow: var(--shadow-overlay);
+  }
+  .usermenu-head { @apply flex items-center gap-3 border-b px-2.5 pb-3 pt-2; border-color: var(--color-border); }
+  .usermenu-item {
+    @apply flex items-center gap-3 px-2.5 text-sm;
+    min-height: 38px;
+    border-radius: var(--radius-control);
+    color: var(--color-text);
+    transition: background var(--dur-fast);
+  }
+  .usermenu-item:hover { background: var(--color-surface-2); }
+  .usermenu-sep { @apply my-1.5 border-t; border-color: var(--color-border); }
+
+  /* ── Три колонки ──────────────────────────────────────────── */
+  .applayout { @apply lg:flex; }
+
+  .appnav {
+    @apply hidden shrink-0 flex-col gap-1 border-r lg:flex;
+    width: var(--nav-w);
+    position: sticky;
+    top: var(--appbar-h);
+    height: calc(100dvh - var(--appbar-h));
+    padding: var(--space-4) var(--space-3);
+    overflow-y: auto;
+    border-color: var(--color-border);
+    background: var(--color-surface);
+  }
+
+  /* Карточка помощи внизу навигации. Прижата к низу `margin-top:auto`,
+     а не отступом: длина списка разделов зависит от модулей заведения
+     и от прав человека, и фиксированный отступ то оторвёт её от края,
+     то утопит под ним. */
+  .nav-help {
+    @apply mt-auto flex flex-col gap-2 p-3.5;
+    border-radius: var(--radius-card);
+    background: var(--color-accent-soft);
+  }
+
+  .appmain { @apply min-w-0 flex-1; padding: var(--space-4); }
+  @media (min-width: 1024px) { .appmain { padding: var(--space-5) var(--space-6); } }
+
+  /* ── Рабочая область: содержимое и рельс ──────────────────── */
+  .workarea { @apply grid; gap: var(--space-4); align-items: start; }
+  @media (min-width: 1280px) {
+    /* `:has()` — не трюк ради краткости, а единственный способ не
+       заставлять двадцать девять существующих экранов объявлять,
+       что рельса у них нет. Экран без `.rail` получает одну колонку
+       во всю ширину, экран с рельсом — две. */
+    .workarea:has(> .rail) { grid-template-columns: minmax(0, 1fr) var(--rail-w); gap: var(--space-5); }
+    .workarea > .rail { grid-column: 2; grid-row: 1; }
+    .workarea > :not(.rail) { grid-column: 1; }
+  }
+  .rail { @apply flex flex-col gap-4; }
+
+  .rail-card {
+    @apply flex flex-col gap-1 border p-4;
+    border-radius: var(--radius-card);
+    border-color: var(--color-border);
+    background: var(--color-surface);
+  }
+  .rail-title { @apply mb-1 text-sm font-semibold; color: var(--color-text); }
+  /* Строка быстрого действия: значок в мягком кружке, подпись, шеврон. */
+  .rail-action {
+    @apply flex items-center gap-3 px-2 text-sm;
+    min-height: var(--tap-min);
+    border-radius: var(--radius-control);
+    color: var(--color-text);
+    transition: background var(--dur-fast);
+  }
+  .rail-action:hover { background: var(--color-surface-2); }
+  .rail-action-icon {
+    @apply grid shrink-0 place-items-center;
+    width: 30px; height: 30px;
+    border-radius: 999px;
+    background: var(--color-accent-soft);
+    color: var(--color-accent-ink);
+  }
+  .rail-row { @apply flex items-center justify-between gap-2 py-1.5 text-sm; }
+  /* Полоса доли в «Топ категорій». Ширина задаётся инлайном — это
+     ДАННЫЕ (доля категории), а не оформление. */
+  .rail-bar { height: 5px; border-radius: 999px; background: var(--color-surface-2); }
+  .rail-bar > span { display: block; height: 100%; border-radius: 999px; background: var(--color-accent); }
+  .rail-bar > span[data-tone='violet']  { background: var(--tone-violet); }
+  .rail-bar > span[data-tone='emerald'] { background: var(--tone-emerald); }
+  .rail-bar > span[data-tone='amber']   { background: var(--tone-amber); }
+
+  /* ── Вкладки раздела ──────────────────────────────────────────
+     Это НЕ переключатель состояния, а ссылки на соседние экраны
+     раздела: «Приймання», «Рухи», «Інвентаризації» — отдельные
+     адреса, и они обязаны открываться в новой вкладке и ложиться
+     в историю. Поэтому <a>, а не <button>.                       */
+  .tabs {
+    @apply flex gap-1 overflow-x-auto border-b;
+    border-color: var(--color-border);
+    scrollbar-width: none;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab {
+    @apply whitespace-nowrap px-3 pb-2.5 pt-1 text-sm font-medium;
+    color: var(--color-muted);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: color var(--dur-fast), border-color var(--dur-fast);
+  }
+  .tab:hover { color: var(--color-text); }
+  .tab[data-active='true'] { color: var(--color-accent-ink); border-color: var(--color-accent); }
+
+  /* ── Полоса фильтров над таблицей ─────────────────────────── */
+  .toolbar { @apply flex flex-wrap items-center gap-2; }
+  .toolbar .input, .toolbar .select { height: var(--h-md); }
+
+  /* ── Таблица ──────────────────────────────────────────────────
+     Первый табличный компонент в проекте: до 18.08.2026 списки
+     собирались карточками под телефон, и `<table>` не встречался
+     ни разу. Он нужен складу, заказам, клиентам, движениям
+     и финансам — собранный «на этот экран» он превратится
+     в пять разных таблиц.
+
+     Горизонтальная прокрутка живёт в СВОЁЙ обёртке, а не на теле
+     страницы: семь колонок на 1280 не помещаются, и без обёртки
+     вбок уезжает вся страница вместе с навигацией.               */
+  .tablewrap {
+    @apply w-full overflow-x-auto border;
+    border-radius: var(--radius-card);
+    border-color: var(--color-border);
+    background: var(--color-surface);
+  }
+  .table { @apply w-full; border-collapse: collapse; font-size: var(--text-sm); }
+  .table thead th {
+    @apply whitespace-nowrap px-4 py-3 text-left text-xs font-semibold;
+    color: var(--color-muted);
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-surface);
+  }
+  .table tbody td {
+    @apply px-4 py-3 align-middle;
+    color: var(--color-text);
+    border-bottom: 1px solid var(--color-border);
+  }
+  .table tbody tr:last-child td { border-bottom: none; }
+  .table tbody tr { transition: background var(--dur-fast); }
+  .table tbody tr:hover { background: var(--color-surface-2); }
+  /* Числовые колонки — вправо и моноширинными цифрами: столбец сумм,
+     выровненный влево, невозможно сравнить глазом. */
+  .table .num-col { text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* Миниатюра товара в строке таблицы. */
+  .cell-thumb {
+    @apply grid shrink-0 place-items-center overflow-hidden;
+    width: 40px; height: 40px;
+    border-radius: var(--radius-control);
+    background: var(--color-surface-2);
+    color: var(--color-faint);
+  }
+  .cell-thumb img { width: 100%; height: 100%; object-fit: cover; }
+
+  /* ── Постраничная навигация ───────────────────────────────── */
+  .pager { @apply flex items-center justify-between gap-3 px-4 py-3 text-sm; color: var(--color-muted); }
+  .pager-btn {
+    @apply grid place-items-center;
+    min-width: 34px; height: 34px;
+    padding-inline: 8px;
+    border-radius: var(--radius-control);
+    border: 1px solid var(--color-border);
+    color: var(--color-text);
+    transition: background var(--dur-fast), border-color var(--dur-fast);
+  }
+  .pager-btn:hover:not([disabled]) { background: var(--color-surface-2); }
+  .pager-btn[data-active='true'] {
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+    color: var(--color-accent-text);
+  }
+  .pager-btn[disabled] { color: var(--color-faint); }
+}

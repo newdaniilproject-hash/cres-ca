@@ -1,8 +1,9 @@
 'use client'
 
 import Link from 'next/link'
+import { createPortal } from 'react-dom'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { Suspense, createContext, useContext, useEffect, useState } from 'react'
+import { Suspense, createContext, useContext, useEffect, useRef, useState } from 'react'
 import { ThemeToggle } from '@/components/theme'
 import { LangSwitch } from '@/components/lang-switch'
 import { Sheet } from '@/components/sheet'
@@ -11,10 +12,11 @@ import { useT } from '@/lib/i18n/client'
 import type { Key } from '@/lib/i18n/dict'
 import type { T } from '@/lib/i18n/translate'
 import type { TenantModule } from '@/lib/tenant'
+import { SUPPORT_EMAIL } from '@/lib/site'
 import {
-  IconBack, IconBag, IconBox, IconCalendar, IconCheck, IconDoc,
-  IconExit, IconGear, IconHome, IconMoney, IconScan, IconScissors,
-  IconSearch, IconUser, IconUsers,
+  IconBack, IconBag, IconBell, IconBox, IconCalendar, IconCheck, IconChevron,
+  IconDoc, IconExit, IconGear, IconGlobe, IconHome, IconMoney, IconScan,
+  IconScissors, IconSearch, IconSupport, IconUser, IconUsers,
 } from '@/components/icons'
 
 // Навигация кабинета. Переписана 15.08.2026 по макетам CRESKO,
@@ -226,6 +228,32 @@ function headingOf(
 // Отрисована ли оболочка выше по дереву. Внутри неё AppShell прозрачен.
 const InsideShell = createContext(false)
 
+// ── Кнопки действий в строке заголовка ──────────────────────────────────────
+//
+// В макетах у каждого экрана справа от названия стоят его действия:
+// «Експорт» и «+ Приймання» на складе, «Календар» и «+ Додати запис»
+// на «Сьогодні». Заголовок при этом собирает ОБОЛОЧКА из адреса
+// (`HEADINGS`), а не страница, — иначе двадцать девять страниц станут
+// двадцатью девятью источниками правды о том, где ты находишься.
+//
+// Проп `action` у AppShell для этого не годится: layout зовёт оболочку
+// без него, а страницы зовут её ВНУТРИ уже отрисованной, где она отдаёт
+// только `children` и все пропы проглатывает. Проп молча терялся бы.
+//
+// Поэтому слот: оболочка отдаёт узел, страница кладёт в него свои кнопки
+// порталом. Плата названа честно — на сервере узла ещё нет, и кнопки
+// появляются после гидратации, то есть их нет в первом HTML. Для ссылок
+// и открывашек это незаметно; ставить сюда что-то, что обязано работать
+// без JavaScript, нельзя.
+const ActionSlot = createContext<HTMLElement | null>(null)
+
+/** Кнопки экрана — в строку заголовка. Зовётся из страницы кабинета. */
+export function PageActions({ children }: { children: React.ReactNode }) {
+  const slot = useContext(ActionSlot)
+  if (!slot) return null
+  return createPortal(children, slot)
+}
+
 // Пропов `active`, `title`, `subtitle` и `back` здесь больше нет
 // (16.08.2026). Их передавали двадцать шесть страниц, а читать перестали
 // в тот день, когда заголовок начал собираться из адреса по `HEADINGS`,
@@ -242,8 +270,12 @@ export function AppShell(props: {
    * вложенные вызовы AppShell не режут меню, которое собрал layout.
    */
   perms?: string[]
-  /** Имя заведения — заголовок экрана «Сьогодні». */
+  /** Имя заведения — заголовок экрана «Сьогодні» и подпись в шапке. */
   shopName?: string
+  /** Адрес публичной страницы заклада: ссылка «Профіль магазину». */
+  shopSlug?: string
+  /** Роль в заведении — вторая строка под именем в шапке. */
+  role?: string
   /** Кнопка справа в шапке. Читается и рисуется — см. `AppShellInner`. */
   action?: React.ReactNode
   children: React.ReactNode
@@ -265,11 +297,13 @@ export function AppShell(props: {
 }
 
 function AppShellInner({
-  modules, perms, shopName = '', action, children,
+  modules, perms, shopName = '', shopSlug = '', role = '', action, children,
 }: {
   modules?: TenantModule[]
   perms?: string[]
   shopName?: string
+  shopSlug?: string
+  role?: string
   action?: React.ReactNode
   children: React.ReactNode
 }) {
@@ -278,8 +312,11 @@ function AppShellInner({
   const params = useSearchParams()
   const router = useRouter()
   const [menu, setMenu] = useState(false)
+  const [userMenu, setUserMenu] = useState(false)
   const [query, setQuery] = useState('')
   const [initial, setInitial] = useState('')
+  const [actionSlot, setActionSlot] = useState<HTMLElement | null>(null)
+  const deskSearch = useRef<HTMLInputElement>(null)
 
   // Пункт показывается, только если совпало И то, и другое: заведение
   // купило модуль И человеку разрешено право. Правило `'*'` повторяет
@@ -292,6 +329,36 @@ function AppShellInner({
   const allowed = (i: Item) => hasModule(i) && can(i)
   const tabs = TABS.filter(allowed)
   const menuItems = MENU.filter(allowed)
+
+  // ── Порядок разделов на СТОЛЕ ────────────────────────────────
+  //
+  // На телефоне порядок диктует панель: четыре раздела, между которыми
+  // прыгают за смену. На столе видно всё сразу, и порядок другой —
+  // сверху вниз по ходу дня, как в макете.
+  //
+  // Это ТАБЛИЦА ПОРЯДКА, а не третий список разделов. Она держит только
+  // адреса; сами пункты по-прежнему живут в TABS и MENU и фильтруются
+  // теми же двумя осями. Раздел, не названный здесь, не пропадает —
+  // он встаёт в конец. Иначе новый модуль исчезал бы из навигации
+  // на столе до правки этого массива, и заметили бы это не сразу.
+  const DESKTOP_ORDER = [
+    '/app', '/app/bookings', '/app/inventory', '/app/catalog',
+    '/app/journals', '/app/documents', '/app/techcards',
+    '/app/orders', '/app/customers', '/app/finance', '/app/settings',
+  ]
+  // Личное — под аватаром, а не в навигации разделов: «Мій профіль»
+  // и «Команда» отвечают на вопрос «про меня», а не «где я».
+  const PERSONAL = ['/app/profile', '/app/team']
+
+  const rank = (href: string) => {
+    const i = DESKTOP_ORDER.indexOf(href)
+    return i === -1 ? DESKTOP_ORDER.length : i
+  }
+  const sidebar = [...tabs, ...menuItems]
+    .filter((i) => !PERSONAL.includes(i.href))
+    .sort((a, b) => rank(a.href) - rank(b.href))
+  const personal = [...tabs, ...menuItems].filter((i) => PERSONAL.includes(i.href))
+  const hasStorefront = !modules || modules.includes('storefront')
 
   // Открыт ли КОРЕНЬ раздела. Адрес, которого нет в навигации, эта
   // функция не запрещает: про экраны внутри раздела список ничего
@@ -313,7 +380,26 @@ function AppShellInner({
 
   // Смена экрана закрывает меню: навигация произошла — мебель обязана
   // уйти с дороги сама.
-  useEffect(() => { setMenu(false) }, [pathname, params])
+  useEffect(() => { setMenu(false); setUserMenu(false) }, [pathname, params])
+
+  // ⌘K / Ctrl+K ставит курсор в поиск. Подсказка `⌘K` нарисована
+  // в поле, и она обязана что-то делать: подпись про сочетание клавиш,
+  // которого нет, — это то же обещание несуществующей кнопки.
+  //
+  // Escape убирает фокус: иначе выйти из поля, не трогая мышь, нечем.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        deskSearch.current?.focus()
+      }
+      if (e.key === 'Escape' && document.activeElement === deskSearch.current) {
+        deskSearch.current?.blur()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   // Буква на аватаре. Имя берём из профиля токена, а не запросом
   // к базе: аватар не стоит похода в сеть на каждом экране.
@@ -349,15 +435,124 @@ function AppShellInner({
 
   return (
     <div className="appshell min-h-dvh pb-32 lg:pb-0">
-      <div className="mx-auto flex max-w-6xl gap-8 px-4 pt-3 sm:px-6">
 
-        {/* ── Десктоп: постоянный сайдбар ─────────────────────── */}
-        <aside className="hidden w-52 shrink-0 lg:block">
-          <Link href="/app" className="display mb-8 block t-xl">
-            CRES<span style={{ color: 'var(--color-accent)' }}>KO</span>
+      {/* ── СТОЛ: полноширинная верхняя полоса ─────────────────
+          Появилась 18.08.2026 по макетам. До неё поиск, сканер
+          и аватар жили внутри колонки содержимого и уезжали вместе
+          с ней; знак заведения не показывался нигде, и человек,
+          ведущий два заклада, не видел, в каком он сейчас. */}
+      <header className="appbar">
+        <Link href="/app" className="appbar-brand land-brand" style={{ fontSize: 20 }}>
+          CRESKO<span aria-hidden className="land-brand-dot" />
+        </Link>
+
+        {canSearch ? (
+          <form onSubmit={search} className="appbar-search">
+            <label className="searchbar flex items-center gap-2">
+              <span aria-hidden style={{ color: 'var(--color-faint)' }}><IconSearch /></span>
+              <input
+                ref={deskSearch}
+                className="searchbar-input min-w-0 flex-1"
+                placeholder={t('app.chrome.search.placeholder')}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                aria-label={t('app.chrome.search.aria')}
+              />
+              <span className="kbd" aria-hidden>⌘K</span>
+            </label>
+          </form>
+        ) : (
+          <div className="appbar-search" />
+        )}
+
+        {canSearch && (
+          <Link href="/app/inventory?scan=1" aria-label={t('app.chrome.scan.aria')}
+                className="iconbtn shrink-0" style={{ border: 0, background: 'transparent' }}>
+            <IconScan />
           </Link>
+        )}
+
+        {/* Колокол ведёт на «Сьогодні»: отдельного экрана уведомлений
+            в кабинете нет, а сводка дня — это и есть то, ради чего
+            на него нажимают. Точка непрочитанного не рисуется, пока
+            её нечем считать: счётчика в базе нет (правило 8). */}
+        <Link href="/app" aria-label={t('app.chrome.bell.aria')}
+              className="iconbtn bellbtn shrink-0" style={{ border: 0, background: 'transparent' }}>
+          <IconBell />
+        </Link>
+
+        <div className="relative">
+          <button type="button" className="userbtn" onClick={() => setUserMenu(!userMenu)}
+                  aria-expanded={userMenu} aria-label={t('app.chrome.avatar.aria')}>
+            <span className="avatarbtn" style={{ width: 36, height: 36 }}>
+              {initial || <IconUser size={16} />}
+            </span>
+            <span className="text-left">
+              <span className="userbtn-name">{shopName || t('app.screen.today.title')}</span>
+              {role && <span className="userbtn-role">{t(`role.${role}` as Key)}</span>}
+            </span>
+            <span aria-hidden style={{ color: 'var(--color-faint)' }}><IconChevron /></span>
+          </button>
+
+          {userMenu && (
+            <>
+              {/* Подложка на весь экран, а не обработчик на document:
+                  она же перехватывает первый щелчок мимо меню, и он
+                  не срабатывает по тому, что под ним. */}
+              <button type="button" aria-hidden tabIndex={-1}
+                      className="fixed inset-0 z-40 cursor-default"
+                      onClick={() => setUserMenu(false)} />
+              <div className="usermenu">
+                <div className="usermenu-head">
+                  <span className="avatarbtn" style={{ width: 38, height: 38 }}>
+                    {initial || <IconUser size={16} />}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="userbtn-name">{shopName || t('app.screen.today.title')}</span>
+                    {role && <span className="userbtn-role">{t(`role.${role}` as Key)}</span>}
+                  </span>
+                </div>
+
+                {/* Публичная страница заклада — внешняя ссылка, поэтому
+                    открывается новой вкладкой: человек смотрит, как его
+                    видит покупатель, и возвращается в кабинет, а не
+                    выходит из него. Показывается только при модуле
+                    витрины и только когда слаг известен. */}
+                {shopSlug && hasStorefront && (
+                  <a href={`/t/${shopSlug}`} target="_blank" rel="noopener"
+                     className="usermenu-item">
+                    <IconGlobe size={18} /> {t('app.chrome.storefront')}
+                  </a>
+                )}
+                {personal.map((s) => (
+                  <Link key={s.href} href={s.href} className="usermenu-item">
+                    <s.icon size={18} /> {t(s.label)}
+                  </Link>
+                ))}
+
+                <div className="usermenu-sep" />
+                <div className="flex flex-wrap items-center gap-2 px-2.5 py-1">
+                  <ThemeToggle />
+                  <LangSwitch />
+                </div>
+                <div className="usermenu-sep" />
+
+                <button type="button" onClick={() => void signOut()}
+                        className="usermenu-item" style={{ color: 'var(--color-danger)' }}>
+                  <IconExit size={18} /> {t('app.chrome.signOut')}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </header>
+
+      <div className="applayout">
+
+        {/* ── Стол: постоянная навигация ─────────────────────── */}
+        <aside className="appnav">
           <nav className="flex flex-col gap-1">
-            {[...menuItems.slice(0, 1), ...tabs, ...menuItems.slice(1)].map((s) => (
+            {sidebar.map((s) => (
               <Link key={s.href + s.label} href={s.href} className="sidebar-item"
                     data-active={active(s)}>
                 <span aria-hidden className="flex w-5 justify-center">
@@ -367,20 +562,30 @@ function AppShellInner({
               </Link>
             ))}
           </nav>
-          {/* Тема и язык — две настройки одного рода, поэтому стоят рядом
-              и здесь, и в шторке под аватаром. Разносить их по разным
-              местам значит заставить искать вторую там, где нашлась первая. */}
-          <div className="mt-8 flex flex-col items-start gap-2 border-t pt-4"
-               style={{ borderColor: 'var(--color-border)' }}>
-            <ThemeToggle />
-            <LangSwitch />
+
+          {/* Карточка помощи из макета. Ручной онбординг — это сам
+              продукт (CLAUDE.md → «Куда идёт продукт»), и предложение
+              помощи обязано быть видно с любого экрана, а не только
+              в первый день. Ведёт на почту: телефонной очереди нет,
+              и кнопка «замовити дзвінок» обещала бы то, чего нет. */}
+          <div className="nav-help">
+            <span className="flex items-center gap-2 t-sm" style={{ fontWeight: 650 }}>
+              <IconSupport size={18} /> {t('app.chrome.help.title')}
+            </span>
+            <span className="t-xs prose-muted">{t('app.chrome.help.text')}</span>
+            <a href={`mailto:${SUPPORT_EMAIL}`} className="btn-primary t-sm mt-1">
+              {t('app.chrome.help.cta')}
+            </a>
           </div>
         </aside>
 
-        <main className="min-w-0 flex-1 pb-12">
+        <main className="appmain">
 
-          {/* ── Верхняя строка: назад, поиск, сканер, аватар ──── */}
-          <div className="apphead mb-4 flex items-center gap-2">
+          {/* ── Телефон: верхняя строка с поиском и аватаром ───
+              На столе её заменяет полоса выше, поэтому `lg:hidden`.
+              Разметка не тронута: нижняя панель, шторка и клавиатура
+              работают ровно как решено 15.08.2026. */}
+          <div className="apphead mb-4 flex items-center gap-2 lg:hidden">
             {heading.back && (
               <Link href={heading.back} aria-label={t('app.chrome.back.aria')}
                     className="apphead-back flex shrink-0 items-center justify-center">
@@ -435,9 +640,18 @@ function AppShellInner({
               )}
             </div>
             {action}
+            {/* Слот действий экрана. `ref` — это setState, поэтому после
+                монтирования оболочка перерисуется и `PageActions` найдёт
+                узел (разбор — у объявления `ActionSlot`). */}
+            <div ref={setActionSlot} className="flex shrink-0 items-center gap-2" />
           </div>
 
-          {children}
+          {/* Рабочая область: содержимое и, если страница его отдала,
+              правый рельс. Сетка сама разводит их по колонкам — см.
+              `.workarea` в globals.css. */}
+          <ActionSlot.Provider value={actionSlot}>
+            <div className="workarea">{children}</div>
+          </ActionSlot.Provider>
         </main>
       </div>
 
@@ -462,7 +676,7 @@ function AppShellInner({
         </nav>
       )}
 
-      {/* ── Под аватаром: остальные разделы, тема, выход ─────── */}
+      {/* ── Телефон: под аватаром — остальные разделы, тема, выход ─ */}
       <Sheet open={menu} onClose={() => setMenu(false)} title={t('app.chrome.menu.title')}>
         <div className="flex flex-col gap-1">
           {menuItems.map((s) => (

@@ -35,15 +35,28 @@ export default async function AppLayout({
   // Имя заведения — заголовок экрана «Сьогодні». Один запрос на кабинет,
   // а не на каждую страницу: layout не перерисовывается при переходах
   // внутри сегмента.
+  // `slug` берётся тем же запросом, что и имя: на столе под аватаром
+  // висит ссылка «Профіль магазину» на публичную страницу заклада,
+  // и второй поход в базу ради одной колонки не нужен.
   const supabase = await createClient()
   const { data: tenant } = await supabase
-    .from('tenants').select('name').eq('id', m.tenantId).maybeSingle()
+    .from('tenants').select('name, slug').eq('id', m.tenantId).maybeSingle()
 
   const lang = await getLang()
 
   return (
     <LangProvider lang={lang}>
-      <AppShell modules={m.modules} perms={m.perms} shopName={tenant?.name ?? ''}>
+      {/* Роль приезжает из токена вместе с членством (правило 3) —
+          отдельного запроса она не стоит. В шапке она вторая строка
+          под именем заклада: человек, у которого два заведения
+          с разными ролями, иначе не видит, что ему здесь можно. */}
+      <AppShell
+        modules={m.modules}
+        perms={m.perms}
+        shopName={tenant?.name ?? ''}
+        shopSlug={tenant?.slug ?? ''}
+        role={m.role}
+      >
         {children}
       </AppShell>
     </LangProvider>

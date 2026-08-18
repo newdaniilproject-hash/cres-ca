@@ -249,3 +249,92 @@ export function IconBriefcase({ size = 22, className }: P) {
     </svg>
   )
 }
+
+/** Колокол — уведомления. */
+export function IconBell({ size = 20, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M18 9a6 6 0 10-12 0c0 4-1.5 5.5-2 6.5h16c-.5-1-2-2.5-2-6.5z" />
+      <path d="M10 19a2 2 0 004 0" />
+    </svg>
+  )
+}
+
+/** Шеврон вниз — раскрывающееся меню. */
+export function IconChevron({ size = 16, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M6 9.5l6 6 6-6" />
+    </svg>
+  )
+}
+
+/** Глобус — публичная страница заведения. */
+export function IconGlobe({ size = 20, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18M12 3c2.5 2.6 2.5 15.4 0 18-2.5-2.6-2.5-15.4 0-18z" />
+    </svg>
+  )
+}
+
+/** Плюс — добавить. */
+export function IconPlus({ size = 20, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  )
+}
+
+/** Три точки — прочие действия строки. */
+export function IconMore({ size = 20, className }: P) {
+  return (
+    <svg {...base(size)} className={className} fill="currentColor" stroke="none">
+      <circle cx="5.5" cy="12" r="1.6" />
+      <circle cx="12" cy="12" r="1.6" />
+      <circle cx="18.5" cy="12" r="1.6" />
+    </svg>
+  )
+}
+
+/** Стрелка вверх из ящика — выгрузка. */
+export function IconExport({ size = 20, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M12 15V3M8 7l4-4 4 4" />
+      <path d="M4 14v4a2 2 0 002 2h12a2 2 0 002-2v-4" />
+    </svg>
+  )
+}
+
+/** Треугольник с восклицанием — предупреждение. */
+export function IconAlert({ size = 20, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M12 4.5L2.8 20h18.4L12 4.5z" />
+      <path d="M12 10v4.5M12 17.2v.01" />
+    </svg>
+  )
+}
+
+/** Часы — сроки и напоминания. */
+export function IconClock({ size = 20, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5.2l3.2 2" />
+    </svg>
+  )
+}
+
+/** Круговая диаграмма — аналитика и отчёты. */
+export function IconChart({ size = 20, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M12 3a9 9 0 109 9h-9V3z" />
+      <path d="M15.5 3.6A9 9 0 0120.4 8.5H15.5V3.6z" />
+    </svg>
+  )
+}

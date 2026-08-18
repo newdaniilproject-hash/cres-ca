@@ -188,4 +188,4 @@ export function PublicFooter() {
 // шторка разделов и нижние табы раздела — состояние, которого
 // серверному компоненту иметь нельзя. Ре-экспорт сохраняет все
 // существующие импорты `from '@/components/shell'`.
-export { AppShell } from './app-shell'
+export { AppShell, PageActions } from './app-shell'
