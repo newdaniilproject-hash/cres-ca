@@ -49,28 +49,33 @@
   /* ── СВЕТЛАЯ ТЕМА — УМОЛЧАНИЕ ──────────────────────────────
      Фон не чисто белый: на белом карточка того же цвета не
      отделяется ничем, кроме тени, и интерфейс читается плоским. */
-  --color-bg: #f6f7f9;
+  /* Значения — из кликабельного прототипа CRESKO (объект LIGHT),
+     переданного владельцем 18.08.2026 со словами «самый близкий визуал
+     что я хотел, от него плясать будем». Подбирать «на глаз похожее»
+     здесь нельзя: расхождение в один шаг серого видно на стыке карточки
+     и фона, а именно этот стык у нас держит всю раскладку. */
+  --color-bg: #f4f5f7;
   --color-surface: #ffffff;
-  --color-surface-2: #f0f2f5;
-  --color-border: #e3e6ea;
-  --color-border-strong: #cfd5dd;
-  --color-text: #0d1117;
-  --color-muted: #5a6472;
-  --color-faint: #98a1ae;
+  --color-surface-2: #eef0f3;
+  --color-border: #e5e7eb;
+  --color-border-strong: #d4d8dd;
+  --color-text: #0f1115;
+  --color-muted: #5b6270;
+  --color-faint: #a2a8b3;
 
-  --color-accent: #1f5df5;
-  --color-accent-hover: #1a4fd6;
-  --color-accent-ink: #1b4fd8;
-  --color-accent-soft: rgb(31 93 245 / 0.10);
+  --color-accent: #2563eb;
+  --color-accent-hover: #1d4ed8;
+  --color-accent-ink: #1d4ed8;
+  --color-accent-soft: rgb(37 99 235 / 0.10);
   --color-accent-text: #ffffff;
   --color-gold: #b08d3f;
 
-  --color-danger: #d92d20;
-  --color-danger-soft: rgb(217 45 32 / 0.10);
-  --color-success: #12805c;
-  --color-success-soft: rgb(18 128 92 / 0.10);
-  --color-warn: #b54708;
-  --color-warn-soft: rgb(181 71 8 / 0.10);
+  --color-danger: #dc2626;
+  --color-danger-soft: rgb(220 38 38 / 0.08);
+  --color-success: #16a34a;
+  --color-success-soft: rgb(22 163 74 / 0.08);
+  --color-warn: #d97706;
+  --color-warn-soft: rgb(217 119 6 / 0.10);
 
   /* ── Тона плиток-счётчиков ─────────────────────────────────
      В макетах у каждой метрики свой цвет значка: позиции синие,
@@ -78,11 +83,11 @@
      зелёные. Это НЕ украшение: четыре одинаковых плитки читаются
      как один блок, и глаз не находит тревожную. Тон задаётся
      атрибутом `data-tone`, а не цветом по месту.                */
-  --tone-blue: #1f5df5;      --tone-blue-soft: rgb(31 93 245 / 0.10);
-  --tone-amber: #b54708;     --tone-amber-soft: rgb(181 71 8 / 0.10);
-  --tone-rose: #d92d20;      --tone-rose-soft: rgb(217 45 32 / 0.10);
-  --tone-emerald: #12805c;   --tone-emerald-soft: rgb(18 128 92 / 0.10);
-  --tone-violet: #6d3bd4;    --tone-violet-soft: rgb(109 59 212 / 0.10);
+  --tone-blue: #2563eb;      --tone-blue-soft: rgb(37 99 235 / 0.10);
+  --tone-amber: #d97706;     --tone-amber-soft: rgb(217 119 6 / 0.10);
+  --tone-rose: #dc2626;      --tone-rose-soft: rgb(220 38 38 / 0.08);
+  --tone-emerald: #16a34a;   --tone-emerald-soft: rgb(22 163 74 / 0.08);
+  --tone-violet: #7c3aed;    --tone-violet-soft: rgb(124 58 237 / 0.10);
 
   /* Радиус растёт вместе с размером объекта: значок — поле —
      карточка — шторка. Смешивать ступени нельзя. */
@@ -195,34 +200,37 @@
    и обязан держать белый текст. Светлеет только `--color-accent-ink`,
    которым набирается акцентный ТЕКСТ (см. шапку файла).          */
 html.dark {
-  --color-bg: #0a0d14;
-  --color-surface: #111725;
-  --color-surface-2: #18202f;
-  --color-border: rgb(255 255 255 / 0.07);
-  --color-border-strong: rgb(255 255 255 / 0.15);
-  --color-text: #f4f6fa;
-  --color-muted: rgb(226 232 240 / 0.66);
-  --color-faint: rgb(226 232 240 / 0.40);
+  /* Из объекта DARK того же прототипа. Подтон холодный, но НЕ синий
+     как раньше: #161a22 против прежнего #111725. На нём кобальт
+     #3b82f6 читается как элемент интерфейса, а не как наклейка. */
+  --color-bg: #0c0e13;
+  --color-surface: #161a22;
+  --color-surface-2: #1e232d;
+  --color-border: rgb(255 255 255 / 0.08);
+  --color-border-strong: rgb(255 255 255 / 0.16);
+  --color-text: #f5f6f8;
+  --color-muted: rgb(255 255 255 / 0.60);
+  --color-faint: rgb(255 255 255 / 0.32);
 
-  --color-accent: #2f6bff;
-  --color-accent-hover: #4b83ff;
-  --color-accent-ink: #7ba6ff;
-  --color-accent-soft: rgb(47 107 255 / 0.18);
+  --color-accent: #3b82f6;
+  --color-accent-hover: #2563eb;
+  --color-accent-ink: #60a5fa;
+  --color-accent-soft: rgb(59 130 246 / 0.16);
   --color-accent-text: #ffffff;
   --color-gold: #d9b262;
 
-  --color-danger: #ff8a80;
-  --color-danger-soft: rgb(220 38 38 / 0.20);
-  --color-success: #58e0a4;
-  --color-success-soft: rgb(16 185 129 / 0.18);
-  --color-warn: #fbbf4c;
-  --color-warn-soft: rgb(217 119 6 / 0.20);
+  --color-danger: #f87171;
+  --color-danger-soft: rgb(248 113 113 / 0.16);
+  --color-success: #4ade80;
+  --color-success-soft: rgb(74 222 128 / 0.14);
+  --color-warn: #fbbf24;
+  --color-warn-soft: rgb(251 191 36 / 0.16);
 
-  --tone-blue: #6f9bff;      --tone-blue-soft: rgb(47 107 255 / 0.20);
-  --tone-amber: #fbbf4c;     --tone-amber-soft: rgb(217 119 6 / 0.20);
-  --tone-rose: #ff8a80;      --tone-rose-soft: rgb(220 38 38 / 0.20);
-  --tone-emerald: #58e0a4;   --tone-emerald-soft: rgb(16 185 129 / 0.18);
-  --tone-violet: #b18bff;    --tone-violet-soft: rgb(139 92 246 / 0.20);
+  --tone-blue: #60a5fa;      --tone-blue-soft: rgb(59 130 246 / 0.16);
+  --tone-amber: #fbbf24;     --tone-amber-soft: rgb(251 191 36 / 0.16);
+  --tone-rose: #f87171;      --tone-rose-soft: rgb(248 113 113 / 0.16);
+  --tone-emerald: #4ade80;   --tone-emerald-soft: rgb(74 222 128 / 0.14);
+  --tone-violet: #a78bfa;    --tone-violet-soft: rgb(167 139 250 / 0.16);
 
   --shadow-card: 0 1px 2px rgb(0 0 0 / 0.36), 0 4px 14px rgb(0 0 0 / 0.34);
   --shadow-lift: 0 2px 6px rgb(0 0 0 / 0.46), 0 14px 36px rgb(0 0 0 / 0.46);
@@ -954,6 +962,145 @@ html.dark {
     color: var(--color-text);
   }
   .stat-tile-label { font-size: var(--text-xs); color: var(--color-muted); }
+
+  /* ── Строка поиска НА СТРАНИЦЕ ───────────────────────────────
+     В прототипе CRESKO поиск живёт на экране, под заголовком, а не
+     в шапке (шапка занята календарём, колоколом, сканером и аватаром).
+     Пилюля во всю ширину, значок слева, плейсхолдер называет, по чему
+     ищем, — «Назва, бренд, партія…», а не безличное «Пошук». */
+  .searchfield {
+    @apply flex w-full items-center gap-2.5 border;
+    height: var(--h-input);
+    padding-inline: var(--space-4);
+    border-radius: 999px;
+    border-color: var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-faint);
+    transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
+  }
+  .searchfield:focus-within {
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px var(--color-accent-soft);
+  }
+  .searchfield input {
+    @apply min-w-0 flex-1 border-0 bg-transparent outline-none;
+    color: var(--color-text);
+    /* 16px и не ниже — иначе iOS зумит страницу на фокусе. Тот же пол,
+       что и у `.input`, и по той же причине. */
+    font-size: max(16px, var(--text-base));
+  }
+  .searchfield input::placeholder { color: var(--color-faint); }
+
+  /* ── Компактный счётчик ──────────────────────────────────────
+     Из прототипа: крупное ЦВЕТНОЕ число и мелкая подпись под ним.
+     Значка нет намеренно — четыре плитки со значками съедали треть
+     первого экрана, а число и так читается мгновенно. Цвет несёт
+     тот же смысл, что и раньше (rose — сломано, amber — сломается),
+     но теперь красится само число, а не квадратик рядом с ним.    */
+  .metric {
+    @apply flex flex-col items-center justify-center gap-0.5 border text-center;
+    padding: var(--space-3) var(--space-2);
+    border-radius: var(--radius-control);
+    border-color: var(--color-border);
+    background: var(--color-surface);
+    min-height: var(--tap-min);
+  }
+  .metric-value {
+    font-size: calc(20px * var(--type-scale));
+    line-height: calc(24px * var(--type-scale));
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text);
+  }
+  .metric[data-tone='amber']   .metric-value { color: var(--tone-amber); }
+  .metric[data-tone='rose']    .metric-value { color: var(--tone-rose); }
+  .metric[data-tone='emerald'] .metric-value { color: var(--tone-emerald); }
+  .metric[data-tone='blue']    .metric-value { color: var(--tone-blue); }
+  .metric-label {
+    font-size: calc(11px * var(--type-scale));
+    line-height: calc(14px * var(--type-scale));
+    color: var(--color-muted);
+  }
+  .metric[aria-pressed='true'] {
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px var(--color-accent-soft);
+  }
+
+  /* ── Плитка быстрого действия ────────────────────────────────
+     Цветной квадрат со значком, под ним подпись. Ряд уезжает вбок
+     (`.scroll-x`): действий больше, чем влезает в ширину телефона,
+     а переносить их на вторую строку значит смешать с тем, что
+     стоит ниже.                                                   */
+  .quick-tile {
+    @apply flex flex-col items-start gap-2.5 border;
+    width: 104px;
+    padding: var(--space-3);
+    border-radius: var(--radius-card);
+    border-color: var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-text);
+    transition: border-color var(--dur-fast), transform var(--dur-fast);
+  }
+  .quick-tile:active { transform: scale(0.97); }
+  .quick-tile-icon {
+    width: 38px; height: 38px;
+    border-radius: var(--radius-control);
+    display: grid; place-items: center;
+    background: var(--tone-blue-soft);
+    color: var(--tone-blue);
+  }
+  .quick-tile-icon[data-tone='amber']   { background: var(--tone-amber-soft);   color: var(--tone-amber); }
+  .quick-tile-icon[data-tone='rose']    { background: var(--tone-rose-soft);    color: var(--tone-rose); }
+  .quick-tile-icon[data-tone='emerald'] { background: var(--tone-emerald-soft); color: var(--tone-emerald); }
+  .quick-tile-icon[data-tone='violet']  { background: var(--tone-violet-soft);  color: var(--tone-violet); }
+
+  /* ── Заголовок секции с действием справа ─────────────────────
+     «РЕЄСТР · 6 ПОЗИЦІЙ            Всі» — надзаголовок слева,
+     ссылка справа. Отдельным классом, потому что встречается
+     на каждом экране прототипа и «сделаю флексом по месту»
+     разъедется по отступам в третьем употреблении.               */
+  .section-head {
+    @apply flex items-baseline justify-between gap-3;
+    margin-bottom: var(--space-2);
+  }
+
+  /* ── Карточка строки списка ──────────────────────────────────
+     В прототипе список — это ОТДЕЛЬНЫЕ карточки с зазором, а не
+     одна карточка с разделителями. Разница не косметическая:
+     у строки появляется миниатюра слева и две-три строки текста,
+     и в сплошном списке они слипаются.                            */
+  .list-card {
+    @apply flex w-full items-center gap-3 border text-left;
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-card);
+    border-color: var(--color-border);
+    background: var(--color-surface);
+    min-height: var(--tap-min);
+    transition: border-color var(--dur-fast), transform var(--dur-fast);
+  }
+  .list-card:active { transform: scale(0.99); }
+  /* Название в карточке списка занимает ДВЕ строки, а не обрезается
+     многоточием. У засобів имена длинные и различаются концом
+     («Absolut Repair Mask» против «Absolut Repair Shampoo»), и обрезка
+     по первому слову превращает список в набор одинаковых строк.
+     Вторая строка дешевле, чем невозможность отличить одно от другого. */
+  .clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .list-card-thumb {
+    width: 46px; height: 46px;
+    border-radius: var(--radius-control);
+    display: grid; place-items: center;
+    flex-shrink: 0;
+    background: var(--color-surface-2);
+    color: var(--color-faint);
+    overflow: hidden;
+  }
 
   /* ── Плавающая кнопка ───────────────────────────────────────
      Главное действие экрана. Поднята над нижней панелью на её

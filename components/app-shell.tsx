@@ -6,6 +6,7 @@ import { Suspense, createContext, useContext, useEffect, useRef, useState, useTr
 import { ThemeToggle } from '@/components/theme'
 import { TextSize } from '@/components/text-size'
 import { LangSwitch } from '@/components/lang-switch'
+import { NotifyBell } from '@/components/notify-bell'
 import { Sheet } from '@/components/sheet'
 import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
@@ -15,7 +16,7 @@ import type { TenantModule } from '@/lib/tenant'
 import {
   IconBack, IconBag, IconBox, IconCalendar, IconCheck, IconDoc,
   IconExit, IconGear, IconHome, IconMoney, IconScan, IconScissors,
-  IconSearch, IconUser, IconUsers,
+  IconUser, IconUsers,
 } from '@/components/icons'
 
 // Навигация кабинета. Переписана 15.08.2026 по макетам CRESKO,
@@ -279,7 +280,6 @@ function AppShellInner({
   const params = useSearchParams()
   const router = useRouter()
   const [menu, setMenu] = useState(false)
-  const [query, setQuery] = useState('')
   const [initial, setInitial] = useState('')
 
   // Пункт показывается, только если совпало И то, и другое: заведение
@@ -416,15 +416,6 @@ function AppShellInner({
     window.location.href = '/'
   }
 
-  // Поиск сверху ведёт на склад. Подпись честная: глобального поиска
-  // по кабинету нет, и обещать его строкой «Пошук у CRESKO» значит
-  // соврать на первом же запросе.
-  function search(e: React.FormEvent) {
-    e.preventDefault()
-    const q = query.trim()
-    router.push(q ? `/app/inventory?q=${encodeURIComponent(q)}` : '/app/inventory')
-  }
-
   return (
     <div className="appshell min-h-dvh pb-32 lg:pb-0">
       <div className="mx-auto flex max-w-6xl gap-8 px-4 pt-3 sm:px-6">
@@ -470,30 +461,43 @@ function AppShellInner({
               </Link>
             )}
 
-            {canSearch ? (
-              <>
-                <form onSubmit={search} className="min-w-0 flex-1">
-                  <label className="searchbar flex items-center gap-2">
-                    <span aria-hidden style={{ color: 'var(--color-faint)' }}><IconSearch /></span>
-                    <input
-                      className="searchbar-input min-w-0 flex-1"
-                      placeholder={t('app.chrome.search.placeholder')}
-                      value={query}
-                      onChange={(e) => setQuery(e.target.value)}
-                      aria-label={t('app.chrome.search.aria')}
-                    />
-                  </label>
-                </form>
+            {/* ── ШАПКА ПО ПРОТОТИПУ ────────────────────────────────
+                Владелец 18.08.2026 передал кликабельный прототип CRESKO:
+                «самый близкий визуал что я хотел, от него плясать будем».
+                В шапке там НЕ строка поиска, а четыре значка — календарь
+                и колокол слева, сканер и аватар справа.
 
-                <Link href="/app/inventory?scan=1" aria-label={t('app.chrome.scan.aria')}
-                      className="iconbtn shrink-0">
-                  <IconScan />
-                </Link>
-              </>
-            ) : (
-              // Распорка вместо строки поиска: аватар обязан остаться
-              // справа, иначе он приезжает к стрелке «назад».
-              <div className="min-w-0 flex-1" />
+                ⚠️ Это ОТМЕНЯЕТ прежнее решение 15.08.2026 («сверху —
+                строка поиска, сканер и аватар»), и отменяет осмысленно,
+                а не по недосмотру. Поиск не потерян: он переехал НА
+                страницу склада, где и стоит в прототипе. Дубляжом это
+                не становится — второй строки поиска больше нет нигде,
+                и та, что была в шапке, ушла ровно за этим.
+
+                Почему поиск в шапке был слабым местом: он всё равно
+                вёл только на склад (`?q=`), то есть занимал самое
+                дорогое место экрана ради одного раздела, и требовал
+                нажать Enter, чтобы список изменился. На странице он
+                фильтрует по мере набора. */}
+            <div className="min-w-0 flex-1 flex items-center gap-2">
+              {canSearch && (
+                <>
+                  {/* Календарь ведёт в записи: это «что у меня сегодня»,
+                      и в прототипе он стоит первым слева. */}
+                  <Link href="/app/bookings" aria-label={t('app.chrome.calendar.aria')}
+                        className="iconbtn shrink-0">
+                    <IconCalendar />
+                  </Link>
+                  <NotifyBell tenantPerms={perms ?? []} />
+                </>
+              )}
+            </div>
+
+            {canSearch && (
+              <Link href="/app/inventory?scan=1" aria-label={t('app.chrome.scan.aria')}
+                    className="iconbtn shrink-0">
+                <IconScan />
+              </Link>
             )}
 
             <button type="button" onClick={() => setMenu(true)}

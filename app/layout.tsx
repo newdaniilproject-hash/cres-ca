@@ -43,7 +43,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   // Совпадает с --color-bg: иначе шапка браузера на телефоне
   // другого цвета, чем страница, и это видно полосой.
-  themeColor: '#f6f7f9',
+  themeColor: '#f4f5f7',
   // viewportFit: содержимое заходит под вырез и системный индикатор,
   // а отступы возвращаются точечно через env(safe-area-inset-*).
   // Зум НЕ блокируем: user-scalable=no — нарушение доступности.

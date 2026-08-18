@@ -83,7 +83,7 @@ const config = {
     // Умолчание светлое (решение владельца 18.08.2026); при переключении
     // в тёмную страница перекрашивается сама, а стиль статус-бара
     // подтягивает components/theme.tsx через мост.
-    backgroundColor: '#f6f7f9',
+    backgroundColor: '#f4f5f7',
     contentInset: 'never',
     scrollEnabled: true,
     // true требует WKAppBoundDomains и ломает Supabase-редиректы —
@@ -95,7 +95,7 @@ const config = {
     SplashScreen: {
       launchShowDuration: 800,
       launchAutoHide: true,
-      backgroundColor: '#f6f7f9',
+      backgroundColor: '#f4f5f7',
       showSpinner: false,
       androidScaleType: 'CENTER_CROP',
       splashFullScreen: true,
@@ -107,7 +107,7 @@ const config = {
       // 'DARK'  = «светлый текст для тёмного фона» — ставится на лету
       // из components/theme.tsx, когда человек выбирает тёмную тему.
       style: 'LIGHT',
-      backgroundColor: '#f6f7f9',
+      backgroundColor: '#f4f5f7',
       overlaysWebView: true,
     },
     PushNotifications: {

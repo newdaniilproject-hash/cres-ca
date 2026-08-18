@@ -47,8 +47,15 @@
   "app.nav.settings": "Магазин",
 
   "app.chrome.back.aria": "Назад",
-  "app.chrome.search.placeholder": "Пошук на складі…",
-  "app.chrome.search.aria": "Пошук на складі",
+  "app.chrome.calendar.aria": "Записи на сьогодні",
+  "app.chrome.bell.aria": "Що потребує уваги",
+  "app.chrome.bell.title": "Потребує уваги",
+  "app.chrome.bell.empty": "Черга порожня",
+  "app.chrome.bell.emptyDesc": "Тут зʼявляться нагадування про записи та попередження про терміни придатності — усе, що ось-ось піде клієнту.",
+  "app.chrome.bell.event.bookingReminder": "Нагадування про запис",
+  "app.chrome.bell.event.bookingCreated": "Підтвердження запису",
+  "app.chrome.bell.event.orderCreated": "Лист про замовлення",
+  "app.chrome.bell.event.expiry": "Термін придатності спливає",
   "app.chrome.scan.aria": "Сканувати код",
   "app.chrome.avatar.aria": "Розділи та профіль",
   "app.chrome.menu.title": "Розділи",
@@ -182,10 +189,18 @@
   "inventory.stats.expired": "Прострочені",
   "inventory.stats.low": "Мало на складі",
 
+  "inventory.stats.short.total": "Позицій",
+  "inventory.stats.short.soon": "Закінч.",
+  "inventory.stats.short.expired": "Прострочені",
+  "inventory.stats.short.low": "Мало",
+
+  "inventory.quick.title": "Швидкі дії",
+  "inventory.quick.scan": "Сканувати",
   "inventory.quick.receipts": "Надходження",
   "inventory.quick.movements": "Рухи",
   "inventory.quick.counts": "Інвентаризація",
 
+  "inventory.search.placeholder": "Назва, бренд, партія…",
   "inventory.search.find": "Знайти",
   "inventory.search.empty": "За цим запитом нічого не знайшлося",
 

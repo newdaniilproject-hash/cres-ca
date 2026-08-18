@@ -15,8 +15,8 @@ import type { Key } from '@/lib/i18n/dict'
 import { EXPIRY_BADGE, type ExpiryState, expiryState } from '@/lib/expiry'
 import { Scanner } from '@/components/scanner'
 import {
-  IconAlert, IconArrows, IconBarcode, IconBeaker, IconBox, IconClipboard,
-  IconClock, IconClose, IconDoc, IconInbox, IconLayers, IconList, IconLow, IconQr,
+  IconArrows, IconBarcode, IconBeaker, IconBox, IconClipboard, IconClose,
+  IconBag, IconDoc, IconInbox, IconList, IconLow, IconQr, IconScan, IconSearch,
 } from '@/components/icons'
 
 type Container = {
@@ -101,10 +101,23 @@ export const EXPIRY_KEY: Record<ExpiryState, Key> = {
 //   5. «Ще у складі» — ВСЕ остальные экраны раздела одной картой,
 //      внизу и в одном месте.
 //
-// Единственный поиск — в шапке оболочки, единственный сканер — там же.
-// Активный запрос показывается на экране отдельной меткой с крестиком:
-// без неё отфильтрованный список выглядит как потерянные данные, а снять
-// фильтр можно было бы только через шапку.
+// ── ПРАВКА 18.08.2026 ПО ПРОТОТИПУ CRESKO ───────────────────────────────────
+//
+// Владелец передал кликабельный прототип: «самый близкий визуал что я хотел,
+// от него плясать будем». Что он изменил в этом экране:
+//
+//   • ПОИСК ВЕРНУЛСЯ НА СТРАНИЦУ. В прототипе шапка занята календарём,
+//     колоколом, сканером и аватаром, а поиск стоит здесь, под заголовком.
+//     Дубляжом это не стало: строка из шапки удалена, второй в продукте
+//     нет. И он стал лучше прежнего — фильтрует по мере набора, а не
+//     по Enter с серверным переходом;
+//   • СЧЁТЧИКИ БЕЗ ЗНАЧКОВ. Крупное цветное число и мелкая подпись
+//     (`.metric`): четыре плитки со значками съедали треть первого экрана;
+//   • «ШВИДКІ ДІЇ» — ряд цветных плиток, уезжающий вбок. Это вход
+//     в операции склада, и в прототипе он стоит сразу под счётчиками;
+//   • СПИСОК — ОТДЕЛЬНЫЕ КАРТОЧКИ с миниатюрой слева (`.list-card`),
+//     а не одна карточка с разделителями. У строки три уровня текста
+//     плюс метка состояния, и в сплошном списке они слипаются.
 //
 // Почему разделы уехали ВНИЗ, а не остались плитками сверху. Приёмка,
 // справочники и документы — работа администратора за столом, а не мастера
@@ -408,64 +421,38 @@ export function InventoryClient({
         </section>
       )}
 
-      {/* ── Счётчики, они же фильтр ──────────────────────────────
-          Плитки по макету: значок в цветном квадрате, число, подпись.
-          Тон несёт смысл и не выбирается «для красоты» (globals.css,
-          `.stat-tile`): rose — то, что уже сломано, amber — то, что
-          сломается, emerald — норма.
+      {/* ── Поиск ────────────────────────────────────────────────
+          Переехал сюда из шапки оболочки 18.08.2026 по прототипу
+          CRESKO: в нём шапка занята календарём, колоколом, сканером
+          и аватаром, а поиск стоит на экране под заголовком.
 
-          Тон постоянный, а не «серый, пока ноль». Плитка, меняющая
-          цвет вместе с числом, заставляет читать её дважды: сначала
-          «какого она цвета сегодня», потом само число. Спокойное
-          состояние показывает НОЛЬ, а не отсутствие цвета.
-
-          Нажатие переключает фильтр, повторное — снимает. Плитка
-          с нулём не нажимается: фильтр, дающий пустой список, — это
-          обещание показать то, чего нет. */}
-      <section className="rise-1 grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {([
-          { key: 'all', n: stats.total, label: t('inventory.stats.total'), tone: 'blue', Icon: IconLayers },
-          { key: 'soon', n: stats.soon, label: t('inventory.stats.soon'), tone: 'amber', Icon: IconClock },
-          { key: 'expired', n: stats.expired, label: t('inventory.stats.expired'), tone: 'rose', Icon: IconAlert },
-          { key: 'low', n: stats.low, label: t('inventory.stats.low'), tone: 'emerald', Icon: IconLow },
-        ] as const).map((s) => {
-          const on = flag === s.key
-          const dead = s.key !== 'all' && s.n === 0
-          return (
-            <button
-              key={s.key}
-              type="button"
-              disabled={dead}
-              aria-pressed={on}
-              onClick={() => setFlag(on ? 'all' : s.key)}
-              className="stat-tile text-left"
-              style={{
-                borderColor: on ? 'var(--color-accent)' : undefined,
-                boxShadow: on ? '0 0 0 3px var(--color-accent-soft)' : undefined,
-                // Ноль НЕ гасится ни прозрачностью, ни цветом. Спокойное
-                // состояние — это «ноль просрочених», и читаться оно должно
-                // так же уверенно, как тревожное; блёклая плитка заставляет
-                // сначала разбирать её вид, а потом уже число. Нажатие
-                // при этом не делает ничего: фильтр на ноль — обещание
-                // показать то, чего нет.
-                cursor: dead ? 'default' : 'pointer',
-              }}
-            >
-              <span className="stat-tile-icon" data-tone={s.tone}><s.Icon size={17} /></span>
-              <span className="block">
-                <span className="stat-tile-value block">{t.number(s.n)}</span>
-                <span className="stat-tile-label block">{s.label}</span>
-              </span>
-            </button>
-          )
-        })}
-      </section>
+          Дубляжом это не стало — второй строки поиска в продукте
+          больше нет. И он стал лучше той: фильтрует по мере набора,
+          а не по нажатию Enter с серверным переходом, и плейсхолдер
+          называет, по чему ищем. */}
+      <label className="searchfield rise-1">
+        <span aria-hidden><IconSearch size={19} /></span>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={t('inventory.search.placeholder')}
+          aria-label={t('inventory.search.placeholder')}
+          autoComplete="off"
+        />
+        {q !== '' && (
+          <button type="button" onClick={() => setQuery('')}
+                  aria-label={t('inventory.filter.reset')}
+                  style={{ color: 'var(--color-faint)' }}>
+            <IconClose size={18} />
+          </button>
+        )}
+      </label>
 
       {/* ── Вкладки ──────────────────────────────────────────────
           Одной строкой с горизонтальной прокруткой. Перенос на вторую
           строку смешивал бы их с тем, что стоит рядом, — ровно так
           «+ Засіб» оказывался под «Товари» и читался как фильтр. */}
-      <div className="scroll-x rise-2 -mx-4 flex gap-2 px-4 pb-1 sm:mx-0 sm:px-0">
+      <div className="scroll-x rise-1 -mx-4 flex gap-2 px-4 pb-1 sm:mx-0 sm:px-0">
         {([
           ['all', t('inventory.tab.all')],
           ['materials', t('inventory.tab.materials')],
@@ -478,6 +465,75 @@ export function InventoryClient({
           </button>
         ))}
       </div>
+
+      {/* ── Счётчики, они же фильтр ──────────────────────────────
+          По прототипу: крупное ЦВЕТНОЕ число и мелкая подпись, без
+          значка. Четыре плитки со значками съедали треть первого
+          экрана, а число и так читается мгновенно.
+
+          Тон несёт смысл и не выбирается «для красоты»: rose — то,
+          что уже сломано, amber — то, что сломается, emerald — норма.
+          Тон постоянный, а не «серый, пока ноль»: плитка, меняющая
+          цвет вместе с числом, заставляет читать её дважды.
+
+          Нажатие переключает фильтр, повторное — снимает. Плитка
+          с нулём не нажимается: фильтр, дающий пустой список, —
+          это обещание показать то, чего нет. */}
+      <section className="rise-1 grid grid-cols-4 gap-2">
+        {([
+          // Подписи КОРОТКИЕ и своими ключами. Четыре плитки в ряд на 390px
+          // дают около 86px на плитку, и «Мало на складі» переносится на две
+          // строки — плитка становится выше соседних, и ровный ряд ломается
+          // об одну подпись. Длинные названия остаются там, где место есть:
+          // на снимаемой метке фильтра под счётчиками.
+          { key: 'all', n: stats.total, label: t('inventory.stats.short.total'), tone: 'blue' },
+          { key: 'soon', n: stats.soon, label: t('inventory.stats.short.soon'), tone: 'amber' },
+          { key: 'expired', n: stats.expired, label: t('inventory.stats.short.expired'), tone: 'rose' },
+          { key: 'low', n: stats.low, label: t('inventory.stats.short.low'), tone: 'emerald' },
+        ] as const).map((s) => {
+          const on = flag === s.key
+          const dead = s.key !== 'all' && s.n === 0
+          return (
+            <button key={s.key} type="button" disabled={dead} aria-pressed={on}
+                    data-tone={s.tone}
+                    onClick={() => setFlag(on ? 'all' : s.key)}
+                    className="metric"
+                    style={{ cursor: dead ? 'default' : 'pointer' }}>
+              <span className="metric-value">{t.number(s.n)}</span>
+              <span className="metric-label">{s.label}</span>
+            </button>
+          )
+        })}
+      </section>
+
+      {/* ── Швидкі дії ───────────────────────────────────────────
+          По прототипу: ряд цветных плиток, уезжающий вбок. Здесь
+          лежит то, что мастер делает У РАБОЧЕГО МЕСТА, — сканировать
+          и списать; приёмка и инвентаризация тоже тут, потому что
+          в прототипе этот ряд и есть вход в операции склада.
+          Остальные экраны раздела — ниже, карточкой «Ще у складі». */}
+      <section className="rise-2">
+        <p className="eyebrow mb-2">{t('inventory.quick.title')}</p>
+        <div className="scroll-x -mx-4 flex gap-2 px-4 pb-1 sm:mx-0 sm:px-0">
+          <button type="button" className="quick-tile shrink-0"
+                  onClick={() => setCamera(true)}>
+            <span className="quick-tile-icon" data-tone="blue"><IconScan size={19} /></span>
+            <span className="t-sm">{t('inventory.quick.scan')}</span>
+          </button>
+          <Link href="/app/inventory/receipts" className="quick-tile shrink-0">
+            <span className="quick-tile-icon" data-tone="emerald"><IconInbox size={19} /></span>
+            <span className="t-sm">{t('inventory.quick.receipts')}</span>
+          </Link>
+          <Link href="/app/inventory/movements" className="quick-tile shrink-0">
+            <span className="quick-tile-icon" data-tone="amber"><IconArrows size={19} /></span>
+            <span className="t-sm">{t('inventory.quick.movements')}</span>
+          </Link>
+          <Link href="/app/inventory/counts" className="quick-tile shrink-0">
+            <span className="quick-tile-icon" data-tone="violet"><IconClipboard size={19} /></span>
+            <span className="t-sm">{t('inventory.quick.counts')}</span>
+          </Link>
+        </div>
+      </section>
 
       {/* ── Что сейчас отфильтровано ─────────────────────────────
           Поиск живёт в шапке оболочки, и без этой метки укороченный
@@ -546,17 +602,24 @@ export function InventoryClient({
               {/* Надзаголовок только на вкладке «Всі»: на своей вкладке
                   он повторял бы её же имя двумя строками ниже. */}
               {tab === 'all' && <p className="eyebrow mb-2">{t('inventory.tab.materials')}</p>}
-              <div className="card !p-0">
+              {/* Карточки с зазором, а не одна карточка с разделителями:
+                  у строки миниатюра, два уровня текста и метка состояния —
+                  в сплошном списке они слипаются (прототип, `.list-card`). */}
+              <div className="flex flex-col gap-2">
                 {shownMaterials.map((mt) => {
                   const state = expiryState(mt.expiry)
                   const low = mt.threshold > 0 && mt.stock <= mt.threshold
                   return (
                     <Link key={mt.id} href={`/app/inventory/materials/${mt.id}`}
-                          className="row px-5" style={{ minHeight: 'var(--tap-min)' }}>
-                      <span className="min-w-0">
+                          className="list-card">
+                      {/* Миниатюра — место под фото засоба. Фотографий у нас
+                          пока нет ни у одного материала, поэтому значок;
+                          когда появятся, меняется ровно это место. */}
+                      <span className="list-card-thumb"><IconBox size={22} /></span>
+                      <span className="min-w-0 flex-1">
                         {/* Название, бренд и номер партии — данные арендатора. */}
-                        <span className="t-md block truncate">{mt.name}</span>
-                        <span className="t-xs block truncate" style={{ color: 'var(--color-faint)' }}>
+                        <span className="t-md clamp-2 block">{mt.name}</span>
+                        <span className="t-xs mt-0.5 block truncate" style={{ color: 'var(--color-faint)' }}>
                           {[
                             mt.brand,
                             mt.batch ? t('inventory.materials.batch', { number: mt.batch }) : null,
@@ -571,7 +634,7 @@ export function InventoryClient({
                             и на их фоне красная переставала выделяться.
                             Срок и так напечатан строкой выше. */}
                         {state !== 'none' && state !== 'ok' && (
-                          <span className={`mt-1 inline-block ${EXPIRY_BADGE[state]}`}>
+                          <span className={`mt-1.5 inline-block ${EXPIRY_BADGE[state]}`}>
                             {t(EXPIRY_KEY[state])}
                           </span>
                         )}
@@ -593,13 +656,16 @@ export function InventoryClient({
           {showContainers && shownContainers.length > 0 && (
             <section className="rise">
               {tab === 'all' && <p className="eyebrow mb-2">{t('inventory.tab.containers')}</p>}
-              <div className="card !p-0">
+              <div className="flex flex-col gap-2">
                 {shownContainers.map((c) => {
                   const state = expiryState(c.useBy)
                   return (
-                    <div key={c.id} className="row px-5">
+                    <div key={c.id} className="list-card">
+                      {/* Ёмкость — это банка с QR-наклейкой, поэтому QR
+                          в миниатюре: он же нарисован на самой банке. */}
+                      <span className="list-card-thumb"><IconQr size={22} /></span>
                       <Link href={`/app/inventory/materials/${c.materialId}/pao`}
-                            className="min-w-0 flex-1" style={{ minHeight: 'var(--tap-min)' }}>
+                            className="min-w-0 flex-1">
                         <span className="t-md block truncate">{c.material}
                           <span style={{ color: 'var(--color-faint)' }}> · {c.code}</span></span>
                         <span className="tabular t-xs mt-0.5 block" style={{ color: 'var(--color-faint)' }}>
@@ -608,20 +674,18 @@ export function InventoryClient({
                             : t('inventory.container.openedAt', { date: short(c.openedAt) })}
                           {c.volume ? ` · ${t.number(c.volume)} ${c.unit ?? ''}` : ''}
                         </span>
-                      </Link>
-                      <span className="flex shrink-0 items-center gap-2">
                         {c.useBy && (
-                          <span className={`tabular ${EXPIRY_BADGE[state]}`}>
+                          <span className={`tabular mt-1.5 inline-block ${EXPIRY_BADGE[state]}`}>
                             {t('inventory.container.until', { date: short(c.useBy) })}
                           </span>
                         )}
-                        {c.status === 'sealed' && (
-                          <button className="btn-secondary t-sm" disabled={busy === c.id}
-                                  onClick={() => void openContainer(c.id, c.code)}>
-                            {t('inventory.container.openShort')}
-                          </button>
-                        )}
-                      </span>
+                      </Link>
+                      {c.status === 'sealed' && (
+                        <button className="btn-secondary t-sm shrink-0" disabled={busy === c.id}
+                                onClick={() => void openContainer(c.id, c.code)}>
+                          {t('inventory.container.openShort')}
+                        </button>
+                      )}
                     </div>
                   )
                 })}
@@ -649,10 +713,11 @@ export function InventoryClient({
                   ))}
                 </div>
               )}
-              <div className="card !p-0">
+              <div className="flex flex-col gap-2">
                 {shownVariants.map((v) => (
-                  <div key={v.id} className="row px-5">
-                    <div className="min-w-0">
+                  <div key={v.id} className="list-card">
+                    <span className="list-card-thumb"><IconBag size={22} /></span>
+                    <div className="min-w-0 flex-1">
                       <p className="t-md truncate">{v.title}
                         <span className="prose-muted"> · {v.name}</span></p>
                       {v.reserved > 0 && (
