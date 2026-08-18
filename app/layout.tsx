@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
-import { themeBootScript } from '@/components/theme'
+import { themeBootScript, ThemeNativeSync } from '@/components/theme'
 import { nativeBootScript } from '@/components/native-boot'
 import { langBootScript } from '@/lib/i18n/cookie'
 import { ToastProvider } from '@/components/toast'
@@ -42,7 +42,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   // Совпадает с --color-bg: иначе шапка браузера на телефоне
   // другого цвета, чем страница, и это видно полосой.
-  themeColor: '#141417',
+  themeColor: '#f6f7f9',
   // viewportFit: содержимое заходит под вырез и системный индикатор,
   // а отступы возвращаются точечно через env(safe-area-inset-*).
   // Зум НЕ блокируем: user-scalable=no — нарушение доступности.
@@ -94,6 +94,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <SwipeBack />
           <NotifyBanner />
           <NativeFeel />
+          {/* Статус-бар обёртки идёт за темой. Класс на <html> ставит
+              загрузочный скрипт, а моста в тот момент ещё нет. */}
+          <ThemeNativeSync />
           {/* Глубокие ссылки: возврат от Apple и Google, тап по пушу,
               ссылка на товар, присланная в мессенджере. Один обработчик
               на всё приложение — иначе на одном экране ссылка открывает

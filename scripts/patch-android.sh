@@ -99,6 +99,8 @@ import androidx.biometric.BiometricPrompt;
 import androidx.browser.customtabs.CustomTabsIntent;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.fragment.app.FragmentActivity;
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.BridgeWebChromeClient;
@@ -194,6 +196,7 @@ public class MainActivity extends BridgeActivity {
       this.getBridge().getWebView().addJavascriptInterface(new OneSignalJsBridge(), "AndroidOneSignal");
       this.getBridge().getWebView().addJavascriptInterface(new BiometricJsBridge(), "AndroidBiometric");
       this.getBridge().getWebView().addJavascriptInterface(new HapticsJsBridge(), "AndroidHaptics");
+      this.getBridge().getWebView().addJavascriptInterface(new ThemeJsBridge(), "AndroidStatusBar");
       this.getBridge().getWebView().addJavascriptInterface(new OAuthJsBridge(), "AndroidOAuth");
       this.getBridge().getWebView().addJavascriptInterface(new DeepLinkJsBridge(), "AndroidDeepLink");
     } catch (Throwable ignored) {}
@@ -384,6 +387,37 @@ public class MainActivity extends BridgeActivity {
           v.vibrate(pattern, -1);
         }
       } catch (Throwable ignored) {}
+    }
+  }
+
+  // ── Статус-бар идёт за темой ──────────────────────────────────────────
+  //
+  // Веб-вью рисуется ПОД статус-баром (overlaysWebView), поэтому фон часов
+  // и значков — это фон самой страницы. Значит их цвет обязан меняться
+  // вместе с темой: тёмные значки на чёрной странице не видно вовсе.
+  //
+  // Через плагин Capacitor это не сделать: при удалённом server.url моста
+  // Capacitor на Android НЕТ (те же грабли DaKi, из-за которых у откликов
+  // отдельный AndroidHaptics). Поэтому свой мост, как у всего остального.
+  //
+  // Значение флага обратное интуиции: APPEARANCE_LIGHT_STATUS_BARS означает
+  // «СВЕТЛЫЙ фон под баром», то есть ТЁМНЫЕ значки. Ставим его для светлой
+  // темы и снимаем для тёмной.
+  public class ThemeJsBridge {
+    @JavascriptInterface
+    public void setDark(final boolean dark) {
+      runOnUiThread(new Runnable() {
+        @Override public void run() {
+          try {
+            android.view.Window w = getWindow();
+            if (w == null) return;
+            WindowInsetsControllerCompat c =
+              WindowCompat.getInsetsController(w, w.getDecorView());
+            c.setAppearanceLightStatusBars(!dark);
+            c.setAppearanceLightNavigationBars(!dark);
+          } catch (Throwable ignored) {}
+        }
+      });
     }
   }
 

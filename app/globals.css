@@ -4,16 +4,41 @@
    Дизайн-система. Единственный источник значений: захардкоженный
    цвет или радиус в компоненте — ошибка приёмки.
 
-   Характер — тот, что был в первой крес-ке и который решили
-   вернуть (решение директора 04.08.2026, отменяет разделение
-   на две поверхности): мягкий чёрный #141417, кобальтовый акцент,
-   гротеск, плотная шкала, крупные скругления, двухслойные мягкие
-   тени вместо жирных границ. Тёмный интерфейс — основной вид.
+   ── ДВЕ ПОЛНЫЕ ТЕМЫ, СВЕТЛАЯ ПО УМОЛЧАНИЮ ──────────────────
+   Решение владельца 18.08.2026 по переданным макетам. Оно
+   ОТМЕНЯЕТ прежнее «тёмный вид — основной» (04.08.2026): теперь
+   обе темы равноправны и обе обязаны быть доведены, а умолчание —
+   светлая. Тёмная включается переключателем в профиле.
 
-   Светлая тема есть, но она вторична: включается переключателем
-   и хранится в localStorage. Класс ставится на <html> синхронным
-   скриптом до первой отрисовки (components/theme.tsx), иначе
-   виден кадр с чужим фоном.
+   Что из этого следует для файла:
+   • значения в `@theme` — СВЕТЛЫЕ, потому что это умолчание;
+     тёмные лежат в `html.dark` и перекрывают их;
+   • «вторичной» темы больше нет. Правка цвета в одной теме без
+     парной правки во второй — ошибка приёмки, а не мелочь:
+     половина людей увидит ровно то, что не доделали;
+   • системную тему файл по-прежнему НЕ слушает. Выбор человека
+     хранится в localStorage и ставится классом на <html>
+     синхронным скриптом до первой отрисовки (components/theme.tsx),
+     иначе виден кадр с чужим фоном.
+
+   ── АКЦЕНТ: ДВА ТОКЕНА, А НЕ ОДИН ──────────────────────────
+   Прежнее правило «в тёмной теме акцент светлеет, в светлой
+   темнеет» решало одну задачу — читаемость акцента КАК ТЕКСТА.
+   Но макеты требуют второго: кнопка и активная вкладка залиты
+   насыщенным кобальтом с БЕЛЫМ текстом, и в тёмной теме тоже.
+   Светлый #60a5fa как заливка кнопки даёт бледную плашку, какой
+   в макетах нет нигде.
+
+   Поэтому токена два и путать их нельзя:
+   • `--color-accent` — акцент как ЗАЛИВКА (кнопка, активная
+     вкладка, фокусная рамка). Насыщенный кобальт в обеих темах,
+     текст на нём — `--color-accent-text`, то есть белый;
+   • `--color-accent-ink` — акцент как ТЕКСТ на фоне страницы
+     (ссылка, активный пункт навигации, надзаголовок). Вот он
+     и светлеет на тёмном, темнеет на светлом.
+   Заливка в роли текста — нечитаемо; текстовый в роли заливки —
+   бледно. Обе ошибки видны только на одной из тем, поэтому
+   называются здесь, а не оставлены на внимательность.
 
    Чего НЕ повторять из первой крес-ки: там источников правды по
    цвету было четыре одновременно, и склеивать их пришлось сорока
@@ -21,41 +46,55 @@
    ============================================================ */
 
 @theme {
-  /* Мягкий чёрный, а не #000: глаз не проваливается.
-     Границы полупрозрачно-белые — сплошной серый на тёмном грязнит. */
-  --color-bg: #141417;
-  --color-surface: #1a1a1d;
-  --color-surface-2: #212125;
-  --color-border: rgb(255 255 255 / 0.08);
-  --color-border-strong: rgb(255 255 255 / 0.16);
-  --color-text: #fafafa;
-  --color-muted: rgb(255 255 255 / 0.62);
-  --color-faint: rgb(255 255 255 / 0.34);
+  /* ── СВЕТЛАЯ ТЕМА — УМОЛЧАНИЕ ──────────────────────────────
+     Фон не чисто белый: на белом карточка того же цвета не
+     отделяется ничем, кроме тени, и интерфейс читается плоским. */
+  --color-bg: #f6f7f9;
+  --color-surface: #ffffff;
+  --color-surface-2: #f0f2f5;
+  --color-border: #e3e6ea;
+  --color-border-strong: #cfd5dd;
+  --color-text: #0d1117;
+  --color-muted: #5a6472;
+  --color-faint: #98a1ae;
 
-  --color-accent: #60a5fa;
-  --color-accent-hover: #93c5fd;
-  --color-accent-soft: rgb(96 165 250 / 0.14);
-  --color-accent-text: #0b1220;
-  --color-gold: #d9b262;
+  --color-accent: #1f5df5;
+  --color-accent-hover: #1a4fd6;
+  --color-accent-ink: #1b4fd8;
+  --color-accent-soft: rgb(31 93 245 / 0.10);
+  --color-accent-text: #ffffff;
+  --color-gold: #b08d3f;
 
-  --color-danger: #fca5a5;
-  --color-danger-soft: rgb(185 28 28 / 0.18);
-  --color-success: #86efac;
-  --color-success-soft: rgb(21 128 61 / 0.18);
-  --color-warn: #fcd34d;
-  --color-warn-soft: rgb(180 83 9 / 0.18);
+  --color-danger: #d92d20;
+  --color-danger-soft: rgb(217 45 32 / 0.10);
+  --color-success: #12805c;
+  --color-success-soft: rgb(18 128 92 / 0.10);
+  --color-warn: #b54708;
+  --color-warn-soft: rgb(181 71 8 / 0.10);
+
+  /* ── Тона плиток-счётчиков ─────────────────────────────────
+     В макетах у каждой метрики свой цвет значка: позиции синие,
+     «закінчуються» оранжевые, «прострочені» красные, «в нормі»
+     зелёные. Это НЕ украшение: четыре одинаковых плитки читаются
+     как один блок, и глаз не находит тревожную. Тон задаётся
+     атрибутом `data-tone`, а не цветом по месту.                */
+  --tone-blue: #1f5df5;      --tone-blue-soft: rgb(31 93 245 / 0.10);
+  --tone-amber: #b54708;     --tone-amber-soft: rgb(181 71 8 / 0.10);
+  --tone-rose: #d92d20;      --tone-rose-soft: rgb(217 45 32 / 0.10);
+  --tone-emerald: #12805c;   --tone-emerald-soft: rgb(18 128 92 / 0.10);
+  --tone-violet: #6d3bd4;    --tone-violet-soft: rgb(109 59 212 / 0.10);
 
   /* Радиус растёт вместе с размером объекта: значок — поле —
      карточка — шторка. Смешивать ступени нельзя. */
-  --radius-control: 0.75rem;
-  --radius-card: 1rem;
+  --radius-control: 0.875rem;
+  --radius-card: 1.125rem;
   --radius-hero: 1.5rem;
 
   /* Тень, а не граница, отделяет карточку от фона. Два слоя:
      ближний даёт край, дальний — высоту. */
-  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.32), 0 4px 12px rgb(0 0 0 / 0.28);
-  --shadow-lift: 0 2px 6px rgb(0 0 0 / 0.42), 0 12px 32px rgb(0 0 0 / 0.42);
-  --shadow-overlay: 0 24px 64px rgb(0 0 0 / 0.6);
+  --shadow-card: 0 1px 2px rgb(13 17 23 / 0.04), 0 4px 12px rgb(13 17 23 / 0.05);
+  --shadow-lift: 0 2px 6px rgb(13 17 23 / 0.06), 0 14px 34px -10px rgb(13 17 23 / 0.16);
+  --shadow-overlay: 0 24px 64px -16px rgb(13 17 23 / 0.24);
 
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-serif), Georgia, 'Times New Roman', serif;
@@ -115,42 +154,57 @@
   --num-feature: "tnum" 1;
 }
 
-/* ── Светлая тема ────────────────────────────────────────────
-   Вторична: включается переключателем, класс на <html>.
-   Системную тему НЕ слушаем намеренно — тёмный интерфейс здесь
-   не «ночной режим», а основной вид продукта.
-   Акцент темнеет: #60a5fa на белом не читается.               */
-html.light {
-  --color-bg: #fbfbfc;
-  --color-surface: #ffffff;
-  --color-surface-2: #f4f4f5;
-  --color-border: #e4e4e7;
-  --color-border-strong: #d4d4d8;
-  --color-text: #0a0a0a;
-  --color-muted: #52525b;
-  --color-faint: #a1a1aa;
+/* ── Тёмная тема ─────────────────────────────────────────────
+   Включается переключателем, класс на <html>. Не «ночной режим»
+   и не урезанная копия: это вторая полная тема, и каждый токен
+   светлой имеет здесь пару.
 
-  --color-accent: #2563eb;
-  --color-accent-hover: #1d4ed8;
-  --color-accent-soft: rgb(37 99 235 / 0.10);
+   Чёрный НЕ нейтральный и не #000. В макетах у тёмного фона
+   отчётливый синий подтон — на нём кобальтовый акцент выглядит
+   родным, а на нейтрально-сером казался бы чужой наклейкой.
+   Границы полупрозрачно-белые: сплошной серый на тёмном грязнит.
+
+   `--color-accent` тут почти тот же, что в светлой, — он заливка
+   и обязан держать белый текст. Светлеет только `--color-accent-ink`,
+   которым набирается акцентный ТЕКСТ (см. шапку файла).          */
+html.dark {
+  --color-bg: #0a0d14;
+  --color-surface: #111725;
+  --color-surface-2: #18202f;
+  --color-border: rgb(255 255 255 / 0.07);
+  --color-border-strong: rgb(255 255 255 / 0.15);
+  --color-text: #f4f6fa;
+  --color-muted: rgb(226 232 240 / 0.66);
+  --color-faint: rgb(226 232 240 / 0.40);
+
+  --color-accent: #2f6bff;
+  --color-accent-hover: #4b83ff;
+  --color-accent-ink: #7ba6ff;
+  --color-accent-soft: rgb(47 107 255 / 0.18);
   --color-accent-text: #ffffff;
-  --color-gold: #b08d3f;
+  --color-gold: #d9b262;
 
-  --color-danger: #b91c1c;
-  --color-danger-soft: rgb(185 28 28 / 0.08);
-  --color-success: #15803d;
-  --color-success-soft: rgb(21 128 61 / 0.08);
-  --color-warn: #b45309;
-  --color-warn-soft: rgb(180 83 9 / 0.08);
+  --color-danger: #ff8a80;
+  --color-danger-soft: rgb(220 38 38 / 0.20);
+  --color-success: #58e0a4;
+  --color-success-soft: rgb(16 185 129 / 0.18);
+  --color-warn: #fbbf4c;
+  --color-warn-soft: rgb(217 119 6 / 0.20);
 
-  --shadow-card: 0 1px 2px rgb(15 18 24 / 0.04), 0 4px 12px rgb(15 18 24 / 0.04);
-  --shadow-lift: 0 2px 4px rgb(15 18 24 / 0.06), 0 12px 32px -12px rgb(15 18 24 / 0.16);
-  --shadow-overlay: 0 24px 64px -16px rgb(15 18 24 / 0.24);
+  --tone-blue: #6f9bff;      --tone-blue-soft: rgb(47 107 255 / 0.20);
+  --tone-amber: #fbbf4c;     --tone-amber-soft: rgb(217 119 6 / 0.20);
+  --tone-rose: #ff8a80;      --tone-rose-soft: rgb(220 38 38 / 0.20);
+  --tone-emerald: #58e0a4;   --tone-emerald-soft: rgb(16 185 129 / 0.18);
+  --tone-violet: #b18bff;    --tone-violet-soft: rgb(139 92 246 / 0.20);
+
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.36), 0 4px 14px rgb(0 0 0 / 0.34);
+  --shadow-lift: 0 2px 6px rgb(0 0 0 / 0.46), 0 14px 36px rgb(0 0 0 / 0.46);
+  --shadow-overlay: 0 24px 64px rgb(0 0 0 / 0.64);
 }
 
 @layer base {
-  :root { color-scheme: dark; }
-  html.light { color-scheme: light; }
+  :root { color-scheme: light; }
+  html.dark { color-scheme: dark; }
 
   html {
     scroll-behavior: smooth;
@@ -242,7 +296,18 @@ html.light {
   }
   .btn-primary:hover { background: var(--color-accent-hover); box-shadow: var(--shadow-card); }
   .btn-primary:active { transform: scale(0.98); }
-  .btn-primary:disabled { opacity: 0.45; pointer-events: none; }
+  /* Выключенная кнопка становится НЕЙТРАЛЬНОЙ, а не полупрозрачным
+     акцентом. Прозрачность работала, пока акцент был бледно-голубым;
+     на насыщенном кобальте она даёт белый текст на светло-синем —
+     нечитаемо в светлой теме и грязно в тёмной. Проверено снимком
+     экрана входа 18.08.2026: кнопка «Увійти» до заполнения формы
+     читалась хуже, чем подпись под ней. */
+  .btn-primary:disabled {
+    background: var(--color-surface-2);
+    color: var(--color-faint);
+    box-shadow: none;
+    pointer-events: none;
+  }
 
   .btn-secondary {
     @apply inline-flex items-center justify-center gap-2 h-11 px-5 text-sm font-medium select-none border;
@@ -401,7 +466,7 @@ html.light {
     border-radius: 999px;
   }
   .badge { border-color: var(--color-border); background: var(--color-surface); color: var(--color-muted); }
-  .badge-accent  { background: var(--color-accent-soft); border-color: transparent; color: var(--color-accent); }
+  .badge-accent  { background: var(--color-accent-soft); border-color: transparent; color: var(--color-accent-ink); }
   .badge-success { background: var(--color-success-soft); border-color: transparent; color: var(--color-success); }
   .badge-warn    { background: var(--color-warn-soft); border-color: transparent; color: var(--color-warn); }
   .badge-danger  { background: var(--color-danger-soft); border-color: transparent; color: var(--color-danger); }
@@ -573,7 +638,7 @@ html.light {
     transition: color var(--dur-fast), background var(--dur-fast);
   }
   .bottomnav-item[data-active="true"] {
-    color: var(--color-accent);
+    color: var(--color-accent-ink);
     background: var(--color-accent-soft);
   }
 
@@ -623,7 +688,7 @@ html.light {
   .avatarbtn {
     font-size: 15px;
     font-weight: 600;
-    color: var(--color-accent);
+    color: var(--color-accent-ink);
     background: var(--color-accent-soft);
     border-color: transparent;
   }
@@ -637,7 +702,7 @@ html.light {
     transition: all var(--dur-fast);
   }
   .sidebar-item:hover { color: var(--color-text); background: var(--color-surface-2); }
-  .sidebar-item[data-active="true"] { color: var(--color-accent); background: var(--color-accent-soft); }
+  .sidebar-item[data-active="true"] { color: var(--color-accent-ink); background: var(--color-accent-soft); }
 
   /* Шторка снизу. Высота в dvh, а не vh: при открытии клавиатуры
      dvh уменьшается сам, и кнопка «Зберегти» остаётся на экране —
@@ -729,12 +794,106 @@ html.light {
      Без этого числа прыгают по ширине при каждом обновлении. */
   .tabular { font-variant-numeric: tabular-nums; }
 
+  /* ── Заголовок экрана ───────────────────────────────────────
+     В макетах он крупный и жирный — «Склад», «Фінанси», «Клієнти»
+     набраны кеглем, который на телефоне занимает почти строку,
+     и под ним серая строка-пояснение. Это не украшение: экран
+     без крупного имени на телефоне читается как продолжение
+     предыдущего, потому что шапка везде одинаковая.
+
+     Растёт со ступени 28px до 34px на большом экране, а не наоборот:
+     на телефоне 34px переносится на вторую строку у половины
+     разделов («Налаштування магазину»).                          */
+  .page-title {
+    font-size: 28px;
+    line-height: 32px;
+    font-weight: 750;
+    letter-spacing: -0.025em;
+    color: var(--color-text);
+  }
+  @media (min-width: 640px) {
+    .page-title { font-size: 34px; line-height: 40px; }
+  }
+  .page-subtitle {
+    margin-top: 2px;
+    font-size: var(--text-sm);
+    color: var(--color-muted);
+  }
+
+  /* ── Плитка-счётчик ─────────────────────────────────────────
+     Ряд из трёх-четырёх метрик наверху экрана: значок в цветном
+     квадрате, число, подпись. Тон — атрибутом `data-tone`, и это
+     единственный способ его задать: цвет по месту разойдётся
+     с системой при первой же правке темы.
+
+     Тон несёт СМЫСЛ, а не настроение: rose — то, что уже сломано
+     (просрочено), amber — то, что сломается (заканчивается),
+     emerald — норма, blue — нейтральный итог. Раскрашивать
+     плитки «для красоты» нельзя: тогда красный перестанет
+     значить «беги сюда».                                        */
+  .stat-tile {
+    @apply flex flex-col gap-2 border;
+    padding: var(--space-3);
+    border-radius: var(--radius-card);
+    border-color: var(--color-border);
+    background: var(--color-surface);
+  }
+  .stat-tile-icon {
+    width: 34px; height: 34px;
+    border-radius: var(--radius-control);
+    display: grid; place-items: center;
+    font-size: 16px;
+    background: var(--tone-blue-soft);
+    color: var(--tone-blue);
+  }
+  .stat-tile-icon[data-tone='amber']   { background: var(--tone-amber-soft);   color: var(--tone-amber); }
+  .stat-tile-icon[data-tone='rose']    { background: var(--tone-rose-soft);    color: var(--tone-rose); }
+  .stat-tile-icon[data-tone='emerald'] { background: var(--tone-emerald-soft); color: var(--tone-emerald); }
+  .stat-tile-icon[data-tone='violet']  { background: var(--tone-violet-soft);  color: var(--tone-violet); }
+  .stat-tile-value {
+    font-size: 22px; line-height: 26px; font-weight: 700;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text);
+  }
+  .stat-tile-label { font-size: var(--text-xs); color: var(--color-muted); }
+
+  /* ── Плавающая кнопка ───────────────────────────────────────
+     Главное действие экрана. Поднята над нижней панелью на её
+     высоту плюс вырез — иначе на айфоне она садится ровно на
+     «Записи» и мастер промахивается.
+
+     Широкая (`.fab-wide`) — там, где действие нельзя назвать
+     значком: «Додати транзакцію» плюсом не объяснишь.            */
+  .fab, .fab-wide {
+    @apply fixed z-30 inline-flex items-center justify-center gap-2 font-medium select-none;
+    right: calc(16px + env(safe-area-inset-right));
+    bottom: calc(88px + env(safe-area-inset-bottom));
+    background: var(--color-accent);
+    color: var(--color-accent-text);
+    box-shadow: var(--shadow-lift);
+    transition: background var(--dur-fast), transform var(--dur-fast) var(--ease-out-soft);
+  }
+  .fab {
+    width: 56px; height: 56px;
+    border-radius: 999px;
+    font-size: 24px; line-height: 1;
+  }
+  .fab-wide {
+    height: 52px;
+    padding-inline: 20px;
+    border-radius: 999px;
+    font-size: var(--text-sm);
+  }
+  .fab:hover, .fab-wide:hover { background: var(--color-accent-hover); }
+  .fab:active, .fab-wide:active { transform: scale(0.95); }
+
   /* Надзаголовок секции: капслок, разрядка, акцент. Дёшево даёт
      редакционный вид там, где иначе была бы просто вторая строка. */
   .eyebrow {
     @apply text-xs font-bold uppercase;
     letter-spacing: 0.1em;
-    color: var(--color-accent);
+    color: var(--color-accent-ink);
   }
 }
 
@@ -896,7 +1055,7 @@ html.light {
     font-size: 18px;
     border-radius: var(--radius-control);
     background: var(--color-accent-soft);
-    color: var(--color-accent);
+    color: var(--color-accent-ink);
   }
 
   .step { @apply flex flex-col gap-2; }
@@ -1142,7 +1301,7 @@ html[data-native] body:has(input:focus, textarea:focus) .bottomnav { display: no
 .legal ul { margin: 0 0 12px 0; padding-left: 20px; list-style: disc; }
 .legal li { margin-bottom: 6px; }
 .legal strong { color: var(--color-text); font-weight: 600; }
-.legal a { color: var(--color-accent); text-decoration: underline; text-underline-offset: 2px; }
+.legal a { color: var(--color-accent-ink); text-decoration: underline; text-underline-offset: 2px; }
 .legal table { width: 100%; margin-bottom: 16px; border-collapse: collapse; }
 .legal th, .legal td {
   padding: 8px 10px;
@@ -1494,7 +1653,7 @@ body.kb-open .m-sticky {
 }
 .drawer-item[data-active='true'] {
   background: var(--color-accent-soft);
-  color: var(--color-accent);
+  color: var(--color-accent-ink);
   font-weight: 650;
 }
 
@@ -1554,7 +1713,7 @@ body.kb-open .m-sticky {
   letter-spacing: 0.22em;
   text-indent: 0.22em;
   text-transform: uppercase;
-  color: var(--color-accent);
+  color: var(--color-accent-ink);
 }
 /* В верхней полосе веба марка мельче — там это ссылка, а не герой. */
 .brand-topbar .brand-word { font-size: var(--text-lg); }
@@ -1583,7 +1742,7 @@ body.kb-open .m-sticky {
 }
 .link-quiet:hover { color: var(--color-text); }
 .link-quiet:disabled { opacity: 0.5; text-decoration: none; pointer-events: none; }
-.link-accent { color: var(--color-accent); }
+.link-accent { color: var(--color-accent-ink); }
 
 /* ── Экран-результат: успех, блокировка ─────────────────────── */
 .auth-result {
@@ -1635,7 +1794,7 @@ body.kb-open .m-sticky {
   height: 84px;
   border-radius: 999px;
   background: var(--color-accent-soft);
-  color: var(--color-accent);
+  color: var(--color-accent-ink);
 }
 .hero-circle-danger { background: var(--color-danger-soft); color: var(--color-danger); }
 .hero-circle-success { background: var(--color-success-soft); color: var(--color-success); }
@@ -1706,7 +1865,7 @@ body.kb-open .m-sticky {
   height: var(--h-lg);
   border-radius: var(--radius-control);
   background: var(--color-accent-soft);
-  color: var(--color-accent);
+  color: var(--color-accent-ink);
 }
 .bullet-body { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
 .bullet-title {
@@ -1784,7 +1943,7 @@ body.kb-open .m-sticky {
   min-height: var(--tap-min);
   padding: var(--space-3);
   font-size: var(--text-base);
-  color: var(--color-accent);
+  color: var(--color-accent-ink);
 }
 .sysdlg-actions > :first-child { border-right: 1px solid var(--color-border); color: var(--color-muted); }
 .sysdlg-actions > :last-child { font-weight: 650; }

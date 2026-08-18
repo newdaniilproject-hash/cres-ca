@@ -5,7 +5,6 @@
 // в браузерный бандл вместе с ними. Пометка нужна `useT`.
 
 import Link from 'next/link'
-import { ThemeToggle } from '@/components/theme'
 import { Brand } from '@/components/auth-ui'
 import { useT } from '@/lib/i18n/client'
 
@@ -39,10 +38,12 @@ export function AuthShell({ title, subtitle, children }: {
         <Link href="/" className="brand-topbar">
           <Brand />
         </Link>
-        <div className="flex items-center gap-1 sm:gap-2">
-          <ThemeToggle />
-          <Link href="/" className="btn-ghost">← {t('auth.shell.home')}</Link>
-        </div>
+        {/* Переключателя темы здесь НЕТ намеренно (решение владельца
+            18.08.2026): тема выбирается в профиле, потому что это
+            настройка аккаунта, а не действие входа. До входа аккаунта
+            ещё нет, и предлагать его настройку — предлагать решение
+            задачи, которой у человека сейчас не стоит. */}
+        <Link href="/" className="btn-ghost">← {t('auth.shell.home')}</Link>
       </div>
 
       <div className="auth-split">
