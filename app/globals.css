@@ -1146,6 +1146,360 @@ html.dark {
 }
 
 /* ============================================================
+   ЛЕНДИНГ CRESKO. Раскладка по макету «приветственная страница»,
+   переданному владельцем 18.08.2026.
+
+   Почему отдельный блок, а не правка старого. Прежний лендинг
+   продавал «маркетплейс товарів і послуг» — поиск заведений
+   первым экраном. Макет продаёт ИНСТРУМЕНТ продавцу: первый
+   экран — снимок кабинета, дальше «одна подписка вместо
+   четырёх сервисов». Это разные страницы, а не разное
+   оформление одной.
+
+   ЧТО ЗДЕСЬ НЕ ЗАВЕДЕНО НАМЕРЕННО: ни одного цвета, радиуса
+   и отступа по месту. Тона карточек «для кого» берутся из тех же
+   `--tone-*`, что и плитки-счётчики кабинета, — иначе на светлой
+   теме они разойдутся с интерфейсом, в который человек попадёт
+   через десять секунд.
+   ============================================================ */
+
+@layer components {
+
+  /* ── Шапка лендинга ──────────────────────────────────────────
+     Она НЕ та же, что у витрины (`.topbar` + `PublicHeader`):
+     там поиск по каталогу, здесь — навигация по секциям этой же
+     страницы. Одна шапка на две задачи означала бы поле поиска,
+     которое на лендинге некуда отправить, и якоря на витрине,
+     которых там нет.                                             */
+  .land-header {
+    @apply sticky top-0 z-40 border-b backdrop-blur-md;
+    border-color: var(--color-border);
+    background: color-mix(in srgb, var(--color-surface) 86%, transparent);
+    padding-top: env(safe-area-inset-top);
+  }
+  .land-header-inner {
+    @apply mx-auto flex items-center justify-between gap-6 px-4 sm:px-6;
+    max-width: 1240px;
+    height: 68px;
+  }
+  /* Словесный знак. Точка акцентом — единственное украшение знака;
+     в макете она стоит верхним индексом после «O». */
+  .land-brand {
+    @apply inline-flex items-start font-bold;
+    font-size: 23px;
+    letter-spacing: -0.03em;
+    color: var(--color-text);
+  }
+  .land-brand-dot {
+    width: 6px; height: 6px;
+    margin-left: 3px;
+    margin-top: 4px;
+    border-radius: 999px;
+    background: var(--color-accent);
+  }
+  /* Навигация прячется до lg: на планшете пять пунктов и три кнопки
+     не помещаются, а прятать кнопки нельзя — они и есть цель шапки. */
+  .land-nav { @apply hidden items-center gap-7 lg:flex; }
+  .land-navlink {
+    @apply text-sm font-medium;
+    color: var(--color-muted);
+    padding-block: 6px;
+    border-bottom: 2px solid transparent;
+    transition: color var(--dur-fast), border-color var(--dur-fast);
+  }
+  .land-navlink:hover { color: var(--color-text); border-color: var(--color-border-strong); }
+
+  /* ── Первый экран ────────────────────────────────────────────
+     Две колонки на большом экране, одна на телефоне. Снимок
+     кабинета уходит ПОД текст, а не рядом с ним, но не прячется
+     совсем: он объясняет продукт лучше, чем ещё один абзац.      */
+  .land-hero {
+    @apply grid items-center;
+    gap: 40px;
+    padding-block: 56px 64px;
+  }
+  .land-h1 {
+    font-family: var(--font-heading);
+    font-weight: var(--heading-weight);
+    letter-spacing: -0.035em;
+    font-size: 40px;
+    line-height: 1.08;
+    color: var(--color-text);
+  }
+  /* Вторая половина заголовка акцентом. Токен `-ink`, а не `accent`:
+     это ТЕКСТ на фоне страницы, и заливочный кобальт на белом
+     читается тяжелее (см. шапку файла про два токена акцента).
+
+     `display: block` — не украшение: в макете акцентная часть стоит
+     ОТДЕЛЬНОЙ строкой, а при обычном переносе она рвётся по ширине
+     колонки («…— в» / «одному місці»), и предлог остаётся висеть
+     на чёрной строке. */
+  .land-h1 em { display: block; font-style: normal; color: var(--color-accent-ink); }
+  .land-lead {
+    font-size: 17px;
+    line-height: 1.6;
+    color: var(--color-muted);
+    max-width: 30em;
+  }
+  /* Строка «Без картки» со значком щита. Не набор утилит по месту:
+     она повторяется в двух местах страницы. */
+  .land-note {
+    @apply inline-flex items-center gap-2 text-sm;
+    color: var(--color-muted);
+  }
+  .land-note svg { color: var(--color-accent-ink); }
+
+  /* ── Снимок кабинета в первом экране ─────────────────────────
+     Плоский, без поворота: в макете он читается как настоящее
+     окно продукта, а повёрнутый теряет цифры — то есть ровно то,
+     ради чего он там стоит.                                      */
+  .shot {
+    @apply overflow-hidden border;
+    border-radius: var(--radius-card);
+    border-color: var(--color-border);
+    background: var(--color-surface);
+    box-shadow: var(--shadow-lift);
+  }
+  .shot-body { @apply flex; }
+  .shot-nav {
+    @apply hidden shrink-0 flex-col gap-0.5 border-r p-3 sm:flex;
+    width: 152px;
+    border-color: var(--color-border);
+    background: var(--color-surface-2);
+  }
+  .shot-navitem {
+    @apply flex items-center gap-2 px-2 py-1.5;
+    border-radius: var(--radius-control);
+    font-size: 11px;
+    color: var(--color-muted);
+  }
+  .shot-navitem[data-active='true'] {
+    color: var(--color-accent-ink);
+    background: var(--color-accent-soft);
+    font-weight: 600;
+  }
+  .shot-main { @apply min-w-0 flex-1 p-4; }
+  .shot-tile {
+    @apply flex flex-col gap-1 border p-3;
+    border-radius: var(--radius-control);
+    border-color: var(--color-border);
+  }
+  .shot-tile-num {
+    font-size: 24px; font-weight: 700; letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text);
+  }
+  .shot-line { @apply flex items-center gap-1.5; font-size: 11px; color: var(--color-muted); }
+  .shot-dot { width: 6px; height: 6px; border-radius: 999px; background: var(--tone-emerald); }
+  .shot-dot[data-tone='amber'] { background: var(--tone-amber); }
+  .shot-dot[data-tone='rose']  { background: var(--tone-rose); }
+  .shot-panel {
+    @apply border p-3;
+    border-radius: var(--radius-control);
+    border-color: var(--color-border);
+  }
+  .shot-row { @apply flex items-center justify-between gap-2 py-1.5; font-size: 11px; }
+
+  /* ── Полоса из четырёх обещаний под первым экраном ───────────
+     Значок в мягком квадрате плюс две строки. Границы нет: полоса
+     идёт по фону страницы, иначе она спорит с карточками ниже.  */
+  .land-strip { @apply grid gap-6; padding-block: 32px; }
+  .land-strip-cell { @apply flex items-start gap-3; }
+  .land-strip-icon {
+    @apply grid shrink-0 place-items-center;
+    width: 40px; height: 40px;
+    border-radius: var(--radius-control);
+    background: var(--color-accent-soft);
+    color: var(--color-accent-ink);
+  }
+
+  /* ── «Одна підписка замість чотирьох сервісів» ───────────────
+     Список сервисов, схлопывающийся в одну строку CRESKO.
+     Знак «плюс» между строками — часть смысла, а не декор: он
+     показывает, что сегодня их СКЛАДЫВАЮТ и платят за каждый.   */
+  .merge-row {
+    @apply flex items-center justify-between gap-3 border;
+    padding: 11px 14px;
+    border-radius: var(--radius-control);
+    border-color: var(--color-border);
+    background: var(--color-surface);
+    font-size: 14px;
+    color: var(--color-text);
+  }
+  .merge-plus { color: var(--color-faint); font-size: 16px; line-height: 1; }
+  .merge-sum {
+    @apply flex items-center justify-between gap-3;
+    padding: 12px 14px;
+    border-radius: var(--radius-control);
+    background: var(--color-accent);
+    color: var(--color-accent-text);
+    font-size: 15px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+  }
+
+  /* ── Нумерованная карточка возможности (01–06) ───────────────
+     Номер вместо значка: шесть разных значков на одном экране
+     превращаются в шум, а номер даёт порядок чтения.            */
+  .num-card {
+    @apply flex flex-col gap-2 border;
+    padding: 18px;
+    border-radius: var(--radius-card);
+    border-color: var(--color-border);
+    background: var(--color-surface);
+    transition: transform var(--dur-base) var(--ease-out-soft),
+                box-shadow var(--dur-base), border-color var(--dur-base);
+  }
+  .num-card:hover {
+    transform: translateY(-3px);
+    border-color: var(--color-border-strong);
+    box-shadow: var(--shadow-card);
+  }
+  .num-badge {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-accent-ink);
+  }
+
+  /* ── «Для кого»: круглый значок в тоне ───────────────────────
+     Тон берётся из `data-tone` теми же токенами, что и плитки
+     кабинета. Четыре карточки одного цвета читались бы как один
+     блок, и глаз не выбрал бы свою.                              */
+  .aud-card {
+    @apply flex flex-col gap-3 border;
+    padding: 20px;
+    border-radius: var(--radius-card);
+    border-color: var(--color-border);
+    background: var(--color-surface);
+  }
+  .aud-icon {
+    @apply grid place-items-center;
+    width: 48px; height: 48px;
+    border-radius: 999px;
+    background: var(--tone-violet-soft);
+    color: var(--tone-violet);
+  }
+  .aud-icon[data-tone='emerald'] { background: var(--tone-emerald-soft); color: var(--tone-emerald); }
+  .aud-icon[data-tone='amber']   { background: var(--tone-amber-soft);   color: var(--tone-amber); }
+  .aud-icon[data-tone='blue']    { background: var(--tone-blue-soft);    color: var(--tone-blue); }
+
+  /* ── «Раніше» против «З CRESKO» ──────────────────────────────
+     Единственная плашка на странице с собственным фоном: она
+     показывает боль, и нейтральная белая карточка здесь читалась
+     бы как ещё один список возможностей.                        */
+  .compare {
+    @apply grid gap-8 border;
+    padding: 28px;
+    border-radius: var(--radius-hero);
+    border-color: var(--color-border);
+    background: color-mix(in srgb, var(--color-danger-soft) 35%, var(--color-surface));
+  }
+  .compare-tag {
+    @apply inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold;
+    background: var(--color-danger-soft);
+    color: var(--color-danger);
+  }
+  .compare-tag[data-good='true'] { background: var(--color-success-soft); color: var(--color-success); }
+  .compare-item { @apply flex items-center gap-2.5 text-sm; color: var(--color-text); }
+  .compare-mark {
+    @apply grid shrink-0 place-items-center;
+    width: 18px; height: 18px;
+    border-radius: 999px;
+    font-size: 11px;
+    background: var(--color-danger-soft);
+    color: var(--color-danger);
+  }
+  .compare-mark[data-good='true'] { background: var(--color-success-soft); color: var(--color-success); }
+
+  /* ── Список галочек в блоке цены ─────────────────────────── */
+  .price-check { @apply flex items-start gap-2.5 text-sm; color: var(--color-text); }
+  .price-check-mark {
+    @apply grid shrink-0 place-items-center;
+    width: 18px; height: 18px;
+    margin-top: 2px;
+    border-radius: 999px;
+    font-size: 11px;
+    background: var(--color-accent-soft);
+    color: var(--color-accent-ink);
+  }
+
+  /* ── Финальный призыв: полоса акцентом ─────────────────────
+     Белый текст на заливочном кобальте — тот случай, ради
+     которого `--color-accent-text` вообще заведён.             */
+  .cta-band {
+    @apply grid gap-6;
+    padding: 36px;
+    border-radius: var(--radius-hero);
+    background: var(--color-accent);
+    color: var(--color-accent-text);
+  }
+  .cta-band h2 {
+    font-family: var(--font-heading);
+    font-weight: var(--heading-weight);
+    letter-spacing: -0.03em;
+    font-size: 28px;
+    line-height: 1.15;
+  }
+  /* Кнопка на акцентной полосе — белая с акцентным текстом.
+     `.btn-primary` здесь дал бы кобальт на кобальте. */
+  .btn-on-accent {
+    @apply inline-flex items-center justify-center gap-2 h-11 px-5 text-sm font-semibold select-none;
+    border-radius: var(--radius-control);
+    background: var(--color-accent-text);
+    color: var(--color-accent);
+    transition: transform var(--dur-fast) var(--ease-out-soft), box-shadow var(--dur-fast);
+  }
+  .btn-on-accent:hover { box-shadow: var(--shadow-lift); }
+  .btn-on-accent:active { transform: scale(0.98); }
+
+  /* ── Подвал сайта ────────────────────────────────────────── */
+  .site-footer {
+    @apply border-t;
+    margin-top: 72px;
+    border-color: var(--color-border);
+    background: var(--color-surface-2);
+  }
+  .footer-grid { @apply grid gap-8; }
+  .footer-head {
+    @apply text-xs font-bold uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-faint);
+  }
+  .footer-link {
+    @apply block text-sm;
+    padding-block: 5px;
+    color: var(--color-muted);
+    transition: color var(--dur-fast);
+  }
+  .footer-link:hover { color: var(--color-text); }
+  .social {
+    @apply grid place-items-center;
+    width: 32px; height: 32px;
+    border-radius: 999px;
+    border: 1px solid var(--color-border);
+    color: var(--color-muted);
+    transition: color var(--dur-fast), border-color var(--dur-fast);
+  }
+  .social:hover { color: var(--color-text); border-color: var(--color-border-strong); }
+
+  @media (min-width: 640px) {
+    .land-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .compare { grid-template-columns: 1fr 1fr; }
+    .cta-band { grid-template-columns: 1fr 1fr; align-items: center; }
+    .footer-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (min-width: 1024px) {
+    .land-hero { grid-template-columns: 1fr 1.08fr; gap: 56px; padding-block: 72px 80px; }
+    .land-h1 { font-size: 52px; }
+    .land-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .cta-band { grid-template-columns: 1fr 1fr auto; padding: 44px; }
+    .footer-grid { grid-template-columns: 1.4fr repeat(4, minmax(0, 1fr)); }
+  }
+}
+
+/* ============================================================
    Хром кабинета и блок «приложение, а не сайт в рамке».
 
    Атрибут `data-native` ставится на <html> синхронно, до первой

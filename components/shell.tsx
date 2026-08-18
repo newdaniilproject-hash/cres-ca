@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { ThemeToggle } from '@/components/theme'
 import { DEFAULT_LANG } from '@/lib/i18n/dict'
 import { createT, type T } from '@/lib/i18n/translate'
+import { SUPPORT_EMAIL } from '@/lib/site'
 
 // ── ЯЗЫК ВИТРИНЫ ЗАКРЕПЛЁН НА УКРАИНСКОМ. Это решение, а не недоделка ───────
 //
@@ -92,28 +93,91 @@ export function PublicHeader({ authed }: { authed: boolean }) {
   )
 }
 
-// Подвал сайта: «Відкрити бізнес», «Вхід», юридические ссылки.
+// Подвал сайта. Четыре колонки по макету 18.08.2026 плюс нижняя строка
+// со знаком, кнопками входа и годом.
+//
+// ПОЧЕМУ ЗДЕСЬ НЕТ ПОЛОВИНЫ ССЫЛОК МАКЕТА. В макете под «Продуктом»
+// стоят «Інтеграції», под «Підтримкою» — «Центр підтримки», под «Для
+// бізнесу» — четыре отдельные посадочные страницы. Ни одной из них
+// не существует. Ссылка в подвал на несуществующий раздел — это не
+// «задел», а 404 на самом видном месте сайта (CLAUDE.md, правило 8:
+// выключено — значит удалено).
+//
+// Поэтому колонки сохранены, а адреса ведут туда, где ответ ЕСТЬ:
+// «Продукт» и «Для бізнесу» — на секции главной, «Підтримка» — на
+// живой ящик из `SUPPORT_EMAIL`, «Юридичне» — на четыре настоящие
+// страницы. Когда появятся посадочные, меняется адрес, а не подвал.
+//
+// Юридические ссылки обязаны быть видны с любой страницы: этого
+// требуют и Meta при верификации бизнеса, и обе магазинные проверки.
 export function PublicFooter() {
   const t = publicT
+  const col = (head: string, items: [string, string][]) => (
+    <div>
+      <p className="footer-head mb-3">{head}</p>
+      {items.map(([label, href]) => (
+        <Link key={href + label} href={href} className="footer-link">{label}</Link>
+      ))}
+    </div>
+  )
+
   return (
-    <footer className="divider mt-20">
-      <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-10 t-sm sm:flex-row sm:items-center sm:justify-between sm:px-6 prose-muted">
-        {/* Год подставляется строкой, а не `t.number`: разделитель разрядов
-            превратил бы 2026 в «2 026». Это номер, а не количество. */}
-        <p>{t('public.footer.rights', { year: String(new Date().getFullYear()) })}</p>
-        {/* Ссылки на политику и удаление данных обязаны быть видны с любой
-            страницы: этого требуют и Meta при верификации бизнеса, и обе
-            магазинные проверки. Прятать их в подвале второго уровня —
-            повод для отказа. */}
-        <div className="flex flex-wrap gap-x-5 gap-y-2">
-          <Link href="/register/seller" className="hover:underline">
-            {t('public.footer.openBusiness')}
-          </Link>
-          <Link href="/login" className="hover:underline">{t('public.footer.signIn')}</Link>
-          <Link href="/privacy" className="hover:underline">{t('public.footer.privacy')}</Link>
-          <Link href="/privacy/delete" className="hover:underline">
-            {t('public.footer.dataDelete')}
-          </Link>
+    <footer className="site-footer">
+      <div className="mx-auto max-w-[1240px] px-4 py-12 sm:px-6">
+        <div className="footer-grid">
+          <div className="max-w-xs">
+            <p className="land-brand mb-3">
+              {t('public.chrome.brand')}<span aria-hidden className="land-brand-dot" />
+            </p>
+            <p className="t-sm prose-muted">{t('public.footer.about')}</p>
+            <div className="mt-5 flex gap-2">
+              {/* Профилей в соцсетях у бренда ещё нет, поэтому значков-ссылок
+                  здесь тоже нет: кружок, ведущий в никуда, хуже пустого места.
+                  Вместо них — карта и поиск, две страницы, которые работают. */}
+              <Link href="/map" className="social" aria-label={t('public.chrome.map')}>◎</Link>
+              <Link href="/search" className="social" aria-label={t('public.chrome.search')}>⌕</Link>
+            </div>
+          </div>
+
+          {col(t('public.footer.product'), [
+            [t('land.nav.features'), '/#features'],
+            [t('land.nav.pricing'), '/#pricing'],
+            [t('land.nav.how'), '/#how'],
+            [t('land.nav.faq'), '/#faq'],
+          ])}
+
+          {col(t('public.footer.business'), [
+            [t('public.footer.forMasters'), '/#audience'],
+            [t('public.footer.forSalons'), '/#audience'],
+            [t('public.footer.forShops'), '/#audience'],
+            [t('public.footer.forEntrepreneurs'), '/#audience'],
+          ])}
+
+          {col(t('public.footer.support'), [
+            [t('public.footer.contacts'), `mailto:${SUPPORT_EMAIL}`],
+            [t('public.chrome.map'), '/map'],
+          ])}
+
+          {col(t('public.footer.legal'), [
+            [t('public.footer.privacy'), '/privacy'],
+            [t('public.footer.dataDelete'), '/privacy/delete'],
+            [t('public.footer.terms'), '/terms'],
+            [t('public.footer.cookies'), '/cookies'],
+          ])}
+        </div>
+
+        <div className="divider mt-10 flex flex-col gap-4 pt-6 sm:flex-row sm:items-center sm:justify-between">
+          {/* Год подставляется строкой, а не `t.number`: разделитель разрядов
+              превратил бы 2026 в «2 026». Это номер, а не количество. */}
+          <p className="t-sm prose-muted">
+            {t('public.footer.rights', { year: String(new Date().getFullYear()) })}
+          </p>
+          <div className="flex gap-2">
+            <Link href="/login" className="btn-secondary t-sm">{t('public.footer.signIn')}</Link>
+            <Link href="/register/seller" className="btn-primary t-sm">
+              {t('public.footer.openBusiness')}
+            </Link>
+          </div>
         </div>
       </div>
     </footer>

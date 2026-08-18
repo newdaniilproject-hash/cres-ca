@@ -1,9 +1,15 @@
 import Link from 'next/link'
 import type { Key } from '@/lib/i18n/dict'
 import { createClient } from '@/lib/supabase/server'
-import { PublicHeader, PublicFooter, publicT as t } from '@/components/shell'
+import { PublicFooter, publicT as t } from '@/components/shell'
+import { SUPPORT_EMAIL } from '@/lib/site'
+import {
+  IconArrowRight, IconBag, IconBolt, IconBox, IconBriefcase, IconCalendar,
+  IconCheck, IconDoc, IconGear, IconGrid, IconHome, IconMoney, IconPlay,
+  IconScissors, IconShield, IconSupport, IconUser, IconUsers,
+} from '@/components/icons'
 
-export const revalidate = 120
+export const dynamic = 'force-dynamic'
 
 // Заголовок главной задаётся absolute: шаблон «%s — Маркетплейс» из layout
 // на первой странице дал бы удвоение названия.
@@ -13,319 +19,461 @@ export const revalidate = 120
 // закреплён украинским (обоснование — `components/shell.tsx`), поэтому
 // в выдаче ничего не меняется, а строки перестают быть захардкоженными.
 export const metadata = {
-  title: { absolute: t('public.home.meta.title') },
-  description: t('public.home.meta.desc'),
+  title: { absolute: t('land.meta.title') },
+  description: t('land.meta.desc'),
 }
 
-// Главная. Раскладка взята из первой крес-ки: первый экран из двух
-// колонок с наклонённым макетом кабинета, полоса фактов, ниши,
-// возможности, четыре шага, вопросы-ответы, финальный призыв.
+// ── ГЛАВНАЯ. Переписана 18.08.2026 по макету, переданному владельцем ────────
 //
-// Что изменено против первой версии: она продавала CRM мастеру,
-// эта продаёт легальность и простоту продавцу — и не забывает
-// покупателя. Поэтому сразу под первым экраном живёт поиск
-// и настоящий список заведений из базы, а не картинка.
-// Ниши. НЕ переводятся и в словарь не уезжают — это справочник
-// специальностей (CLAUDE.md → «Локализация»: названия специальностей
-// переводятся данными). Здесь они вдобавок работают ПОИСКОВЫМ ЗАПРОСОМ
-// (`/search?q=`), а поисковый вектор арендатора собран по-украински
-// триггером `tenants_search_refresh`: переведённая подпись, уехавшая
-// в `q`, не нашла бы ничего.
+// ЧТО ИМЕННО ПОМЕНЯЛОСЬ И ПОЧЕМУ ЭТО НЕ КОСМЕТИКА.
 //
-// ⚠ Долг, не решаемый переводом: этот список — вторая копия справочника
-// `specialities`. Правильное место для него — та же анонимная точка, что
-// отдаёт города (`active_cities`), а не массив в разметке главной.
-const NICHES = [
-  'Манікюр', 'Брейди', 'Барбер', 'Масаж', 'Косметологія',
-  'Одяг', 'Автозапчастини', 'Ремонт', 'Хендмейд',
+// Прежняя главная продавала МАРКЕТПЛЕЙС: первым экраном шёл поиск заведений
+// и настоящий список арендаторов из базы. Это честно описывало то, чем
+// продукт станет на 9–12 месяце, и не описывало того, что продаётся сейчас.
+// Стратегия развернулась 01.08.2026 (CLAUDE.md → «Куда идёт продукт»):
+// входим НЕ маркетплейсом, а инструментом для продавца. Витрина как общий
+// каталог включается позже, когда в категории наберётся плотность.
+//
+// Отсюда и раскладка макета: первый экран — снимок кабинета, дальше «одна
+// подписка вместо четырёх сервисов», «для кого», «раніше / з CRESKO», три
+// шага, цена, вопросы. Поиска по заведениям здесь больше нет — он остался
+// страницами `/search` и `/map`, ссылки на них живут в подвале. Показывать
+// пустой каталог на первом экране значит продавать плотность, которой пока
+// нет, и это первое, что видит человек.
+//
+// ЧЕГО ЗДЕСЬ НЕТ ИЗ МАКЕТА, И ЭТО НЕ ЗАБЫТО. В макете есть ссылка «Ціни»
+// на отдельную страницу тарифов, «Інтеграції», «Центр підтримки» и кнопка
+// «Подивитися, як це працює» с видео. Ни тарифов, ни страницы поддержки,
+// ни ролика не существует. Поэтому пункты навигации ведут на СЕКЦИИ этой
+// же страницы (они есть и работают), поддержка — на живой ящик, а «як це
+// працює» прокручивает к трём шагам. Кнопка, ведущая на 404, — это не
+// «задел на будущее», а сломанная навигация в самом видном месте сайта
+// (CLAUDE.md, правило 8).
+//
+// ЦЕНА НЕ НАЗВАНА ЧИСЛОМ, и это тоже из макета: блок говорит «фіксована
+// підписка, одна сума на місяць». Биллинга нет (CLAUDE.md → «Что НЕ
+// решено»), и поставить сюда цифру значит пообещать тариф, которого нельзя
+// оплатить. Когда появятся `plans`, сюда придёт число, а не новый блок.
+
+// Пункты верхней навигации — якоря секций этой же страницы.
+const NAV: { label: Key; href: string }[] = [
+  { label: 'land.nav.features', href: '#features' },
+  { label: 'land.nav.audience', href: '#audience' },
+  { label: 'land.nav.how', href: '#how' },
+  { label: 'land.nav.pricing', href: '#pricing' },
+  { label: 'land.nav.faq', href: '#faq' },
 ]
 
-// Блоки-списки держат КЛЮЧИ, а не текст. Тип `Key` здесь не украшение:
-// опечатка в имени ключа не соберётся `tsc --noEmit`, то есть ловится
-// заданием «Збірка» до слияния, а не пустым местом на главной.
-const FEATURES: { icon: string; title: Key; text: Key }[] = [
-  { icon: '◫', title: 'public.home.features.storefront.title', text: 'public.home.features.storefront.text' },
-  { icon: '▦', title: 'public.home.features.stock.title', text: 'public.home.features.stock.text' },
-  { icon: '✓', title: 'public.home.features.journals.title', text: 'public.home.features.journals.text' },
-  { icon: '❑', title: 'public.home.features.techcards.title', text: 'public.home.features.techcards.text' },
-  { icon: '◷', title: 'public.home.features.bookings.title', text: 'public.home.features.bookings.text' },
-  { icon: '₴', title: 'public.home.features.money.title', text: 'public.home.features.money.text' },
+// Полоса из четырёх обещаний под первым экраном.
+const STRIP: { icon: (p: { size?: number }) => React.ReactElement; title: Key; text: Key }[] = [
+  { icon: IconGrid, title: 'land.strip.one.title', text: 'land.strip.one.text' },
+  { icon: IconBolt, title: 'land.strip.routine.title', text: 'land.strip.routine.text' },
+  { icon: IconShield, title: 'land.strip.control.title', text: 'land.strip.control.text' },
+  { icon: IconSupport, title: 'land.strip.support.title', text: 'land.strip.support.text' },
+]
+
+// Сервисы, которые сегодня оплачиваются порознь. Порядок из макета:
+// сверху то, за что платят чаще всего.
+const MERGE: { icon: (p: { size?: number }) => React.ReactElement; label: Key }[] = [
+  { icon: IconGrid, label: 'land.merge.item.storefront' },
+  { icon: IconBag, label: 'land.merge.item.orders' },
+  { icon: IconBox, label: 'land.merge.item.stock' },
+  { icon: IconUsers, label: 'land.merge.item.customers' },
+  { icon: IconMoney, label: 'land.merge.item.finance' },
+  { icon: IconDoc, label: 'land.merge.item.docs' },
+]
+
+// Шесть возможностей. Нумерация — часть оформления карточки, поэтому
+// живёт здесь, а не в словаре: «01» одинаково во всех языках.
+const FEATURES: { title: Key; text: Key }[] = [
+  { title: 'land.features.storefront.title', text: 'land.features.storefront.text' },
+  { title: 'land.features.stock.title', text: 'land.features.stock.text' },
+  { title: 'land.features.orders.title', text: 'land.features.orders.text' },
+  { title: 'land.features.customers.title', text: 'land.features.customers.text' },
+  { title: 'land.features.docs.title', text: 'land.features.docs.text' },
+  { title: 'land.features.finance.title', text: 'land.features.finance.text' },
+]
+
+// Тон значка несёт смысл разделения аудиторий, а не настроение: четыре
+// одинаковых кружка читались бы как один блок (см. `.aud-icon` в globals).
+const AUDIENCE: {
+  icon: (p: { size?: number }) => React.ReactElement
+  tone: string; title: Key; text: Key
+}[] = [
+  { icon: IconScissors, tone: 'violet', title: 'land.audience.beauty.title', text: 'land.audience.beauty.text' },
+  { icon: IconBag, tone: 'emerald', title: 'land.audience.shops.title', text: 'land.audience.shops.text' },
+  { icon: IconUser, tone: 'amber', title: 'land.audience.masters.title', text: 'land.audience.masters.text' },
+  { icon: IconBriefcase, tone: 'blue', title: 'land.audience.small.title', text: 'land.audience.small.text' },
+]
+
+const BEFORE: Key[] = [
+  'land.compare.before.1', 'land.compare.before.2', 'land.compare.before.3',
+  'land.compare.before.4', 'land.compare.before.5', 'land.compare.before.6',
+]
+const AFTER: Key[] = [
+  'land.compare.after.1', 'land.compare.after.2', 'land.compare.after.3',
+  'land.compare.after.4', 'land.compare.after.5',
 ]
 
 const STEPS: { title: Key; text: Key }[] = [
-  { title: 'public.home.steps.register.title', text: 'public.home.steps.register.text' },
-  { title: 'public.home.steps.stock.title', text: 'public.home.steps.stock.text' },
-  { title: 'public.home.steps.labels.title', text: 'public.home.steps.labels.text' },
-  { title: 'public.home.steps.report.title', text: 'public.home.steps.report.text' },
+  { title: 'land.steps.register.title', text: 'land.steps.register.text' },
+  { title: 'land.steps.setup.title', text: 'land.steps.setup.text' },
+  { title: 'land.steps.team.title', text: 'land.steps.team.text' },
+]
+
+const PRICE_CHECKS: Key[] = [
+  'land.pricing.check.1', 'land.pricing.check.2',
+  'land.pricing.check.3', 'land.pricing.check.4',
+]
+
+const CONTROL: { icon: (p: { size?: number }) => React.ReactElement; title: Key; text: Key }[] = [
+  { icon: IconShield, title: 'land.control.roles.title', text: 'land.control.roles.text' },
+  { icon: IconCheck, title: 'land.control.audit.title', text: 'land.control.audit.text' },
+  { icon: IconDoc, title: 'land.control.process.title', text: 'land.control.process.text' },
+  { icon: IconBox, title: 'land.control.data.title', text: 'land.control.data.text' },
 ]
 
 const FAQ: { q: Key; a: Key }[] = [
-  { q: 'public.home.faq.commission.q', a: 'public.home.faq.commission.a' },
-  { q: 'public.home.faq.money.q', a: 'public.home.faq.money.a' },
-  { q: 'public.home.faq.shop.q', a: 'public.home.faq.shop.a' },
-  { q: 'public.home.faq.data.q', a: 'public.home.faq.data.a' },
-  { q: 'public.home.faq.journals.q', a: 'public.home.faq.journals.a' },
+  { q: 'land.faq.commission.q', a: 'land.faq.commission.a' },
+  { q: 'land.faq.money.q', a: 'land.faq.money.a' },
+  { q: 'land.faq.data.q', a: 'land.faq.data.a' },
+  { q: 'land.faq.start.q', a: 'land.faq.start.a' },
+  { q: 'land.faq.journals.q', a: 'land.faq.journals.a' },
 ]
 
 export default async function Home() {
+  // Единственный поход в базу на всю страницу — узнать, вошёл ли человек.
+  // Вошедшему нет смысла показывать «Увійти» и «Реєстрація»: он приходит
+  // сюда за кабинетом.
   const supabase = await createClient()
-  const [{ data: { user } }, { data: cities }, { data: shops }] = await Promise.all([
-    supabase.auth.getUser(),
-    supabase.rpc('active_cities'),
-    supabase
-      .from('tenants')
-      .select('slug, name, tagline, city, kind, logo_path, cover_path')
-      .eq('status', 'active')
-      .eq('storefront_enabled', true)
-      .order('activated_at', { ascending: false, nullsFirst: false })
-      .limit(9),
-  ])
+  const { data: { user } } = await supabase.auth.getUser()
+  const authed = !!user
 
   return (
     <>
-      <PublicHeader authed={!!user} />
+      {/* ── Шапка ──────────────────────────────────────────────── */}
+      <header className="land-header">
+        <div className="land-header-inner">
+          <Link href="/" className="land-brand">
+            {t('public.chrome.brand')}<span aria-hidden className="land-brand-dot" />
+          </Link>
 
-      <main className="mx-auto max-w-6xl px-4 sm:px-6">
-        {/* ── Первый экран: две колонки ─────────────────────────── */}
-        <section className="hero-split pt-12 pb-14 sm:pt-16">
+          <nav className="land-nav">
+            {NAV.map((n) => (
+              <a key={n.href} href={n.href} className="land-navlink">{t(n.label)}</a>
+            ))}
+          </nav>
+
+          <div className="flex items-center gap-2">
+            {authed ? (
+              <Link href="/app" className="btn-primary t-sm">{t('public.chrome.account')}</Link>
+            ) : (
+              <>
+                <Link href="/login" className="btn-ghost t-sm">{t('land.nav.signIn')}</Link>
+                <Link href="/register" className="btn-secondary t-sm hidden sm:inline-flex">
+                  {t('land.nav.signUp')}
+                </Link>
+                <Link href="/register/seller" className="btn-primary t-sm">
+                  {t('land.nav.start')}
+                </Link>
+              </>
+            )}
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-[1240px] px-4 sm:px-6">
+
+        {/* ── Первый экран ─────────────────────────────────────── */}
+        <section className="land-hero">
           <div>
-            <p className="eyebrow rise">{t('public.home.hero.eyebrow')}</p>
-            {/* Заголовок разрезан на две строки не по словам, а по ОФОРМЛЕНИЮ:
-                вторая половина набрана акцентным цветом. Один ключ здесь
-                невозможен — `t()` отдаёт строку, а не разметку. Ключей два,
-                и оба названы так, чтобы переводчик видел, что это одна фраза. */}
-            <h1 className="display rise mt-3 t-5xl">
-              {t('public.home.hero.title')}
-              <span style={{ color: 'var(--color-accent)' }}>
-                {' '}{t('public.home.hero.title.accent')}
-              </span>
+            <p className="eyebrow rise">{t('land.hero.eyebrow')}</p>
+            {/* Заголовок разрезан на две части не по словам, а по ОФОРМЛЕНИЮ:
+                вторая половина набрана акцентом. Один ключ здесь невозможен —
+                `t()` отдаёт строку, а не разметку. Ключей два, и оба названы
+                так, чтобы переводчик видел, что это одна фраза. */}
+            <h1 className="land-h1 rise mt-3">
+              {t('land.hero.title')} <em>{t('land.hero.title.accent')}</em>
             </h1>
-            <p className="rise-1 t-lg mt-5 max-w-xl leading-relaxed prose-muted">
-              {t('public.home.hero.desc')}
-            </p>
+            <p className="land-lead rise-1 mt-5">{t('land.hero.lead')}</p>
+
             <div className="rise-2 mt-7 flex flex-wrap items-center gap-3">
               <Link href="/register/seller" className="btn-primary">
-                {t('public.home.hero.start')}
+                {t('land.hero.start')}
               </Link>
-              <Link href="/search" className="btn-secondary">
-                {t('public.home.hero.browse')}
-              </Link>
+              {/* Ролика нет, поэтому кнопка честно прокручивает к трём шагам —
+                  то есть к ответу на свой же вопрос. */}
+              <a href="#how" className="btn-secondary">
+                <IconPlay /> {t('land.hero.how')}
+              </a>
             </div>
-            <p className="rise-2 t-sm mt-4 prose-muted">{t('public.home.hero.note')}</p>
+
+            <p className="land-note rise-2 mt-5">
+              <IconShield size={17} /> {t('land.hero.note')}
+            </p>
           </div>
 
-          {/* Рисунок кабинета. Это НЕ данные и не скриншот: строки придуманы
-              и живут только здесь, поэтому они интерфейс и уезжают в словарь
-              вместе с остальным. Даты и числа внутри — часть рисунка, а не
-              значения: подставлять их через `t.date` не во что, реальной
-              даты у них нет. */}
-          <div className="mock-wrap rise-3" aria-hidden>
-            <div className="mock">
-              <div className="mock-bar">
-                <span className="mock-dot" style={{ background: '#ff5f57' }} />
-                <span className="mock-dot" style={{ background: '#ffbd2e' }} />
-                <span className="mock-dot" style={{ background: '#28c840' }} />
-                <span className="t-xs ml-2 prose-muted">{t('public.home.mock.bar')}</span>
+          {/* ── Снимок кабинета ────────────────────────────────
+              Это НЕ скриншот и не данные: строки придуманы и живут
+              только здесь, поэтому они такой же интерфейс, как всё
+              остальное, и уезжают в словарь. Числа внутри — часть
+              рисунка, а не значения: подставлять их через `t.number`
+              не во что, реальной величины за ними нет. */}
+          <div className="shot rise-3" aria-hidden>
+            <div className="shot-body">
+              <div className="shot-nav">
+                <p className="land-brand mb-3 px-2" style={{ fontSize: 15 }}>
+                  {t('public.chrome.brand')}
+                </p>
+                {([
+                  ['app.nav.today', IconHome, true],
+                  ['app.nav.inventory', IconBox, false],
+                  ['app.nav.bookings', IconCalendar, false],
+                  ['app.nav.orders', IconBag, false],
+                  ['app.nav.customers', IconUsers, false],
+                  ['app.nav.finance', IconMoney, false],
+                  ['app.nav.journals', IconCheck, false],
+                  ['app.nav.documents', IconDoc, false],
+                  ['app.nav.settings', IconGear, false],
+                ] as [Key, (p: { size?: number }) => React.ReactElement, boolean][])
+                  .map(([label, Icon, active]) => (
+                    <span key={label} className="shot-navitem" data-active={active}>
+                      <Icon size={13} /> {t(label)}
+                    </span>
+                  ))}
               </div>
-              <div className="mock-row">
-                <div>
-                  <p className="t-md">{t('public.home.mock.jar.title')}</p>
-                  <p className="t-xs mt-0.5 prose-muted">{t('public.home.mock.jar.desc')}</p>
+
+              <div className="shot-main">
+                <p className="t-md mb-3" style={{ fontWeight: 650 }}>{t('land.shot.title')}</p>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="shot-tile">
+                    <span className="shot-tile-num">248</span>
+                    <span className="shot-line"><span className="shot-dot" />{t('land.shot.tile.items')}</span>
+                    <span style={{ fontSize: 10, color: 'var(--color-faint)' }}>
+                      {t('land.shot.tile.items.note')}
+                    </span>
+                  </div>
+                  <div className="shot-tile">
+                    <span className="shot-tile-num">18</span>
+                    <span className="shot-line"><span className="shot-dot" data-tone="amber" />{t('land.shot.tile.ending')}</span>
+                    <span style={{ fontSize: 10, color: 'var(--color-faint)' }}>
+                      {t('land.shot.tile.ending.note')}
+                    </span>
+                  </div>
+                  <div className="shot-tile">
+                    <span className="shot-tile-num">32</span>
+                    <span className="shot-line"><span className="shot-dot" data-tone="rose" />{t('land.shot.tile.pao')}</span>
+                    <span style={{ fontSize: 10, color: 'var(--color-faint)' }}>
+                      {t('land.shot.tile.pao.note')}
+                    </span>
+                  </div>
                 </div>
-                <span className="badge-success tabular">{t('public.home.mock.jar.badge')}</span>
-              </div>
-              <div className="mock-row">
-                <div>
-                  <p className="t-md">{t('public.home.mock.solution.title')}</p>
-                  <p className="t-xs mt-0.5 prose-muted">{t('public.home.mock.solution.desc')}</p>
+
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <div className="shot-panel">
+                    <p className="t-sm mb-1" style={{ fontWeight: 650 }}>{t('land.shot.events')}</p>
+                    {([
+                      ['land.shot.event.order', 'land.shot.event.order.note', '10:32'],
+                      ['land.shot.event.expiry', 'land.shot.event.expiry.note', '09:15'],
+                      ['land.shot.event.journal', 'land.shot.event.journal.note', '—'],
+                    ] as [Key, Key, string][]).map(([title, note, time]) => (
+                      <div key={title} className="shot-row">
+                        <span className="min-w-0">
+                          <span style={{ color: 'var(--color-text)' }}>{t(title)}</span>
+                          <br />
+                          <span style={{ color: 'var(--color-faint)' }}>{t(note)}</span>
+                        </span>
+                        <span className="tabular shrink-0" style={{ color: 'var(--color-faint)' }}>{time}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="shot-panel">
+                    <p className="t-sm" style={{ fontWeight: 650 }}>{t('land.shot.calendar')}</p>
+                    <p className="mb-1" style={{ fontSize: 10, color: 'var(--color-faint)' }}>
+                      {t('land.shot.calendar.date')}
+                    </p>
+                    {[['10:00', 'Манікюр', 'Олена'], ['12:00', 'Педикюр', 'Марія'], ['14:00', 'Корекція брів', 'Ірина']]
+                      .map(([time, what, who]) => (
+                        <div key={time} className="shot-row">
+                          <span className="tabular" style={{ color: 'var(--color-accent-ink)' }}>{time}</span>
+                          <span className="min-w-0 flex-1 truncate px-2" style={{ color: 'var(--color-text)' }}>{what}</span>
+                          <span style={{ color: 'var(--color-faint)' }}>{who}</span>
+                        </div>
+                      ))}
+                    <p className="mt-1" style={{ fontSize: 10, color: 'var(--color-accent-ink)' }}>
+                      {t('land.shot.calendar.all')}
+                    </p>
+                  </div>
                 </div>
-                <span className="badge-warn tabular">{t('public.home.mock.solution.badge')}</span>
-              </div>
-              <div className="mock-row">
-                <div>
-                  <p className="t-md">{t('public.home.mock.batch.title')}</p>
-                  <p className="t-xs mt-0.5 prose-muted">{t('public.home.mock.batch.desc')}</p>
-                </div>
-                <span className="badge tabular">{t('public.home.mock.batch.badge')}</span>
-              </div>
-              <div className="mock-row">
-                <div>
-                  <p className="t-md">{t('public.home.mock.sterile.title')}</p>
-                  <p className="t-xs mt-0.5 prose-muted">{t('public.home.mock.sterile.desc')}</p>
-                </div>
-                <span className="badge-accent">{t('public.home.mock.sterile.badge')}</span>
               </div>
             </div>
           </div>
         </section>
 
-        {/* ── Полоса фактов ─────────────────────────────────────── */}
-        {/* Крупные значения (0%, №65, 14/7, QR) оставлены разметкой: это
-            числа и обозначения, одинаковые во всех трёх языках. Через
-            `t.percent(0)` «0%» превратилось бы в «0 %» с неразрывным
-            пробелом — Intl прав, а макет нет. Переводятся подписи. */}
-        <section className="proof rise">
-          <div className="proof-cell">
-            <p className="display t-2xl tabular">0%</p>
-            <p className="t-sm prose-muted">{t('public.home.proof.commission')}</p>
-          </div>
-          <div className="proof-cell">
-            <p className="display t-2xl tabular">№65</p>
-            <p className="t-sm prose-muted">{t('public.home.proof.reg')}</p>
-          </div>
-          <div className="proof-cell">
-            <p className="display t-2xl tabular">14/7</p>
-            <p className="t-sm prose-muted">{t('public.home.proof.warn')}</p>
-          </div>
-          <div className="proof-cell">
-            <p className="display t-2xl">QR</p>
-            <p className="t-sm prose-muted">{t('public.home.proof.qr')}</p>
-          </div>
+        {/* ── Четыре обещания ──────────────────────────────────── */}
+        <section className="land-strip divider">
+          {STRIP.map((s) => (
+            <div key={s.title} className="land-strip-cell">
+              <span className="land-strip-icon"><s.icon size={20} /></span>
+              <span>
+                <span className="t-md block" style={{ fontWeight: 650 }}>{t(s.title)}</span>
+                <span className="t-sm prose-muted">{t(s.text)}</span>
+              </span>
+            </div>
+          ))}
         </section>
 
-        {/* ── Покупателю: поиск и живые заведения ───────────────── */}
-        <section className="pt-16">
-          <h2 className="display t-3xl">{t('public.home.buyer.title')}</h2>
-          <form action="/search" className="rise relative mt-6 max-w-2xl">
-            <span aria-hidden className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 t-xl"
-                  style={{ color: 'var(--color-faint)' }}>⌕</span>
-            <input
-              name="q"
-              className="search-hero"
-              placeholder={t('public.home.buyer.search.placeholder')}
-              autoComplete="off"
-            />
-          </form>
+        {/* ── Одна подписка вместо четырёх + шесть возможностей ─── */}
+        <section id="features" className="grid gap-8 pt-14 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+          <div className="card">
+            <p className="eyebrow">{t('land.merge.eyebrow')}</p>
+            <h2 className="display t-2xl mt-2">{t('land.merge.title')}</h2>
+            <p className="t-sm mt-3 prose-muted">{t('land.merge.text')}</p>
 
-          <div className="rise-1 mt-5 flex flex-wrap items-center gap-2">
-            <Link href="/search?kind=service" className="chip">
-              {t('public.home.buyer.services')}
-            </Link>
-            <Link href="/search?kind=product" className="chip">
-              {t('public.home.buyer.products')}
-            </Link>
-            <Link href="/map" className="chip">{t('public.home.buyer.map')}</Link>
-            {(cities ?? []).slice(0, 4).map((c: { city: string }) => (
-              <Link key={c.city} href={`/search?city=${encodeURIComponent(c.city)}`} className="chip">
-                {c.city}
-              </Link>
-            ))}
+            <div className="mt-5 flex flex-col gap-1.5">
+              {MERGE.map((m) => (
+                <span key={m.label} className="merge-row">
+                  <span className="flex items-center gap-2.5">
+                    <span style={{ color: 'var(--color-faint)' }}><m.icon size={17} /></span>
+                    {t(m.label)}
+                  </span>
+                  <span className="merge-plus" aria-hidden>+</span>
+                </span>
+              ))}
+              {/* Знак равенства слева от имени: строка читается как итог
+                  столбика выше, а не как ещё один его пункт. */}
+              <span className="merge-sum mt-1.5">
+                <span className="flex items-center gap-2.5">
+                  <span aria-hidden style={{ opacity: 0.75 }}>=</span>
+                  {t('public.chrome.brand')}
+                </span>
+              </span>
+            </div>
+
+            <p className="t-xs mt-4 prose-muted">{t('land.merge.foot')}</p>
           </div>
 
-          <div className="mt-10 mb-5 flex items-end justify-between">
-            <h3 className="display t-2xl">{t('public.home.shops.title')}</h3>
-            <Link href="/map" className="btn-ghost">{t('public.home.shops.map')}</Link>
-          </div>
-
-          {shops && shops.length > 0 ? (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {shops.map((s, i) => (
-                <Link key={s.slug} href={`/t/${s.slug}`}
-                      className={`card-link rise-${Math.min(i % 3 + 1, 4)}`}>
-                  <div className="mb-3 flex h-28 items-center justify-center overflow-hidden"
-                       style={{ borderRadius: 'var(--radius-control)', background: 'var(--color-surface-2)' }}>
-                    <span className="display t-3xl" style={{ color: 'var(--color-faint)' }}>
-                      {s.name.slice(0, 1)}
-                    </span>
-                  </div>
-                  {/* Имя заведения, его подзаголовок и город — ДАННЫЕ
-                      продавца, они не переводятся. Переводится запасная
-                      подпись, когда своей у заведения нет, и бейдж:
-                      `services`/`both` — служебные значения, подпись к ним
-                      живёт в словаре. */}
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="t-lg truncate">{s.name}</p>
-                      <p className="t-sm mt-0.5 truncate prose-muted">
-                        {s.tagline ?? (s.kind === 'services'
-                          ? t('public.home.shops.kind.services')
-                          : t('public.home.shops.kind.products'))}
-                        {s.city ? ` · ${s.city}` : ''}
-                      </p>
-                    </div>
-                    <span className="badge-accent shrink-0">
-                      {s.kind === 'services' ? t('public.home.shops.badge.services')
-                        : s.kind === 'both' ? t('public.home.shops.badge.both')
-                        : t('public.home.shops.badge.product')}
-                    </span>
-                  </div>
-                </Link>
+          <div>
+            <p className="eyebrow">{t('land.features.eyebrow')}</p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {FEATURES.map((f, i) => (
+                <article key={f.title} className="num-card">
+                  <span className="num-badge">{String(i + 1).padStart(2, '0')}</span>
+                  <h3 className="t-md" style={{ fontWeight: 650 }}>{t(f.title)}</h3>
+                  <p className="t-sm prose-muted">{t(f.text)}</p>
+                </article>
               ))}
             </div>
-          ) : (
-            <div className="empty card">
-              <p className="display t-lg" style={{ color: 'var(--color-text)' }}>
-                {t('public.home.shops.empty.title')}
-              </p>
-              <p>{t('public.home.shops.empty.desc')}</p>
+          </div>
+        </section>
+
+        {/* ── Для кого ─────────────────────────────────────────── */}
+        <section id="audience" className="pt-14">
+          <p className="eyebrow">{t('land.audience.eyebrow')}</p>
+          <p className="t-md mt-2 max-w-2xl prose-muted">{t('land.audience.lead')}</p>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {AUDIENCE.map((a) => (
+              <article key={a.title} className="aud-card">
+                <span className="aud-icon" data-tone={a.tone}><a.icon size={22} /></span>
+                <h3 className="t-md" style={{ fontWeight: 650 }}>{t(a.title)}</h3>
+                <p className="t-sm prose-muted">{t(a.text)}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        {/* ── Раніше / З CRESKO ────────────────────────────────── */}
+        <section className="pt-14">
+          <div className="compare">
+            <div>
+              <p className="eyebrow mb-4">{t('land.compare.eyebrow')}</p>
+              <span className="compare-tag">{t('land.compare.before')}</span>
+              <div className="mt-3 flex flex-col gap-2.5">
+                {BEFORE.map((k) => (
+                  <span key={k} className="compare-item">
+                    <span className="compare-mark" aria-hidden>✕</span>{t(k)}
+                  </span>
+                ))}
+              </div>
             </div>
-          )}
-        </section>
-
-        {/* ── Ниши ──────────────────────────────────────────────── */}
-        <section className="pt-16">
-          <p className="eyebrow">{t('public.home.niches.eyebrow')}</p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            {NICHES.map((n) => (
-              <Link key={n} href={`/search?q=${encodeURIComponent(n)}`} className="chip">{n}</Link>
-            ))}
+            <div>
+              <span className="compare-tag" data-good="true">{t('land.compare.after')}</span>
+              <div className="mt-3 flex flex-col gap-2.5">
+                {AFTER.map((k) => (
+                  <span key={k} className="compare-item">
+                    <span className="compare-mark" data-good="true" aria-hidden>✓</span>{t(k)}
+                  </span>
+                ))}
+              </div>
+              <p className="t-md mt-6" style={{ fontWeight: 650 }}>{t('land.compare.caption')}</p>
+            </div>
           </div>
         </section>
 
-        {/* ── Возможности ───────────────────────────────────────── */}
-        <section className="pt-16">
-          <h2 className="display t-3xl">{t('public.home.features.title')}</h2>
-          <p className="t-md mt-3 max-w-2xl leading-relaxed prose-muted">
-            {t('public.home.features.desc')}
-          </p>
-          <div className="mt-7 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {FEATURES.map((f) => (
-              <div key={f.title} className="feature-card">
-                <span className="feature-icon" aria-hidden>{f.icon}</span>
-                <p className="t-lg mt-1">{t(f.title)}</p>
-                <p className="t-sm leading-relaxed prose-muted">{t(f.text)}</p>
-              </div>
-            ))}
+        {/* ── Три шага и цена ──────────────────────────────────── */}
+        <section id="how" className="grid gap-10 pt-14 lg:grid-cols-2">
+          <div>
+            <p className="eyebrow">{t('land.steps.eyebrow')}</p>
+            <div className="mt-5 flex flex-col gap-6">
+              {STEPS.map((s, i) => (
+                <div key={s.title} className="step">
+                  <span className="step-num">{String(i + 1).padStart(2, '0')}</span>
+                  <h3 className="t-md mt-1" style={{ fontWeight: 650 }}>{t(s.title)}</h3>
+                  <p className="t-sm prose-muted">{t(s.text)}</p>
+                </div>
+              ))}
+            </div>
           </div>
-        </section>
 
-        {/* ── Четыре шага ───────────────────────────────────────── */}
-        <section className="pt-16">
-          <h2 className="display t-3xl">{t('public.home.steps.title')}</h2>
-          <div className="mt-7 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            {STEPS.map((s, i) => (
-              <div key={s.title} className="step">
-                <span className="step-num tabular" aria-hidden>{t.number(i + 1)}</span>
-                <p className="t-lg mt-1">{t(s.title)}</p>
-                <p className="t-sm leading-relaxed prose-muted">{t(s.text)}</p>
-              </div>
-            ))}
-          </div>
-        </section>
+          <div id="pricing">
+            <p className="eyebrow">{t('land.pricing.eyebrow')}</p>
+            <h2 className="display t-2xl mt-2">{t('land.pricing.title')}</h2>
+            <p className="display t-2xl" style={{ color: 'var(--color-accent-ink)' }}>
+              {t('land.pricing.accent')}
+            </p>
+            <p className="t-sm mt-3 prose-muted">{t('land.pricing.text')}</p>
 
-        {/* ── Цена ──────────────────────────────────────────────── */}
-        <section className="pt-16">
-          <div className="card overflow-hidden !p-0">
-            <div className="grid items-center gap-6 p-8 sm:grid-cols-[1fr_auto] sm:p-10"
-                 style={{ background: 'linear-gradient(120deg, var(--color-accent-soft), transparent 60%)' }}>
-              <div>
-                <p className="eyebrow">{t('public.home.price.eyebrow')}</p>
-                <h2 className="display mt-3 t-2xl">{t('public.home.price.title')}</h2>
-                <p className="t-md mt-3 max-w-lg leading-relaxed prose-muted">
-                  {t('public.home.price.desc')}
-                </p>
-              </div>
+            <div className="mt-5 flex flex-col gap-2.5">
+              {PRICE_CHECKS.map((k) => (
+                <span key={k} className="price-check">
+                  <span className="price-check-mark" aria-hidden>✓</span>{t(k)}
+                </span>
+              ))}
+            </div>
+
+            <div className="mt-6 flex flex-wrap gap-3">
               <Link href="/register/seller" className="btn-primary">
-                {t('public.home.price.cta')}
+                {t('land.pricing.start')} <IconArrowRight />
               </Link>
+              {/* Тарифов нет, узнать свой можно только у нас — значит ссылка
+                  на почту, а не на страницу тарифов, которой не существует. */}
+              <a href={`mailto:${SUPPORT_EMAIL}`} className="btn-secondary">
+                {t('land.pricing.ask')}
+              </a>
             </div>
           </div>
         </section>
 
-        {/* ── Вопросы ───────────────────────────────────────────── */}
-        <section className="pt-16">
-          <h2 className="display t-3xl">{t('public.home.faq.title')}</h2>
-          <div className="mt-6">
+        {/* ── Вы всегда знаете, что происходит ─────────────────── */}
+        <section className="pt-14">
+          <p className="eyebrow">{t('land.control.eyebrow')}</p>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {CONTROL.map((c) => (
+              <article key={c.title} className="feature-card">
+                <span className="feature-icon"><c.icon size={18} /></span>
+                <h3 className="t-md" style={{ fontWeight: 650 }}>{t(c.title)}</h3>
+                <p className="t-sm prose-muted">{t(c.text)}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        {/* ── Вопросы ──────────────────────────────────────────── */}
+        <section id="faq" className="grid gap-8 pt-14 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+          <div>
+            <p className="eyebrow mb-3">{t('land.faq.eyebrow')}</p>
             {FAQ.map((f) => (
               <details key={f.q} className="faq-item">
                 <summary>{t(f.q)}</summary>
@@ -333,18 +481,27 @@ export default async function Home() {
               </details>
             ))}
           </div>
+
+          <aside className="card-flat h-fit">
+            <p className="t-md" style={{ fontWeight: 650 }}>{t('land.faq.more.title')}</p>
+            <p className="t-sm mt-1 prose-muted">{t('land.faq.more.text')}</p>
+            <a href={`mailto:${SUPPORT_EMAIL}`} className="btn-secondary mt-4 t-sm">
+              {t('land.faq.more.cta')}
+            </a>
+          </aside>
         </section>
 
-        {/* ── Финальный призыв ──────────────────────────────────── */}
-        <section className="pt-16">
-          <div className="card flex flex-col items-center gap-5 py-12 text-center">
-            <h2 className="display t-3xl">{t('public.home.final.title')}</h2>
-            <p className="t-md max-w-xl leading-relaxed prose-muted">
-              {t('public.home.final.desc')}
-            </p>
-            <Link href="/register/seller" className="btn-primary">
-              {t('public.home.final.cta')}
-            </Link>
+        {/* ── Финальный призыв ─────────────────────────────────── */}
+        <section className="pt-14">
+          <div className="cta-band">
+            <h2>{t('land.cta.title')}</h2>
+            <p className="t-sm" style={{ opacity: 0.88 }}>{t('land.cta.text')}</p>
+            <div className="flex flex-col items-start gap-3">
+              <Link href="/register/seller" className="btn-on-accent">
+                {t('land.cta.button')} <IconArrowRight />
+              </Link>
+              <p className="t-xs" style={{ opacity: 0.82 }}>{t('land.cta.note')}</p>
+            </div>
           </div>
         </section>
       </main>

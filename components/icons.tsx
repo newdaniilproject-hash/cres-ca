@@ -188,3 +188,64 @@ export function IconClose({ size = 20, className }: P) {
     </svg>
   )
 }
+
+/** Щит — «дані під контролем», «без картки». */
+export function IconShield({ size = 20, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M12 3l7 3v5.5c0 4.2-2.9 7.6-7 9.5-4.1-1.9-7-5.3-7-9.5V6l7-3z" />
+      <path d="M9 12l2 2 4-4" />
+    </svg>
+  )
+}
+
+/** Молния — автоматизация, «без зайвої рутини». */
+export function IconBolt({ size = 20, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M13 2L5 13h6l-1 9 8-11h-6l1-9z" />
+    </svg>
+  )
+}
+
+/** Гарнитура — поддержка на старте. */
+export function IconSupport({ size = 20, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M4 13v-1a8 8 0 0116 0v1" />
+      <rect x="2.5" y="13" width="4" height="6" rx="1.6" />
+      <rect x="17.5" y="13" width="4" height="6" rx="1.6" />
+      <path d="M19.5 19v.5a2.5 2.5 0 01-2.5 2.5h-3" />
+    </svg>
+  )
+}
+
+/** Треугольник воспроизведения. Заливкой, а не обводкой: у мелкого
+    треугольника обводка читается как рамка, а не как кнопка. */
+export function IconPlay({ size = 18, className }: P) {
+  return (
+    <svg {...base(size)} className={className} fill="currentColor" stroke="none">
+      <path d="M8 5.2v13.6L19 12 8 5.2z" />
+    </svg>
+  )
+}
+
+/** Стрелка вправо — переход в кнопке. */
+export function IconArrowRight({ size = 18, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M5 12h13M13 6.5l5.5 5.5L13 17.5" />
+    </svg>
+  )
+}
+
+/** Портфель — малый бизнес. */
+export function IconBriefcase({ size = 22, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <rect x="3" y="7.5" width="18" height="12.5" rx="2.5" />
+      <path d="M9 7.5V6a2 2 0 012-2h2a2 2 0 012 2v1.5" />
+      <path d="M3 13h18" />
+    </svg>
+  )
+}
