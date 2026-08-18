@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
 import type { T } from '@/lib/i18n/translate'
 import { dbErrorText } from '@/lib/errors/db'
+import { Scanner } from '@/components/scanner'
 
 export type MaterialCodes = {
   id: string
@@ -99,38 +100,12 @@ export function BarcodesClient({
 
   // Заводской код читается камерой прямо с упаковки — перепечатывать
   // тринадцать цифр с коробки руками мастер не будет.
-  async function scanCamera() {
-    type BD = { detect(source: ImageBitmap): Promise<{ rawValue: string }[]> }
-    const W = window as unknown as { BarcodeDetector?: new (o?: object) => BD }
-    if (!W.BarcodeDetector) {
-      alert(t('inventory.barcodes.camera.unavailable'))
-      return
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' },
-      })
-      const track = stream.getVideoTracks()[0]
-      const capture = new ImageCapture(track)
-      // Форматы упаковки, а не наши QR: на коробке косметики это EAN,
-      // на импортной — UPC, на внутренней наклейке производителя — Code 128.
-      const detector = new W.BarcodeDetector({
-        formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39'],
-      })
-      const deadline = Date.now() + 15000
-      let found: string | null = null
-      while (!found && Date.now() < deadline) {
-        const frame = await capture.grabFrame()
-        const codes = await detector.detect(frame)
-        if (codes.length > 0) found = codes[0].rawValue
-        await new Promise((r) => setTimeout(r, 180))
-      }
-      track.stop()
-      if (found) setCode(found)
-    } catch {
-      alert(t('inventory.barcodes.camera.failed'))
-    }
-  }
+  // Заводской код читается камерой прямо с упаковки — перепечатывать
+  // тринадцать цифр с коробки руками мастер не будет. Сканер общий:
+  // прежняя копия работала только там, где есть `BarcodeDetector`,
+  // то есть не на iPhone.
+  const [camera, setCamera] = useState(false)
+
 
   return (
     <div className="flex flex-col gap-5">
@@ -223,7 +198,7 @@ export function BarcodesClient({
                                value={code} onChange={(e) => setCode(e.target.value)}
                                autoComplete="off" inputMode="text" />
                         <button type="button" className="btn-secondary shrink-0"
-                                onClick={() => void scanCamera()}>
+                                onClick={() => setCamera(true)}>
                           {t('inventory.barcodes.scan')}
                         </button>
                       </div>
@@ -247,6 +222,9 @@ export function BarcodesClient({
       )}
 
       <p className="field-hint">{t('inventory.barcodes.hint')}</p>
+      <Scanner open={camera} onClose={() => setCamera(false)}
+               onResult={(v) => setCode(v)} />
+
     </div>
   )
 }

@@ -13,6 +13,7 @@ import { useToast } from '@/components/toast'
 import { useT } from '@/lib/i18n/client'
 import type { Key } from '@/lib/i18n/dict'
 import { EXPIRY_BADGE, type ExpiryState, expiryState } from '@/lib/expiry'
+import { Scanner } from '@/components/scanner'
 
 type Container = {
   id: string; code: string; status: string; useBy: string | null
@@ -132,38 +133,12 @@ export function InventoryClient({
     setScan(c ? { container: c } : i ? { item: i } : { miss: s })
   }
 
-  async function scanCamera() {
-    // BarcodeDetector есть в Chrome на Android — основной телефон мастера.
-    type BD = { detect(source: ImageBitmap): Promise<{ rawValue: string }[]> }
-    const W = window as unknown as { BarcodeDetector?: new (o?: object) => BD }
-    if (!W.BarcodeDetector) {
-      toast.warn(t('inventory.scan.unavailable.title'), t('inventory.scan.unavailable.desc'))
-      return
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' },
-      })
-      const track = stream.getVideoTracks()[0]
-      const capture = new ImageCapture(track)
-      const detector = new W.BarcodeDetector({
-        formats: ['qr_code', 'ean_13', 'code_128'],
-      })
-      const deadline = Date.now() + 15000
-      let found: string | null = null
-      while (!found && Date.now() < deadline) {
-        const frame = await capture.grabFrame()
-        const codes = await detector.detect(frame)
-        if (codes.length > 0) found = codes[0].rawValue
-        await new Promise((r) => setTimeout(r, 180))
-      }
-      track.stop()
-      if (found) await lookup(found)
-      else toast.info(t('inventory.scan.nothing.title'), t('inventory.scan.nothing.desc'))
-    } catch {
-      toast.error(t('inventory.scan.failed.title'), t('inventory.scan.failed.desc'))
-    }
-  }
+  // Сканер живёт в общем компоненте (`components/scanner.tsx`).
+  // Здесь была своя копия на `BarcodeDetector` + `ImageCapture` — обеих
+  // возможностей нет в Safari, поэтому на iPhone сканер не работал вовсе,
+  // а превью камеры не показывалось ни на одной платформе.
+  const [camera, setCamera] = useState(false)
+
 
   // Смена статуса ёмкости — то самое действие, которое мастер делает
   // с банкой в руке в подвале без сети. Ошибка сети не роняет действие:
@@ -292,7 +267,7 @@ export function InventoryClient({
                       className="btn-ghost shrink-0">{t('inventory.search.mode')}</button>
             </>
           ) : (
-            <button type="button" onClick={() => void scanCamera()} className="btn-primary shrink-0"
+            <button type="button" onClick={() => setCamera(true)} className="btn-primary shrink-0"
                     title={t('inventory.scan.camera.aria')} aria-label={t('inventory.scan.camera.aria')}>
               ⌗
             </button>
@@ -592,6 +567,9 @@ export function InventoryClient({
           onDone={() => setAdding(null)}
         />
       </Sheet>
+      <Scanner open={camera} onClose={() => setCamera(false)}
+               onResult={(v) => { setCode(v); void lookup(v) }} />
+
     </div>
   )
 }

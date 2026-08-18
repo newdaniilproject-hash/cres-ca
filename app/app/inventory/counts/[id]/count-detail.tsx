@@ -8,6 +8,7 @@ import { useToast } from '@/components/toast'
 import { enqueue, isNetworkError, list as queueList, onQueueChange } from '@/lib/offline/queue'
 import { useT } from '@/lib/i18n/client'
 import { countBadge, countStatusLabel, humanizeCount, qty } from '../counts-client'
+import { Scanner } from '@/components/scanner'
 
 export type CountCard = {
   id: string
@@ -196,38 +197,11 @@ export function CountDetail({
     }, 30)
   }
 
-  async function scanCamera() {
-    // BarcodeDetector есть в Chrome на Android — основной телефон мастера.
-    type BD = { detect(source: ImageBitmap): Promise<{ rawValue: string }[]> }
-    const W = window as unknown as { BarcodeDetector?: new (o?: object) => BD }
-    if (!W.BarcodeDetector) {
-      toast.warn(t('inventory.scan.unavailable.title'), t('inventory.scan.unavailable.desc'))
-      return
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' },
-      })
-      const track = stream.getVideoTracks()[0]
-      const capture = new ImageCapture(track)
-      const detector = new W.BarcodeDetector({
-        formats: ['qr_code', 'ean_13', 'code_128'],
-      })
-      const deadline = Date.now() + 15000
-      let found: string | null = null
-      while (!found && Date.now() < deadline) {
-        const frame = await capture.grabFrame()
-        const codes = await detector.detect(frame)
-        if (codes.length > 0) found = codes[0].rawValue
-        await new Promise((r) => setTimeout(r, 180))
-      }
-      track.stop()
-      if (found) await lookup(found)
-      else toast.info(t('inventory.scan.nothing.title'), t('inventory.scan.nothing.desc'))
-    } catch {
-      toast.error(t('inventory.scan.failed.title'), t('inventory.scan.failed.desc'))
-    }
-  }
+  // Сканер — общий компонент. Своя копия читала код через
+  // `BarcodeDetector` + `ImageCapture`, которых нет в Safari: на iPhone
+  // пересчёт по QR наклейки не работал вовсе.
+  const [camera, setCamera] = useState(false)
+
 
   async function apply() {
     // Проведение — единственное действие этого экрана, которое НЕЛЬЗЯ
@@ -335,7 +309,7 @@ export function CountDetail({
                     className="btn-secondary shrink-0">
               {t('inventory.count.scan.find')}
             </button>
-            <button type="button" onClick={() => void scanCamera()}
+            <button type="button" onClick={() => setCamera(true)}
                     className="btn-primary shrink-0"
                     title={t('inventory.scan.camera.aria')}
                     aria-label={t('inventory.scan.camera.aria')}>
@@ -471,6 +445,9 @@ export function CountDetail({
       {editable && (
         <p className="field-hint">{t('inventory.count.hint')}</p>
       )}
+      <Scanner open={camera} onClose={() => setCamera(false)}
+               onResult={(v) => { void lookup(v) }} />
+
     </div>
   )
 }
