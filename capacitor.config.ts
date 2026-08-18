@@ -81,7 +81,10 @@ const config = {
 
   ios: {
     // Совпадает с --color-bg: ровный фон вокруг safe-area, без полос.
-    backgroundColor: '#141417',
+    // Умолчание светлое (решение владельца 18.08.2026); при переключении
+    // в тёмную страница перекрашивается сама, а стиль статус-бара
+    // подтягивает components/theme.tsx через мост.
+    backgroundColor: '#f6f7f9',
     contentInset: 'never',
     scrollEnabled: true,
     // true требует WKAppBoundDomains и ломает Supabase-редиректы —
@@ -93,15 +96,19 @@ const config = {
     SplashScreen: {
       launchShowDuration: 800,
       launchAutoHide: true,
-      backgroundColor: '#141417',
+      backgroundColor: '#f6f7f9',
       showSpinner: false,
       androidScaleType: 'CENTER_CROP',
       splashFullScreen: true,
       splashImmersive: true,
     },
     StatusBar: {
-      style: 'DARK',
-      backgroundColor: '#141417',
+      // ВНИМАНИЕ: имя стиля дано по ФОНУ, а не по тексту.
+      // 'LIGHT' = «тёмный текст для светлого фона» — это наше умолчание.
+      // 'DARK'  = «светлый текст для тёмного фона» — ставится на лету
+      // из components/theme.tsx, когда человек выбирает тёмную тему.
+      style: 'LIGHT',
+      backgroundColor: '#f6f7f9',
       overlaysWebView: true,
     },
     PushNotifications: {
@@ -118,7 +125,11 @@ const config = {
       // становится честной без единой строки JS, и клавиатура ничего
       // не перекрывает в принципе.
       resize: 'native',
-      style: 'DARK',
+      // Вид самой клавиатуры. Идёт за темой, как и статус-бар: тёмная
+      // клавиатура под белой формой читается как чужой элемент.
+      // Здесь только НАЧАЛЬНОЕ значение под светлое умолчание —
+      // переключение на лету делает components/theme.tsx.
+      style: 'LIGHT',
       resizeOnFullScreen: true,
     },
   },

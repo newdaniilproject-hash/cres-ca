@@ -221,21 +221,29 @@ export function InventoryClient({
   return (
     <div className="flex flex-col gap-5">
 
-      {/* ── Счётчики ─────────────────────────────────────────── */}
+      {/* ── Счётчики ─────────────────────────────────────────────
+          Плитки по макету: значок в цветном квадрате, число, подпись.
+          Тон несёт смысл и не выбирается «для красоты» (globals.css,
+          `.stat-tile`): rose — то, что уже сломано, amber — то, что
+          сломается, emerald — норма.
+
+          Тон постоянный, а не «серый, пока ноль». Плитка, меняющая
+          цвет вместе с числом, заставляет читать её дважды: сначала
+          «какого она цвета сегодня», потом само число. Спокойное
+          состояние показывает НОЛЬ, а не отсутствие цвета. */}
       <section className="rise-1 grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {[
-          { n: stats.total, label: t('inventory.stats.total'), cls: '' },
-          { n: stats.soon, label: t('inventory.stats.soon'), cls: stats.soon > 0 ? 'badge-warn' : '' },
-          { n: stats.expired, label: t('inventory.stats.expired'), cls: stats.expired > 0 ? 'badge-danger' : '' },
-          { n: stats.low, label: t('inventory.stats.low'), cls: stats.low > 0 ? 'badge-warn' : '' },
-        ].map((s) => (
-          <div key={s.label} className="card-flat !p-3 text-center">
-            <p className={`tabular t-xl ${s.cls ? '' : ''}`}
-               style={s.cls === 'badge-danger' ? { color: 'var(--color-danger)' }
-                 : s.cls === 'badge-warn' ? { color: 'var(--color-warn)' } : undefined}>
-              {t.number(s.n)}
-            </p>
-            <p className="t-xs mt-0.5" style={{ color: 'var(--color-faint)' }}>{s.label}</p>
+        {([
+          { n: stats.total, label: t('inventory.stats.total'), tone: 'blue', mark: '◫' },
+          { n: stats.soon, label: t('inventory.stats.soon'), tone: 'amber', mark: '◷' },
+          { n: stats.expired, label: t('inventory.stats.expired'), tone: 'rose', mark: '⊘' },
+          { n: stats.low, label: t('inventory.stats.low'), tone: 'emerald', mark: '⌄' },
+        ] as const).map((s) => (
+          <div key={s.label} className="stat-tile">
+            <span className="stat-tile-icon" data-tone={s.tone} aria-hidden>{s.mark}</span>
+            <div>
+              <p className="stat-tile-value">{t.number(s.n)}</p>
+              <p className="stat-tile-label">{s.label}</p>
+            </div>
           </div>
         ))}
       </section>

@@ -423,11 +423,15 @@ function AppShellInner({
           {/* ── Заголовок экрана ──────────────────────────────── */}
           <div className="mb-5 flex items-end gap-3">
             <div className="min-w-0 flex-1">
-              <h1 className="display rise t-3xl truncate">{heading.title}</h1>
+              {/* `.page-title` вместо `.t-3xl`: в макетах имя раздела
+                  крупнее и жирнее, и оно растёт со ступени только на
+                  большом экране — на телефоне 34px переносят на вторую
+                  строку половину названий («Налаштування магазину»).
+                  `truncate` снят намеренно: обрезать имя раздела
+                  многоточием хуже, чем дать ему две строки. */}
+              <h1 className="page-title display rise">{heading.title}</h1>
               {heading.subtitle && (
-                <p className="t-sm mt-0.5 truncate" style={{ color: 'var(--color-muted)' }}>
-                  {heading.subtitle}
-                </p>
+                <p className="page-subtitle rise truncate">{heading.subtitle}</p>
               )}
             </div>
             {action}
