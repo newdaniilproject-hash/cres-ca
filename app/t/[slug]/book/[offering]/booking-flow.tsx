@@ -178,7 +178,7 @@ export function BookingFlow({
       {variant && (
         <section className="rise">
           <p className="field-label">{t('public.book.day.label')}</p>
-          <div className="flex gap-2 overflow-x-auto pb-1">
+          <div className="scroll-x flex gap-2 pb-1">
             {days.map((d) => {
               const active = day && iso(day) === iso(d)
               return (

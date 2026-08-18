@@ -465,8 +465,7 @@ export function InventoryClient({
           Одной строкой с горизонтальной прокруткой. Перенос на вторую
           строку смешивал бы их с тем, что стоит рядом, — ровно так
           «+ Засіб» оказывался под «Товари» и читался как фильтр. */}
-      <div className="rise-2 -mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0"
-           style={{ scrollbarWidth: 'none' }}>
+      <div className="scroll-x rise-2 -mx-4 flex gap-2 px-4 pb-1 sm:mx-0 sm:px-0">
         {([
           ['all', t('inventory.tab.all')],
           ['materials', t('inventory.tab.materials')],
