@@ -111,10 +111,27 @@ workflows:
 
       - name: Сборка IPA
         script: |
-          # Номер сборки — счётчик Codemagic. get-latest-app-store-build-number
-          # для билда «в проверке» возвращает 1 и ломает публикацию
-          # дубликатом (урок DaKi).
-          BN="${BUILD_NUMBER:-$(date +%Y%m%d%H%M)}"
+          # ── НОМЕР СБОРКИ: СЕКУНДЫ ЭПОХИ ───────────────────────────────
+          #
+          # Отказ 18.08.2026: публикация в TestFlight упала с
+          # ENTITY_ERROR.ATTRIBUTE.INVALID.DUPLICATE —
+          # «The bundle version must be higher than the previously
+          # uploaded version: 101», previousBundleVersion = 101.
+          # Счётчик Codemagic был на пятёрке: приложение в Codemagic
+          # заводили заново, счётчик начался с нуля, а в App Store
+          # Connect уже лежала сотня с лишним. Сборка собралась,
+          # упала ТОЛЬКО отправка.
+          #
+          # Почему не `app-store-connect get-latest-app-store-build-number`:
+          # для билда «в проверке» он возвращает 1 и ломает публикацию
+          # тем же дубликатом (урок DaKi). Спрашивать Apple о номере —
+          # значит зависеть от его настроения.
+          #
+          # Секунды эпохи не зависят ни от счётчика, ни от Apple: число
+          # монотонно растёт само по себе и заведомо больше любого
+          # прошлого. Помещается в UInt32 (предел CFBundleVersion)
+          # до 2106 года.
+          BN="$(date +%s)"
           flutter build ipa --release \
             --build-number="$BN" \
             --export-options-plist=/Users/builder/export_options.plist
@@ -302,12 +319,30 @@ workflows:
             echo "Universal Links пропущены (IOS_ASSOCIATED_DOMAINS != 1) — схема cresca:// работает и без них"
           fi
 
-      - name: Build number = счётчик Codemagic
+      - name: Build number = секунды эпохи
         script: |
           cd ios/App
-          # get-latest-app-store-build-number для билда «в проверке» возвращает 1
-          # и ломает публикацию дубликатом (урок DaKi) — счётчик надёжнее.
-          BN="${BUILD_NUMBER:-$(date +%Y%m%d%H%M)}"
+          # ── НОМЕР СБОРКИ: СЕКУНДЫ ЭПОХИ ───────────────────────────────
+          #
+          # Отказ 18.08.2026: публикация в TestFlight упала с
+          # ENTITY_ERROR.ATTRIBUTE.INVALID.DUPLICATE —
+          # «The bundle version must be higher than the previously
+          # uploaded version: 101», previousBundleVersion = 101.
+          # Счётчик Codemagic был на пятёрке: приложение в Codemagic
+          # заводили заново, счётчик начался с нуля, а в App Store
+          # Connect уже лежала сотня с лишним. Сборка собралась,
+          # упала ТОЛЬКО отправка.
+          #
+          # Почему не `app-store-connect get-latest-app-store-build-number`:
+          # для билда «в проверке» он возвращает 1 и ломает публикацию
+          # тем же дубликатом (урок DaKi). Спрашивать Apple о номере —
+          # значит зависеть от его настроения.
+          #
+          # Секунды эпохи не зависят ни от счётчика, ни от Apple: число
+          # монотонно растёт само по себе и заведомо больше любого
+          # прошлого. Помещается в UInt32 (предел CFBundleVersion)
+          # до 2106 года.
+          BN="$(date +%s)"
           agvtool new-version -all "$BN"
 
       - name: Build IPA
@@ -429,9 +464,14 @@ workflows:
           # Логика в scripts/patch-android-signing.sh: heredoc внутри YAML
           # ломается на отступах (урок DaKi), поэтому только вызов скрипта.
           bash scripts/patch-android-signing.sh
-      - name: Версия = счётчик Codemagic
+      - name: Версия = секунды эпохи
         script: |
-          BN="${BUILD_NUMBER:-1}"
+          # Та же причина, что и у iOS выше: счётчик Codemagic начался
+          # заново и оказался НИЖЕ уже опубликованного номера. Google
+          # так же требует строго растущий versionCode.
+          # Предел versionCode — 2100000000, секунд эпохи хватает до 2036;
+          # когда упрёмся, переходить на «минуты эпохи».
+          BN="$(date +%s)"
           perl -0pi -e "s{versionCode \d+}{versionCode $BN}" android/app/build.gradle
       - name: Build AAB
         script: |

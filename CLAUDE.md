@@ -808,12 +808,11 @@ Supabase отдают `{{ .Token }}`, ссылки в письме нет вов
    из Google Cloud Console; callback выдаёт сам Supabase.
 4. Supabase → Project Settings → Authentication → SMTP — Resend, см. раздел
    «Почта». Без этого письма при регистрации не доходят.
-5. **Vercel → Settings → Functions → Function Region → Dublin (`dub1`).**
-   По умолчанию стоит `iad1` (Вашингтон), а база Supabase — в `eu-west-1`
-   (Ирландия). То есть каждый серверный запрос к базе пересекает Атлантику,
-   и на странице их четыре-шесть. Это 300–500 мс на переход экрана,
-   в которых не виноваты ни код, ни индексы. Разбор с числами —
-   `docs/PERFORMANCE.md`, раздел «География».
+5. **Vercel → Settings → Functions → Function Region — должен быть
+   Dublin (`dub1`)**, потому что база Supabase в `eu-west-1` (Ирландия).
+   Проверено 18.08.2026: уже стоит. Не менять на Франкфурт «потому что
+   ближе к Украине» — до базы оттуда дальше на 25 мс, и этот штраф
+   платится на каждый запрос, а выигрыш один. Разбор — `docs/PERFORMANCE.md`.
 6. Переменные окружения на хостинге: `SUPABASE_SERVICE_ROLE_KEY`,
    `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `CRON_SECRET` (должен совпадать
    с зашитым в расписании `pg_cron`), `ONESIGNAL_APP_ID`, `ONESIGNAL_API_KEY`.

@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { currentMembership, can, hasModule } from '@/lib/tenant'
+import { currentMembership, can, hasModule, currentUserId } from '@/lib/tenant'
 import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { ReceiptsClient } from './receipts-client'
@@ -27,7 +27,7 @@ export default async function ReceiptsPage() {
   const supabase = await createClient()
   // created_by у приёмки — NOT NULL и сверяется политикой RLS с auth.uid():
   // без этого id форма не запишет документ.
-  const { data: { user } } = await supabase.auth.getUser()
+  const userId = await currentUserId()
 
   const [{ data: receipts, error }, { data: suppliers }] = await Promise.all([
     supabase.from('stock_receipts')
@@ -56,7 +56,7 @@ export default async function ReceiptsPage() {
     <AppShell>
       <ReceiptsClient
         tenantId={m.tenantId}
-        userId={user?.id ?? ''}
+        userId={userId ?? ''}
         canWrite={can(m, 'stock.write')}
         error={error?.message ?? ''}
         suppliers={suppliers ?? []}

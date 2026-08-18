@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { currentMembership, can, hasModule } from '@/lib/tenant'
+import { currentMembership, can, hasModule, currentUserId } from '@/lib/tenant'
 import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { getT } from '@/lib/i18n/server'
@@ -34,7 +34,7 @@ export default async function JournalsPage() {
   if (!hasModule(m, 'compliance')) return <ModuleOff m={m} module="compliance" />
 
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const userId = await currentUserId()
 
   const [{ data: solutions }, { data: tasks }, { data: entries }, { data: cycles },
          { data: actors }] =
@@ -71,7 +71,7 @@ export default async function JournalsPage() {
     <AppShell modules={m.modules} perms={m.perms}>
       <JournalsClient
         tenantId={m.tenantId}
-        userId={user!.id}
+        userId={userId ?? ''}
         // Отметка в журнале — это `compliance.journal.write` у мастера
         // (0039) или общий `compliance.write`. У инспектора и наблюдателя
         // нет ни того, ни другого: они журналы читают.
