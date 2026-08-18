@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import { themeBootScript, ThemeNativeSync } from '@/components/theme'
+import { textScaleBootScript } from '@/components/text-size'
 import { nativeBootScript } from '@/components/native-boot'
 import { langBootScript } from '@/lib/i18n/cookie'
 import { ToastProvider } from '@/components/toast'
@@ -42,7 +43,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   // Совпадает с --color-bg: иначе шапка браузера на телефоне
   // другого цвета, чем страница, и это видно полосой.
-  themeColor: '#f6f7f9',
+  themeColor: '#f4f5f7',
   // viewportFit: содержимое заходит под вырез и системный индикатор,
   // а отступы возвращаются точечно через env(safe-area-inset-*).
   // Зум НЕ блокируем: user-scalable=no — нарушение доступности.
@@ -58,6 +59,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* Класс темы ставится синхронно, до первой отрисовки:
             иначе виден кадр с чужим фоном. */}
         <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
+        {/* Размер текста — тем же способом и по той же причине: иначе
+            первый кадр рисуется обычным кеглем, и человек с крупным
+            шрифтом видит, как страница переверстывается у него на глазах. */}
+        <script dangerouslySetInnerHTML={{ __html: textScaleBootScript }} />
         {/* И признак приложения — тоже до первой отрисовки, иначе виден
             кадр с боковым меню и переключателем темы. */}
         <script dangerouslySetInnerHTML={{ __html: nativeBootScript }} />

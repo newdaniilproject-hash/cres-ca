@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Sheet } from '@/components/sheet'
 import { ThemeToggle } from '@/components/theme'
+import { TextSize } from '@/components/text-size'
 import { useToast } from '@/components/toast'
 import { IconExit, IconGear, IconUser } from '@/components/icons'
 import { useT } from '@/lib/i18n/client'
@@ -213,6 +214,12 @@ export function ProfileClient({
           </span>
         </span>
         <ThemeToggle />
+      </section>
+
+      {/* Размер текста — отдельной карточкой, а не в строку с темой:
+          ползунку нужна вся ширина, в строке он ужимается до огрызка. */}
+      <section className="card rise-3">
+        <TextSize />
       </section>
 
       {/* ── Выход и удаление ─────────────────────────────────── */}

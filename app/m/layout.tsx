@@ -21,7 +21,7 @@ export async function generateMetadata() {
 // viewport-fit=cover нужен, чтобы контент уходил под вырез, а отступы
 // задавались через env(safe-area-inset-*), а не гадались.
 export const viewport = {
-  themeColor: '#f6f7f9',
+  themeColor: '#f4f5f7',
   viewportFit: 'cover' as const,
   width: 'device-width',
   initialScale: 1,
