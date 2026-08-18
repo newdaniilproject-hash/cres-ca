@@ -498,8 +498,11 @@ export function MobileRegisterForm() {
           </Link>
         </p>
 
-        {/* Кнопка липнет к низу видимой области — над клавиатурой. */}
-        <div className="m-sticky">
+        {/* Полоса главного действия: плавает у нижней кромки экрана
+            и поднимается над клавиатурой. Внутри формы намеренно —
+            кнопка обязана оставаться её кнопкой отправки. Разбор
+            и прежний дефект — в globals.css, `.m-actionbar`. */}
+        <div className="m-actionbar">
           <button
             className="btn-primary flex w-full items-center justify-center"
             style={{ height: 52, fontSize: 16 }}
