@@ -106,11 +106,11 @@ export function StaffCard({
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
+        {/* Ни своего `h1`, ни своей стрелки «назад»: и то, и другое рисует
+            оболочка (`HEADINGS` + `backOf`). Имя мастера показываем строкой
+            выше должности — заголовок экрана называет РАЗДЕЛ, а не человека. */}
         <div className="min-w-0">
-          <Link href="/app/bookings/staff" className="btn-ghost t-sm mb-1 inline-flex">
-            {t('staff.card.back')}
-          </Link>
-          <h1 className="display t-xl truncate">{staff.name}</h1>
+          <p className="display t-lg truncate">{staff.name}</p>
           <p className="t-sm prose-muted">{staff.title || t('staff.card.noTitle')}</p>
         </div>
         {canEditCard && (

@@ -3,6 +3,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { render } from '@/lib/notify/render'
 import { queueEmailHtml } from '@/lib/email/queue'
 import { sendEmail, sendPush, sendViber, sendSms } from '@/lib/notify/send'
+import { pushTarget, type RefType } from '@/lib/notify/target'
 import { cronDenial } from '../guard'
 
 export const dynamic = 'force-dynamic'
@@ -92,7 +93,15 @@ export async function GET(req: Request) {
         await sendEmail(String(row.to_email), subject, body, html)
       } else if (row.channel === 'push') {
         if (!row.user_id) throw new Error('нет user_id для push (гость)')
-        await sendPush(row.user_id, body)
+        // Заголовок — тот же `subject`, что и у письма: одно событие
+        // не должно называться по-разному в почте и в шторке телефона.
+        // Адрес считается СЕЙЧАС, а не при постановке в очередь:
+        // напоминание за 24 часа открывается завтра, и заморозить ссылку
+        // значит однажды привести человека в переехавший раздел.
+        await sendPush(row.user_id, body, {
+          title: render(template.subject ?? '', payload) || undefined,
+          url: pushTarget(String(row.event), row.ref_type as RefType, row.ref_id),
+        })
       } else if (row.channel === 'viber') {
         await sendViber()
       } else if (row.channel === 'sms') {

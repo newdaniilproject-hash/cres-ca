@@ -1,7 +1,6 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
 import { toCsv, download } from '@/lib/export/csv'
@@ -84,13 +83,8 @@ export function ExportClient({
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <Link href="/app/settings" className="btn-ghost t-sm mb-1 inline-flex">
-          {t('export.back')}
-        </Link>
-        <h1 className="display t-xl">{t('export.title')}</h1>
-        <p className="t-sm prose-muted">{t('export.desc')}</p>
-      </div>
+      {/* Заголовок и стрелка «назад» — из оболочки, а не отсюда. */}
+      <p className="t-sm prose-muted">{t('export.desc')}</p>
 
       {err && <p className="field-error rise">{err}</p>}
 

@@ -64,11 +64,13 @@ export function StaffList({
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Заголовка экрана здесь НЕТ намеренно: его рисует оболочка
+          из `HEADINGS` (`components/app-shell.tsx`). Свой `h1` давал
+          «Майстри» дважды подряд — найдено по снимку экрана 18.08.2026.
+          Заголовок — часть НАВИГАЦИИ, а не страницы: он отвечает
+          на вопрос «где я», и второй источник правды тут не нужен. */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="display t-xl">{t('staff.list.title')}</h1>
-          <p className="t-sm prose-muted">{t('staff.list.desc')}</p>
-        </div>
+        <p className="t-sm prose-muted">{t('staff.list.desc')}</p>
         {canWrite && (
           <button className="btn-primary" onClick={() => setAdd(true)}>
             {t('staff.list.add')}
