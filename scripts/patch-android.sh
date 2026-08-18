@@ -25,10 +25,9 @@ if [ -f "$MANIFEST" ]; then
   done
   echo "OK: AndroidManifest — камера/уведомления/биометрия/вибрация"
 
-  # Глубокие ссылки. Без них вход через Apple и Google не возвращается
-  # в приложение вовсе: Chrome получает от /auth/callback ссылку
-  # cresca://auth?code=… и, не найдя, кто её обслуживает, показывает
-  # «страница недоступна». Этой же схемой открываются тапы по пушам.
+  # Глубокие ссылки. Этой схемой открываются тапы по пушам и ссылки
+  # на товар, присланные в мессенджере. (Раньше по ней же возвращался
+  # вход через провайдера — вход удалён 18.08.2026, схема осталась.)
   #
   # singleTask обязателен: без него ссылка запускает ВТОРУЮ копию
   # активности, onNewIntent не вызывается никогда, и человек
@@ -71,8 +70,10 @@ fi
 # «Unknown regexp modifier "/t"». Разделитель / и никаких лишних скобок.
 GRADLE="android/app/build.gradle"
 if ! grep -q 'androidx.biometric' "$GRADLE"; then
-  perl -0pi -e 's/dependencies \{/dependencies \{\n    implementation "androidx.biometric:biometric:1.1.0"\n    implementation "androidx.browser:browser:1.8.0"\n    implementation "com.onesignal:OneSignal:[5.0.0, 5.99.99]"/' "$GRADLE"
-  echo "OK: androidx.biometric + androidx.browser + OneSignal SDK добавлены"
+  # androidx.browser (Custom Tabs) ушёл вместе с входом через провайдера
+  # 18.08.2026: больше нечего открывать во внешнем окне.
+  perl -0pi -e 's/dependencies \{/dependencies \{\n    implementation "androidx.biometric:biometric:1.1.0"\n    implementation "com.onesignal:OneSignal:[5.0.0, 5.99.99]"/' "$GRADLE"
+  echo "OK: androidx.biometric + OneSignal SDK добавлены"
 fi
 
 MA=$(find android/app/src/main/java -name MainActivity.java | head -1)
@@ -96,7 +97,6 @@ import android.webkit.PermissionRequest;
 import androidx.annotation.NonNull;
 import androidx.biometric.BiometricManager;
 import androidx.biometric.BiometricPrompt;
-import androidx.browser.customtabs.CustomTabsIntent;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.core.view.WindowCompat;
@@ -197,7 +197,6 @@ public class MainActivity extends BridgeActivity {
       this.getBridge().getWebView().addJavascriptInterface(new BiometricJsBridge(), "AndroidBiometric");
       this.getBridge().getWebView().addJavascriptInterface(new HapticsJsBridge(), "AndroidHaptics");
       this.getBridge().getWebView().addJavascriptInterface(new ThemeJsBridge(), "AndroidStatusBar");
-      this.getBridge().getWebView().addJavascriptInterface(new OAuthJsBridge(), "AndroidOAuth");
       this.getBridge().getWebView().addJavascriptInterface(new DeepLinkJsBridge(), "AndroidDeepLink");
     } catch (Throwable ignored) {}
 
@@ -252,37 +251,12 @@ public class MainActivity extends BridgeActivity {
     }
   }
 
-  // Вход через Apple и Google — в СИСТЕМНОМ браузере, а не в веб-вью.
-  // Это не наша прихоть: Google отвечает disallowed_useragent любому
-  // встроенному веб-вью, и обойти это нельзя — только вывести окно
-  // ввода пароля туда, где человек видит адресную строку.
-  //
-  // Custom Tabs, а не полный браузер: то же окно, но с нашими цветами
-  // и без ухода из приложения.
-  public class OAuthJsBridge {
-    @JavascriptInterface
-    public void open(final String url) {
-      runOnUiThread(new Runnable() {
-        @Override public void run() {
-          try {
-            CustomTabsIntent tab = new CustomTabsIntent.Builder()
-              .setShowTitle(false)
-              .setUrlBarHidingEnabled(true)
-              .build();
-            tab.intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            tab.launchUrl(MainActivity.this, Uri.parse(url));
-          } catch (Throwable e) {
-            // Chrome может быть выключен — тогда любой браузер.
-            try {
-              Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-              i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-              startActivity(i);
-            } catch (Throwable ignored) {}
-          }
-        }
-      });
-    }
-  }
+  // Мост входа через провайдера (OAuthJsBridge, открывавший Custom Tabs)
+  // УДАЛЁН 18.08.2026 вместе со всем входом через Google — решение
+  // владельца, правило 8. Если провайдера когда-нибудь вернут, мост
+  // придётся вернуть тоже: Google отвечает disallowed_useragent любому
+  // встроенному веб-вью, и окно ввода пароля обязано открываться там,
+  // где человек видит адресную строку.
 
   // «Назад» листает историю WebView, а не убивает приложение —
   // иначе первый же случайный свайп выбрасывает мастера со склада.

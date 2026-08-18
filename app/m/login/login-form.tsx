@@ -8,8 +8,6 @@ import { CodeInput } from '../code-input'
 import { nextRoute } from '../where'
 import { AppScreen, Field, keepVisible } from '../ui'
 import { MailIcon, PasswordStrength, mmss } from '@/components/auth-ui'
-import { OAuthButtons } from '../oauth'
-import { authErrorText } from '@/app/(auth)/google-button'
 import { humanAuthError, lockedText } from '@/lib/auth-errors'
 import { useT } from '@/lib/i18n/client'
 import { guardSignIn } from '@/lib/ratelimit/guard'
@@ -52,15 +50,7 @@ export function MobileLoginForm() {
   // в адресе: своего состояния у него быть не может — приложение
   // за это время успело перезагрузиться.
   //
-  // ⚠️ Через authErrorText, а не дословно (12.08.2026): сюда приезжает
-  // либо err из cresca://auth?error=… (тот же текст, что вернул
-  // провайдер или Supabase), либо error.message из неудавшегося
-  // exchangeCodeForSession в components/deep-link.tsx. Ни то ни другое
-  // не рассчитано на глаза человека.
-  const [error, setError] = useState(() => {
-    const oauth = params.get('oauth')
-    return oauth ? authErrorText(t, oauth) : ''
-  })
+  const [error, setError] = useState('')
   const [noAccount, setNoAccount] = useState(false)
   // Замок учётной записи (0085). Отдельным состоянием, а не строкой в
   // `error`: у него другой тон, другой совет и своя карточка. Строкой
@@ -302,7 +292,6 @@ export function MobileLoginForm() {
       {/* Провайдеры показываем только на обычном входе: на экране
           восстановления пароля кнопка «Продовжити з Apple» — это
           другой разговор, и человек теряет нить. */}
-      {mode !== 'reset' && <OAuthButtons disabled={busy} />}
 
       <div className="mt-6 flex flex-col items-center gap-3">
         {byPassword ? (

@@ -6,7 +6,6 @@ import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { guardSignUp } from '@/lib/ratelimit/guard'
 import { AuthShell } from '../../auth-shell'
-import { GoogleButton } from '../../google-button'
 import { useT } from '@/lib/i18n/client'
 
 // Онбординг продавца: два шага. Шаг 1 — аккаунт (или уже вошли),
@@ -116,7 +115,6 @@ function SellerRegisterInner() {
             Возвращаемся на СЕБЯ вместе с адресом возврата — иначе
             после Google или входа человек попадает на чистый экран
             продавца и теряет то, ради чего пришёл. */}
-        <GoogleButton next={selfHref} />
 
         <p className="t-md mt-6 prose-muted">
           {t('auth.seller.haveAccount')}{' '}

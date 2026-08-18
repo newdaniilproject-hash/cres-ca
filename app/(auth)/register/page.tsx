@@ -11,7 +11,6 @@ import { nextRoute } from '@/lib/where'
 import { useT } from '@/lib/i18n/client'
 import { guardSignUp } from '@/lib/ratelimit/guard'
 import { AuthShell } from '../auth-shell'
-import { GoogleButton } from '../google-button'
 import { CodeInput } from '@/app/m/code-input'
 import { MailIcon, PasswordInput, SuccessScreen, mmss } from '@/components/auth-ui'
 
@@ -373,7 +372,6 @@ function RegisterInner() {
         </button>
       </form>
 
-      <GoogleButton next={next ?? undefined} />
 
       <p className="t-md mt-6 text-center prose-muted">
         {t('auth.register.haveAccount')}{' '}

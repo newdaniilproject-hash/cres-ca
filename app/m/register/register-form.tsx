@@ -9,7 +9,6 @@ import { CodeInput } from '../code-input'
 import { nextRoute } from '../where'
 import { AppScreen, Field, keepVisible } from '../ui'
 import { MailIcon, PasswordStrength, mmss } from '@/components/auth-ui'
-import { OAuthButtons } from '../oauth'
 import { useT } from '@/lib/i18n/client'
 import { guardSignUp } from '@/lib/ratelimit/guard'
 
@@ -278,7 +277,6 @@ export function MobileRegisterForm() {
           войти одним тапом, незачем пролистывать семь полей, чтобы
           об этой возможности узнать. Согласие тут же строкой: галочки
           он не увидит, а запись в журнал уйдёт всё равно. */}
-      <OAuthButtons sep="below" hint={t('m.register.orForm')} legal disabled={busy} />
 
       <form onSubmit={submit} className="flex flex-col gap-5">
         <div className="flex gap-3">

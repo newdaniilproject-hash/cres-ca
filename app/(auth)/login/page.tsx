@@ -12,7 +12,6 @@ import { useT } from '@/lib/i18n/client'
 import { guardSignIn } from '@/lib/ratelimit/guard'
 import { applySession, signInWithPassword } from '@/lib/sign-in'
 import { AuthShell } from '../auth-shell'
-import { GoogleButton } from '../google-button'
 import { CodeInput } from '@/app/m/code-input'
 import {
   BlockedScreen, MailIcon, PasswordInput, SuccessScreen, mmss,
@@ -348,7 +347,6 @@ function LoginInner() {
         </button>
       </form>
 
-      <GoogleButton next={next ?? undefined} />
 
       {/* Ссылка внутри предложения — отдельные ключи: разметки
           в словаре не бывает. */}

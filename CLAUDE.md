@@ -807,8 +807,12 @@ Supabase отдают `{{ .Token }}`, ссылки в письме нет вов
 1. Supabase → Authentication → Hooks → Customize Access Token (JWT) Claims →
    `public.custom_access_token_hook`. Без этого не работают права.
 2. Supabase → Authentication → Leaked password protection — включить.
-3. Supabase → Authentication → Providers → Google — Client ID и Secret
-   из Google Cloud Console; callback выдаёт сам Supabase.
+3. Supabase → Authentication → Providers — **все выключены.** Вход через
+   Google удалён из продукта 18.08.2026 решением владельца: его страница
+   во встроенном окне отрисовывается криво, а это страница Google, и
+   починить её мы не можем. Единственный путь входа — почта и пароль
+   плюс код на почту. Если провайдера вернут, включать здесь и разом
+   возвращать всё, что перечислено в КОНСПЕКТЫ.md, М4.
 4. Supabase → Project Settings → Authentication → SMTP — Resend, см. раздел
    «Почта». Без этого письма при регистрации не доходят.
 5. **Vercel → Settings → Functions → Function Region — должен быть
