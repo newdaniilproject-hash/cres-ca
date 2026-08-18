@@ -2272,5 +2272,16 @@
   "error.db.timeout": "Запит виконувався надто довго й був зупинений. Спробуйте ще раз.",
   "error.db.network": "Немає звʼязку з сервером. Дані не втрачено — повторіть, коли зʼявиться мережа.",
   "error.db.unknown": "Не вдалося виконати дію. Спробуйте ще раз.",
-  "error.db.unknownWithCode": "Не вдалося виконати дію (код {code}). Спробуйте ще раз, а якщо повториться — назвіть цей код у зверненні."
+  "error.db.unknownWithCode": "Не вдалося виконати дію (код {code}). Спробуйте ще раз, а якщо повториться — назвіть цей код у зверненні.",
+  "inventory.docs.moz.proof.is": "Підтвердження",
+  "inventory.docs.moz.proof.mark": "Це підтвердження",
+  "inventory.docs.moz.proof.revoke": "Зняти",
+  "inventory.docs.moz.proof.ok": "Нотифікацію підтверджено {date}",
+  "inventory.docs.moz.proof.missing": "Підтвердження від постачальника немає. Код — це слова постачальника, перевірка дивиться документ. Завантажте його видом «Нотифікація» і позначте кнопкою.",
+  "inventory.docs.moz.proof.done": "Підтвердження прийнято",
+  "inventory.docs.moz.proof.doneDesc": "Тепер засіб не позначається як без доказу нотифікації.",
+  "inventory.docs.moz.proof.failed": "Не вдалося прийняти підтвердження",
+  "inventory.material.moz.proof.ok": "Нотифікацію підтверджено {date}",
+  "inventory.material.moz.proof.missing": "Немає підтвердження від постачальника",
+  "inventory.material.moz.proof.open": "Додати підтвердження"
 }

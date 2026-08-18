@@ -50,7 +50,8 @@ export default async function MaterialDocsPage({
   const { data: material } = await supabase
     .from('compliance_materials')
     .select(`id, name, brand, is_cosmetic,
-             notification_code, notification_url, notification_date`)
+             notification_code, notification_url, notification_date,
+             notification_doc_id, notification_confirmed_at`)
     .eq('id', id).eq('tenant_id', m.tenantId).maybeSingle()
 
   if (!material) notFound()
@@ -76,6 +77,8 @@ export default async function MaterialDocsPage({
           notificationCode: material.notification_code,
           notificationUrl: material.notification_url,
           notificationDate: material.notification_date,
+          notificationDocId: material.notification_doc_id,
+          notificationConfirmedAt: material.notification_confirmed_at,
         }}
         docs={(docs ?? []).map((d) => ({
           id: d.id, kind: d.kind, title: d.title, path: d.path,

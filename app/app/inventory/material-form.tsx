@@ -39,6 +39,14 @@ export type MaterialInit = {
   notificationCode: string | null
   notificationUrl: string | null
   notificationDate: string | null
+  /**
+   * Подтверждение нотификации принято (0106). Форма его НЕ правит:
+   * подтверждение — это конкретный документ, и принимается оно
+   * на экране документов функцией `confirm_notification`, которая
+   * сверяет вид документа и принадлежность засобу. Поле здесь
+   * только затем, что тип общий с карточкой, которая его показывает.
+   */
+  notificationConfirmedAt?: string | null
   paoMonths: number | null
 }
 

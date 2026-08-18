@@ -291,6 +291,25 @@ export function MaterialCard({
           ) : (
             <p className="field-hint">{t('inventory.material.moz.noCode')}</p>
           )}
+
+          {/* Код — слова поставщика, подтверждение — документ. Проверка
+              смотрит второе. Автосверки с реестром МОЗ не существует
+              (реестр закрытый), поэтому единственное, что мы можем, —
+              не дать забыть про документ. */}
+          <p className="mt-3">
+            {material.notificationConfirmedAt ? (
+              <span className="badge-success">
+                {t('inventory.material.moz.proof.ok', {
+                  date: t.date(material.notificationConfirmedAt),
+                })}
+              </span>
+            ) : (
+              <Link href={`/app/inventory/materials/${material.id}/docs`}
+                    className="badge-danger">
+                {t('inventory.material.moz.proof.missing')} · {t('inventory.material.moz.proof.open')}
+              </Link>
+            )}
+          </p>
         </section>
       )}
 

@@ -10,6 +10,7 @@ import { DOC_EXT_BY_MIME, DOC_MAX_BYTES } from '@/lib/upload/guard'
 import { verifyUploaded } from '@/lib/upload/client'
 import { useT } from '@/lib/i18n/client'
 import type { T } from '@/lib/i18n/translate'
+import { dbErrorText } from '@/lib/errors/db'
 
 type Doc = {
   id: string; kind: DocKind; title: string; path: string
@@ -20,6 +21,9 @@ type Material = {
   notificationCode: string | null
   notificationUrl: string | null
   notificationDate: string | null
+  /** Какой документ принят подтверждением нотификации (0106). */
+  notificationDocId: string | null
+  notificationConfirmedAt: string | null
 }
 
 // Вид документа — значение перечисления `material_doc_kind` (0014).
@@ -83,6 +87,33 @@ export function MaterialDocs({
 
   const shown = filter === 'all' ? docs : docs.filter((d) => d.kind === filter)
 
+  // ── Подтверждение нотификации (0106) ──────────────────────────────
+  //
+  // Кнопка стоит НА ДОКУМЕНТЕ, а не отдельным полем в форме: подтверждение —
+  // это конкретный файл от поставщика, и выбирать его надо там, где он виден.
+  // База всё равно проверит вид и принадлежность, но экран не должен даже
+  // предлагать невозможное — поэтому кнопка только у вида `notification`.
+  async function confirmDoc(documentId: string) {
+    setBusy(documentId)
+    const { error } = await supabase.rpc('confirm_notification', {
+      p_material_id: material.id, p_document_id: documentId,
+    })
+    setBusy(null)
+    if (error) { toast.error(t('inventory.docs.moz.proof.failed'), dbErrorText(t, error)); return }
+    toast.success(t('inventory.docs.moz.proof.done'), t('inventory.docs.moz.proof.doneDesc'))
+    router.refresh()
+  }
+
+  async function revokeDoc() {
+    setBusy('revoke')
+    const { error } = await supabase.rpc('revoke_notification', {
+      p_material_id: material.id,
+    })
+    setBusy(null)
+    if (error) { toast.error(t('inventory.docs.moz.proof.failed'), dbErrorText(t, error)); return }
+    router.refresh()
+  }
+
   async function upload(e: React.FormEvent) {
     e.preventDefault()
     if (!file) return
@@ -107,7 +138,7 @@ export function MaterialDocs({
       .from('documents').upload(path, file, { contentType: file.type })
     if (uploadError) {
       setBusy(null)
-      toast.error(t('inventory.docs.error.upload'), uploadError.message)
+      toast.error(t('inventory.docs.error.upload'), dbErrorText(t, uploadError))
       return
     }
 
@@ -265,6 +296,31 @@ export function MaterialDocs({
                 ].filter(Boolean).join(' · ')}
               </span>
             </button>
+            {/* Подтверждение нотификации (0106). Кнопка только у вида
+                `notification`: база всё равно откажет остальным, но
+                предлагать невозможное — значит учить человека получать
+                отказы. Принятый документ помечен, а не спрятан: инспектор
+                спрашивает «покажіть підтвердження», и его надо открыть. */}
+            {material.isCosmetic && d.kind === 'notification' && (
+              material.notificationDocId === d.id ? (
+                <span className="flex shrink-0 items-center gap-2">
+                  <span className="badge-success">{t('inventory.docs.moz.proof.is')}</span>
+                  {canEditMoz && (
+                    <button type="button" className="btn-ghost t-sm"
+                            disabled={busy !== null}
+                            onClick={() => void revokeDoc()}>
+                      {t('inventory.docs.moz.proof.revoke')}
+                    </button>
+                  )}
+                </span>
+              ) : canEditMoz && (
+                <button type="button" className="btn-secondary t-sm shrink-0"
+                        disabled={busy !== null}
+                        onClick={() => void confirmDoc(d.id)}>
+                  {t('inventory.docs.moz.proof.mark')}
+                </button>
+              )
+            )}
             <span className="flex shrink-0 items-center gap-1">
               <button className="btn-icon" aria-label={t('inventory.docs.download.aria')}
                       disabled={busy === d.id} onClick={() => void download(d)}>⤓</button>
@@ -310,6 +366,22 @@ export function MaterialDocs({
           ) : (
             <p className="field-hint mt-2">{t('inventory.docs.moz.noCode')}</p>
           )}
+
+          {/* САМОЕ ВАЖНОЕ В БЛОКЕ, и потому отдельной строкой. Код —
+              это слова поставщика; подтверждение — документ. Проверка
+              смотрит второе, и до 0106 отличить одно от другого было
+              нельзя ничем, кроме как открыть список документов глазами.
+              Автоматической сверки с реестром МОЗ не существует: реестр
+              закрытый, публичного поиска нет. */}
+          <p className={material.notificationConfirmedAt ? 'mt-3' : 'field-error mt-3'}>
+            {material.notificationConfirmedAt ? (
+              <span className="badge-success">
+                {t('inventory.docs.moz.proof.ok', {
+                  date: t.date(material.notificationConfirmedAt),
+                })}
+              </span>
+            ) : t('inventory.docs.moz.proof.missing')}
+          </p>
         </section>
       )}
 
