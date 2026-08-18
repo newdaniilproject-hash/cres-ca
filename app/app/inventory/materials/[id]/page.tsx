@@ -81,6 +81,7 @@ export default async function MaterialPage({
     supabase.from('compliance_materials')
       .select(`id, name, unit, category, sku, brand, country_of_origin, inci,
                notification_code, notification_url, notification_date,
+               notification_confirmed_at,
                pao_months, is_cosmetic, is_active`)
       .eq('id', id)
       .eq('tenant_id', m.tenantId)
@@ -173,6 +174,9 @@ export default async function MaterialPage({
           notificationCode: material.notification_code,
           notificationUrl: material.notification_url,
           notificationDate: material.notification_date,
+          // Из компланс-представления: инспектор читает ТОЛЬКО его (0083),
+          // и признак обязан приезжать тем же путём, что и остальной паспорт.
+          notificationConfirmedAt: passport?.notification_confirmed_at ?? null,
           paoMonths: material.pao_months,
         }}
         stock={commerce ? Number(commerce.current_stock) : null}
