@@ -1,17 +1,12 @@
 'use client'
 
 import { useEffect } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { ensureConsent } from '@/lib/consent'
-import { nextRoute } from '@/lib/where'
-import { haptic } from '@/lib/haptic'
 
 // Глубокие ссылки: единственная дверь в приложение снаружи.
 //
 // Через неё приходят три разных вещи, и обрабатывать их надо в одном
 // месте, иначе они разъедутся:
 //
-//   cresca://auth?code=…            — возврат от Apple и Google
 //   cresca://open?path=/app/orders  — тап по пушу и ссылки из писем
 //   https://cres-ca.com/<путь>      — ссылка из инстаграма или мессенджера,
 //                                     перехваченная App Links (Android)
@@ -58,18 +53,6 @@ export function DeepLink() {
       window.location.assign(path)
     }
 
-    async function finishAuth(code: string, next: string) {
-      const supabase = createClient()
-      const { error } = await supabase.auth.exchangeCodeForSession(code)
-      if (error) {
-        go('/m/login?oauth=' + encodeURIComponent(error.message))
-        return
-      }
-      await ensureConsent(supabase)
-      haptic.success()
-      go(next || (await nextRoute(supabase)))
-    }
-
     async function handle(raw: string) {
       if (dead || !raw) return
       let u: URL
@@ -78,23 +61,12 @@ export function DeepLink() {
       void closeBrowser()
 
       const scheme = u.protocol.replace(':', '')
-      const path = u.pathname || ''
       const next = u.searchParams.get('next') || ''
-      const err = u.searchParams.get('error')
-      const code = u.searchParams.get('code')
 
-      // Вход через провайдера. Приезжает двумя видами: своей схемой
-      // (обычный путь) и обычной ссылкой, если Android перехватил
-      // редирект App Links'ом раньше, чем Chrome успел его показать.
-      const isAuth =
-        (scheme === 'cresca' && u.host === 'auth') ||
-        path === '/auth/callback'
-
-      if (isAuth) {
-        if (err) { go('/m/login?oauth=' + encodeURIComponent(err)); return }
-        if (code) { await finishAuth(code, next); return }
-        return
-      }
+      // Ветки «возврат от провайдера» здесь больше НЕТ: вход через Google
+      // удалён целиком решением владельца 18.08.2026 (правило 8).
+      // Схема `cresca://` осталась и нужна — по ней приходят тапы по пушам
+      // и ссылки на товар, присланные в мессенджере.
 
       if (scheme === 'cresca') {
         // cresca://open?path=/app/orders — и всё, что придёт от пушей.

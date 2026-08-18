@@ -1598,72 +1598,14 @@ body.kb-open .m-actionbar {
 .pull-refresh.spinning .pull-spinner { animation: spin 0.7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ── Вход через Apple и Google ───────────────────────────────────
-   Кнопки провайдеров вне @layer components: они обязаны выигрывать
-   у утилит раскладки, а слой utilities идёт после components.
+/* ── Вход через провайдера УДАЛЁН ────────────────────────────────
+   Классы `.oauth`, `.oauth-sep`, `.btn-google` и `.btn-apple` сняты
+   18.08.2026 вместе со всем входом через Google — решение владельца,
+   правило 8 («выключено значит удалено»). Причина названа им прямо:
+   страница Google во встроенном окне отрисовывается криво, а чинить
+   её мы не можем — это их страница.
+   Если провайдера вернут, стили заводятся заново; в git они есть. */
 
-   Высота 52 — та же, что у btn-primary: три кнопки подряд разной
-   высоты читаются как три разных по важности действия. */
-.oauth {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-/* Разделитель «або». Полоса рисуется фоном, а не двумя пустыми
-   элементами: меньше разметки и не разъезжается при переносе. */
-.oauth-sep {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 22px 0 12px;
-  color: var(--color-faint);
-  font-size: 12px;
-  letter-spacing: 0.02em;
-}
-.oauth-sep::before,
-.oauth-sep::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--color-border);
-}
-
-.btn-google {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  width: 100%;
-  min-height: var(--tap-min);
-  height: 52px;
-  border-radius: var(--radius-control);
-  font-size: 16px;
-  font-weight: 650;
-  letter-spacing: -0.02em;
-  transition: transform var(--dur-fast) var(--ease-out-soft),
-              border-color var(--dur-fast) var(--ease-out-soft);
-}
-.btn-google:active { transform: scale(0.98); }
-.btn-google:disabled { opacity: 0.5; pointer-events: none; }
-
-/* Кнопки Apple здесь нет намеренно (13.08.2026): провайдер в Supabase
-   выключен, ключей нет, и нажатие возвращало «provider is not enabled».
-   Правило 8 проекта — выключено значит удалено. Вернётся вместе
-   с ключами, вместе со своим набором правил по гайдлайну Apple. */
-
-/* Google: нейтральная кнопка поверхности с их разноцветным знаком —
-   вариант, который они разрешают для тёмных интерфейсов. */
-.btn-google {
-  background: var(--color-surface-2);
-  color: var(--color-text);
-  border: 1px solid var(--color-border-strong);
-}
-.btn-google:hover { border-color: var(--color-accent); }
-/* Разделитель под кнопками: сверху к ним ближе, снизу — воздух
-   перед формой. Зеркалить отступы нельзя, иначе «або» прилипает
-   к первому полю. */
-.oauth-sep.below { margin: 18px 0 6px; }
 
 /* ── Шторка разделов (бургер-меню кабинета) ──────────────────────
    Вне @layer: обязана выигрывать у утилит. Слева, как принято

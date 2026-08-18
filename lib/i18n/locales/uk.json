@@ -1518,9 +1518,6 @@
   "auth.panel.feature.customers": "База клієнтів — ваша, з вивантаженням",
   "auth.panel.foot": "Склад для майстрів — облік, терміни, журнали",
 
-  "auth.google.or": "або продовжити з",
-  "auth.google.busy": "Переходимо…",
-  "auth.google.submit": "Продовжити з Google",
   "auth.brand.tagline": "Склад для майстрів",
   "auth.blocked.title": "Акаунт заблоковано",
   "auth.blocked.desc": "Забагато невдалих спроб входу. Для вашої безпеки акаунт тимчасово заблоковано.",
@@ -1705,12 +1702,6 @@
   "m.welcome.legal.privacy": "Конфіденційність",
   "m.welcome.legal.cookies": "Cookie",
 
-  "m.oauth.or": "або",
-  "m.oauth.busy": "Відкриваємо…",
-  "m.oauth.submit": "Продовжити з Google",
-  "m.oauth.error": "Не вдалося відкрити вхід",
-  "m.oauth.legal.lead": "Продовжуючи, ви приймаєте",
-  "m.oauth.legal.and": "та",
 
   "m.login.title.login": "Вхід",
   "m.login.title.reset": "Відновлення",
