@@ -2593,7 +2593,7 @@ body.kb-open .m-actionbar {
      два числа дадут знак, висящий над содержимым. */
   :root {
     --nav-w: 232px;
-    --rail-w: 300px;
+    --rail-w: 280px;
     --appbar-h: 64px;
   }
 
@@ -2783,13 +2783,16 @@ body.kb-open .m-actionbar {
   }
   .table { @apply w-full; border-collapse: collapse; font-size: var(--text-sm); }
   .table thead th {
-    @apply whitespace-nowrap px-4 py-3 text-left text-xs font-semibold;
+    @apply whitespace-nowrap px-3 py-3 text-left text-xs font-semibold;
     color: var(--color-muted);
     border-bottom: 1px solid var(--color-border);
     background: var(--color-surface);
   }
+  /* 12px по горизонтали, а не 16: восемь колонок склада на 1600
+     с навигацией и рельсом не помещались, и столбец «Статус» —
+     самый нужный из восьми — уезжал за край прокрутки. */
   .table tbody td {
-    @apply px-4 py-3 align-middle;
+    @apply px-3 py-2.5 align-middle;
     color: var(--color-text);
     border-bottom: 1px solid var(--color-border);
   }
@@ -2800,10 +2803,24 @@ body.kb-open .m-actionbar {
      выровненный влево, невозможно сравнить глазом. */
   .table .num-col { text-align: right; font-variant-numeric: tabular-nums; }
 
+  /* Плашка в ячейке не переносится и не режется. Без этого «В наявності»
+     и «Дуже низький» обрезались многоточием прямо в столбце статуса:
+     ячейка ужималась под остальные колонки, а плашка — под ячейку.
+     Ширину столбца задаёт содержимое (`width: 1%` + nowrap), а место
+     под неё забирается у названия товара, которое и так усечено. */
+  .table td > .badge, .table td > .badge-accent, .table td > .badge-success,
+  .table td > .badge-warn, .table td > .badge-danger { white-space: nowrap; }
+  .table th:last-child, .table td:last-child { width: 1%; white-space: nowrap; }
+  /* Первая колонка — название — ограничена по ширине и усекается.
+     Без предела длинное имя («Дезрозчин 2% для інструментів») тянет
+     таблицу вбок, и за край уезжает столбец статуса. Усечённое имя
+     читается полностью в карточке, куда ведёт та же строка. */
+  .table td:first-child { max-width: 260px; }
+
   /* Миниатюра товара в строке таблицы. */
   .cell-thumb {
     @apply grid shrink-0 place-items-center overflow-hidden;
-    width: 40px; height: 40px;
+    width: 34px; height: 34px;
     border-radius: var(--radius-control);
     background: var(--color-surface-2);
     color: var(--color-faint);

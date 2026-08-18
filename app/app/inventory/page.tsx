@@ -45,7 +45,7 @@ export default async function InventoryPage({
 
   const [
     { data: containers }, { data: materials }, { data: variants }, { data: value },
-    { data: suppliers }, { data: locations }, { data: batches },
+    { data: suppliers }, { data: locations }, { data: batches }, { data: moves },
   ] =
     await Promise.all([
       supabase.from('material_containers')
@@ -54,8 +54,12 @@ export default async function InventoryPage({
         .in('status', ['sealed', 'opened'])
         .order('use_by', { ascending: true, nullsFirst: false })
         .limit(100),
+      // `category`, `cost_per_unit` и `location_id` добавлены 18.08.2026
+      // под таблицу склада из макета: без них в ней нет колонок
+      // «Категорія», «Собівартість», «Сума» и «Склад», а плитка
+      // «Загальна вартість» считала бы только товары, забыв расходники.
       supabase.from('materials')
-        .select('id, name, unit, current_stock, min_stock_threshold, is_cosmetic, pao_months, brand, sku')
+        .select('id, name, unit, current_stock, min_stock_threshold, is_cosmetic, pao_months, brand, sku, category, cost_per_unit, location_id')
         .eq('tenant_id', m.tenantId)
         .eq('is_active', true)
         .order('name').limit(200),
@@ -78,6 +82,13 @@ export default async function InventoryPage({
         .select('id, material_id, batch_number, expiry_date')
         .eq('tenant_id', m.tenantId)
         .order('expiry_date', { ascending: true }).limit(500),
+      // Последние движения — в правый рельс. Четыре строки, а не журнал:
+      // журнал живёт своим экраном, здесь нужен ответ на «что тут вообще
+      // происходило», а не список.
+      supabase.from('stock_movements')
+        .select('id, movement_type, created_at')
+        .eq('tenant_id', m.tenantId)
+        .order('created_at', { ascending: false }).limit(4),
     ])
 
   // Действующая партия на материал. Считаем один раз здесь, а не на
@@ -115,6 +126,9 @@ export default async function InventoryPage({
           cosmetic: mt.is_cosmetic, pao: mt.pao_months, brand: mt.brand, sku: mt.sku,
           batch: activeBatch.get(mt.id)?.number ?? null,
           expiry: activeBatch.get(mt.id)?.expiry ?? null,
+          category: mt.category,
+          cost: mt.cost_per_unit != null ? Number(mt.cost_per_unit) : null,
+          location: (locations ?? []).find((l) => l.id === mt.location_id)?.name ?? null,
         }))}
         variants={(variants ?? []).map((v) => ({
           id: v.id, name: v.name,
@@ -127,6 +141,9 @@ export default async function InventoryPage({
         batches={(batches ?? []).map((b) => ({
           id: b.id, materialId: b.material_id,
           number: b.batch_number, expiry: b.expiry_date,
+        }))}
+        moves={(moves ?? []).map((v) => ({
+          id: v.id, kind: v.movement_type, at: v.created_at,
         }))}
         totals={value ? {
           units: Number(value.units ?? 0),
