@@ -173,12 +173,6 @@
   "inventory.offline.saved": "Збережено офлайн",
   "inventory.offline.desc": "Надішлеться само, щойно зʼявиться мережа.",
 
-  "inventory.scan.unavailable.title": "Камера-сканер недоступний",
-  "inventory.scan.unavailable.desc": "Працює у Chrome на Android. Введіть код вручну — поле поруч.",
-  "inventory.scan.nothing.title": "Код не зчитано",
-  "inventory.scan.nothing.desc": "Спробуйте ще раз або введіть вручну.",
-  "inventory.scan.failed.title": "Камера не відкрилась",
-  "inventory.scan.failed.desc": "Введіть код вручну — поле поруч.",
   "inventory.scan.camera.aria": "Сканувати камерою",
   "inventory.scan.notFound": "Код «{code}» не знайдено",
 

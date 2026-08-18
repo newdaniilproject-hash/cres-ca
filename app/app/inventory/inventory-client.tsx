@@ -1,8 +1,8 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { MaterialForm, type RefItem } from './material-form'
 import { ContainerForm, type BatchOption } from './container-form'
@@ -139,6 +139,27 @@ export function InventoryClient({
   // а превью камеры не показывалось ни на одной платформе.
   const [camera, setCamera] = useState(false)
 
+  // ── `?scan=1` ОТКРЫВАЕТ КАМЕРУ, а не режим ручного ввода ──────────────
+  //
+  // Значок сканера в шапке ведёт сюда адресом `?scan=1`. До 18.08.2026 этот
+  // признак лишь переключал строку в режим кода — камера не открывалась, а
+  // кнопка камеры в этом режиме вообще не рисовалась. Человек нажимал значок
+  // сканера и не видел НИЧЕГО: ни камеры, ни причины. Ровно это владелец
+  // и сообщил как «сканер не отвечает» — и починка самого сканера (М27)
+  // тут ничего не меняла, потому что до сканера дело не доходило.
+  //
+  // Признак снимается из адреса СРАЗУ: иначе повторное нажатие значка ведёт
+  // на тот же адрес, компонент не перемонтируется, и второй раз камера
+  // не откроется. `history.replaceState` вместо `router.replace` —
+  // не хочется гонять серверный рендер ради очистки параметра.
+  const sp = useSearchParams()
+  useEffect(() => {
+    if (sp.get('scan') !== '1') return
+    setScanOpen(true)
+    setCamera(true)
+    window.history.replaceState(null, '', '/app/inventory')
+  }, [sp])
+
 
   // Смена статуса ёмкости — то самое действие, которое мастер делает
   // с банкой в руке в подвале без сети. Ошибка сети не роняет действие:
@@ -221,7 +242,10 @@ export function InventoryClient({
 
       {/* ── Быстрые действия ─────────────────────────────────── */}
       <section className="rise-1 grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <button type="button" onClick={() => { setScanOpen(true); setTimeout(() => inputRef.current?.focus(), 50) }}
+        {/* «Сканувати» — это КАМЕРА. Раньше кнопка открывала режим ручного
+            ввода кода и ставила курсор в поле: на телефоне это выглядело как
+            «ничего не произошло» (клавиатура выезжала уже после). */}
+        <button type="button" onClick={() => { setScanOpen(true); setCamera(true) }}
                 className="card-link !p-3 text-center" style={{ minHeight: 'var(--tap-min)' }}>
           <span aria-hidden className="t-xl block">⌗</span>
           <span className="t-sm mt-1 block">{t('inventory.quick.scan')}</span>
@@ -258,21 +282,27 @@ export function InventoryClient({
             autoComplete="off"
             inputMode="text"
           />
-          {scanOpen ? (
-            <>
-              <button type="button" onClick={() => void lookup(code)} className="btn-secondary shrink-0">
-                {t('inventory.search.find')}
-              </button>
-              <button type="button" onClick={() => { setScanOpen(false); setScan(null); setCode('') }}
-                      className="btn-ghost shrink-0">{t('inventory.search.mode')}</button>
-            </>
-          ) : (
-            <button type="button" onClick={() => setCamera(true)} className="btn-primary shrink-0"
-                    title={t('inventory.scan.camera.aria')} aria-label={t('inventory.scan.camera.aria')}>
-              ⌗
-            </button>
-          )}
+          {/* Кнопка камеры стоит в ОБОИХ режимах и всегда на одном месте.
+              Пока она пряталась в режиме ввода кода, попасть в камеру
+              из режима сканирования было нельзя вовсе. */}
+          <button type="button" onClick={() => { setScanOpen(true); setCamera(true) }}
+                  className="btn-primary shrink-0"
+                  title={t('inventory.scan.camera.aria')} aria-label={t('inventory.scan.camera.aria')}>
+            ⌗
+          </button>
         </div>
+
+        {scanOpen && (
+          // Ручной ввод — запасной путь, а не основной: он нужен, когда
+          // наклейка стёрта или камеры нет. Поэтому второй строкой и мельче.
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button type="button" onClick={() => void lookup(code)} className="btn-secondary shrink-0">
+              {t('inventory.search.find')}
+            </button>
+            <button type="button" onClick={() => { setScanOpen(false); setScan(null); setCode('') }}
+                    className="btn-ghost shrink-0">{t('inventory.search.mode')}</button>
+          </div>
+        )}
 
         {scan?.container && (
           <div className="card-flat mt-3 flex flex-wrap items-center justify-between gap-3 rise">
