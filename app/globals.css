@@ -2665,23 +2665,6 @@ body.kb-open .m-actionbar {
   display: flex;
   align-items: center;
 }
-.websearch {
-  height: 44px;
-  max-width: 540px;
-  width: 100%;
-  border-radius: 12px;
-  background: #F7F7FB;
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 14px;
-  color: var(--color-faint);
-  font-size: 14px;
-  cursor: pointer;
-  text-align: left;
-}
 .webside {
   width: 232px;
   flex-shrink: 0;
@@ -2711,13 +2694,13 @@ body.kb-open .m-actionbar {
   background: var(--color-accent-soft);
   color: var(--color-accent-ink);
 }
-.webhelp {
-  border: 1px solid var(--color-border);
-  border-radius: 14px;
-  background: var(--web-surface-tint, var(--color-surface-2));
-  padding: 16px;
-  margin-top: auto;
-}
+/* `.websearch` и `.webhelp` из хендоффа здесь БЫЛИ и удалены 19.08.2026
+   (правило 8: выключено — значит удалено). Поиск в шапке рисует
+   `components/global-search.tsx` своими `.searchfield`/`.iconbtn` — один
+   поиск на весь кабинет, и второй его вид завёл бы второй источник правды.
+   Блока помощи в сайдбаре у нас нет: вести из него некуда. Не возвращать
+   «по README» — сначала должен появиться экран, который он открывает. */
+
 /* Дропдаун профиля: 262px, из правого верхнего угла. */
 .webdrop {
   position: fixed;
