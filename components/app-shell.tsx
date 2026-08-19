@@ -7,6 +7,7 @@ import { ThemeToggle } from '@/components/theme'
 import { TextSize } from '@/components/text-size'
 import { LangSwitch } from '@/components/lang-switch'
 import { NotifyBell } from '@/components/notify-bell'
+import { GlobalSearch } from '@/components/global-search'
 import { Sheet } from '@/components/sheet'
 import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
@@ -303,14 +304,20 @@ function AppShellInner({
   }
   const heading = headingOf(t, pathname, shopName, openable)
 
-  // Поиск и сканер — это два входа в склад (`?q=` и `?scan=1`, решение
-  // владельца 15.08.2026). Значит и фильтруются они как вкладка «Склад»:
-  // модуль `inventory` у заведения И право `stock.read` у человека.
-  // У `inspector` права нет (0035), и `/app/inventory` разворачивал его
-  // на «Сьогодні»: человек набирал запрос, жал «найти» и оказывался
-  // на чужом экране, решив, что поиск сломан.
+  // Сканер — это вход в склад (`?scan=1`). Значит и фильтруется он как
+  // вкладка «Склад»: модуль `inventory` у заведения И право `stock.read`
+  // у человека. У `inspector` права нет (0035), и `/app/inventory`
+  // разворачивал его на «Сьогодні»: человек нажимал значок и оказывался
+  // на чужом экране, решив, что сканер сломан.
   const stockTab = TABS.find((i) => i.href === '/app/inventory')
-  const canSearch = stockTab !== undefined && allowed(stockTab)
+  const canScan = stockTab !== undefined && allowed(stockTab)
+
+  // Называет ли экран нижняя панель. Если да — имени в шапке не нужно:
+  // подпись под значком уже сказала, где мы (решение владельца
+  // 19.08.2026). Сравнение точное, а не по префиксу: «Склад» подписан
+  // в панели, а «Приймання» внутри склада — нет, и оно обязано
+  // назваться в шапке.
+  const inNav = TABS.some((i) => i.href === pathname) || pathname === '/app'
 
   // Смена экрана закрывает меню: навигация произошла — мебель обязана
   // уйти с дороги сама.
@@ -417,8 +424,14 @@ function AppShellInner({
   }
 
   return (
-    <div className="appshell min-h-dvh pb-32 lg:pb-0">
-      <div className="mx-auto flex max-w-6xl gap-8 px-4 pt-3 sm:px-6">
+    // Запас снизу — ровно под плавающую панель и не больше. Было `pb-32`
+    // (128px) у оболочки И ещё `pb-12` (48px) у `main`: 176 пикселей
+    // пустоты под последней карточкой при панели высотой около семидесяти.
+    // Владелец назвал это 19.08.2026 («пустые пространства сверху и снизу
+    // на экранах убери»), и он прав — два запаса складывались, потому что
+    // ставились в разное время и в разных файлах.
+    <div className="appshell min-h-dvh pb-24 lg:pb-6">
+      <div className="mx-auto flex max-w-6xl gap-8 px-4 sm:px-6">
 
         {/* ── Десктоп: постоянный сайдбар ─────────────────────── */}
         <aside className="hidden w-52 shrink-0 lg:block">
@@ -443,17 +456,44 @@ function AppShellInner({
           {/* Тема и язык — две настройки одного рода, поэтому стоят рядом
               и здесь, и в шторке под аватаром. Разносить их по разным
               местам значит заставить искать вторую там, где нашлась первая. */}
-          <div className="mt-8 flex flex-col items-start gap-2 border-t pt-4"
+          <div className="mt-8 flex flex-col gap-1 border-t pt-4"
                style={{ borderColor: 'var(--color-border)' }}>
-            <ThemeToggle />
-            <LangSwitch />
+            <div className="setting-row">
+              <span className="setting-label">{t('theme.aria')}</span>
+              <ThemeToggle />
+            </div>
+            <div className="setting-row">
+              <span className="setting-label">{t('app.lang.aria')}</span>
+              <LangSwitch />
+            </div>
           </div>
         </aside>
 
-        <main className="min-w-0 flex-1 pb-12">
+        <main className="min-w-0 flex-1">
 
-          {/* ── Верхняя строка: назад, поиск, сканер, аватар ──── */}
-          <div className="apphead mb-4 flex items-center gap-2">
+          {/* ── Верхняя строка: назад, имя экрана, четыре значка ──
+              ЗАГОЛОВОК ЭКРАНА ЖИВЁТ ЗДЕСЬ, а не блоком под шапкой
+              (решение владельца 19.08.2026: «название и описание экранов
+              вверху убери, достаточно что они подписаны в нижнем наве»).
+
+              Блок «крупное имя + описание» занимал сверху каждого экрана
+              около ста пикселей и повторял то, что и так подписано
+              в нижней панели: человек нажал «Склад» и видит «Склад»
+              вторым кеглем плюс строку о том, что это склад. На телефоне
+              это первый экран целиком — до содержимого приходилось
+              долистывать.
+
+              Что осталось и почему именно так: у ЧЕТЫРЁХ разделов панели
+              имени в шапке нет вовсе — панель их называет. У остальных
+              (Замовлення, Клієнти, карточки) имя стоит строкой в шапке
+              рядом со стрелкой «назад»: их панель НЕ называет, и без
+              подписи экран остался бы безымянным — это уже не «лишнее»,
+              а потерянное. Описание снято везде.
+
+              ⚠️ Календаря в шапке больше нет: он вёл в «Записи», то есть
+              был вторым входом в раздел, который и так лежит в нижней
+              панели. На его место встал поиск. */}
+          <div className="apphead flex items-center gap-2">
             {heading.back && (
               <Link href={heading.back} aria-label={t('app.chrome.back.aria')}
                     className="apphead-back flex shrink-0 items-center justify-center">
@@ -461,39 +501,20 @@ function AppShellInner({
               </Link>
             )}
 
-            {/* ── ШАПКА ПО ПРОТОТИПУ ────────────────────────────────
-                Владелец 18.08.2026 передал кликабельный прототип CRESKO:
-                «самый близкий визуал что я хотел, от него плясать будем».
-                В шапке там НЕ строка поиска, а четыре значка — календарь
-                и колокол слева, сканер и аватар справа.
-
-                ⚠️ Это ОТМЕНЯЕТ прежнее решение 15.08.2026 («сверху —
-                строка поиска, сканер и аватар»), и отменяет осмысленно,
-                а не по недосмотру. Поиск не потерян: он переехал НА
-                страницу склада, где и стоит в прототипе. Дубляжом это
-                не становится — второй строки поиска больше нет нигде,
-                и та, что была в шапке, ушла ровно за этим.
-
-                Почему поиск в шапке был слабым местом: он всё равно
-                вёл только на склад (`?q=`), то есть занимал самое
-                дорогое место экрана ради одного раздела, и требовал
-                нажать Enter, чтобы список изменился. На странице он
-                фильтрует по мере набора. */}
-            <div className="min-w-0 flex-1 flex items-center gap-2">
-              {canSearch && (
-                <>
-                  {/* Календарь ведёт в записи: это «что у меня сегодня»,
-                      и в прототипе он стоит первым слева. */}
-                  <Link href="/app/bookings" aria-label={t('app.chrome.calendar.aria')}
-                        className="iconbtn shrink-0">
-                    <IconCalendar />
-                  </Link>
-                  <NotifyBell tenantPerms={perms ?? []} />
-                </>
+            <div className="min-w-0 flex-1">
+              {heading.title && !inNav && (
+                <h1 className="apphead-title display truncate">{heading.title}</h1>
               )}
             </div>
 
-            {canSearch && (
+            {/* Поиск — ОДИН на весь кабинет, по всем разделам сразу
+                (решение владельца 19.08.2026). Полей поиска на самих
+                экранах больше нет: разбор — в components/global-search.tsx. */}
+            <GlobalSearch modules={modules} perms={perms} />
+
+            <NotifyBell tenantPerms={perms ?? []} />
+
+            {canScan && (
               <Link href="/app/inventory?scan=1" aria-label={t('app.chrome.scan.aria')}
                     className="iconbtn shrink-0">
                 <IconScan />
@@ -506,22 +527,10 @@ function AppShellInner({
             </button>
           </div>
 
-          {/* ── Заголовок экрана ──────────────────────────────── */}
-          <div className="mb-5 flex items-end gap-3">
-            <div className="min-w-0 flex-1">
-              {/* `.page-title` вместо `.t-3xl`: в макетах имя раздела
-                  крупнее и жирнее, и оно растёт со ступени только на
-                  большом экране — на телефоне 34px переносят на вторую
-                  строку половину названий («Налаштування магазину»).
-                  `truncate` снят намеренно: обрезать имя раздела
-                  многоточием хуже, чем дать ему две строки. */}
-              <h1 className="page-title display rise">{heading.title}</h1>
-              {heading.subtitle && (
-                <p className="page-subtitle rise truncate">{heading.subtitle}</p>
-              )}
-            </div>
-            {action}
-          </div>
+          {/* Кнопка экрана (`action`) осталась — она часть страницы,
+              а не подписи. Без заголовка над ней ей нужна своя строка
+              только тогда, когда она есть. */}
+          {action && <div className="mb-3 flex justify-end">{action}</div>}
 
           {children}
         </main>
@@ -575,17 +584,27 @@ function AppShellInner({
           ))}
         </div>
         <div className="mt-4 border-t pt-3" style={{ borderColor: 'var(--color-border)' }}>
-          {/* Тема и язык — здесь же, под аватаром: решение владельца
-              15.08.2026 отправило сюда всё, что не разделы. */}
-          <div className="flex flex-wrap items-center gap-2">
-            <ThemeToggle />
-            <LangSwitch />
+          {/* Тема, язык и размер текста — здесь же, под аватаром: решение
+              владельца 15.08.2026 отправило сюда всё, что не разделы.
+
+              Три настройки одного рода («как мне это видно») стоят ОДНИМ
+              списком строк «подпись — управление», а не вперемешку
+              пилюлями и ползунком: разные раскладки у соседних настроек
+              читаются как разные разделы. Вид переключателей минимальный
+              по решению владельца 19.08.2026 — разбор в globals.css,
+              блок `.seg`. */}
+          <div className="flex flex-col gap-1">
+            <div className="setting-row">
+              <span className="setting-label">{t('theme.aria')}</span>
+              <ThemeToggle />
+            </div>
+            <div className="setting-row">
+              <span className="setting-label">{t('app.lang.aria')}</span>
+              <LangSwitch />
+            </div>
           </div>
-          {/* Размер текста — рядом с темой и языком: это третья настройка
-              того же рода («как мне это видно»), и искать её в другом
-              месте человек не станет. Ползунком, а не тремя кнопками:
-              шаг в 5% кнопками не выберешь. */}
-          <div className="mt-3 border-t pt-3" style={{ borderColor: 'var(--color-border)' }}>
+          {/* Ползунком, а не тремя кнопками: шаг в 5% кнопками не выберешь. */}
+          <div className="mt-1 border-t pt-3" style={{ borderColor: 'var(--color-border)' }}>
             <TextSize />
           </div>
           <button type="button" onClick={() => void signOut()}

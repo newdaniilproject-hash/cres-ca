@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useT } from '@/lib/i18n/client'
 
 // Шторка снизу. В приложении окно посреди экрана — чужой элемент:
@@ -58,6 +59,24 @@ export function Sheet({
 
   useEffect(() => { if (!open) setDrag(0) }, [open])
 
+  // Шторка рисуется В BODY, а не там, где её позвали. Причина найдена
+  // 19.08.2026 по отзыву владельца «кнопка уведомления в хедере не
+  // работает, сломана»: колокол стоит внутри `.apphead`, а у той
+  // `backdrop-filter: blur(12px)` — и любой элемент с `position: fixed`
+  // внутри такого предка считает координаты ОТ НЕГО, а не от окна
+  // (то же делают transform и filter). Шторка честно открывалась, но
+  // «внизу шапки», то есть полоской в пятьдесят пикселей под значками,
+  // а затемнение накрывало одну шапку. Нажатие выглядело как ничего.
+  //
+  // Портал снимает весь класс этой ошибки разом, а не один её случай:
+  // любая будущая шторка внутри липкой панели, карточки с тенью или
+  // анимированного блока попадёт в ту же ловушку, и искать её будут
+  // так же долго. Позиция в дереве React (и вместе с ней контекст,
+  // события и язык) при этом сохраняется — портал меняет только
+  // место в DOM.
+  const [host, setHost] = useState<HTMLElement | null>(null)
+  useEffect(() => { setHost(document.body) }, [])
+
   function onTouchStart(e: React.TouchEvent) {
     // Тянуть можно только когда содержимое прокручено в самый верх:
     // иначе жест «вниз» — это прокрутка списка, а не закрытие.
@@ -84,9 +103,9 @@ export function Sheet({
     setDrag(0)
   }
 
-  if (!open) return null
+  if (!open || !host) return null
 
-  return (
+  return createPortal(
     <div className="sheet-layer" role="dialog" aria-modal="true" aria-label={title}>
       <button
         type="button"
@@ -112,6 +131,7 @@ export function Sheet({
         <div ref={scroller} className="sheet-body">{children}</div>
         {footer && <div className="sheet-foot">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    host,
   )
 }

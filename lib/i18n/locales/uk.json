@@ -15,7 +15,6 @@
   "common.size.b": "{n} Б",
   "common.size.kb": "{n} КБ",
   "common.size.mb": "{n} МБ",
-
   "role.owner": "власник",
   "role.admin": "адміністратор",
   "role.manager": "менеджер",
@@ -23,7 +22,6 @@
   "role.accountant": "бухгалтер",
   "role.viewer": "перегляд",
   "role.inspector": "інспектор",
-
   "role.hint.owner": "Усе, включно з передачею закладу.",
   "role.hint.admin": "Усе, крім передачі закладу.",
   "role.hint.manager": "Замовлення, записи, клієнти, каталог, склад.",
@@ -31,7 +29,6 @@
   "role.hint.operator": "Свої записи, склад, журнали. Без фінансів і телефонів чужих клієнтів.",
   "role.hint.viewer": "Тільки дивиться.",
   "role.hint.inspector": "Реєстр, журнали, документи. Доступ за строком.",
-
   "app.nav.today": "Сьогодні",
   "app.nav.inventory": "Склад",
   "app.nav.bookings": "Записи",
@@ -45,9 +42,7 @@
   "app.nav.finance": "Фінанси",
   "app.nav.team": "Команда",
   "app.nav.settings": "Магазин",
-
   "app.chrome.back.aria": "Назад",
-  "app.chrome.calendar.aria": "Записи на сьогодні",
   "app.chrome.bell.aria": "Що потребує уваги",
   "app.chrome.bell.title": "Потребує уваги",
   "app.chrome.bell.empty": "Черга порожня",
@@ -60,6 +55,19 @@
   "app.chrome.avatar.aria": "Розділи та профіль",
   "app.chrome.menu.title": "Розділи",
   "app.chrome.signOut": "Вийти",
+  "app.search.aria": "Пошук по кабінету",
+  "app.search.title": "Пошук",
+  "app.search.placeholder": "Засіб, послуга, клієнт, номер замовлення",
+  "app.search.hint": "Введіть щонайменше дві літери — шукаємо одразу по складу, каталогу, клієнтах і замовленнях.",
+  "app.search.empty": "Нічого не знайшли",
+  "app.search.emptyDesc": "Спробуйте коротший запит: шукаємо по назві, бренду, артикулу, імені клієнта та номеру замовлення.",
+  "app.search.lastVisit": "Останній візит {date}",
+  "app.search.kind.service": "Послуга",
+  "app.search.kind.good": "Товар",
+  "app.search.section.materials": "Склад",
+  "app.search.section.catalog": "Каталог",
+  "app.search.section.customers": "Клієнти",
+  "app.search.section.orders": "Замовлення",
   "app.lang.aria": "Мова інтерфейсу",
   "app.screen.today.title": "Кабінет",
   "app.screen.today.desc": "Що потребує уваги сьогодні",
@@ -124,39 +132,30 @@
   "app.screen.export.title": "Вивантаження",
   "app.screen.export.desc": "Забрати свої дані одним файлом",
   "app.loading.aria": "Завантаження",
-
   "home.meta.title": "Сьогодні",
   "home.draft.notice": "Заклад у чернетці: облік уже працює, публічна сторінка вимкнена.",
   "home.draft.publish": "До публікації",
-
   "home.greeting": "Вітаємо, {name}!",
-
   "home.hero.eyebrow": "Сьогодні",
   "home.hero.attention": "потребують уваги",
-
   "home.hero.bookings.one": "запис",
   "home.hero.bookings.few": "записи",
   "home.hero.bookings.many": "записів",
-
   "home.bookings.title": "Записи сьогодні",
   "home.bookings.all": "Усі",
   "home.bookings.empty": "Сьогодні записів немає",
-
   "home.booking.status.booked": "нова",
   "home.booking.status.arrived": "у кріслі",
   "home.booking.status.ok": "ок",
-
   "home.expiring.title": "Спливає термін",
   "home.expiring.stock": "Склад",
   "home.expiring.empty": "Найближчі два тижні — усе в межах терміну",
   "home.expiring.container": "Ємність {code}",
   "home.expiring.until": "до {date}",
-
   "home.reorder.title": "Що закуповувати",
   "home.reorder.stock": "Залишки",
   "home.reorder.empty": "Запасів достатньо",
   "home.reorder.item": "докупити {n}",
-
   "inventory.link.stock": "Склад",
   "inventory.link.receipts": "Приймання",
   "inventory.link.movements": "Журнал рухів",
@@ -165,69 +164,53 @@
   "inventory.common.choose": "— оберіть —",
   "inventory.common.notSet": "— не вказано —",
   "inventory.common.close": "Закрити",
-
   "inventory.kind.material": "витратний засіб",
   "inventory.kind.goods": "товар",
-
   "inventory.pick.material": "Витратний засіб",
   "inventory.pick.goods": "Товар",
-
   "inventory.days.one": "{n} день",
   "inventory.days.few": "{n} дні",
   "inventory.days.many": "{n} днів",
-
   "inventory.error.stockWrite": "Немає права змінювати склад (stock.write). Попросіть власника магазину видати його.",
   "inventory.error.session": "Сесія завершилась — увійдіть знову.",
   "inventory.error.itemMissing": "Позицію не знайдено у цьому магазині — можливо, її видалили.",
-
   "inventory.expiry.none": "Термін не вказано",
   "inventory.expiry.ok": "Дійсний",
   "inventory.expiry.soon": "Скоро закінчується",
   "inventory.expiry.urgent": "Закінчується",
   "inventory.expiry.expired": "Прострочений",
-
   "inventory.offline.saved": "Збережено офлайн",
   "inventory.offline.desc": "Надішлеться само, щойно зʼявиться мережа.",
-
   "inventory.scan.camera.aria": "Сканувати камерою",
   "inventory.scan.notFound": "Код «{code}» не знайдено",
   "inventory.scan.close": "Прибрати результат сканування",
-
   "inventory.stats.total": "Усі позиції",
   "inventory.stats.soon": "Закінчуються",
   "inventory.stats.expired": "Прострочені",
   "inventory.stats.low": "Мало на складі",
-
   "inventory.stats.short.total": "Позицій",
   "inventory.stats.ok": "Дійсні",
   "inventory.stats.short.ok": "Дійсні",
   "inventory.stats.short.soon": "Закінч.",
   "inventory.stats.short.expired": "Прострочені",
   "inventory.stats.short.low": "Мало",
-
   "inventory.quick.title": "Швидкі дії",
   "inventory.quick.scan": "Сканувати",
   "inventory.quick.receipts": "Надходження",
   "inventory.quick.movements": "Рухи",
   "inventory.quick.counts": "Інвентаризація",
-
   "inventory.search.placeholder": "Назва, бренд, партія…",
   "inventory.search.find": "Знайти",
   "inventory.search.empty": "За цим запитом нічого не знайшлося",
-
   "inventory.filter.query": "Пошук: {q}",
   "inventory.filter.reset": "Показати все",
-
   "inventory.empty.title": "Склад порожній",
   "inventory.empty.desc": "Заведіть перший витратний засіб — далі партії, банки та QR-наліпки додаються з його картки.",
   "inventory.empty.filtered": "Спробуйте інший запит або зніміть фільтр стану.",
-
   "inventory.more.title": "Ще у складі",
-
   "inventory.manual.title": "Ввести код вручну",
   "inventory.manual.hint": "Якщо наліпка стерлася або камера не працює — наберіть код із наліпки чи заводський штрихкод.",
   "inventory.manual.placeholder": "Код наліпки або штрихкод",
-
   "inventory.container.open": "Відкрити банку",
   "inventory.container.openShort": "Відкрити",
   "inventory.container.finished": "Закінчилась",
@@ -241,45 +224,35 @@
   "inventory.container.sealed": "запечатана",
   "inventory.container.openedAt": "відкрита {date}",
   "inventory.container.until": "до {date}",
-
   "inventory.queue.finish": "Ємність закінчилась",
   "inventory.queue.dispose": "Списати ємність",
-
   "inventory.scan.item.stock": "Залишок: {n}",
   "inventory.scan.item.low": "мало!",
-
   "inventory.tab.all": "Всі",
   "inventory.tab.materials": "Розхідники",
   "inventory.tab.containers": "Ємності",
   "inventory.tab.goods": "Товари",
-
   "inventory.action.refs": "Довідники",
   "inventory.action.addMaterial": "+ Засіб",
   "inventory.action.printLabels": "Друк QR-наліпок",
   "inventory.action.addContainer": "+ Банка",
   "inventory.action.addInCatalog": "Додати в каталозі",
-
   "inventory.materials.add": "Додати засіб",
   "inventory.materials.batch": "Партія: {number}",
   "inventory.materials.until": "до {date}",
   "inventory.materials.pao": "PAO {n} міс",
-
-
   "inventory.goods.units": "Одиниць",
   "inventory.goods.cost": "Собівартість",
   "inventory.goods.retail": "У продажу",
   "inventory.goods.reserved": "у резерві: {n}",
   "inventory.goods.untracked": "без обліку",
-
   "inventory.links.reorder": "Пора замовити",
   "inventory.links.recipes": "Рецептура",
   "inventory.links.barcodes": "Штрихкоди",
   "inventory.links.documents": "Усі документи",
-
   "inventory.sheet.container": "Нова банка або партія",
   "inventory.sheet.material": "Новий витратний засіб",
   "inventory.sheet.refs": "Довідники",
-
   "inventory.material.error.url": "Посилання на реєстр МОЗ має починатися з https://",
   "inventory.material.error.duplicate": "Засіб із такою назвою вже є у списку",
   "inventory.material.name.label": "Назва",
@@ -309,7 +282,6 @@
   "inventory.material.pao.hint": "Скільки місяців придатний після відкриття (значок відкритої баночки).",
   "inventory.material.inci.label": "Склад INCI",
   "inventory.material.inci.placeholder": "Aqua, Glycerin, …",
-
   "inventory.refs.supplier.duplicate": "Такий постачальник вже є",
   "inventory.refs.location.duplicate": "Таке місце зберігання вже є",
   "inventory.refs.suppliers.title": "Постачальники",
@@ -322,7 +294,6 @@
   "inventory.refs.location.name.placeholder": "Шафа біля дзеркала",
   "inventory.refs.location.submit": "Додати місце",
   "inventory.refs.location.hint": "Місце — це підказка «де лежить», а не окремий склад: залишок у засобу один на всі полиці.",
-
   "inventory.containerForm.error.code": "Такий код вже є",
   "inventory.containerForm.noMaterials": "Спочатку заведіть витратний засіб — партії та банки чіпляються до нього.",
   "inventory.containerForm.tab.container": "Нова банка",
@@ -342,7 +313,6 @@
   "inventory.containerForm.created.title": "Банку {code} створено",
   "inventory.containerForm.created.desc": "Роздрукуйте наліпку з QR і наклейте на банку — далі майстер просто сканує її камерою.",
   "inventory.containerForm.submit": "Завести банку",
-
   "inventory.batchForm.error.duplicate": "Така партія для цього засобу вже заведена",
   "inventory.batchForm.number.label": "Номер партії",
   "inventory.batchForm.number.placeholder": "з коробки",
@@ -353,7 +323,6 @@
   "inventory.batchForm.hint": "Партія — це не другий облік залишку, а простежуваність: який номер і до якого числа придатний товар, що ви прийняли. Кількість рахується приходами.",
   "inventory.batchForm.saved": "Партію збережено — тепер її можна обрати для банки.",
   "inventory.batchForm.submit": "Зберегти партію",
-
   "inventory.barcodes.error.duplicate": "Цей штрихкод уже закріплений — за цим засобом або за іншим. Один код може вказувати лише на одну позицію.",
   "inventory.barcodes.error.missing": "Засіб видалили — оновіть сторінку.",
   "inventory.barcodes.camera.unavailable": "Камера-сканер працює у Chrome на Android. Введіть код вручну.",
@@ -378,7 +347,6 @@
   "inventory.barcodes.submit": "Прив’язати код",
   "inventory.barcodes.readonly": "Немає права змінювати склад, тому коди доступні лише для перегляду.",
   "inventory.barcodes.hint": "Один код — один засіб: та сама цифра не може вказувати на дві позиції, інакше сканер не знав би, що показати. Якщо код «уже закріплений» — його вже прив’язали до чогось іншого.",
-
   "inventory.count.status.counting": "триває перерахунок",
   "inventory.count.status.applied": "проведено",
   "inventory.count.status.cancelled": "скасовано",
@@ -388,7 +356,6 @@
   "inventory.count.error.nothing": "Не обрано жодної позиції — перераховувати нічого.",
   "inventory.count.error.negativeStock": "Після коригування залишок пішов би в мінус. Перевірте введені числа.",
   "inventory.count.error.negativeQty": "Залишок не буває відʼємним — перевірте введене число.",
-
   "inventory.counts.startFailed": "Не вдалося почати перерахунок",
   "inventory.counts.started.title": "Перерахунок почато",
   "inventory.counts.started.desc": "Позицій у документі: {n}",
@@ -425,7 +392,6 @@
   "inventory.counts.pick.noGoods": "Товарів з обліком залишку немає — послуги залишку не мають.",
   "inventory.counts.pick.searchEmpty": "Нічого не знайшлося за цим запитом",
   "inventory.counts.pick.stock": "зараз в базі: {qty} {unit}",
-
   "inventory.count.openError": "Не вдалося відкрити інвентаризацію",
   "inventory.count.queue.fact": "Факт · {title}",
   "inventory.count.scan.notInDoc": "«{name}» не входить у цей перерахунок",
@@ -468,7 +434,6 @@
   "inventory.count.readonly.cancelled": "Перерахунок скасовано — на залишок він не вплинув.",
   "inventory.count.readonly.noRight": "Немає права змінювати склад, тому документ доступний лише для перегляду.",
   "inventory.count.hint": "Факт зберігається сам, щойно ви переходите до наступного рядка — залишок при цьому не змінюється. Він зміниться один раз, під час проведення: на кожну розбіжність база запише рух «коригування». Вписати залишок напряму не можна ніде в системі — і це навмисно.",
-
   "inventory.movement.type.receipt": "прихід",
   "inventory.movement.type.sale": "продаж",
   "inventory.movement.type.write_off": "списання",
@@ -481,7 +446,6 @@
   "inventory.movement.source.order": "із замовлення",
   "inventory.movement.source.booking": "із запису",
   "inventory.movement.source.manual": "вручну",
-
   "inventory.movements.error.oneTarget": "У русі має бути або товар, або витратний засіб — не обидва.",
   "inventory.movements.error.negative": "Списати більше, ніж є на залишку, не можна. Перевірте кількість.",
   "inventory.movements.loadError": "Не вдалося завантажити журнал",
@@ -509,11 +473,9 @@
   "inventory.movements.byCount": "за документом інвентаризації",
   "inventory.movements.hint": "Рядок журналу не редагується і не видаляється — ні вами, ні нами: це джерело правди про залишок, а не нотатник. Помилковий рух гасять зустрічним (списали зайве — проведіть повернення на ту саму кількість), і в історії лишаються обидва. Саме тому «залишок» і «журнал» тут не можуть розійтися.",
   "inventory.movements.limit": "Показано останні {n} рухів. Оберіть тип, щоб побачити глибше.",
-
   "inventory.receipt.status.draft": "чернетка",
   "inventory.receipt.status.applied": "проведено",
   "inventory.receipt.status.cancelled": "скасовано",
-
   "inventory.receipts.createFailed": "Не вдалося створити приймання",
   "inventory.receipts.loadError": "Не вдалося завантажити приймання",
   "inventory.receipts.new": "+ Нове приймання",
@@ -533,7 +495,6 @@
   "inventory.receipts.row.lines": "рядків: {n}",
   "inventory.receipts.row.applied": "проведено {date}",
   "inventory.receipts.hint": "Проведене приймання не редагується: воно вже змінило залишок. Помилку в ньому гасять зустрічним рухом у журналі, а не правкою документа заднім числом.",
-
   "inventory.receipt.openError": "Не вдалося відкрити приймання",
   "inventory.receipt.error.noLines": "У приймання немає жодного рядка — додайте хоча б одну позицію.",
   "inventory.receipt.error.applied": "Це приймання вже проведено або скасовано. Оновіть сторінку.",
@@ -570,7 +531,6 @@
   "inventory.receipt.readonly.cancelled": "Приймання скасовано до проведення — на залишок воно не вплинуло.",
   "inventory.receipt.readonly.noRight": "Немає права змінювати склад, тому документ доступний лише для перегляду.",
   "inventory.receipt.hint": "Проведення — необоротна дія: кожен рядок стане рухом «прихід» і збільшить залишок однією транзакцією. Після цього документ закривається на правки назавжди.",
-
   "inventory.recipes.error.duplicate": "Цей засіб уже є в рецепті. Змініть кількість у наявному рядку.",
   "inventory.recipes.error.missing": "Засіб або позицію видалили — оновіть сторінку.",
   "inventory.recipes.error.qty": "Кількість має бути більшою за нуль.",
@@ -599,7 +559,6 @@
   "inventory.recipes.add.submit": "Додати до рецепта",
   "inventory.recipes.hint": "Собівартість рахується з ціни за одиницю витратного засобу. Якщо її не вказано, засіб у суму не потрапляє — сума показується як «від».",
   "inventory.recipes.readonly": "Немає права редагувати каталог, тому рецепти доступні лише для перегляду.",
-
   "inventory.reorder.noSupplier": "Без постачальника",
   "inventory.reorder.copy.head": "Замовлення",
   "inventory.reorder.copy.headSupplier": "Замовлення · {supplier}",
@@ -616,7 +575,6 @@
   "inventory.reorder.row.edge": "на межі",
   "inventory.reorder.hint.copy": "Скопійований текст — готове повідомлення постачальнику: назва і скільки взяти. Замовлення це не створює: прихід зʼявиться на складі тоді, коли ви проведете приймання привезеного.",
   "inventory.reorder.hint.threshold": "Позиція потрапляє сюди, лише якщо їй заданий мінімальний залишок більший за нуль. Порожній список при порожніх полицях означає, що мінімуми ще не проставлені.",
-
   "inventory.material.openError": "Не вдалося відкрити картку",
   "inventory.material.batch.saveError": "Партію не збережено",
   "inventory.material.batch.duplicate": "Партія з таким номером у цього засобу вже є",
@@ -634,6 +592,8 @@
   "inventory.material.row.country": "Країна-виробник",
   "inventory.material.row.unit": "Одиниця",
   "inventory.material.row.inci": "Склад (INCI)",
+  "inventory.material.inci.title": "Склад (INCI)",
+  "inventory.material.inci.none": "Склад не вказано",
   "inventory.material.batches.title": "ПАРТІЯ ТА ТЕРМІНИ",
   "inventory.material.batches.add": "+ Партія",
   "inventory.material.row.batchNumber": "Номер партії (Batch)",
@@ -670,7 +630,6 @@
   "inventory.material.batchForm.expiry.label": "Термін придатності",
   "inventory.material.batchForm.supplier.label": "Постачальник",
   "inventory.material.batchForm.hint": "Термін вскритої ємності перерахується сам: система бере менше з двох — термін партії або день відкриття плюс PAO. «Омолодити» засіб правкою партії не вийде, це заборонено в базі.",
-
   "inventory.docs.filter.all": "Всі",
   "inventory.docs.error.format.title": "Формат не підтримується",
   "inventory.docs.error.format.desc": "PDF, JPG, PNG, WEBP, DOC або DOCX",
@@ -716,7 +675,6 @@
   "inventory.docs.upload.busy": "Завантажуємо…",
   "inventory.docs.upload.submit": "Завантажити",
   "inventory.docs.hint": "Файли зберігаються у закритому сховищі: посилання діє пʼять хвилин і працює лише для тих, кому ви відкрили доступ до санітарного обліку.",
-
   "inventory.pao.status.sealed": "Запечатана",
   "inventory.pao.status.opened": "Відкрита",
   "inventory.pao.status.finished": "Закінчилась",
@@ -761,25 +719,20 @@
   "inventory.pao.decant.hint": "Дата розливу і відповідальний майстер підставляються самі — це ви і зараз. Вони йдуть у незмінюваний журнал і на наліпку, тому вибирати їх не можна: підпис чужим імʼям зруйнував би доказовість.",
   "inventory.pao.decant.busy": "Розливаємо…",
   "inventory.pao.decant.submit": "Зберегти QR-код",
-
   "inventory.labels.denied.member": "Немає доступу",
   "inventory.labels.denied.right": "Немає права на наліпки",
   "inventory.labels.denied.module": "Модуль «Склад» не підключено",
-
   "journals.meta.title": "Санітарні журнали",
   "journals.report.open": "Звіт для перевірки → PDF",
   "journals.report.error.noMembership": "Немає доступу",
   "journals.report.error.noPerm": "Немає права на звіт для перевірки",
   "journals.report.error.noModule": "Модуль «Журнали, документи та техкарти» не підключено",
-
   "journals.tab.cleaning": "Прибирання",
   "journals.tab.solutions": "Дезрозчини",
   "journals.tab.sterilization": "Стерилізація",
   "journals.tab.actions": "Дії",
-
   "journals.performer.gone": "імʼя недоступне",
   "journals.performer.gone.title": "Учасника вилучено зі складу команди — сам запис незмінний",
-
   "journals.cleaning.empty.manage": "Додайте пункти чек-листа нижче — «Кварцування», «Обробка крісла»…",
   "journals.cleaning.empty.read": "Чек-лист прибирання ще не заведено.",
   "journals.cleaning.doneToday": "сьогодні ✓",
@@ -788,7 +741,6 @@
   "journals.cleaning.newTask.placeholder": "Новий пункт чек-листа…",
   "journals.cleaning.newTask.submit": "Додати",
   "journals.cleaning.hint": "Кожна відмітка — запис журналу з часом і виконавцем. Виправити або стерти її неможливо — це і є доказ для перевірки.",
-
   "journals.offline.saved": "Збережено офлайн",
   "journals.offline.cleaning.label": "Прибирання: відмітка",
   "journals.offline.cleaning.desc": "Запис піде в журнал, щойно зʼявиться мережа.",
@@ -796,7 +748,6 @@
   "journals.offline.solution.desc": "Розчин зʼявиться в журналі після синхронізації.",
   "journals.offline.cycle.label": "Стерилізація: {device}",
   "journals.offline.cycle.desc": "Цикл зʼявиться в журналі після синхронізації.",
-
   "journals.solution.agent.label": "Засіб",
   "journals.solution.agent.placeholder": "Бланідас-Актив",
   "journals.solution.conc.label": "Концентрація",
@@ -808,7 +759,6 @@
   "journals.solution.prepared": "приготовано {date}",
   "journals.solution.until": "до {date}",
   "journals.solution.expired": "непридатний",
-
   "journals.cycle.device.label": "Пристрій",
   "journals.cycle.temp.label": "Температура, °C",
   "journals.cycle.mins.label": "Тривалість, хв",
@@ -818,7 +768,6 @@
   "journals.cycle.line": "{temp} °C · {mins} хв",
   "journals.cycle.ok": "успішно",
   "journals.cycle.fail": "провал",
-
   "journals.audit.hint": "Сюди автоматично потрапляє кожна зміна: картки засобів, партії, ємності, техкарти, довідники, команда. Записи не можна ні виправити, ні стерти — навіть власнику.",
   "journals.audit.loading": "Завантажуємо…",
   "journals.audit.empty": "Поки жодної зміни не зафіксовано",
@@ -842,19 +791,16 @@
   "journals.audit.entity.staff": "співробітника",
   "journals.audit.entity.tenant_members": "учасника команди",
   "journals.audit.entity.tenants": "налаштування закладу",
-
   "documents.meta.title": "Документи на матеріали",
   "documents.nav.stock": "← Склад",
   "documents.nav.journals": "Санітарні журнали",
   "documents.nav.techcards": "Техкарти обробки",
-
   "documents.error.mime": "Дозволені формати: PDF, JPG, PNG, WEBP, DOC, DOCX",
   "documents.error.tooBig": "Файл більший за 20 МБ — стисніть або розділіть його",
   "documents.error.fileKept": "Запис видалено, файл лишився у сховищі: {error}",
   "documents.remove.confirm": "Видалити «{title}»? Файл зникне назавжди.",
   "documents.missing.badge": "без документів: {n}",
   "documents.missing.desc": "На косметичні засоби перевірка вимагає паспорт безпеки, сертифікат якості та висновок СЕС. Завантажте їх зараз — під час перевірки шукати вже пізно.",
-
   "documents.upload.material.label": "Матеріал",
   "documents.upload.material.placeholder": "Оберіть матеріал…",
   "documents.upload.kind.label": "Тип документа",
@@ -865,7 +811,6 @@
   "documents.upload.file.hint": "PDF, фото або документ Word, до 20 МБ.",
   "documents.upload.submit": "Завантажити документ",
   "documents.upload.submitBusy": "Завантажуємо…",
-
   "documents.kind.msds": "Паспорт безпеки (MSDS)",
   "documents.kind.msds.short": "MSDS",
   "documents.kind.quality_cert": "Сертифікат якості",
@@ -876,7 +821,6 @@
   "documents.kind.notification.short": "Нотифікація МОЗ",
   "documents.kind.other": "Інше",
   "documents.kind.other.short": "Інше",
-
   "documents.empty.title": "Матеріалів ще немає.",
   "documents.empty.desc": "Спершу заведіть їх на складі — документи чіпляються до матеріалу.",
   "documents.material.unit": "одиниця: {unit}",
@@ -887,27 +831,21 @@
   "documents.doc.view": "Переглянути",
   "documents.doc.download": "Завантажити",
   "documents.footer": "Файли зберігаються у закритому сховищі: посилання на документ діє пʼять хвилин і працює лише для тих, кому ви відкрили доступ до санітарного обліку. Назовні сертифікати не потрапляють.",
-
   "techcards.meta.title": "Техкарти обробки",
   "techcards.new": "Нова техкарта",
-
   "techcards.nav.journals": "← Санітарні журнали",
   "techcards.nav.documents": "Документи на матеріали",
-
   "techcards.error.noTitle": "Вкажіть назву техкарти",
   "techcards.error.noSteps": "Додайте хоча б один крок із назвою",
   "techcards.error.activeLeft": "Версію збережено, але попередні лишились активними: {error}",
-
   "techcards.draft.newVersion": "Нова версія: {title}",
   "techcards.draft.version": "версія {n}",
-
   "techcards.field.title.label": "Назва",
   "techcards.field.title.placeholder": "Підготовка канекалону",
   "techcards.field.title.hint": "Назва звʼязує версії між собою, тому в новій версії вона незмінна.",
   "techcards.field.service.label": "Послуга",
   "techcards.field.service.general": "Загальна для салону",
   "techcards.field.service.hint": "Необовʼязково: карта може стосуватись усього салону.",
-
   "techcards.step.badge": "крок {n}",
   "techcards.step.up.aria": "Вище",
   "techcards.step.down.aria": "Нижче",
@@ -924,33 +862,27 @@
   "techcards.step.add": "Додати крок",
   "techcards.step.minutesShort": "{n} хв",
   "techcards.step.proportionShort": "пропорція {value}",
-
   "techcards.submit": "Затвердити версію {n}",
   "techcards.form.hint": "Після збереження цю версію не можна буде змінити — тільки випустити наступну. Так і має бути: по затвердженій карті вже працювали, і саме вона є доказом для перевірки.",
   "techcards.empty.title": "Техкарт ще немає.",
   "techcards.empty.desc": "Техкарта — це регламент обробки: чим замочуємо, у якій пропорції та скільки хвилин. Перевірка запитує саме її.",
-
   "techcards.card.linked": "Привʼязана до послуги",
   "techcards.card.versions": "версій: {n}",
   "techcards.card.newVersion": "Створити нову версію",
-
   "techcards.version.line": "Версія {n} · {date} · кроків: {steps}",
   "techcards.version.current": "чинна",
   "techcards.version.archived": "архів",
   "techcards.steps.empty": "Кроків не записано",
   "techcards.footer": "Стару версію неможливо ані виправити, ані видалити: по ній уже працювали, і вона доводить, за яким регламентом оброблявся матеріал у той період. Зміна регламенту — це завжди нова версія, попередня лишається в історії.",
-
   "catalog.status.draft": "чернетка",
   "catalog.status.active": "опубліковано",
   "catalog.status.hidden": "прихована",
   "catalog.status.archived": "в архіві",
-
   "catalog.stats.total": "Позицій",
   "catalog.stats.active": "Активні",
   "catalog.stats.services": "Послуги",
   "catalog.stats.products": "Товари",
   "catalog.duration": "{n} хв",
-
   "catalog.filter.all": "Усі",
   "catalog.filter.products": "Товари",
   "catalog.filter.services": "Послуги",
@@ -962,10 +894,8 @@
   "catalog.empty.add": "Додати позицію",
   "catalog.empty.readonly": "Каталог порожній. Позиції заводить власник або менеджер.",
   "catalog.empty.filter": "За цим фільтром нічого немає",
-
   "catalog.kind.service": "послуга",
   "catalog.kind.product": "товар",
-
   "catalog.variants.count.one": "{n} варіант",
   "catalog.variants.count.few": "{n} варіанти",
   "catalog.variants.count.many": "{n} варіантів",
@@ -1060,7 +990,6 @@
   "catalog.meta.title": "Каталог",
   "catalog.new.meta.title": "Нова позиція",
   "catalog.item.meta.title": "Позиція каталогу",
-
   "orders.status.new": "нове",
   "orders.status.confirmed": "прийнято",
   "orders.status.awaiting_payment": "очікує оплати",
@@ -1071,7 +1000,6 @@
   "orders.status.completed": "завершено",
   "orders.status.cancelled": "скасовано",
   "orders.status.returned": "повернення",
-
   "orders.source.storefront": "вітрина",
   "orders.source.manual": "вручну",
   "orders.source.instagram": "instagram",
@@ -1092,7 +1020,6 @@
   "orders.action.completed": "Завершити",
   "orders.action.cancelled": "Скасувати",
   "orders.action.returned": "Оформити повернення",
-
   "orders.detail.source.storefront": "з вітрини",
   "orders.detail.source.manual": "заведено вручну",
   "orders.detail.source.instagram": "instagram",
@@ -1128,25 +1055,21 @@
   "orders.detail.history.hint": "Історію пише база на кожному переході. Стерти чи виправити запис неможливо — це і є доказ того, що сталося із замовленням.",
   "orders.meta.title": "Замовлення",
   "orders.item.meta.title": "Замовлення",
-
   "bookings.status.booked": "нова",
   "bookings.status.confirmed": "підтверджена",
   "bookings.status.arrived": "у кріслі",
   "bookings.status.completed": "виконана",
   "bookings.status.cancelled": "скасована",
   "bookings.status.no_show": "не прийшов",
-
   "bookings.action.confirmed": "Підтвердити",
   "bookings.action.cancelled": "Скасувати",
   "bookings.action.arrived": "Клієнт прийшов",
   "bookings.action.no_show": "Не прийшов",
   "bookings.action.completed": "Виконано",
-
   "bookings.empty.title": "Записів немає",
   "bookings.empty.desc": "Поділіться посиланням на вашу сторінку в Instagram — записи зʼявляться тут.",
   "bookings.deposit": "передоплата {sum}",
   "bookings.meta.title": "Записи",
-
   "customers.reminders.title": "Нагадування",
   "customers.empty": "База порожня. Клієнти зʼявляються самі — з першим записом або замовленням, навіть гостьовим.",
   "customers.noPhone": "без телефону",
@@ -1179,11 +1102,9 @@
   "customers.export.col.last": "Останнє замовлення",
   "customers.export.col.created": "Клієнт з",
   "customers.meta.title": "Клієнти",
-
   "finance.period.month": "Цей місяць",
   "finance.period.prev": "Минулий місяць",
   "finance.period.30d": "30 днів",
-
   "finance.total.income": "Доходи",
   "finance.total.expense": "Витрати",
   "finance.total.balance": "Різниця",
@@ -1198,9 +1119,7 @@
   "finance.form.note.placeholder": "За що саме",
   "finance.form.submit.income": "Записати дохід",
   "finance.form.submit.expense": "Записати витрату",
-
   "finance.empty": "За цей період рухів грошей немає. Доходи від оплачених замовлень зʼявляються тут самі, витрати вносите ви.",
-
   "finance.record.fromOrder": "із замовлення",
   "finance.record.orderNumber": "замовлення №{number}",
   "finance.record.orderLink": "до замовлення",
@@ -1210,9 +1129,7 @@
   "finance.category.hiddenOption": "{name} (прихована)",
   "finance.reverse.note": "сторнування запису від {date}",
   "finance.reverse.noteWith": "сторнування запису від {date}: {note}",
-
   "finance.hint": "Журнал грошей незмінний. Суму й вид запису неможливо ані виправити, ані видалити — так це працює в бухгалтерії й так це зроблено в базі. Помилковий запис гаситься зустрічним: кнопка «Зворотний запис» готує його за вас. Правити можна лише нотатку й категорію.",
-
   "finance.categories.title": "Категорії",
   "finance.categories.empty": "Категорій ще немає. Вони потрібні тільки вам — щоб через рік бачити, куди пішли гроші.",
   "finance.categories.hide": "сховати",
@@ -1223,7 +1140,6 @@
   "finance.categories.kind.income": "дохід",
   "finance.categories.add": "Додати",
   "finance.meta.title": "Фінанси",
-
   "team.error.noStar": "Дозвіл «*» видати не можна: це повний доступ власника.",
   "team.error.rankSessions": "Ця людина за роллю вища за вас — завершити її сеанси не можна.",
   "team.error.rankEdit": "Ця людина за роллю вища за вас — змінювати її може лише рівний їй або вищий.",
@@ -1235,10 +1151,8 @@
   "team.error.offline": "Немає зв’язку з сервером — спробуйте ще раз.",
   "team.error.noLink": "Запрошення створено, але посилання не повернулося.",
   "team.error.copy": "Скопіювати не вдалося — виділіть посилання і скопіюйте вручну.",
-
   "team.beyond": "{name} — понад ваш доступ",
   "team.unknownSelf": "Не вдалося визначити, під ким ви увійшли, тому блокування, завершення сеансів і передача володіння сховані: інакше екран запропонував би застосувати їх до вас самих. Оновіть сторінку або увійдіть заново.",
-
   "team.invite.title": "Запросити людину",
   "team.invite.desc": "Надішлемо лист із посиланням. Воно діє 72 години й спрацьовує один раз — і тільки для тієї пошти, на яку виписане.",
   "team.invite.email.label": "Пошта",
@@ -1251,29 +1165,24 @@
   "team.invite.mail.sending": "Надсилаємо лист…",
   "team.invite.mail.sent": "Лист надіслано ✓",
   "team.invite.mail.failed": "Лист не пішов — надішліть посилання самі.",
-
   "team.pending.title": "Чекають на прийняття",
   "team.pending.meta": "{role} · діє до {date}",
   "team.pending.days.one": "доступ {n} день",
   "team.pending.days.few": "доступ {n} дні",
   "team.pending.days.many": "доступ {n} днів",
   "team.pending.revoke": "Відкликати",
-
   "team.members.title": "Команда",
   "team.members.desc": "Зміна ролі або прав миттєво завершує сеанси людини: права живуть у токені, і без виходу нове обмеження почало б діяти лише за годину.",
   "team.members.empty.title": "Список порожній",
   "team.members.empty.desc": "Тут з’являться всі, хто прийняв запрошення.",
-
   "team.member.self": "— це ви",
   "team.member.sessions.one": "{n} активний сеанс",
   "team.member.sessions.few": "{n} активні сеанси",
   "team.member.sessions.many": "{n} активних сеансів",
-
   "team.badge.noAccess": "немає доступу",
   "team.badge.notWorking": "не працює",
   "team.badge.notBooking": "не приймає записи",
   "team.badge.until": "до {date}",
-
   "team.state.noAccess.title": "Немає доступу",
   "team.state.noAccess.hint": "У кабінет не зайде — ні з телефона, ні за прямим посиланням. Знімається кнопкою «Розблокувати»: вона поверне і доступ, і картку майстра.",
   "team.state.notWorking.title": "Не працює",
@@ -1282,16 +1191,13 @@
   "team.state.notWorking.hintOpen": "Кабінет при цьому відкритий. Окремої кнопки тут немає: картку гасить і повертає те саме блокування доступу.",
   "team.state.notBooking.title": "Не приймає записи",
   "team.state.notBooking.hint": "Відпустка або лікарняний: доступ у кабінет є, у розкладі людини немає. Вмикають і вимикають у картці майстра — розділ «Записи», не тут.",
-
   "team.hint.outranksMe": "Ця людина за роллю вища за вас, тому її картка тут тільки для перегляду: ні роль, ні строк, ні блокування змінити не вийде. Це зробить власник або рівний їй.",
   "team.hint.self": "Свою роль і свої права змінити не можна — це захист від втрати доступу до власного закладу. Попросіть іншого власника або передайте володіння.",
-
   "team.field.cap.label": "Стеля знижки, %",
   "team.field.cap.placeholder": "за роллю — {n}",
   "team.field.cap.effective": "Зараз діє {pct}.",
   "team.field.expiry.label": "Доступ до",
   "team.field.expiry.hint": "Порожньо — безстроково.",
-
   "team.view.cap.label": "Стеля знижки",
   "team.view.cap.byRole": "за роллю",
   "team.view.cap.personal": "окремо для людини",
@@ -1299,20 +1205,16 @@
   "team.view.access.until": "до {date}",
   "team.view.access.forever": "безстроково",
   "team.view.joined": "у команді з {date}",
-
   "team.tplApply.label": "Застосувати шаблон",
   "team.tplApply.none": "— обрати —",
   "team.tplApply.hint": "Шаблон перезаписує роль, точкові дозволи й стелю знижки.",
-
   "team.perms.label": "Точкові дозволи",
   "team.perms.hint": "Галочка, що збігається з роллю, не зберігається окремо: зміниться роль — зміниться й доступ.",
   "team.perms.hintNotMine": "Погашені — це те, чого немає у вас самих: видати таке база не дасть.",
   "team.perms.override": "окремо",
-
   "team.granted.label": "Що дозволено",
   "team.granted.none": "Нічого понад перегляд власного профілю.",
   "team.granted.hint": "Синім — видане окремо, поза набором ролі.",
-
   "team.sessions.title": "Активні сеанси",
   "team.sessions.unknownDevice": "невідомий пристрій",
   "team.sessions.lastSeen": "остання дія {date}",
@@ -1323,20 +1225,17 @@
   "team.sessions.count.one": "{n} сеанс",
   "team.sessions.count.few": "{n} сеанси",
   "team.sessions.count.many": "{n} сеансів",
-
   "team.block.unblock": "Розблокувати",
   "team.block.unblockHint": "Поверне і доступ до кабінету, і картку майстра в розкладі.",
   "team.block.reason.label": "Причина блокування",
   "team.block.reason.placeholder": "звільнення, втрата телефону…",
   "team.block.submit": "Заблокувати доступ",
   "team.block.hint": "Закриє вхід у кабінет і заразом погасить картку майстра: людина зникне і зі списку, на кого записують клієнта. Причина йде в незмінний журнал.",
-
   "team.transfer.title": "Передати володіння закладом",
   "team.transfer.desc": "Ви станете адміністратором, а сеанси на цьому пристрої завершаться — доведеться увійти заново. Повернути володіння зможе тільки новий власник.",
   "team.transfer.confirm.pre": "Надрукуйте",
   "team.transfer.confirm.post": "для підтвердження",
   "team.transfer.submit": "Передати володіння",
-
   "team.templates.title": "Шаблони доступу",
   "team.templates.desc": "Набір «роль + точкові дозволи + стеля знижки» під вашу посаду. Щоб не збирати п’ятнадцять галочок кожному новому майстру.",
   "team.templates.empty": "Шаблонів ще немає — створіть перший нижче.",
@@ -1356,7 +1255,6 @@
   "team.templates.new.perms.label": "Точкові дозволи нового шаблону",
   "team.templates.new.perms.hint": "Відносно ролі «{role}». Порожньо — шаблон ставить чисту роль.",
   "team.templates.new.submit": "Додати шаблон",
-
   "team.audit.title": "Журнал доступів",
   "team.audit.desc": "Хто, кому й що змінив. Записи не редагуються і не видаляються — навіть власником.",
   "team.audit.collapse": "Згорнути",
@@ -1370,7 +1268,6 @@
   "team.audit.action.changed": "змінено доступ",
   "team.audit.action.blocked": "закрито доступ",
   "team.audit.action.unblocked": "відкрито доступ",
-
   "team.security.title": "Журнал безпеки",
   "team.security.desc": "Невдалі входи, замикання акаунта, входи з нових пристроїв і звернення до чужих закладів. Записи не редагуються і не видаляються — навіть власником.",
   "team.security.collapse": "Згорнути",
@@ -1394,7 +1291,6 @@
   "team.security.hint.tenant.foreign_access": "Хтось звернувся до закладу, до якого не належить. Дані база не віддала, але перевірте, чи не вкрали доступ цієї людини.",
   "team.security.hint.record.immutable_attempt": "Спроба змінити запис, який не змінюється: санітарний журнал, затверджена техкарта, фінансовий запис або проведений документ. Зміна не відбулася — база її не пропустила.",
   "team.meta.title": "Команда",
-
   "team.access.title": "Хто дивився дані",
   "team.access.desc": "Відкриті картки клієнтів, вивантаження бази, скачані документи і сформовані звіти. Записи не редагуються і не видаляються — навіть власником.",
   "team.access.collapse": "Згорнути",
@@ -1409,12 +1305,10 @@
   "team.access.entity.customers": "Клієнти",
   "team.access.entity.material_documents": "Документи",
   "team.access.entity.compliance_report": "Звіт для перевірки",
-
   "settings.public.title": "Ваша сторінка",
   "settings.public.desc": "Це посилання — у шапку Instagram: клієнти записуються самі.",
   "settings.public.published": "опубліковано",
   "settings.public.draft": "чернетка — відкриється після перевірки",
-
   "settings.shop.name.label": "Назва",
   "settings.shop.tagline.label": "Підпис (одним рядком)",
   "settings.shop.tagline.placeholder": "Брейди та афрокоси · центр міста",
@@ -1423,7 +1317,6 @@
   "settings.shop.address.placeholder": "вул. Сумська, 1",
   "settings.shop.phone.label": "Телефон для клієнтів",
   "settings.shop.about.label": "Про заклад",
-
   "settings.team.title": "Команда",
   "settings.team.hidden.title": "Склад команди тут не показано.",
   "settings.team.hidden.desc": "Для нього потрібне окреме право «Команда» — попросіть власника або адміністратора його відкрити.",
@@ -1431,7 +1324,6 @@
   "settings.badge.blocked": "заблоковано",
   "settings.security.title": "Безпека",
   "settings.security.desc": "Ваші дані належать вам. Ви можете видалити акаунт у будь-який момент — без листів, дзвінків і пояснень.",
-
   "settings.delete.open": "Видалити акаунт",
   "settings.delete.lead": "Буде видалено:",
   "settings.delete.sole.pre": "ваш акаунт",
@@ -1447,28 +1339,22 @@
   "settings.delete.submit": "Видалити назавжди",
   "settings.delete.submitBusy": "Видаляємо…",
   "settings.meta.title": "Магазин",
-
   "profile.meta.title": "Профіль",
   "profile.badge.draft": "чернетка",
   "profile.account.title": "ОБЛІКОВИЙ ЗАПИС",
   "profile.account.name": "Імʼя",
   "profile.account.email": "Пошта",
   "profile.account.hint": "Імʼя видно на наліпках розливу як «відповідальний майстер» — порожнє поле там і надрукується порожнім.",
-
   "profile.password.title": "Змінити пароль",
   "profile.password.desc": "Новий пароль набирається двічі",
-
   "profile.email.title": "Змінити пошту",
   "profile.email.desc": "Підтвердження піде на обидві адреси",
-
   "profile.settings.title": "Налаштування закладу",
   "profile.settings.desc": "Назва, адреса, публікація, команда",
-
   "profile.theme.title": "Оформлення",
   "profile.theme.desc": "Світла або темна",
   "profile.signOut": "Вийти з акаунту",
   "profile.delete.open": "Видалити акаунт",
-
   "profile.pass.sheet.title": "Новий пароль",
   "profile.pass.new.label": "Новий пароль",
   "profile.pass.new.hint": "Мінімум 8 символів.",
@@ -1477,7 +1363,6 @@
   "profile.pass.ok": "Пароль змінено",
   "profile.pass.error.mismatch": "Паролі не збігаються",
   "profile.pass.error.failed": "Пароль не змінено",
-
   "profile.mail.sheet.title": "Нова пошта",
   "profile.mail.new.label": "Нова адреса",
   "profile.mail.new.placeholder": "name@example.com",
@@ -1487,7 +1372,6 @@
   "profile.mail.error.failed": "Пошту не змінено",
   "profile.mail.sent.title": "Підтвердіть зміну",
   "profile.mail.sent.desc": "Листи пішли на стару і на нову адресу — перейдіть за обома.",
-
   "profile.delete.sheet.title": "Видалення акаунту",
   "profile.delete.lead": "Зникне все: заклад, склад, журнали, документи і сам обліковий запис. Відновити не вийде — це не «архів», а видалення.",
   "profile.delete.hint": "Якщо у закладі є інші власники, він залишиться їм. Ваші записи в незмінюваних журналах теж залишаться — вони доказ перевірці, і прибрати їх не можна нікому.",
@@ -1503,18 +1387,14 @@
   "profile.delete.error.failed": "Акаунт не видалено",
   "profile.delete.submit": "Видалити назавжди",
   "profile.delete.submitBusy": "Видаляємо…",
-
   "account.link.security": "Безпека",
   "account.business.title": "Кабінет підприємця",
   "account.business.desc": "Склад, записи, клієнти",
   "account.business.open": "Відкрити",
-
   "account.bookings.title": "Мої записи",
   "account.bookings.empty": "Записів поки немає — знайдіть майстра через пошук",
-
   "account.orders.title": "Мої замовлення",
   "account.orders.empty": "Замовлень поки немає",
-
   "account.order.number": "Замовлення №{number}",
   "account.order.status.new": "новий",
   "account.order.status.confirmed": "підтверджено",
@@ -1526,14 +1406,12 @@
   "account.order.status.completed": "виконано",
   "account.order.status.cancelled": "скасовано",
   "account.order.status.returned": "повернення",
-
   "account.booking.status.booked": "заброньовано",
   "account.booking.status.confirmed": "підтверджено",
   "account.booking.status.arrived": "ви прийшли",
   "account.booking.status.completed": "виконано",
   "account.booking.status.cancelled": "скасовано",
   "account.booking.status.no_show": "пропущено",
-
   "account.security.back": "Кабінет",
   "account.security.title": "Безпека",
   "account.security.pass.ok": "Пароль змінено",
@@ -1547,7 +1425,6 @@
   "account.security.signOut": "Вийти з акаунта",
   "account.security.signOut.busy": "Виходимо…",
   "account.meta.title": "Кабінет",
-
   "auth.shell.home": "На головну",
   "auth.panel.tagline": "Одна підписка замість чотирьох сервісів. Без комісії за замовлення, які ви привели самі.",
   "auth.panel.feature.storefront": "Вітрина, що відчувається власним сайтом",
@@ -1555,14 +1432,12 @@
   "auth.panel.feature.bookings": "Запис і замовлення в одному кабінеті",
   "auth.panel.feature.customers": "База клієнтів — ваша, з вивантаженням",
   "auth.panel.foot": "Склад для майстрів — облік, терміни, журнали",
-
   "auth.brand.tagline": "Склад для майстрів",
   "auth.blocked.title": "Акаунт заблоковано",
   "auth.blocked.desc": "Забагато невдалих спроб входу. Для вашої безпеки акаунт тимчасово заблоковано.",
   "auth.blocked.note": "Спробуйте повторити через {wait}. Або скиньте пароль, якщо забули його.",
   "auth.blocked.reset": "Скинути пароль",
   "auth.blocked.back": "Повернутися до входу",
-
   "auth.password.hide.aria": "Сховати пароль",
   "auth.password.show.aria": "Показати пароль",
   "auth.password.min": "Мінімум 8 символів",
@@ -1579,7 +1454,6 @@
   "auth.field.mismatch": "Паролі не збігаються",
   "auth.field.firstName": "Імʼя",
   "auth.field.lastName": "Прізвище",
-
   "auth.code.sentTo": "Ми надіслали {n}-значний код на {email}",
   "auth.code.checking": "Перевіряємо…",
   "auth.code.submit": "Підтвердити",
@@ -1588,7 +1462,6 @@
   "auth.code.resendReady": "Код можна надіслати повторно",
   "auth.code.changeEmail": "Змінити пошту",
   "auth.code.noMail": "Не отримали лист? Перевірте папку «Вхідні» та «Спам». Або повторіть через хвилину.",
-
   "auth.login.title": "Вхід",
   "auth.login.subtitle": "Раді бачити знову",
   "auth.login.tab.password": "Пароль",
@@ -1605,7 +1478,6 @@
   "auth.login.register.lead": "Немає акаунта?",
   "auth.login.register.buyer": "Зареєструватися",
   "auth.login.register.seller": "Я підприємець",
-
   "auth.register.title": "Реєстрація",
   "auth.register.subtitle": "Створіть акаунт, щоб користуватися всіма можливостями CRESKO",
   "auth.register.first.placeholder": "Марія",
@@ -1629,15 +1501,12 @@
   "auth.register.sent.resendIn": "Надіслати лист повторно через {n} с",
   "auth.register.sent.resend": "Надіслати лист повторно",
   "auth.register.sent.backToLogin": "Повернутися до входу",
-
   "auth.newpass.title": "Новий пароль",
   "auth.newpass.subtitle": "Придумайте пароль — і одразу увійдемо",
   "auth.newpass.submit": "Зберегти пароль",
-
   "auth.done.password.title": "Пароль змінено",
   "auth.done.password.desc": "Ваш пароль успішно оновлено. Тепер можете увійти з новим паролем.",
   "auth.done.password.action": "Увійти",
-
   "auth.forgot.title": "Забули пароль?",
   "auth.forgot.subtitle": "Введіть email, і ми надішлемо інструкцію для скидання пароля",
   "auth.forgot.submit": "Надіслати інструкцію",
@@ -1650,7 +1519,6 @@
   "auth.forgot.sent.hint": "Перевірте папку «Вхідні» та «Спам»",
   "auth.forgot.sent.enterCode": "Ввести код із листа",
   "auth.forgot.sent.backToLogin": "Повернутися до входу",
-
   "auth.seller.step1.title": "Акаунт для бізнесу",
   "auth.seller.step1.subtitle": "Крок 1 із 2 · склад, записи і клієнти — безкоштовно",
   "auth.seller.step2.title": "Ваш заклад",
@@ -1670,7 +1538,6 @@
   "auth.seller.submit": "Створити заклад",
   "auth.seller.busy": "Створюємо…",
   "auth.seller.hint": "Заклад створюється як чернетка: наповнюйте склад і календар одразу, публічна сторінка вмикається після перевірки.",
-
   "auth.error.providerOff": "Вхід через Google ще налаштовується — скористайтеся поштою",
   "auth.error.cancelled": "Вхід скасовано",
   "auth.error.linkExpired": "Посилання вже недійсне — надішліть новий лист",
@@ -1682,7 +1549,6 @@
   "auth.error.password": "Пароль закороткий або надто простий.",
   "auth.error.email": "Перевірте адресу пошти.",
   "auth.error.banned": "Вхід у цей акаунт тимчасово закрито після невдалих спроб. Спробуйте за 15 хвилин або скиньте пароль.",
-
   "auth.locked.title": "Вхід закрито на 15 хвилин",
   "auth.locked.plain": "Через невдалі спроби входу акаунт замкнено на 15 хвилин.",
   "auth.locked.until": "Спробувати можна після {time}.",
@@ -1691,33 +1557,26 @@
   "auth.locked.attempts.few": "Замок став після {n} невдалих спроб входу.",
   "auth.locked.attempts.many": "Замок став після {n} невдалих спроб входу.",
   "auth.locked.hint": "Якщо це були не ви — після розблокування змініть пароль. Блокування знімається саме, звертатися нікуди не треба.",
-
   "auth.code.error.expired": "Код застарів. Надішліть новий — кнопка нижче.",
   "auth.code.error.confirmed": "Ця пошта вже підтверджена. Увійдіть зі своїм паролем.",
   "auth.code.error.invalid": "Невірний код. Якщо запитували кілька разів — введіть останній.",
-
   "auth.lockout.seconds.one": "{n} секунду",
   "auth.lockout.seconds.few": "{n} секунди",
   "auth.lockout.seconds.many": "{n} секунд",
   "auth.lockout.minutes.one": "{n} хвилину",
   "auth.lockout.minutes.few": "{n} хвилини",
   "auth.lockout.minutes.many": "{n} хвилин",
-
   "invite.title": "Вас запросили в команду",
-
   "invite.guest.desc": "Щоб прийняти запрошення, увійдіть тією поштою, на яку прийшов лист. Запрошення виписане саме на неї й іншій пошті не спрацює.",
   "invite.guest.noAccount": "Акаунта ще немає? Створіть його — після підтвердження пошти ви повернетесь на цю саму сторінку.",
   "invite.guest.login": "Увійти",
   "invite.guest.register": "Створити акаунт",
-
   "invite.signedAs.pre": "Ви увійшли як",
   "invite.signedAs.post": ". Запрошення спрацює лише якщо його виписано саме на цю пошту.",
-
   "invite.error.already": "Ви вже працюєте в цьому закладі — приймати запрошення вдруге не потрібно. Відкрийте кабінет, розділи вже доступні.",
   "invite.error.session": "Сеанс завершився, поки ви читали лист. Увійдіть ще раз тією ж поштою — ми повернемо вас на цю сторінку.",
   "invite.error.invalid": "Це посилання більше не працює: його вже використали, минули 72 години або воно виписане на іншу пошту. Попросіть надіслати нове запрошення і приймайте його з тієї пошти, на яку прийшов лист.",
   "invite.error.generic": "Не вдалося прийняти запрошення — можливо, зник звʼязок. Спробуйте ще раз, а якщо не вийде, попросіть надіслати нове запрошення.",
-
   "invite.accept": "Прийняти запрошення",
   "invite.accepting": "Приймаємо…",
   "invite.openApp": "Відкрити кабінет",
@@ -1725,13 +1584,11 @@
   "invite.relogin": "Увійти іншою поштою",
   "invite.later": "Не зараз",
   "invite.meta.title": "Запрошення",
-
   "m.nav.back.aria": "Назад",
   "m.code.aria": "Код з листа",
   "m.code.paste": "Вставити код із буфера",
   "m.field.email": "Пошта",
   "m.field.password": "Пароль",
-
   "m.welcome.title.line1": "Склад, терміни і журнали —",
   "m.welcome.title.line2": "у телефоні",
   "m.welcome.desc": "Відкрили банку — термін порахує застосунок. Прийшла перевірка — звіт одним документом.",
@@ -1740,8 +1597,6 @@
   "m.welcome.legal.terms": "Умови",
   "m.welcome.legal.privacy": "Конфіденційність",
   "m.welcome.legal.cookies": "Cookie",
-
-
   "m.login.title.login": "Вхід",
   "m.login.title.reset": "Відновлення",
   "m.login.subtitle.password": "Пошта і пароль",
@@ -1767,7 +1622,6 @@
   "m.login.byPassword": "Увійти паролем",
   "m.login.noAcc.lead": "Немає акаунта?",
   "m.login.noAcc.link": "Створити",
-
   "m.register.title": "Створити акаунт",
   "m.register.subtitle": "Кілька полів — і склад ваш",
   "m.register.orForm": "або заповніть анкету",
@@ -1800,7 +1654,6 @@
   "m.register.submit": "Створити акаунт",
   "m.register.code.title": "Підтвердіть пошту",
   "m.register.code.invalid": "Код невірний або вже застарів",
-
   "m.onb.skip": "Пропустити",
   "m.onb.next": "Далі",
   "m.onb.start": "Почати",
@@ -1863,7 +1716,6 @@
   "m.onb.perm.faceid.dialog": "«CRESKO» хоче використовувати Face ID",
   "m.onb.perm.faceid.allow": "Увімкнути Face ID",
   "m.onb.perm.faceid.deny": "Не зараз",
-
   "m.shop.signOut": "Вийти",
   "m.shop.title": "Ваш заклад",
   "m.shop.who": "Ви увійшли як {email}.",
@@ -1883,38 +1735,29 @@
   "m.shop.submit": "Створити заклад",
   "m.meta.title": "Маркет",
   "m.login.meta.title": "Вхід",
-
   "m.register.meta.title": "Створити акаунт",
-
   "offline.status.offline": "Немає мережі — працюємо офлайн",
   "offline.status.pending": "Є незбережені дії",
-
   "offline.hint": "Дії збережуться на телефоні й підуть у базу, щойно звʼязок відновиться",
-
   "offline.waiting.one": "{n} дія чекає на надсилання",
   "offline.waiting.few": "{n} дії чекають на надсилання",
   "offline.waiting.many": "{n} дій чекають на надсилання",
-
   "offline.sent.one": "Надіслано {n} дію",
   "offline.sent.few": "Надіслано {n} дії",
   "offline.sent.many": "Надіслано {n} дій",
   "offline.sent.detail": "Те, що ви робили без мережі, тепер у базі.",
-
   "offline.failed.one": "Не вдалося надіслати {n} дію",
   "offline.failed.few": "Не вдалося надіслати {n} дії",
   "offline.failed.many": "Не вдалося надіслати {n} дій",
-
   "offline.hide": "Сховати",
   "offline.show": "Показати",
   "offline.sending": "Надсилаємо…",
   "offline.send": "Надіслати",
   "offline.error": "помилка: {message}",
   "offline.drop": "Прибрати",
-
   "native.bio.reason": "Вхід у Маркет",
   "native.bio.title": "Вхід у Маркет",
   "native.bio.subtitle": "Підтвердіть, що це ви",
-
   "native.lock.failed": "Не вдалося підтвердити. Спробуйте ще раз.",
   "native.lock.unlock": "Розблокувати",
   "native.lock.disable": "Вимкнути замок",
@@ -1922,31 +1765,23 @@
   "native.lock.off.detail": "Увімкнути знову можна в налаштуваннях безпеки.",
   "native.lock.on": "Замок увімкнено",
   "native.lock.on.detail": "Тепер кабінет відкривається тільки після Face ID чи відбитка.",
-
   "native.offer.title": "Захистити вхід біометрією?",
   "native.offer.desc": "Face ID або відбиток при відкритті застосунку",
   "native.offer.enable": "Увімкнути",
   "native.offer.no": "Ні",
   "native.offer.failed": "Не вдалося перевірити біометрію",
   "native.offer.failed.detail": "Замок не увімкнено — спробуйте в налаштуваннях безпеки.",
-
   "pwa.update.text": "Вийшла нова версія",
   "pwa.update.detail": "Оновимо, коли вам буде зручно.",
   "pwa.update.action": "Оновити зараз",
-
-
-
   "theme.aria": "Тема оформлення",
-
   "textsize.title": "Розмір тексту",
   "textsize.aria": "Розмір тексту у застосунку",
   "textsize.reset": "Звичайний розмір",
   "theme.light": "Світла",
   "theme.dark": "Темна",
-
   "legal.back.aria": "Назад",
   "legal.version": "Редакція від {version}",
-
   "public.chrome.brand": "Маркет",
   "public.chrome.map": "Мапа",
   "public.chrome.search": "Пошук",
@@ -1954,13 +1789,11 @@
   "public.chrome.signIn": "Увійти",
   "public.chrome.signUp": "Реєстрація",
   "public.chrome.forBusiness": "Для бізнесу",
-
   "public.footer.rights": "© {year} · Платформа для українських підприємців",
   "public.footer.openBusiness": "Відкрити бізнес",
   "public.footer.signIn": "Вхід",
   "public.footer.privacy": "Конфіденційність",
   "public.footer.dataDelete": "Видалення даних",
-
   "public.home.meta.title": "Маркетплейс товарів і послуг — майстри, салони, локальні бренди",
   "public.home.meta.desc": "Одна підписка замість чотирьох сервісів: вітрина, замовлення, склад із термінами придатності та журнали для перевірок. Знайдіть майстра або товар поруч із вами.",
   "public.home.hero.eyebrow": "Для українських підприємців",
@@ -2043,7 +1876,6 @@
   "public.home.final.title": "Спробуйте на своєму складі",
   "public.home.final.desc": "Реєстрація безкоштовна, картка не потрібна. Побачите свій кабінет і вирішите, чи це те, чого бракувало.",
   "public.home.final.cta": "Створити кабінет",
-
   "public.storefront.notFound.title": "Заклад не знайдено",
   "public.storefront.onMap": "на мапі",
   "public.storefront.services.title": "Послуги",
@@ -2054,7 +1886,6 @@
   "public.storefront.empty.title": "Каталог наповнюється",
   "public.storefront.empty.desc": "Заклад щойно приєднався — послуги та товари з’являться найближчим часом.",
   "public.storefront.about.title": "Про заклад",
-
   "public.book.meta.title": "Запис",
   "public.book.variant.label": "Оберіть варіант",
   "public.book.duration": "{n} хв",
@@ -2075,7 +1906,6 @@
   "public.book.done.cancelHours.one": "Скасувати чи перенести можна не пізніше ніж за {n} годину до візиту.",
   "public.book.done.cancelHours.few": "Скасувати чи перенести можна не пізніше ніж за {n} години до візиту.",
   "public.book.done.cancelHours.many": "Скасувати чи перенести можна не пізніше ніж за {n} годин до візиту.",
-
   "public.search.meta.title": "Пошук",
   "public.search.placeholder": "Що шукаєте?",
   "public.search.filter.all": "Усе",
@@ -2089,11 +1919,9 @@
   "public.search.badge.shop": "заклад",
   "public.search.badge.service": "послуга",
   "public.search.badge.product": "товар",
-
   "public.map.meta.title": "Мапа закладів",
   "public.map.popup.open": "Відкрити сторінку",
   "public.map.empty": "Заклади з адресою з’являться тут — платформа щойно відкривається.",
-
   "public.offline.meta.title": "Немає мережі",
   "public.offline.eyebrow": "Звʼязок",
   "public.offline.title": "Немає мережі",
@@ -2101,10 +1929,8 @@
   "public.offline.queue": "Усе, що ви робили офлайн — відкриття банок, списання, записи в журналах — збережено на телефоні й піде в базу автоматично, щойно звʼязок відновиться. Нічого не загубиться.",
   "public.offline.toInventory": "Відкрити склад",
   "public.offline.toApp": "На головну кабінету",
-
   "public.legal.version": "Версія {version}. Чинна з {date}.",
   "public.legal.owner": "{name}, {address}.",
-
   "limit.title": "Забагато запитів",
   "limit.any.desc": "З вашої адреси надходить забагато запитів. Спробуйте ще раз через {wait}.",
   "limit.signin.desc": "Забагато спроб входу з вашої адреси. Спробуйте ще раз через {wait}.",
@@ -2117,7 +1943,6 @@
   "limit.wait.minutes.one": "{n} хвилину",
   "limit.wait.minutes.few": "{n} хвилини",
   "limit.wait.minutes.many": "{n} хвилин",
-
   "upload.reject.size": "Файл більший за дозволений розмір — його видалено",
   "upload.reject.mime": "Такий формат не приймається — файл видалено",
   "upload.reject.content": "Вміст файлу не відповідає його формату — файл видалено",
@@ -2311,5 +2136,6 @@
   "scan.failed": "Камера не запустилася. Спробуйте ще раз або введіть код вручну.",
   "scan.torch.on": "Ліхтарик",
   "scan.torch.off": "Вимкнути ліхтарик",
-  "scan.manual": "Ввести код вручну"
+  "scan.manual": "Ввести код вручну",
+  "inventory.empty.filteredTitle": "За фільтром порожньо"
 }

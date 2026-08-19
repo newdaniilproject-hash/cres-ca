@@ -776,28 +776,6 @@ html.dark {
     background: var(--color-accent-soft);
   }
 
-  /* ── Верхняя строка кабинета: поиск, сканер, аватар ─────────
-     Появилась 15.08.2026 вместе с новой оболочкой по макетам.
-     Поле поиска — пилюля во всю оставшуюся ширину: это главный
-     элемент строки, а не украшение. Шрифт 16px обязателен: iOS
-     зумит страницу на любом поле мельче и обратно не отъезжает. */
-  .searchbar {
-    height: var(--h-input);
-    padding-inline: 14px;
-    border-radius: 999px;
-    border: 1px solid var(--color-border);
-    background: var(--color-surface);
-    transition: border-color var(--dur-fast);
-  }
-  .searchbar:focus-within { border-color: var(--color-accent); }
-  .searchbar-input {
-    font-size: 16px;
-    background: transparent;
-    border: 0;
-    outline: none;
-    color: var(--color-text);
-  }
-  .searchbar-input::placeholder { color: var(--color-faint); }
 
   /* Круглая кнопка-иконка строки. Размер задаётся кнопкой, а не
      иконкой: зона нажатия обязана быть 44px даже у картинки 20px. */
@@ -907,6 +885,13 @@ html.dark {
     background: var(--color-surface-2); display: grid; place-items: center;
     flex-shrink: 0; font-size: 14px; color: var(--color-muted); overflow: hidden;
   }
+  /* Тон значка-якоря. README задаёт цветную плашку у навигационных строк
+     («Документи» на accentSoft, «Контроль відкриття» на violetSoft):
+     две строки подряд с одинаковым серым кружком читаются как один
+     пункт, разбитый переносом. Тон — атрибутом, а не цветом по месту:
+     иначе он разъедется с системой при первой правке темы. */
+  .list-anchor[data-tone='accent'] { background: var(--color-accent-soft); color: var(--color-accent-ink); }
+  .list-anchor[data-tone='violet'] { background: var(--tone-violet-soft);  color: var(--tone-violet); }
 
   /* Цвет только для исключения (например, приход в журнале движений),
      а не для нормы — обычное списание/расход остаётся нейтральным. */
@@ -962,30 +947,81 @@ html.dark {
      Без этого числа прыгают по ширине при каждом обновлении. */
   .tabular { font-variant-numeric: tabular-nums; }
 
-  /* ── Заголовок экрана ───────────────────────────────────────
-     В макетах он крупный и жирный — «Склад», «Фінанси», «Клієнти»
-     набраны кеглем, который на телефоне занимает почти строку,
-     и под ним серая строка-пояснение. Это не украшение: экран
-     без крупного имени на телефоне читается как продолжение
-     предыдущего, потому что шапка везде одинаковая.
+  /* ── Переключатель из двух-трёх значений ─────────────────────
+     Решение владельца 19.08.2026: «измени стиль и сделай
+     минималистичным смены темы и языка».
 
-     Растёт со ступени 28px до 34px на большом экране, а не наоборот:
-     на телефоне 34px переносится на вторую строку у половины
-     разделов («Налаштування магазину»).                          */
-  .page-title {
-    font-size: calc(28px * var(--type-scale));
-    line-height: calc(32px * var(--type-scale));
-    font-weight: 750;
-    letter-spacing: -0.025em;
+     Что было: пилюля с рамкой, а выбранное значение — СПЛОШНОЙ кобальт
+     с белым текстом. То есть настройка, которую трогают раз в жизни,
+     кричала на экране громче единственной кнопки действия. Акцент —
+     дефицитный ресурс: если им покрашено всё, он не значит ничего.
+
+     Что стало: мягкая дорожка тона `surface-2`, выбранное значение —
+     приподнятая плашка цвета поверхности. Ровно так это выглядит
+     в системных настройках телефона, и по той же причине: выбор
+     обязан читаться, а не отвлекать. Ни одного захардкоженного
+     цвета — только токены.                                        */
+  .seg {
+    display: inline-flex;
+    gap: 2px;
+    padding: 2px;
+    border-radius: 999px;
+    background: var(--color-surface-2);
+  }
+  .seg-item {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-height: 32px;
+    padding-inline: 12px;
+    border-radius: 999px;
+    font-size: calc(13px * var(--type-scale));
+    line-height: 1;
+    font-weight: 600;
+    color: var(--color-muted);
+    transition: background var(--dur-fast), color var(--dur-fast);
+  }
+  .seg-item[data-active="true"] {
+    background: var(--color-surface);
+    color: var(--color-text);
+    box-shadow: var(--shadow-card);
+  }
+
+  /* Строка настройки: подпись слева, управление справа. Одна форма
+     на тему, язык и размер текста — три настройки одного рода,
+     и разные раскладки у них читались бы как разные разделы. */
+  .setting-row {
+    @apply flex items-center justify-between gap-4;
+    min-height: var(--tap-min);
+  }
+  .setting-label {
+    font-size: calc(14px * var(--type-scale));
     color: var(--color-text);
   }
-  @media (min-width: 640px) {
-    .page-title { font-size: calc(34px * var(--type-scale)); line-height: calc(40px * var(--type-scale)); }
-  }
-  .page-subtitle {
-    margin-top: 2px;
-    font-size: var(--text-sm);
-    color: var(--color-muted);
+
+  /* ── Имя экрана в шапке ─────────────────────────────────────
+     Решение владельца 19.08.2026: «название и описание экранов вверху
+     убери, достаточно что они подписаны в нижнем наве».
+
+     Что было и почему снято: блок «крупное имя + серая строка-пояснение»
+     под шапкой. Он стоил около ста пикселей на КАЖДОМ экране и повторял
+     подпись нижней панели — человек нажал «Склад» и читал слово «Склад»
+     ещё раз, уже кеглем 28px, плюс строку о том, что здесь склад.
+     На 390px до содержимого приходилось долистывать.
+
+     Что осталось: одна строка в самой шапке и только у экранов, которых
+     панель НЕ называет (внутренние экраны и карточки). Кегль тот же, что
+     у списка, вес выше — этого хватает, чтобы прочитать «где я», и не
+     хватает, чтобы отобрать место у содержимого.
+
+     Прежние `.page-title` и `.page-subtitle` УДАЛЕНЫ, а не оставлены
+     «на всякий случай»: правило 8 — выключено значит удалено, история
+     живёт в git. Оставленный мёртвый класс через месяц применят снова,
+     решив, что так и задумано.                                    */
+  .apphead-title {
+    font-size: calc(17px * var(--type-scale));
+    line-height: calc(22px * var(--type-scale));
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--color-text);
   }
 
   /* ── Плитка-счётчик ─────────────────────────────────────────
@@ -1178,6 +1214,18 @@ html.dark {
     color: var(--color-faint);
     overflow: hidden;
   }
+  /* Та же плашка в строке списка, где 48px забирают всю высоту строки:
+     выдача поиска, короткие перечни. Ступень скругления берётся своя
+     (`plate`), а не уменьшается на глаз — радиус растёт вместе
+     с размером объекта, и смешивать ступени нельзя. */
+  .thumb-sm {
+    width: 36px; height: 36px;
+    border-radius: var(--radius-plate);
+    display: grid; place-items: center;
+    flex-shrink: 0;
+    background: var(--color-surface-2);
+    color: var(--color-faint);
+  }
 
   /* ── Карточка-герой «Сьогодні» ────────────────────────────────
      Из прототипа: сплошная акцентная плашка наверху экрана «Сьогодні»
@@ -1234,6 +1282,43 @@ html.dark {
   .status-dot[data-tone='accent'] { background: var(--color-accent); }
   .status-dot[data-tone='warn']   { background: var(--tone-amber); }
   .status-dot[data-tone='success']{ background: var(--tone-emerald); }
+
+  /* ── Таблица «ключ → значение» ────────────────────────────────
+     README, раздел C: контейнер 1px border, radius 14, surface,
+     padding 4px 14px; строка padding 11px 0 + border-bottom,
+     последняя без бордера; ключ 13px/muted слева, значение
+     13px/600 справа.
+
+     Разделитель между строками обязателен: в паспорте засоба
+     одиннадцать строк подряд, и без линий пары «ключ-значение»
+     сливаются в столбик текста, по которому инспектор ищет
+     номер партии глазами. */
+  .kv {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-card);
+    background: var(--color-surface);
+    padding: 4px 14px;
+  }
+  .kv-row {
+    @apply flex items-start justify-between gap-4 border-b;
+    padding-block: 11px;
+    border-color: var(--color-border);
+  }
+  .kv-row:last-child { border-bottom: none; }
+  .kv-key {
+    font-size: calc(13px * var(--type-scale));
+    line-height: calc(18px * var(--type-scale));
+    color: var(--color-muted);
+    flex-shrink: 0;
+  }
+  .kv-val {
+    font-size: calc(13px * var(--type-scale));
+    line-height: calc(18px * var(--type-scale));
+    font-weight: 600;
+    color: var(--color-text);
+    min-width: 0;
+    text-align: right;
+  }
 
   /* ── Плавающая кнопка ───────────────────────────────────────
      Главное действие экрана. Поднята над нижней панелью на её
@@ -1629,10 +1714,21 @@ html[data-native] .appshell { padding-bottom: calc(8rem + var(--kb, 0px)); }
   top: 0;
   z-index: 40;
   margin-inline: -16px;
-  margin-bottom: 16px;
-  padding: 8px 16px 10px;
-  padding-top: calc(8px + env(safe-area-inset-top));
-  border-bottom: 1px solid var(--color-border);
+  margin-bottom: 12px;
+  padding: 6px 16px 8px;
+  padding-top: calc(6px + env(safe-area-inset-top));
+  /* Разделительной линии здесь НЕТ — снята решением владельца
+     19.08.2026. Шапка и так отделена от содержимого: она полупрозрачная
+     с размытием, и текст, уезжающий под неё, виден размытым. Линия
+     поверх этого рисовала второй разделитель там, где уже есть первый,
+     и на светлой теме читалась как край чужой карточки.
+
+     ⚠️ `backdrop-filter` ниже делает шапку СОДЕРЖАЩИМ БЛОКОМ для всего,
+     что внутри неё объявлено `position: fixed` (так же работают
+     `transform` и `filter`). Из-за этого шторка колокола открывалась
+     внутри полоски шапки и выглядела сломанной кнопкой. Починено
+     в `components/sheet.tsx` порталом в body — не убирайте портал,
+     считая его лишним: без него ошибка вернётся молча. */
   background: color-mix(in srgb, var(--color-bg) 82%, transparent);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -1643,6 +1739,46 @@ html[data-native] .appshell { padding-bottom: calc(8rem + var(--kb, 0px)); }
     margin-inline: -24px;
     padding-inline: 24px;
   }
+}
+
+/* ── Слой страницы и подложка жеста «назад» ─────────────────────
+   `#page` — обёртка содержимого из корневого макета. Своя стопка
+   (`z-index: 1`) нужна затем, чтобы снимок предыдущего экрана лёг
+   ПОД неё, а шторки и уведомления (портал в `body`, z-40/z-50)
+   остались НАД. Фон обязателен: без него подложка просвечивает
+   сквозь страницу всё время, а не только во время жеста.
+
+   `min-height: 100dvh`, а не `100vh`: при открытой клавиатуре
+   `vh` не уменьшается, и низ страницы уезжает под неё.
+
+   ⚠️ Во время жеста `#page` получает `transform`, а он делает
+   элемент содержащим блоком для `position: fixed` внутри. Это
+   ЖЕЛАЕМОЕ поведение: нижняя панель обязана ехать вместе с экраном,
+   а не висеть на месте. Но это же причина, по которой шторки
+   уходят порталом в `body` (см. components/sheet.tsx).       */
+#page {
+  position: relative;
+  z-index: 1;
+  min-height: 100dvh;
+  background: var(--color-bg);
+}
+
+#swipe-under {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  background: var(--color-bg);
+}
+/* Затемнение поверх предыдущего экрана: он «в глубине», пока
+   верхний не уехал. Гаснет к концу жеста. */
+#swipe-scrim {
+  position: absolute;
+  inset: 0;
+  background: #000;
+  opacity: 0.16;
+  transition: opacity var(--dur-fast) linear;
+  pointer-events: none;
 }
 
 /* Пока клавиатура поднята, плавающая навигация перекрывает поле ввода:
@@ -1670,13 +1806,20 @@ html[data-native] body:has(input:focus, textarea:focus) .bottomnav { display: no
    не задаётся сознательно: им управляет `lg:hidden` на бургере,
    и перебивать утилиту незаслоённым правилом было бы ровно тем
    склеиванием, от которого этот файл уходит. */
+/* Стрелка «назад» — минимальная (решение владельца 19.08.2026).
+   Ни плашки, ни рамки, ни заливки: это не действие экрана, а выход
+   с него, и соперничать в весе с кнопкой действия оно не должно.
+   Зона нажатия при этом полная — 44px, как у любого другого значка:
+   уменьшать надо рисунок, а не цель для пальца. */
 .apphead-back {
   width: var(--tap-min);
   height: var(--tap-min);
-  margin-left: -10px;
-  border-radius: var(--radius-control);
-  color: var(--color-text);
+  margin-left: -12px;
+  color: var(--color-muted);
+  transition: color var(--dur-fast);
 }
+.apphead-back:active { color: var(--color-text); }
+.apphead-back svg { stroke-width: 1.5; }
 
 /* Стрелка «назад» на экранах входа и регистрации приложения. */
 .navback {

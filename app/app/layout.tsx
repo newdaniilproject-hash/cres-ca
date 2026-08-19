@@ -1,7 +1,8 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { currentMembership } from '@/lib/tenant'
+import { currentMembership, currentUserId } from '@/lib/tenant'
 import { AppShell } from '@/components/shell'
+import { themeServerScript, type Choice } from '@/components/theme'
 import { getLang } from '@/lib/i18n/server'
 import { LangProvider } from '@/lib/i18n/client'
 
@@ -36,13 +37,33 @@ export default async function AppLayout({
   // а не на каждую страницу: layout не перерисовывается при переходах
   // внутри сегмента.
   const supabase = await createClient()
-  const { data: tenant } = await supabase
-    .from('tenants').select('name').eq('id', m.tenantId).maybeSingle()
+  // Имя заведения и тема человека — одним заходом, параллельно.
+  //
+  // ТЕМА ЧИТАЕТСЯ ЗДЕСЬ, А НЕ В КОРНЕВОМ МАКЕТЕ, и это решение: корневой
+  // макет обслуживает и витрину, а поход в базу оттуда сделал бы
+  // динамическими все публичные страницы разом (правило 6 — скорость
+  // критерий приёмки). Кабинет и так `force-dynamic`, и этот запрос
+  // уходит вместе с запросом имени заведения.
+  // `currentUserId` разбирает уже полученный токен и в сеть не ходит
+  // (правило 3): идентификатор человека там же, где его права.
+  const userId = await currentUserId()
+  const [{ data: tenant }, { data: profile }] = await Promise.all([
+    supabase.from('tenants').select('name').eq('id', m.tenantId).maybeSingle(),
+    userId
+      ? supabase.from('profiles').select('theme').eq('id', userId).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ])
+  const theme = (profile?.theme === 'dark' ? 'dark' : 'light') as Choice
 
   const lang = await getLang()
 
   return (
     <LangProvider lang={lang}>
+      {/* Тема из профиля — одна на все устройства человека (0109).
+          Скриптом, а не эффектом: эффект случается после отрисовки,
+          и переключившийся на телефоне увидел бы на вебе белую вспышку
+          и перекраску. Разбор — `components/theme.tsx`. */}
+      <script dangerouslySetInnerHTML={{ __html: themeServerScript(theme) }} />
       <AppShell modules={m.modules} perms={m.perms} shopName={tenant?.name ?? ''}>
         {children}
       </AppShell>

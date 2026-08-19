@@ -10,6 +10,7 @@ import { useT } from '@/lib/i18n/client'
 import { MaterialForm, type MaterialInit, type RefItem } from '../../material-form'
 import { EXPIRY_KEY } from '../../inventory-client'
 import { EXPIRY_BADGE, expiryState } from '@/lib/expiry'
+import { IconDoc, IconQr } from '@/components/icons'
 
 export type Batch = {
   id: string; number: string
@@ -28,10 +29,9 @@ export type Container = {
 // строк на экране одиннадцать и разъехаться они не должны.
 function Row({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
   return (
-    <div className="flex items-start justify-between gap-4"
-         style={{ paddingBlock: 'var(--space-2)' }}>
-      <span className="t-sm shrink-0" style={{ color: 'var(--color-muted)' }}>{label}</span>
-      <span className={`t-md min-w-0 text-right ${mono ? 'tabular' : ''}`}>{value}</span>
+    <div className="kv-row">
+      <span className="kv-key">{label}</span>
+      <span className={`kv-val ${mono ? 'tabular' : ''}`}>{value}</span>
     </div>
   )
 }
@@ -140,32 +140,27 @@ export function MaterialCard({
         )}
       </section>
 
-      {/* ── Паспорт засоба (ТЗ 3.1) ──────────────────────────── */}
-      <section className="card rise-2">
-        <h3 className="t-sm mb-1" style={{ color: 'var(--color-faint)' }}>
-          {t('inventory.material.passport.title')}
-        </h3>
-        <Row label={t('inventory.material.row.brand')} value={material.brand ?? '—'} />
-        <Row label={t('inventory.material.row.sku')} value={material.sku ?? '—'} mono />
-        <Row label={t('inventory.material.row.category')} value={material.category ?? '—'} />
-        <Row label={t('inventory.material.row.country')} value={material.country ?? '—'} />
-        <Row label={t('inventory.material.row.unit')} value={material.unit} />
-        {material.inci && (
-          <div style={{ paddingBlock: 'var(--space-2)' }}>
-            <p className="t-sm" style={{ color: 'var(--color-muted)' }}>
-              {t('inventory.material.row.inci')}
-            </p>
-            <p className="t-sm mt-1">{material.inci}</p>
-          </div>
-        )}
+      {/* ── Паспорт засоба (ТЗ 3.1) ──────────────────────────────
+          README, розділ C, блок 1: Бренд, Артикул, Категорія,
+          Країна-виробник. INCI отсюда УБРАН и стоит своей секцией
+          ниже, как в спецификации: это абзац состава, а не строка
+          таблицы — в «ключ → значение» он занимал пять строк высоты
+          и ломал ритм остальных. */}
+      <section className="rise-2">
+        <p className="eyebrow mb-2">{t('inventory.material.passport.title')}</p>
+        <div className="kv">
+          <Row label={t('inventory.material.row.brand')} value={material.brand ?? '—'} />
+          <Row label={t('inventory.material.row.sku')} value={material.sku ?? '—'} mono />
+          <Row label={t('inventory.material.row.category')} value={material.category ?? '—'} />
+          <Row label={t('inventory.material.row.country')} value={material.country ?? '—'} />
+          <Row label={t('inventory.material.row.unit')} value={material.unit} />
+        </div>
       </section>
 
       {/* ── Партия и сроки ───────────────────────────────────── */}
-      <section className="card rise-2">
-        <div className="mb-1 flex items-center justify-between gap-3">
-          <h3 className="t-sm" style={{ color: 'var(--color-faint)' }}>
-            {t('inventory.material.batches.title')}
-          </h3>
+      <section className="rise-2">
+        <div className="section-head">
+          <p className="eyebrow">{t('inventory.material.batches.title')}</p>
           {canWrite && (
             <button type="button" className="btn-ghost t-sm"
                     onClick={() => setBatchEdit('new')}>
@@ -176,14 +171,19 @@ export function MaterialCard({
 
         {active ? (
           <>
-            {/* Номер партии — данные арендатора, не переводится. */}
-            <Row label={t('inventory.material.row.batchNumber')} value={active.number} mono />
-            <Row label={t('inventory.material.row.made')} value={t.date(active.made)} mono />
-            <Row label={t('inventory.material.row.expiry')} value={t.date(active.expiry)} mono />
-            <Row label={t('inventory.material.row.pao')}
-                 value={material.paoMonths ? `${t.number(material.paoMonths)}M` : '—'} mono />
-            <Row label={t('inventory.material.row.status')}
-                 value={<span className={EXPIRY_BADGE[state]}>{t(EXPIRY_KEY[state])}</span>} />
+            {/* README, розділ C, блок 2 «Партія та терміни»:
+                Номер партії, Дата виробництва, Термін придатності,
+                PAO, Статус — статус кольором стану. */}
+            <div className="kv">
+              {/* Номер партии — данные арендатора, не переводится. */}
+              <Row label={t('inventory.material.row.batchNumber')} value={active.number} mono />
+              <Row label={t('inventory.material.row.made')} value={t.date(active.made)} mono />
+              <Row label={t('inventory.material.row.expiry')} value={t.date(active.expiry)} mono />
+              <Row label={t('inventory.material.row.pao')}
+                   value={material.paoMonths ? `${t.number(material.paoMonths)}M` : '—'} mono />
+              <Row label={t('inventory.material.row.status')}
+                   value={<span className={EXPIRY_BADGE[state]}>{t(EXPIRY_KEY[state])}</span>} />
+            </div>
             {canWrite && (
               <button type="button" className="btn-ghost mt-1 t-sm"
                       onClick={() => setBatchEdit(active)}>
@@ -229,10 +229,18 @@ export function MaterialCard({
       </section>
 
       {/* ── Два подэкрана: документы и контроль вскрытия ─────── */}
+      {/* README, розділ C: два навігаційні рядки со ЗНАЧКАМИ на цветных
+          плашках — документы на `accentSoft`, контроль вскрытия на
+          `violetSoft`. Разные тона здесь не украшение: это два разных
+          по смыслу подэкрана (бумаги и физическая банка), и одинаковый
+          серый кружок у обоих читался как один пункт с переносом. */}
       <section className="card rise-3 !p-0">
         <Link href={`/app/inventory/materials/${material.id}/docs`}
               className="row px-5" style={{ minHeight: 'var(--tap-min)' }}>
-          <span className="min-w-0">
+          <span aria-hidden className="list-anchor" data-tone="accent">
+            <IconDoc size={18} />
+          </span>
+          <span className="min-w-0 flex-1">
             <span className="t-md block">{t('inventory.material.docs.title')}</span>
             <span className="t-xs block" style={{ color: 'var(--color-faint)' }}>
               {docsCount > 0
@@ -250,7 +258,10 @@ export function MaterialCard({
 
         <Link href={`/app/inventory/materials/${material.id}/pao`}
               className="row px-5" style={{ minHeight: 'var(--tap-min)' }}>
-          <span className="min-w-0">
+          <span aria-hidden className="list-anchor" data-tone="violet">
+            <IconQr size={18} />
+          </span>
+          <span className="min-w-0 flex-1">
             <span className="t-md block">{t('inventory.material.pao.title')}</span>
             <span className="t-xs block" style={{ color: 'var(--color-faint)' }}>
               {t('inventory.material.pao.desc')}
@@ -267,10 +278,39 @@ export function MaterialCard({
         </Link>
       </section>
 
-      {/* ── Нотификация МОЗ (ТЗ 3.1: посилання/код) ──────────── */}
+      {/* ── Склад (INCI) ──────────────────────────────────────────
+          README, розділ C: своя секция, «текст 12px/1.6 muted у картці».
+          В таблице «ключ → значение» он занимал пять строк высоты
+          и ломал ритм остальных: это абзац состава, а не строка.
+          Показывается только у косметики и только если он заполнен —
+          пустая карточка с заголовком «Склад» сообщает лишь о том,
+          что мы про него помним. */}
+      {material.isCosmetic && material.inci && (
+        <section className="rise-3">
+          <p className="eyebrow mb-2">{t('inventory.material.inci.title')}</p>
+          <div className="card">
+            <p style={{
+              fontSize: 'calc(12px * var(--type-scale))',
+              lineHeight: 1.6,
+              color: 'var(--color-muted)',
+            }}>
+              {material.inci}
+            </p>
+          </div>
+        </section>
+      )}
+
+      {/* ── Нотификация МОЗ (ТЗ 3.1: посилання/код) ────────────────
+          README: инфо-блок на `accentSoft`. Это не украшение: блок
+          несёт код и дату регистрации — то, что проверка спрашивает
+          первым, — и на общем фоне он терялся между карточками. */}
       {material.isCosmetic && (
-        <section className="card-flat rise-3">
-          <h3 className="t-sm mb-1" style={{ color: 'var(--color-faint)' }}>
+        <section className="rise-3" style={{
+          background: 'var(--color-accent-soft)',
+          borderRadius: 'var(--radius-card)',
+          padding: '14px 16px',
+        }}>
+          <h3 className="t-sm mb-1" style={{ color: 'var(--color-accent-ink)' }}>
             {t('inventory.material.moz.title')}
           </h3>
           {material.notificationCode ? (

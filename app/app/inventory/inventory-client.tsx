@@ -16,7 +16,7 @@ import { EXPIRY_BADGE, type ExpiryState, expiryState } from '@/lib/expiry'
 import { Scanner } from '@/components/scanner'
 import {
   IconArrows, IconBarcode, IconBeaker, IconBox, IconClipboard, IconClose,
-  IconBag, IconDoc, IconInbox, IconList, IconLow, IconQr, IconScan, IconSearch,
+  IconBag, IconDoc, IconInbox, IconList, IconLow, IconQr, IconScan,
 } from '@/components/icons'
 
 type Container = {
@@ -76,6 +76,17 @@ export const EXPIRY_KEY: Record<ExpiryState, Key> = {
 //             (под нижней панелью, то есть наполовину недоступными)
 //             и «Довідники» отдельной кнопкой в ряду фильтров.
 //
+// ⚠️ ПОИСКА НА ЭТОМ ЭКРАНЕ БОЛЬШЕ НЕТ (решение владельца 19.08.2026:
+// «пусть в хедере будет один единый поиск по всему... а на самих экранах
+// поля поиска не будет»). Поле уехало не «обратно в шапку»: в шапке
+// теперь ОДИН поиск на весь кабинет — по расходникам, каталогу, клиентам
+// и заказам сразу (`components/global-search.tsx`). Своё поле искало
+// только по складу, то есть требовало сначала угадать раздел. Фильтры
+// состояния («Дійсні», «Закінчуються», «Прострочені») остались здесь:
+// это не поиск, а вопрос «что горит» — он про этот экран и только про
+// него. Не возвращать поле «заодно»: два поиска в одном продукте
+// расходятся правилами в первый же месяц.
+//
 // Ряд фильтров при этом смешивал три разных вещи в один список кружков:
 // фильтры («Всі», «Розхідники»), переход в шторку («Довідники») и
 // создание («+ Засіб»). На 390px он переносился на две строки, и «+ Засіб»
@@ -106,11 +117,6 @@ export const EXPIRY_KEY: Record<ExpiryState, Key> = {
 // Владелец передал кликабельный прототип: «самый близкий визуал что я хотел,
 // от него плясать будем». Что он изменил в этом экране:
 //
-//   • ПОИСК ВЕРНУЛСЯ НА СТРАНИЦУ. В прототипе шапка занята календарём,
-//     колоколом, сканером и аватаром, а поиск стоит здесь, под заголовком.
-//     Дубляжом это не стало: строка из шапки удалена, второй в продукте
-//     нет. И он стал лучше прежнего — фильтрует по мере набора, а не
-//     по Enter с серверным переходом;
 //   • СЧЁТЧИКИ БЕЗ ЗНАЧКОВ. Крупное цветное число и мелкая подпись
 //     (`.metric`): четыре плитки со значками съедали треть первого экрана;
 //   • «ШВИДКІ ДІЇ» — ряд цветных плиток, уезжающий вбок. Это вход
@@ -126,10 +132,8 @@ export const EXPIRY_KEY: Record<ExpiryState, Key> = {
 // первый экран тому, кто заходит сюда раз в неделю.
 export function InventoryClient({
   tenantId, userId, containers, materials, variants, totals,
-  suppliers, locations, batches, initialQuery, initialScan,
+  suppliers, locations, batches, initialScan,
 }: {
-  /** Пришло из строки поиска в шапке (?q=). */
-  initialQuery: string
   /** Пришло с кнопки сканера в шапке (?scan=1). */
   initialScan: boolean
   tenantId: string
@@ -148,7 +152,6 @@ export function InventoryClient({
   const toast = useToast()
   const [tab, setTab] = useState<Tab>('all')
   const [flag, setFlag] = useState<Flag>('all')
-  const [query, setQuery] = useState(initialQuery)
   // Формы раскрываются шторкой снизу, а не блоком на странице: на телефоне
   // раздвигающийся блок уводит список вниз, и мастер теряет место, где был.
   const [adding, setAdding] = useState<'material' | 'container' | 'refs' | null>(null)
@@ -180,10 +183,6 @@ export function InventoryClient({
     }
   }, [materials, containers, variants])
 
-  const q = query.trim().toLowerCase()
-  const match = (...fields: (string | null)[]) =>
-    !q || fields.some((f) => f && f.toLowerCase().includes(q))
-
   // Условие плитки. Собрано ОДНОЙ функцией на все три списка: развести её
   // по спискам значит завести три определения слова «прострочено».
   //
@@ -207,16 +206,15 @@ export function InventoryClient({
     [...items].sort((a, b) => RANK[state(a)] - RANK[state(b)])
 
   const shownMaterials = byProblem(
-    materials.filter((m) => match(m.name, m.brand, m.sku, m.batch)
-      && passFlag(expiryState(m.expiry))),
+    materials.filter((m) => passFlag(expiryState(m.expiry))),
     (m) => expiryState(m.expiry))
   const shownContainers = byProblem(
-    containers.filter((c) => match(c.code, c.material) && passFlag(expiryState(c.useBy))),
+    containers.filter((c) => passFlag(expiryState(c.useBy))),
     (c) => expiryState(c.useBy))
   // У товара срока годности нет вовсе, поэтому он виден только без фильтра
   // состояния — «прострочених товарів» не бывает, и показывать их под этим
   // фильтром значило бы соврать о причине попадания в список.
-  const shownVariants = variants.filter((v) => match(v.title, v.name) && flag === 'all')
+  const shownVariants = flag === 'all' ? variants : []
 
   const showMaterials = tab === 'all' || tab === 'materials'
   const showContainers = tab === 'all' || tab === 'containers'
@@ -226,7 +224,7 @@ export function InventoryClient({
     (showMaterials ? shownMaterials.length : 0)
     + (showContainers ? shownContainers.length : 0)
     + (showGoods ? shownVariants.length : 0)
-  const filtered = q !== '' || flag !== 'all'
+  const filtered = flag !== 'all'
   const emptyTenant = stats.total === 0
 
   // Короткая дата для плотных списков: «20 трав.». Через `t.date`,
@@ -267,11 +265,6 @@ export function InventoryClient({
     setCamera(true)
     window.history.replaceState(null, '', '/app/inventory')
   }, [sp])
-
-  // Строка поиска живёт в шапке и приходит адресом. Пока состояние
-  // заводилось только начальным значением, второй запрос подряд с той же
-  // страницы список не менял: адрес обновлялся, а `query` оставался прежним.
-  useEffect(() => { setQuery(initialQuery) }, [initialQuery])
 
   // Курсор в поле ручного ввода — после того, как шторка отрисовалась.
   useEffect(() => {
@@ -440,33 +433,6 @@ export function InventoryClient({
         </section>
       )}
 
-      {/* ── Поиск ────────────────────────────────────────────────
-          Переехал сюда из шапки оболочки 18.08.2026 по прототипу
-          CRESKO: в нём шапка занята календарём, колоколом, сканером
-          и аватаром, а поиск стоит на экране под заголовком.
-
-          Дубляжом это не стало — второй строки поиска в продукте
-          больше нет. И он стал лучше той: фильтрует по мере набора,
-          а не по нажатию Enter с серверным переходом, и плейсхолдер
-          называет, по чему ищем. */}
-      <label className="searchfield rise-1">
-        <span aria-hidden><IconSearch size={19} /></span>
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={t('inventory.search.placeholder')}
-          aria-label={t('inventory.search.placeholder')}
-          autoComplete="off"
-        />
-        {q !== '' && (
-          <button type="button" onClick={() => setQuery('')}
-                  aria-label={t('inventory.filter.reset')}
-                  style={{ color: 'var(--color-faint)' }}>
-            <IconClose size={18} />
-          </button>
-        )}
-      </label>
-
       {/* ── Вкладки ──────────────────────────────────────────────
           Одной строкой с горизонтальной прокруткой. Перенос на вторую
           строку смешивал бы их с тем, что стоит рядом, — ровно так
@@ -556,9 +522,12 @@ export function InventoryClient({
       </section>
 
       {/* ── Что сейчас отфильтровано ─────────────────────────────
-          Поиск живёт в шапке оболочки, и без этой метки укороченный
-          список выглядит как пропавшие данные. Крестик снимает
-          фильтр здесь же — идти за этим в шапку человек не догадается. */}
+          Без этой метки укороченный список выглядит как пропавшие
+          данные: человек выбрал «Прострочені» три экрана назад и уже
+          не помнит об этом. Крестик снимает фильтр здесь же.
+
+          Строки поиска среди этих меток больше нет: поиск стал общим
+          и живёт в шапке, а фильтр состояния — свойство этого экрана. */}
       {filtered && (
         <div className="rise-2 flex flex-wrap items-center gap-2">
           {/* Стиль НЕ `chip-active`, хотя напрашивался. Сплошной кобальт
@@ -568,22 +537,13 @@ export function InventoryClient({
               снимаемый фильтр — обводка и акцентный ТЕКСТ, а не заливка
               (`--color-accent-ink` против `--color-accent`, см. CLAUDE.md
               про два токена акцента). */}
-          {q !== '' && (
-            <button type="button" className="chip" onClick={() => setQuery('')}
-                    style={{ borderColor: 'var(--color-accent)', color: 'var(--color-accent-ink)' }}>
-              {t('inventory.filter.query', { q: query.trim() })}
-              <IconClose size={14} className="ml-1.5" />
-            </button>
-          )}
-          {flag !== 'all' && (
-            <button type="button" className="chip" onClick={() => setFlag('all')}
-                    style={{ borderColor: 'var(--color-accent)', color: 'var(--color-accent-ink)' }}>
-              {t(flag === 'ok' ? 'inventory.stats.ok'
-                : flag === 'soon' ? 'inventory.stats.soon'
-                  : 'inventory.stats.expired')}
-              <IconClose size={14} className="ml-1.5" />
-            </button>
-          )}
+          <button type="button" className="chip" onClick={() => setFlag('all')}
+                  style={{ borderColor: 'var(--color-accent)', color: 'var(--color-accent-ink)' }}>
+            {t(flag === 'ok' ? 'inventory.stats.ok'
+              : flag === 'soon' ? 'inventory.stats.soon'
+                : 'inventory.stats.expired')}
+            <IconClose size={14} className="ml-1.5" />
+          </button>
         </div>
       )}
 
@@ -595,7 +555,7 @@ export function InventoryClient({
           <div className="empty">
             <span className="empty-icon"><IconBox size={24} /></span>
             <p className="empty-title">
-              {emptyTenant ? t('inventory.empty.title') : t('inventory.search.empty')}
+              {emptyTenant ? t('inventory.empty.title') : t('inventory.empty.filteredTitle')}
             </p>
             <p className="empty-desc">
               {emptyTenant ? t('inventory.empty.desc') : t('inventory.empty.filtered')}
@@ -607,7 +567,7 @@ export function InventoryClient({
                 </button>
               ) : (
                 <button type="button" className="btn-secondary"
-                        onClick={() => { setQuery(''); setFlag('all') }}>
+                        onClick={() => setFlag('all')}>
                   {t('inventory.filter.reset')}
                 </button>
               )}

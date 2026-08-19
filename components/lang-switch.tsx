@@ -68,12 +68,7 @@ export function LangSwitch({ className = '' }: { className?: string }) {
   }
 
   return (
-    <div
-      className={`inline-flex items-center gap-0.5 rounded-full border p-0.5 ${className}`}
-      style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface-2)' }}
-      role="group"
-      aria-label={t('app.lang.aria')}
-    >
+    <div className={`seg ${className}`} role="group" aria-label={t('app.lang.aria')}>
       {LANGS.map((l) => (
         <button
           key={l}
@@ -82,13 +77,9 @@ export function LangSwitch({ className = '' }: { className?: string }) {
           title={NAME[l]}
           aria-label={NAME[l]}
           aria-pressed={current === l}
+          data-active={current === l}
           lang={l}
-          className="btn-icon t-sm rounded-full px-2 leading-none transition-colors"
-          style={
-            current === l
-              ? { background: 'var(--color-accent)', color: 'var(--color-accent-text)' }
-              : { color: 'var(--color-muted)' }
-          }
+          className="seg-item"
         >
           {SHORT[l]}
         </button>
