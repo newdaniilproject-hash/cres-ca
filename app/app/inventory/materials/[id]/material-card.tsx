@@ -831,36 +831,39 @@ export function MaterialCard({
             единственный вход в правку (кнопка «Виправити партію N» снята
             как дубль), и при одной партии он обязан существовать. */}
         {batches.length > 0 && (
-          <div className="mt-3 border-t pt-2" style={{ borderColor: 'var(--color-border)' }}>
-            <p className="t-xs mb-1" style={{ color: 'var(--color-faint)' }}>
+          <div className="mt-3">
+            <p className="t-xs mb-2" style={{ color: 'var(--color-faint)' }}>
               {t('inventory.material.batches.all', { n: t.number(batches.length) })}
             </p>
-            {batches.map((b) => {
-              const s = expiryState(b.expiry)
-              const inner = (
-                <>
-                  <span className="tabular t-md">{b.number}</span>
-                  <span className={`tabular ${EXPIRY_BADGE[s]}`}>
-                    {t('inventory.material.batch.until', {
-                      date: t.date(b.expiry, { day: 'numeric', month: 'short' }),
-                    })}
-                  </span>
-                </>
-              )
-              // Читателю — div, а не выключенная кнопка: disabled-кнопка
-              // обещает действие, которого нет, и глушит прокрутку с фокусом.
-              return canWrite ? (
-                <button key={b.id} type="button" onClick={() => setBatchEdit(b)}
-                        className="row w-full text-left"
-                        style={{ minHeight: 'var(--tap-min)' }}>
-                  {inner}
-                </button>
-              ) : (
-                <div key={b.id} className="row" style={{ minHeight: 'var(--tap-min)' }}>
-                  {inner}
-                </div>
-              )
-            })}
+            {/* Отдельные карточки с зазором, а не строки на голом фоне:
+                прежний список висел без подложки и читался обрывком
+                таблицы выше. Ритм тот же, что у реестра склада
+                и у истории розливов (`.list-card`). */}
+            <div className="flex flex-col gap-2">
+              {batches.map((b) => {
+                const s = expiryState(b.expiry)
+                const inner = (
+                  <>
+                    <span className="tabular t-md min-w-0 flex-1">{b.number}</span>
+                    <span className={`tabular shrink-0 ${EXPIRY_BADGE[s]}`}>
+                      {t('inventory.material.batch.until', {
+                        date: t.date(b.expiry, { day: 'numeric', month: 'short' }),
+                      })}
+                    </span>
+                  </>
+                )
+                // Читателю — div, а не выключенная кнопка: disabled-кнопка
+                // обещает действие, которого нет, и глушит прокрутку с фокусом.
+                return canWrite ? (
+                  <button key={b.id} type="button" onClick={() => setBatchEdit(b)}
+                          className="list-card">
+                    {inner}
+                  </button>
+                ) : (
+                  <div key={b.id} className="list-card">{inner}</div>
+                )
+              })}
+            </div>
           </div>
         )}
       </section>

@@ -596,7 +596,27 @@ html.dark [data-brand] {
     .input, .select, textarea { font-size: max(16px, var(--text-base)); }
   }
 
-  .select { @apply appearance-none pr-9; }
+  /* Шеврон селекта. `appearance-none` снимает СИСТЕМНУЮ стрелку, а `pr-9`
+     резервирует под неё место — но рисовать её было нечем, и селект
+     месяцами выглядел полем ввода с необъяснимой пустотой справа
+     (найдено проходом карточки засоба 19.08.2026; README §H требует
+     шеврон у каждого селекта).
+
+     Фоном, а не псевдоэлементом: у `select` псевдоэлементы не рисуются
+     ни в одном движке. Цвет зашит в сам SVG — `currentColor` внутри
+     `url(data:…)` не наследуется, — поэтому строк ДВЕ: своя на тёмную
+     тему. Это ровно тот случай, когда значение вынужденно живёт дважды,
+     и обе записи стоят рядом, чтобы разъехаться было негде. */
+  .select {
+    @apply appearance-none pr-9;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%235b6270' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 20px 20px;
+  }
+  html.dark .select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%2399a1ae' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  }
   .textarea {
     @apply w-full min-h-24 p-3.5 text-base sm:text-sm border outline-none resize-y;
     border-radius: var(--radius-control);
