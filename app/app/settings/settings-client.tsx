@@ -9,7 +9,7 @@ import type { T } from '@/lib/i18n/translate'
 import { dbErrorText } from '@/lib/errors/db'
 import {
   IconGear, IconBag, IconDoc, IconUsers, IconDownload, IconLock,
-  IconChevronRight, IconClose,
+  IconChevronRight, IconClose, IconLayers,
 } from '@/components/icons'
 
 type Shop = {
@@ -42,7 +42,7 @@ const roleLabel = (t: T, r: string): string =>
 // приходит модулем), а не задан константой: раздел в списке, за которым
 // на этом экране ничего не стоит, — это сломанная навигация, ровно как
 // колокол, который ничего не открывает.
-type SectionKey = 'public' | 'shop' | 'team' | 'export' | 'security'
+type SectionKey = 'public' | 'shop' | 'presets' | 'team' | 'export' | 'security'
 
 // Витрина — отдельный модуль (`storefront`), а страница настроек модуля
 // не требует: в панели «Магазин» им не помечен, потому что здесь же
@@ -61,9 +61,15 @@ type SectionKey = 'public' | 'shop' | 'team' | 'export' | 'security'
 // и приглашение положить её в шапку Instagram. Лишний отказ виден,
 // лишний доступ — нет.
 export function SettingsClient({
-  shop, canWrite, team, canSeeTeam, hasStorefront = false,
+  shop, canWrite, team, canSeeTeam, hasStorefront = false, presets = [],
 }: {
   shop: Shop; canWrite: boolean; team: Member[]
+  /**
+   * Готові набори довідників (0122). Приходять пропом із серверної
+   * сторінки: список пресетів — це продукт, а не дані закладу, і клієнт
+   * за ним не ходить сам.
+   */
+  presets?: { code: string; title: string; description: string | null }[]
   /**
    * Виден ли состав команды. Право на этот экран — `settings.read`,
    * а имена и почты отдаёт `team_overview` по `team.read` (0082), и это
@@ -87,6 +93,9 @@ export function SettingsClient({
   const [state, setState] = useState<'idle' | 'busy' | 'saved' | 'error'>('idle')
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
+  const [presetBusy, setPresetBusy] = useState<string | null>(null)
+  const [presetDone, setPresetDone] = useState('')
+  const [presetError, setPresetError] = useState('')
 
   // Выбранный раздел — ТОЛЬКО для широкого экрана. Умолчание `null`:
   // панель не рисуется, список занимает всю ширину. Открывать первый
@@ -319,6 +328,67 @@ export function SettingsClient({
     )
   }
 
+  /**
+   * Швидке заповнення довідників готовим набором (0122).
+   *
+   * Це і є впровадження: людина, яка щойно завела заклад, бачить не
+   * десяток порожніх довідників, а робочу систему. Кнопка лишається
+   * і після заповнення — повторний виклик нічого не подвоює, і саме це
+   * написано під нею: інакше її бояться натиснути вдруге.
+   */
+  function presetsBody() {
+    if (presets.length === 0) {
+      return <p className="t-sm" style={{ color: 'var(--color-muted)' }}>
+        {t('settings.presets.empty')}
+      </p>
+    }
+    return (
+      <div className="flex flex-col gap-3">
+        {presets.map((p) => (
+          <div key={p.code} className="card-flat flex flex-col gap-2">
+            <b className="t-md">{p.title}</b>
+            {p.description ? (
+              <span className="t-sm" style={{ color: 'var(--color-muted)' }}>
+                {p.description}
+              </span>
+            ) : null}
+            <div>
+              <button type="button" className="btn-secondary t-sm"
+                      disabled={!canWrite || presetBusy === p.code}
+                      onClick={() => applyPreset(p.code)}>
+                {presetBusy === p.code ? t('common.saving') : t('settings.presets.apply')}
+              </button>
+            </div>
+          </div>
+        ))}
+        <p className="t-sm" style={{ color: 'var(--color-muted)' }}>
+          {t('settings.presets.note')}
+        </p>
+        {presetDone ? (
+          <p className="t-sm" style={{ color: 'var(--tone-emerald)' }}>{presetDone}</p>
+        ) : null}
+        {presetError ? (
+          <p className="t-sm" style={{ color: 'var(--color-danger)' }}>{presetError}</p>
+        ) : null}
+      </div>
+    )
+  }
+
+  async function applyPreset(code: string) {
+    setPresetBusy(code); setPresetDone(''); setPresetError('')
+    const { data, error } = await supabase.rpc('apply_preset', {
+      p_tenant_id: shop.id, p_preset: code,
+    })
+    setPresetBusy(null)
+    if (error) { setPresetError(dbErrorText(t, error)); return }
+    // Сумма по всем сущностям, а не перечень: человеку важно «сработало
+    // и сколько», а не разбивка по таблицам, названий которых он не знает.
+    const added = Object.values((data ?? {}) as Record<string, number>)
+      .reduce((a, b) => a + Number(b || 0), 0)
+    setPresetDone(t('settings.presets.done', { n: t.number(added) }))
+    router.refresh()
+  }
+
   /** Безпека: удаление аккаунта. */
   function securityBody() {
     return (
@@ -423,6 +493,15 @@ export function SettingsClient({
       bg: 'var(--tone-blue-soft)', fg: 'var(--tone-blue)',
       body: () => shopForm(true),
     },
+    ...(canWrite ? [{
+      key: 'presets' as const,
+      title: t('settings.presets.title'), desc: t('settings.presets.desc'),
+      icon: <IconLayers size={20} />,
+      // Акцент, а не шостий тон: шкала тонів закрита пʼятьма, а заповнення
+      // довідників — головна дія при заведенні закладу, їй акцент і личить.
+      bg: 'var(--color-accent-soft)', fg: 'var(--color-accent-ink)',
+      body: () => presetsBody(),
+    }] : []),
     {
       key: 'team',
       title: t('settings.team.title'), desc: t('settings.team.desc'),
