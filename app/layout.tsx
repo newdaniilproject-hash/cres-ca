@@ -1,6 +1,9 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
-import { themeBootScript, ThemeNativeSync } from '@/components/theme'
+import { ThemeNativeSync } from '@/components/theme'
+// Строка загрузочного скрипта — из модуля без `'use client'`: её читает
+// сервер, отдавая её разметкой (см. `lib/theme-script.ts`).
+import { themeBootScript } from '@/lib/theme-script'
 import { textScaleBootScript } from '@/components/text-size'
 import { nativeBootScript } from '@/components/native-boot'
 import { langBootScript } from '@/lib/i18n/cookie'

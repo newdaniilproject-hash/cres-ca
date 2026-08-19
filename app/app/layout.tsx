@@ -2,7 +2,11 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { currentMembership, currentUserId } from '@/lib/tenant'
 import { AppShell } from '@/components/shell'
-import { themeServerScript, type Choice } from '@/components/theme'
+// Из `lib/theme-script`, а НЕ из `components/theme`: тот файл клиентский,
+// и вызов его экспорта на сервере роняет весь кабинет в 500
+// («Attempted to call themeServerScript() from the server»). Оплачено
+// падением боя 19.08.2026 — разбор в шапке `lib/theme-script.ts`.
+import { themeServerScript, type Choice } from '@/lib/theme-script'
 import { getLang } from '@/lib/i18n/server'
 import { LangProvider } from '@/lib/i18n/client'
 
