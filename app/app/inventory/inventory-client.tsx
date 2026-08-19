@@ -18,7 +18,7 @@ import { EXPIRY_BADGE, type ExpiryState, expiryState } from '@/lib/expiry'
 import { Scanner } from '@/components/scanner'
 import {
   IconAlert, IconArrows, IconBarcode, IconBeaker, IconBox, IconCheck,
-  IconClipboard, IconClock, IconClose, IconBag, IconDoc, IconInbox,
+  IconClipboard, IconClock, IconClose, IconBag, IconInbox,
   IconLayers, IconList, IconLow, IconMinus, IconPlus, IconQr, IconScan,
 } from '@/components/icons'
 
@@ -219,7 +219,13 @@ export function InventoryClient({
       ...containers.map((c) => expiryState(c.useBy)),
     ]
     return {
-      total: materials.length + containers.length + variants.length,
+      // «Позицій» — это ДЛИНА РЕЄСТРУ, а не всё что есть в разделе.
+      // С 19.08.2026 спокойный вид «Всі» показывает только засоби, и число
+      // обязано совпадать с подписью «Реєстр · N позицій» под ним: плитка
+      // «9» над списком из шести читается как потерянные строки.
+      // Состояния (Дійсні / Закінч. / Прострочені) при этом считают И банки
+      // — у них выход есть: нажатие ставит фильтр, и банки появляются.
+      total: materials.length,
       ok: items.filter((s) => s === 'ok').length,
       soon: items.filter((s) => s === 'soon' || s === 'urgent').length,
       expired: items.filter((s) => s === 'expired').length,
@@ -260,7 +266,21 @@ export function InventoryClient({
   const shownVariants = flag === 'all' ? variants : []
 
   const showMaterials = tab === 'all' || tab === 'materials'
-  const showContainers = tab === 'all' || tab === 'containers'
+  // ⚠️ Решение владельца 19.08.2026: ёмкости в общем списке ПУТАЮТ —
+  // «L'Oréal … Mask» стоит там дважды, засобом и вскрытой банкой, и это
+  // читается как задвоение данных, а не как две разные сущности.
+  //
+  // Но вынести их из «Всі» насовсем нельзя: тем же днём записано, ради
+  // чего список вообще плоский — чтобы просроченная банка не легла ниже
+  // двадцати здоровых засобів. Экран существует ради ответа «що горить»,
+  // и банка горит чаще всего: у неё срок считается от вскрытия.
+  //
+  // Поэтому банки уходят из СПОКОЙНОГО вида и остаются в тревожном:
+  // без фильтра состояния «Всі» показывает только засоби (имена не
+  // двоятся), а под «Прострочені» и «Закінчується» — и засоби, и банки.
+  // Счётчики считают и то и другое, и это честно: нажатие на число
+  // ставит фильтр, то есть у каждого числа есть выход.
+  const showContainers = tab === 'containers' || (tab === 'all' && flag !== 'all')
   const showGoods = tab === 'all' || tab === 'goods'
 
   const visible =
@@ -469,7 +489,10 @@ export function InventoryClient({
     ...(containers.length > 0
       ? [{ href: '/app/inventory/labels', label: t('inventory.action.printLabels'), icon: IconQr, blank: true }]
       : []),
-    { href: '/app/documents', label: t('inventory.links.documents'), icon: IconDoc },
+    // «Усі документи» отсюда снято 19.08.2026 решением владельца: это была
+    // вторая дверь в раздел «Журнали», где документы и живут. Документы
+    // КОНКРЕТНОГО засоба открываются с его карточки — та дверь и нужна,
+    // а список всех документов заведения к складу отношения не имеет.
     { href: '/app/inventory/recipes', label: t('inventory.links.recipes'), icon: IconBeaker },
     { href: '/app/inventory/barcodes', label: t('inventory.links.barcodes'), icon: IconBarcode },
   ]
