@@ -12,6 +12,11 @@ import { EXPIRY_KEY } from '../../inventory-client'
 import { EXPIRY_BADGE, expiryState } from '@/lib/expiry'
 import { dbErrorText } from '@/lib/errors/db'
 import { IconBox, IconDoc, IconQr } from '@/components/icons'
+// Подпись типа движения берётся ТАМ ЖЕ, где её берёт журнал движений:
+// второй список `receipt → прихід` разъехался бы с первым в тот день,
+// когда в enum добавят значение (правило «один источник правды»).
+import { movementLabel } from '../../movements/movements-client'
+import type { DocKind } from '@/lib/documents'
 
 export type Batch = {
   id: string; number: string
@@ -24,6 +29,17 @@ export type Container = {
   openedAt: string | null; useBy: string | null
   decantedAt: string | null; parentId: string | null
 }
+/** Документ засоба без пути к файлу: сам файл открывает подэкран `docs/`. */
+export type MaterialDoc = {
+  id: string; kind: DocKind; title: string; createdAt: string
+}
+/** Строка журнала движений по этому засобу. */
+export type Movement = {
+  id: string; type: string; qty: number; note: string | null; at: string
+}
+
+/** Вкладки широкого экрана (хендофф CRESKO Web, §9 «Картка товару»). */
+type WebTab = 'batches' | 'containers' | 'movements' | 'docs'
 
 // Строка «поле — значение». Ровно та таблица, что на макете: подпись
 // слева серым, значение справа. Отдельным компонентом, потому что таких
@@ -38,12 +54,14 @@ function Row({ label, value, mono }: { label: string; value: React.ReactNode; mo
 }
 
 export function MaterialCard({
-  tenantId, canWrite, material, stock, batches, containers, docsCount,
-  suppliers, locations,
+  tenantId, canWrite, material, isActive, stock, batches, containers,
+  docsCount, docs, movements, suppliers, locations,
 }: {
   tenantId: string
   canWrite: boolean
   material: MaterialInit
+  /** Засіб в обращении. Показывается значком, формой не правится. */
+  isActive: boolean
   /**
    * Остаток на складе. `null` — у читателя нет `stock.read` (инспектор):
    * строка «В наявності» не показывается вовсе. Ноль и «нет права» —
@@ -53,6 +71,12 @@ export function MaterialCard({
   batches: Batch[]
   containers: Container[]
   docsCount: number
+  docs: MaterialDoc[]
+  /**
+   * Журнал движений по засобу. Пустой массив у того, у кого нет
+   * `stock.read`: RLS не отдала строк — и вкладка не рисуется.
+   */
+  movements: Movement[]
   suppliers: RefItem[]
   locations: RefItem[]
 }) {
@@ -66,6 +90,10 @@ export function MaterialCard({
   const [busy, setBusy] = useState(false)
   const [relocate, setRelocate] = useState(false)
   const [relocBusy, setRelocBusy] = useState(false)
+  // Вкладка широкого экрана. На телефоне её нет вовсе: там секции лежат
+  // одна под другой, и переключатель прятал бы половину карточки за
+  // лишним нажатием.
+  const [tab, setTab] = useState<WebTab>('batches')
 
   // Действующая партия — та, что кончится раньше остальных ещё не
   // просроченных. Именно её номер и срок инспектор ждёт в карточке.
@@ -78,6 +106,42 @@ export function MaterialCard({
 
   const state = expiryState(active?.expiry)
   const opened = containers.filter((c) => c.status === 'opened')
+
+  // Имена справочников — одним поиском на обе раскладки. Два одинаковых
+  // `find` в разметке расходятся ровно тогда, когда правят один из них.
+  const supplierName = (id: string | null) =>
+    suppliers.find((s) => s.id === id)?.name ?? null
+  const locationName = locations.find((l) => l.id === material.locationId)?.name ?? null
+
+  // ── CRESKO Web, §9: вкладки карточки ─────────────────────────────────
+  // Вкладка заводится только под то, что на карточке ЕСТЬ. «Історія руху»
+  // пропадает у того, кому RLS не отдала журнал (инспектор), — пустая
+  // вкладка это обещание, за которым ничего нет. «Партії», «Ємності»
+  // и «Документи» остаются всегда: у них пустое состояние само по себе
+  // сообщение — партии нет («перевірка не приймає засіб»), документов нет
+  // («потрібні»), банка не заведена (вход в контроль вскрытия).
+  const webTabs: { key: WebTab; label: string; n: number; show: boolean }[] = [
+    { key: 'batches', label: t('inventory.material.web.tab.batches'), n: batches.length, show: true },
+    { key: 'containers', label: t('inventory.material.web.tab.containers'), n: containers.length, show: true },
+    { key: 'movements', label: t('inventory.material.web.tab.movements'), n: movements.length, show: movements.length > 0 },
+    { key: 'docs', label: t('inventory.material.web.tab.docs'), n: docsCount, show: true },
+  ]
+
+  // Колонки таблиц CRESKO Web: единственное место, где размер задаётся
+  // строкой, — так велит `.wtable` (грид задаёт экран, а не файл стилей).
+  const GRID_BATCH = '1.1fr .9fr .9fr .9fr 1.2fr .9fr 40px'
+  const GRID_CONT = '1.2fr .8fr .9fr .9fr .9fr 40px'
+  const GRID_MOVE = '1fr 1fr .8fr 2fr'
+  const GRID_DOC = '1.2fr 2fr .9fr'
+
+  // Цвет остатка в стат-ряду: красное — нечего выдавать, жёлтое — ниже
+  // порога, зелёное — норма. Порог берётся тот же, каким мобильная
+  // карточка ставит значок «мінімум N».
+  const stockTone = stock == null || stock <= 0
+    ? 'var(--color-danger)'
+    : material.threshold > 0 && stock <= material.threshold
+      ? 'var(--color-warn)'
+      : 'var(--color-success)'
 
   async function saveBatch(form: {
     number: string; made: string; expiry: string; supplierId: string
@@ -137,7 +201,488 @@ export function MaterialCard({
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 lg:gap-5">
+
+      {/* ═══ CRESKO Web, §9 «Картка товару» — ТОЛЬКО lg ══════════════════
+          Второй визуальный язык кабинета (решение владельца 19.08.2026),
+          а не вторая копия карточки: разметка своя, а состояние, шторки
+          и все действия — те же самые. Кнопка «Редагувати» здесь и внизу
+          открывает ОДНУ шторку; два набора обработчиков разъехались бы
+          на первой правке.
+
+          Мобильная карточка ниже уходит под `lg:hidden` целиком: смешивать
+          «ключ → значение» мобильного паспорта с колоночной раскладкой
+          веба значит показать одни и те же поля дважды на одном экране. */}
+      <div className="hidden flex-col gap-5 lg:flex">
+
+        {/* ── Шапка: фото 216×216 слева, имя и мета справа ──────────
+            Радиус 16 — тот же, что у `.webcard`; фото раздаётся из
+            публичного бакета `media` (0111), поэтому обычный <img>,
+            а не next/image: оптимизатор был бы ещё одним прокси
+            на пути картинки без выигрыша.
+            Пустого серого прямоугольника нет: без фото стоит плашка
+            со значком — она читается как «фото не додали», а серый
+            прямоугольник как «не завантажилось». */}
+        <section className="webcard flex gap-5">
+          {material.imagePath ? (
+            <span className="h-[216px] w-[216px] shrink-0 overflow-hidden rounded-2xl">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={photoUrl(material.imagePath)} alt=""
+                   className="h-full w-full object-cover" />
+            </span>
+          ) : (
+            <span className="flex h-[216px] w-[216px] shrink-0 items-center justify-center rounded-2xl"
+                  style={{
+                    background: 'var(--color-surface-2)',
+                    border: '1px solid var(--color-border)',
+                    color: 'var(--color-faint)',
+                  }}>
+              <IconBox size={40} />
+            </span>
+          )}
+
+          <div className="flex min-w-0 flex-1 flex-col">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                {/* Имя засоба — данные арендатора, не переводится. */}
+                <h1 className="webh1" data-size="27">{material.name}</h1>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className={EXPIRY_BADGE[state]}>{t(EXPIRY_KEY[state])}</span>
+                  <span className={isActive ? 'badge-success' : 'badge'}>
+                    {isActive
+                      ? t('inventory.material.web.active')
+                      : t('inventory.material.web.inactive')}
+                  </span>
+                  {material.isCosmetic && (
+                    <span className="badge-accent">{t('inventory.material.badge.cosmetic')}</span>
+                  )}
+                  {!canWrite && <span className="badge">{t('inventory.material.badge.readonly')}</span>}
+                </div>
+              </div>
+              {/* Действия карточки — те же две, что и на телефоне.
+                  «Перемістити» стоит здесь, а не отдельной карточкой
+                  справа: место зберігання уже названо в стат-ряду ниже,
+                  и карточка с тем же значением была бы вторым его
+                  показом на одном экране. */}
+              {canWrite && (
+                <div className="flex shrink-0 gap-2">
+                  <button type="button" className="btn-secondary"
+                          onClick={() => setEdit(true)}>
+                    {t('inventory.material.edit')}
+                  </button>
+                  {stock !== null && (
+                    <button type="button" className="btn-secondary"
+                            onClick={() => setRelocate(true)}>
+                      {t('inventory.material.relocate.action')}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Три строки меты (§9). Штрих-кода среди них нет намеренно:
+                привязки `material_barcodes` в карточку не приходят,
+                а показывать вместо кода артикул под чужой подписью
+                значит соврать в паспорте. */}
+            <div className="mt-4 flex flex-col gap-1.5"
+                 style={{ color: 'var(--web-text-secondary, var(--color-muted))', fontSize: 14 }}>
+              <p>
+                {[material.category, material.brand].filter(Boolean).join(' · ')
+                  || t('inventory.material.noCategory')}
+              </p>
+              <p className="tabular">
+                {t('inventory.material.row.sku')}: {material.sku ?? '—'}
+              </p>
+              <p>{t('inventory.material.row.unit')}: {material.unit}</p>
+            </div>
+          </div>
+        </section>
+
+        {/* ── Стат-ряд ──────────────────────────────────────────────
+            Четыре величины через пунктирные делители (README). Весь ряд
+            коммерческий: у инспектора запрос к `materials` вернул пустоту
+            (stock === null), и ряд не рисуется вовсе — той же логикой,
+            какой у него не рисуется строка «В наявності».
+            Кегль числа — `.wmetric-value`, существующий примитив: свой
+            размер здесь был бы шестым источником правды о типографике. */}
+        {stock !== null && (
+          <section className="webcard flex">
+            {([
+              {
+                key: 'stock', label: t('inventory.web.table.stock'),
+                value: `${t.number(stock)} ${material.unit}`, tone: stockTone,
+              },
+              {
+                key: 'threshold', label: t('inventory.material.threshold.label'),
+                value: material.threshold > 0
+                  ? `${t.number(material.threshold)} ${material.unit}`
+                  : '—',
+                tone: undefined,
+              },
+              {
+                key: 'cost', label: t('inventory.material.row.cost'),
+                value: material.cost != null ? t.money(material.cost) : '—',
+                tone: undefined,
+              },
+              {
+                key: 'location', label: t('inventory.material.location.label'),
+                value: locationName ?? t('inventory.material.relocate.none'),
+                tone: undefined,
+              },
+            ] as const).map((s, i) => (
+              <div key={s.key} className="min-w-0 flex-1 px-5 first:pl-0 last:pr-0"
+                   style={i > 0
+                     ? { borderLeft: '1px dashed var(--web-border-dash, var(--color-border))' }
+                     : undefined}>
+                <p className="wmetric-label">{s.label}</p>
+                {/* 23px/800 — величина §9. Вес и моноширинные цифры берутся
+                    у `.wmetric-value`, кегль перебивается: у метрики
+                    полосы он 25px, и второй набор правил ради двух
+                    пикселей завёл бы ещё один источник типографики. */}
+                <p className="wmetric-value tabular truncate"
+                   style={{ fontSize: 23, ...(s.tone ? { color: s.tone } : {}) }}>
+                  {s.value}
+                </p>
+              </div>
+            ))}
+          </section>
+        )}
+
+        {/* ── Две колонки: таблицы слева, справочные карточки справа ── */}
+        <div className="flex items-start gap-5">
+          <div className="flex min-w-0 flex-1 flex-col gap-4">
+
+            <div className="wtabs">
+              {webTabs.filter((x) => x.show).map((x) => (
+                <button key={x.key} type="button" className="wtab"
+                        data-active={tab === x.key} onClick={() => setTab(x.key)}>
+                  {x.label}{x.n > 0 ? ` · ${t.number(x.n)}` : ''}
+                </button>
+              ))}
+            </div>
+
+            {/* ── Партії ────────────────────────────────────────────
+                Колонки «Залишок» из §9 здесь НЕТ: остаток ведётся
+                по засобу, а не по партии (журнал `stock_movements`
+                номера партии не хранит), и колонка из повторяющегося
+                общего числа врала бы про партионный учёт. Вместо неё —
+                постачальник партии, величина настоящая. */}
+            {tab === 'batches' && (
+              batches.length > 0 ? (
+                <div className="wtable">
+                  <div className="wtable-head" style={{ gridTemplateColumns: GRID_BATCH }}>
+                    <span>{t('inventory.material.web.col.batch')}</span>
+                    <span>{t('inventory.material.web.col.received')}</span>
+                    <span>{t('inventory.material.web.col.made')}</span>
+                    <span>{t('inventory.web.table.expiry')}</span>
+                    <span>{t('inventory.material.batchForm.supplier.label')}</span>
+                    <span>{t('inventory.material.row.status')}</span>
+                    <span aria-hidden />
+                  </div>
+                  {batches.map((b) => {
+                    const s = expiryState(b.expiry)
+                    const inner = (
+                      <>
+                        {/* Номер партии — данные арендатора. */}
+                        <span className="tabular truncate font-semibold"
+                              style={{ color: 'var(--color-text)' }}>{b.number}</span>
+                        <span className="tabular">{t.date(b.received)}</span>
+                        <span className="tabular">{t.date(b.made)}</span>
+                        <span className="tabular">{t.date(b.expiry)}</span>
+                        <span className="truncate">{supplierName(b.supplierId) ?? '—'}</span>
+                        <span><span className={EXPIRY_BADGE[s]}>{t(EXPIRY_KEY[s])}</span></span>
+                        <span aria-hidden className="text-right"
+                              style={{ color: 'var(--color-faint)' }}>
+                          {canWrite ? '›' : ''}
+                        </span>
+                      </>
+                    )
+                    // Читателю — строка, а не выключенная кнопка: она обещает
+                    // действие, которого нет, и глушит фокус с прокруткой.
+                    return canWrite ? (
+                      <button key={b.id} type="button" className="wtable-row"
+                              style={{ gridTemplateColumns: GRID_BATCH, minHeight: 'var(--tap-min)' }}
+                              onClick={() => setBatchEdit(b)}>
+                        {inner}
+                      </button>
+                    ) : (
+                      <div key={b.id} className="wtable-row"
+                           style={{ gridTemplateColumns: GRID_BATCH, minHeight: 'var(--tap-min)' }}>
+                        {inner}
+                      </div>
+                    )
+                  })}
+                  <div className="wtable-foot">
+                    <span className="tabular">
+                      {t('inventory.web.table.total', { n: t.number(batches.length) })}
+                    </span>
+                    {canWrite && (
+                      <button type="button" className="btn-secondary"
+                              onClick={() => setBatchEdit('new')}>
+                        {t('inventory.material.batches.add')}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="webcard">
+                  <div className="empty">
+                    <span className="empty-icon"><IconBox size={24} /></span>
+                    <p className="empty-title">{t('inventory.material.batches.emptyTitle')}</p>
+                    <p className="empty-desc">{t('inventory.material.batches.emptyDesc')}</p>
+                    {canWrite && (
+                      <div className="empty-actions">
+                        <button type="button" className="btn-primary"
+                                onClick={() => setBatchEdit('new')}>
+                          {t('inventory.material.batch.create')}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            )}
+
+            {/* ── Ємності ───────────────────────────────────────────
+                Открыть банку, разлить в дозатор и напечатать наклейку
+                можно только на подэкране контроля вскрытия: там стоят
+                функции с ключом идемпотентности (0100). Здесь — показ
+                и вход туда, поэтому строка ведёт на `/pao`. */}
+            {tab === 'containers' && (
+              containers.length > 0 ? (
+                <div className="wtable">
+                  <div className="wtable-head" style={{ gridTemplateColumns: GRID_CONT }}>
+                    <span>{t('inventory.material.web.col.code')}</span>
+                    <span>{t('inventory.material.web.col.volume')}</span>
+                    <span>{t('inventory.material.web.col.opened')}</span>
+                    <span>{t('inventory.material.web.col.useBy')}</span>
+                    <span>{t('inventory.material.row.status')}</span>
+                    <span aria-hidden />
+                  </div>
+                  {containers.map((c) => {
+                    const s = expiryState(c.useBy)
+                    return (
+                      <Link key={c.id} href={`/app/inventory/materials/${material.id}/pao`}
+                            className="wtable-row"
+                            style={{ gridTemplateColumns: GRID_CONT, minHeight: 'var(--tap-min)' }}>
+                        {/* Код наліпки — данные арендатора. */}
+                        <span className="tabular truncate font-semibold"
+                              style={{ color: 'var(--color-text)' }}>{c.code}</span>
+                        <span className="tabular">
+                          {c.volume != null ? `${t.number(c.volume)} ${c.unit ?? ''}`.trim() : '—'}
+                        </span>
+                        <span className="tabular">{c.openedAt ? t.date(c.openedAt) : '—'}</span>
+                        <span className="tabular">{c.useBy ? t.date(c.useBy) : '—'}</span>
+                        <span>
+                          {c.status === 'sealed'
+                            ? <span className="badge">{t('inventory.container.sealed')}</span>
+                            : <span className={EXPIRY_BADGE[s]}>{t(EXPIRY_KEY[s])}</span>}
+                        </span>
+                        <span aria-hidden className="text-right"
+                              style={{ color: 'var(--color-faint)' }}>›</span>
+                      </Link>
+                    )
+                  })}
+                  <div className="wtable-foot">
+                    <span className="tabular">
+                      {t('inventory.web.table.total', { n: t.number(containers.length) })}
+                    </span>
+                    <Link href={`/app/inventory/materials/${material.id}/pao`}
+                          style={{ color: 'var(--color-accent-ink)', fontWeight: 650 }}>
+                      {t('inventory.material.pao.title')}
+                    </Link>
+                  </div>
+                </div>
+              ) : (
+                <div className="webcard">
+                  <div className="empty">
+                    <span className="empty-icon"><IconQr size={24} /></span>
+                    <p className="empty-title">{t('inventory.material.web.containers.emptyTitle')}</p>
+                    <p className="empty-desc">{t('inventory.material.web.containers.emptyDesc')}</p>
+                    <div className="empty-actions">
+                      <Link href={`/app/inventory/materials/${material.id}/pao`}
+                            className="btn-secondary">
+                        {t('inventory.material.pao.title')}
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              )
+            )}
+
+            {/* ── Історія руху ──────────────────────────────────────
+                Строки журнала не открываются и не правятся ни здесь,
+                ни где-либо ещё: это источник правды об остатке, а не
+                нотатник (правило 5). Поэтому строка — не ссылка. */}
+            {tab === 'movements' && (
+              <div className="wtable">
+                <div className="wtable-head" style={{ gridTemplateColumns: GRID_MOVE }}>
+                  <span>{t('inventory.material.web.col.date')}</span>
+                  <span>{t('inventory.material.web.col.type')}</span>
+                  <span>{t('inventory.material.web.col.qty')}</span>
+                  <span>{t('inventory.material.web.col.note')}</span>
+                </div>
+                {movements.map((mv) => (
+                  <div key={mv.id} className="wtable-row"
+                       style={{ gridTemplateColumns: GRID_MOVE, minHeight: 'var(--tap-min)' }}>
+                    <span className="tabular">{t.dateTime(mv.at)}</span>
+                    <span>{movementLabel(t, mv.type)}</span>
+                    <span className="tabular font-semibold"
+                          style={{ color: mv.qty < 0 ? 'var(--color-danger)' : 'var(--color-success)' }}>
+                      {mv.qty > 0 ? '+' : ''}{t.number(mv.qty)} {material.unit}
+                    </span>
+                    {/* Причина — текст продавца, не переводится. */}
+                    <span className="truncate">{mv.note ?? '—'}</span>
+                  </div>
+                ))}
+                {/* «Разом» здесь НЕТ намеренно: запрос ограничен последними
+                    строками, и число под таблицей читалось бы как «всего
+                    движений столько». Вместо него — вход в полный журнал. */}
+                <div className="wtable-foot">
+                  <span />
+                  <Link href="/app/inventory/movements"
+                        style={{ color: 'var(--color-accent-ink)', fontWeight: 650 }}>
+                    {t('inventory.material.web.movements.all')}
+                  </Link>
+                </div>
+              </div>
+            )}
+
+            {/* ── Документи ─────────────────────────────────────────
+                Таблица показывает вид, название и дату — но НЕ путь
+                к файлу: файл отдаётся подписанной ссылкой на пять минут
+                по праву `compliance.read`, и делает это подэкран `docs/`,
+                куда ведёт подвал. Пустое состояние оставлено вкладкой
+                намеренно: у косметики отсутствие MSDS — это и есть
+                предмет проверки, и прятать его нельзя. */}
+            {tab === 'docs' && (
+              docs.length > 0 ? (
+                <div className="wtable">
+                  <div className="wtable-head" style={{ gridTemplateColumns: GRID_DOC }}>
+                    <span>{t('inventory.material.web.col.kind')}</span>
+                    <span>{t('inventory.web.table.item')}</span>
+                    <span>{t('inventory.material.web.col.date')}</span>
+                  </div>
+                  {docs.map((d) => (
+                    <div key={d.id} className="wtable-row"
+                         style={{ gridTemplateColumns: GRID_DOC, minHeight: 'var(--tap-min)' }}>
+                      <span>{t(`documents.kind.${d.kind}.short`)}</span>
+                      {/* Название файла — данные арендатора. */}
+                      <span className="truncate font-semibold"
+                            style={{ color: 'var(--color-text)' }}>{d.title}</span>
+                      <span className="tabular">{t.date(d.createdAt)}</span>
+                    </div>
+                  ))}
+                  <div className="wtable-foot">
+                    <span className="tabular">
+                      {t('inventory.web.table.total', { n: t.number(docsCount) })}
+                    </span>
+                    <Link href={`/app/inventory/materials/${material.id}/docs`}
+                          style={{ color: 'var(--color-accent-ink)', fontWeight: 650 }}>
+                      {t('inventory.material.web.docs.manage')}
+                    </Link>
+                  </div>
+                </div>
+              ) : (
+                <div className="webcard">
+                  <div className="empty">
+                    <span className="empty-icon"><IconDoc size={24} /></span>
+                    <p className="empty-title">{t('inventory.material.docs.title')}</p>
+                    <p className="empty-desc">{t('inventory.material.docs.none')}</p>
+                    <div className="empty-actions">
+                      <Link href={`/app/inventory/materials/${material.id}/docs`}
+                            className={material.isCosmetic ? 'btn-primary' : 'btn-secondary'}>
+                        {t('inventory.material.web.docs.manage')}
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              )
+            )}
+          </div>
+
+          {/* ── Правая колонка 340px (README) ────────────────────────
+              Карточки под то, что в карточке ЕСТЬ. «Використання
+              в техкартах» здесь нет: рецептура (`variant_materials`)
+              в карточку не приходит, а карточка с заголовком и без
+              содержимого сообщает только о том, что мы про неё помним. */}
+          <aside className="flex w-[340px] shrink-0 flex-col gap-4">
+
+            {/* Паспорт: только то, чего НЕТ в шапке. Бренд, артикул,
+                категорию и одиницю она уже назвала, и повторять их
+                строкой ниже значит завести второй их показ. */}
+            <section className="webcard">
+              <p className="webh2 mb-3">{t('inventory.material.web.passport.title')}</p>
+              <div className="kv">
+                <Row label={t('inventory.material.row.country')} value={material.country ?? '—'} />
+                <Row label={t('inventory.material.row.pao')}
+                     value={material.paoMonths ? `${t.number(material.paoMonths)}M` : '—'} mono />
+              </div>
+            </section>
+
+            {/* Постачальник засоба — из его карточки, а не из партии:
+                у партий он свой и стоит колонкой в таблице. Карточки
+                нет вовсе, если поставщик не указан. */}
+            {supplierName(material.supplierId ?? null) && (
+              <section className="webcard">
+                <p className="webh2 mb-3">{t('inventory.material.batchForm.supplier.label')}</p>
+                {/* Название поставщика — данные арендатора. */}
+                <p style={{ fontSize: 14, color: 'var(--color-text)' }}>
+                  {supplierName(material.supplierId ?? null)}
+                </p>
+              </section>
+            )}
+
+            {material.isCosmetic && material.inci && (
+              <section className="webcard">
+                <p className="webh2 mb-3">{t('inventory.material.inci.title')}</p>
+                <p className="t-xs prose-muted">{material.inci}</p>
+              </section>
+            )}
+
+            {/* Нотификация: только статус и вход. Код, дата и приём
+                подтверждения живут на экране документов — подтверждение
+                ЕСТЬ документ, и принимается оно там же (0106). */}
+            {material.isCosmetic && (
+              <section className="webcard">
+                <p className="webh2 mb-3">{t('inventory.material.web.moz.title')}</p>
+                <Link href={`/app/inventory/materials/${material.id}/docs`}
+                      className={material.notificationConfirmedAt ? 'badge-success' : 'badge-danger'}>
+                  {material.notificationConfirmedAt
+                    ? t('inventory.material.moz.proof.ok', {
+                        date: t.date(material.notificationConfirmedAt),
+                      })
+                    : `${t('inventory.material.moz.proof.missing')} · ${t('inventory.material.moz.proof.open')}`}
+                </Link>
+              </section>
+            )}
+
+            {/* Заметка и свои поля (0111). Инспектору эти колонки
+                не приходят вовсе, и карточка у него не рисуется. */}
+            {(material.note || Object.keys(material.attributes ?? {}).length > 0) && (
+              <section className="webcard">
+                <p className="webh2 mb-3">{t('inventory.material.own.title')}</p>
+                {material.note && (
+                  <p className="t-sm" style={{ whiteSpace: 'pre-wrap' }}>{material.note}</p>
+                )}
+                {Object.keys(material.attributes ?? {}).length > 0 && (
+                  <div className={`kv ${material.note ? 'mt-3' : ''}`}>
+                    {Object.entries(material.attributes ?? {}).map(([k, v]) => (
+                      <Row key={k} label={k} value={v} />
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
+
+            {material.cost != null && (
+              // С 0112 приёмка пересчитывает себестоимость сама — без этой
+              // строки владелец «чинит» цифру руками и ломает средневзвешенную.
+              <p className="field-hint">{t('inventory.material.cost.hint')}</p>
+            )}
+          </aside>
+        </div>
+      </div>
 
       {/* ── Шапка карточки ───────────────────────────────────────
           Фото слева, если оно есть. README хендоффа просит блок 4:3
@@ -146,7 +691,7 @@ export function MaterialCard({
           знак банки, а не витринный кадр товара. Полосу 4:3 во весь
           экран пришлось бы показывать и тем, у кого фото нет, — то есть
           отдавать треть первого экрана серому прямоугольнику. */}
-      <section className="card rise-1 flex flex-col gap-2">
+      <section className="card rise-1 flex flex-col gap-2 lg:hidden">
         <div className="flex flex-wrap items-center gap-2">
           <span className={EXPIRY_BADGE[state]}>{t(EXPIRY_KEY[state])}</span>
           {material.isCosmetic && (
@@ -196,7 +741,7 @@ export function MaterialCard({
           ниже, как в спецификации: это абзац состава, а не строка
           таблицы — в «ключ → значение» он занимал пять строк высоты
           и ломал ритм остальных. */}
-      <section className="rise-2">
+      <section className="rise-2 lg:hidden">
         <p className="eyebrow mb-2">{t('inventory.material.passport.title')}</p>
         <div className="kv">
           <Row label={t('inventory.material.row.brand')} value={material.brand ?? '—'} />
@@ -214,12 +759,11 @@ export function MaterialCard({
           кнопкой: она зовёт relocate_stock (0113) и оставляет след
           в журнале движений, чего молчаливый селект формы не делает. */}
       {stock !== null && (
-        <section className="rise-2">
+        <section className="rise-2 lg:hidden">
           <p className="eyebrow mb-2">{t('inventory.material.storage.title')}</p>
           <div className="kv">
             <Row label={t('inventory.material.location.label')}
-                 value={locations.find((l) => l.id === material.locationId)?.name
-                   ?? t('inventory.material.relocate.none')} />
+                 value={locationName ?? t('inventory.material.relocate.none')} />
             {material.cost != null && (
               <Row label={t('inventory.material.row.cost')}
                    value={t.money(material.cost)} mono />
@@ -243,7 +787,7 @@ export function MaterialCard({
           Показывается только тому, кто их видит: инспектору эти колонки
           не приходят вовсе (0111), и блок у него просто не рисуется. */}
       {(material.note || Object.keys(material.attributes ?? {}).length > 0) && (
-        <section className="rise-2">
+        <section className="rise-2 lg:hidden">
           <p className="eyebrow mb-2">{t('inventory.material.own.title')}</p>
           {material.note && (
             <div className="card mb-2">
@@ -265,7 +809,7 @@ export function MaterialCard({
       )}
 
       {/* ── Партия и сроки ───────────────────────────────────── */}
-      <section className="rise-2">
+      <section className="rise-2 lg:hidden">
         <div className="section-head">
           <p className="eyebrow">{t('inventory.material.batches.title')}</p>
           {/* Кнопка добавления — одна на секцию: при пустом списке она
@@ -356,7 +900,7 @@ export function MaterialCard({
           `violetSoft`. Разные тона здесь не украшение: это два разных
           по смыслу подэкрана (бумаги и физическая банка), и одинаковый
           серый кружок у обоих читался как один пункт с переносом. */}
-      <section className="card rise-3 !p-0">
+      <section className="card rise-3 !p-0 lg:hidden">
         <Link href={`/app/inventory/materials/${material.id}/docs`}
               className="row px-5" style={{ minHeight: 'var(--tap-min)' }}>
           <span aria-hidden className="list-anchor" data-tone="accent">
@@ -408,7 +952,7 @@ export function MaterialCard({
           пустая карточка с заголовком «Склад» сообщает лишь о том,
           что мы про него помним. */}
       {material.isCosmetic && material.inci && (
-        <section className="rise-3">
+        <section className="rise-3 lg:hidden">
           <p className="eyebrow mb-2">{t('inventory.material.inci.title')}</p>
           <div className="card">
             {/* Кегль и цвет — классами шкалы, а не ручным calc. */}
@@ -424,7 +968,7 @@ export function MaterialCard({
           дублировался (два источника одной правды на соседних экранах),
           поэтому на карточке — только статус и вход на «Документи». */}
       {material.isCosmetic && (
-        <p className="rise-3">
+        <p className="rise-3 lg:hidden">
           <Link href={`/app/inventory/materials/${material.id}/docs`}
                 className={material.notificationConfirmedAt ? 'badge-success' : 'badge-danger'}>
             {material.notificationConfirmedAt

@@ -117,7 +117,8 @@ export default async function MaterialPage({
   if (!material) notFound()
 
   const [
-    { data: batches }, { data: batchCommerce }, { data: containers }, { count: docs },
+    { data: batches }, { data: batchCommerce }, { data: containers },
+    { data: docs, count: docsCount }, { data: movements },
     { data: suppliers }, { data: locations },
   ] = await Promise.all([
     // Номер, даты и сроки партии — компланс-часть (0043 явно вырезала
@@ -143,9 +144,31 @@ export default async function MaterialPage({
       .eq('tenant_id', m.tenantId).eq('material_id', id)
       .in('status', ['sealed', 'opened'])
       .order('use_by', { ascending: true, nullsFirst: false }).limit(100),
+    // Документы: раньше отсюда приезжало ТОЛЬКО число (head-запрос). Широкий
+    // экран показывает их таблицей (хендофф CRESKO Web, §9), и списка ему
+    // взять больше неоткуда. `count: 'exact'` оставлен рядом с limit
+    // намеренно: подпись «Разом» обязана называть все документы засоба,
+    // а не только те 50, что поместились в таблицу.
+    //
+    // Право то же, что и было (`material_documents_read`, 0014 —
+    // `compliance.read`): инспектор видит документы и обязан их видеть.
+    // Файл здесь НЕ отдаётся — только вид, название и дата: путь к файлу
+    // открывается подписанной ссылкой на пять минут, и делает это
+    // подэкран `docs/`, куда таблица и ведёт.
     supabase.from('material_documents')
-      .select('id', { count: 'exact', head: true })
-      .eq('tenant_id', m.tenantId).eq('material_id', id),
+      .select('id, kind, title, created_at', { count: 'exact' })
+      .eq('tenant_id', m.tenantId).eq('material_id', id)
+      .order('created_at', { ascending: false }).limit(50),
+    // История движений ЭТОГО засоба — коммерческая часть, обычная таблица.
+    // Экран `/app/inventory/movements` фильтрует только по типу движения,
+    // то есть «что было с этой банкой» там не спросить; на карточке это
+    // ровно тот вопрос, который задают. Инспектору RLS (`stock.read`)
+    // не отдаст ни строки, и вкладка у него не появится вовсе — той же
+    // механикой, что и остаток.
+    supabase.from('stock_movements')
+      .select('id, movement_type, quantity, note, created_at')
+      .eq('tenant_id', m.tenantId).eq('material_id', id)
+      .order('created_at', { ascending: false }).limit(50),
     supabase.from('suppliers').select('id, name')
       .eq('tenant_id', m.tenantId).eq('is_active', true).order('name').limit(200),
     supabase.from('storage_locations').select('id, name')
@@ -157,7 +180,21 @@ export default async function MaterialPage({
       <MaterialCard
         tenantId={m.tenantId}
         canWrite={can(m, 'stock.write')}
-        docsCount={docs ?? 0}
+        docsCount={docsCount ?? (docs ?? []).length}
+        docs={(docs ?? []).map((d) => ({
+          id: d.id, kind: d.kind, title: d.title, createdAt: d.created_at,
+        }))}
+        movements={(movements ?? []).map((mv) => ({
+          id: mv.id, type: mv.movement_type,
+          // Количество приходит числовым типом базы: приводим здесь, а не
+          // на экране, — тем же приёмом, что и остаток с себестоимостью.
+          qty: Number(mv.quantity), note: mv.note, at: mv.created_at,
+        }))}
+        // Признак снятия с обращения. В `MaterialInit` его нет и заводить
+        // там нельзя: это тип ФОРМЫ правки, а форма `is_active` не трогает
+        // (засіб выводят из обращения из списка). Карточке он нужен только
+        // на показ, поэтому приходит отдельным полем.
+        isActive={material.is_active}
         material={{
           id: material.id,
           name: material.name,
