@@ -28,6 +28,8 @@ type Material = {
   id: string; name: string; unit: string; stock: number; threshold: number
   cosmetic: boolean; pao: number | null; brand: string | null
   sku: string | null; batch: string | null; expiry: string | null
+  /** Фото засоба (0111). Пусто — рисуем значок, а не серый прямоугольник. */
+  imagePath: string | null
 }
 type Variant = {
   id: string; name: string; title: string; stock: number; reserved: number
@@ -150,6 +152,7 @@ export function InventoryClient({
 }) {
   const t = useT()
   const supabase = useMemo(() => createClient(), [])
+  const photoUrl = (p: string) => supabase.storage.from('media').getPublicUrl(p).data.publicUrl
   const router = useRouter()
   const toast = useToast()
   const [tab, setTab] = useState<Tab>('all')
@@ -594,10 +597,16 @@ export function InventoryClient({
                   return (
                     <Link key={mt.id} href={`/app/inventory/materials/${mt.id}`}
                           className="list-card">
-                      {/* Миниатюра — место под фото засоба. Фотографий у нас
-                          пока нет ни у одного материала, поэтому значок;
-                          когда появятся, меняется ровно это место. */}
-                      <span className="list-card-thumb"><IconBox size={22} /></span>
+                      {/* Фото засоба (0111). Нет фото — значок, а не серый
+                          прямоугольник: пустая рамка читается как «картинка
+                          не загрузилась», то есть как поломка. */}
+                      <span className="list-card-thumb">
+                        {mt.imagePath
+                          // eslint-disable-next-line @next/next/no-img-element
+                          ? <img src={photoUrl(mt.imagePath)} alt=""
+                                 style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          : <IconBox size={22} />}
+                      </span>
                       <span className="min-w-0 flex-1">
                         {/* Название, бренд и номер партии — данные арендатора. */}
                         <span className="t-md clamp-2 block">{mt.name}</span>

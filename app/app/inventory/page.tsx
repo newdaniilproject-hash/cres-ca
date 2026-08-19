@@ -61,7 +61,7 @@ export default async function InventoryPage({
         .order('use_by', { ascending: true, nullsFirst: false })
         .limit(100),
       supabase.from('materials')
-        .select('id, name, unit, current_stock, min_stock_threshold, is_cosmetic, pao_months, brand, sku')
+        .select('id, name, unit, current_stock, min_stock_threshold, is_cosmetic, pao_months, brand, sku, image_path')
         .eq('tenant_id', m.tenantId)
         .eq('is_active', true)
         .order('name').limit(200),
@@ -120,6 +120,9 @@ export default async function InventoryPage({
           cosmetic: mt.is_cosmetic, pao: mt.pao_months, brand: mt.brand, sku: mt.sku,
           batch: activeBatch.get(mt.id)?.number ?? null,
           expiry: activeBatch.get(mt.id)?.expiry ?? null,
+          // Фото банки в списке: мастер ищет её глазами, а не по названию —
+          // у засобів имена различаются одним словом (0111).
+          imagePath: mt.image_path,
         }))}
         variants={(variants ?? []).map((v) => ({
           id: v.id, name: v.name,
