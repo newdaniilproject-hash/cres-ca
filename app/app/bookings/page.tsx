@@ -6,6 +6,7 @@ import { AppShell } from '@/components/shell'
 import { BookingsClient } from './bookings-client'
 import { parseRange } from './staff/range'
 import { dayOf, isDay, mondayOf, shiftDay } from './week'
+import { isMonth, monthEnd, monthOf, monthStart } from './month'
 import { getT } from '@/lib/i18n/server'
 
 export const dynamic = 'force-dynamic'
@@ -47,7 +48,7 @@ const toBooking = (b: Row) => {
 export default async function BookingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; week?: string }>
+  searchParams: Promise<{ view?: string; week?: string; month?: string; day?: string }>
 }) {
   const m = await currentMembership()
   if (!m) redirect('/register/seller')
@@ -61,46 +62,58 @@ export default async function BookingsPage({
   // разные: заведение может взять записи и не брать интернет-заказы.
   if (!hasModule(m, 'bookings')) return <ModuleOff m={m} module="bookings" />
 
-  // ── Вид и неделя живут в АДРЕСЕ, а не в состоянии экрана ────────────────
+  // ── Вид, день, месяц и неделя живут в АДРЕСЕ, а не в состоянии экрана ───
   //
-  // `?view=week&week=2026-08-17`. Причина не в красоте адреса: неделю
-  // листают стрелками десятками нажатий, и состояние экрана потеряло бы
-  // её на перезагрузке, а «назад» браузера уводило бы с экрана целиком
-  // вместо предыдущей недели. Плюс данные грузит сервер за нужный
-  // диапазон — держать в браузере полгода записей незачем.
+  // `?day=2026-08-19`, `?view=calendar&month=2026-08`, `?view=week&week=…`.
+  // Причина не в красоте адреса: день и неделю листают стрелками десятками
+  // нажатий, и состояние экрана потеряло бы их на перезагрузке, а «назад»
+  // браузера уводило бы с экрана целиком вместо предыдущего дня. Плюс
+  // данные грузит сервер за нужный диапазон — держать в браузере полгода
+  // записей незачем.
   const sp = await searchParams
-  const view = sp.view === 'week' ? 'week' as const : 'day' as const
-  // Умолчание — неделя, в которой сервер (UTC). Промахнуться она может
-  // ровно на те три часа в неделю, когда в Києві уже понедельник, а в UTC
-  // ещё воскресенье, и только если человек пришёл по адресу без `week`;
-  // сам переключатель кладёт туда МЕСТНЫЙ понедельник (см. bookings-client).
-  const weekStart = mondayOf(isDay(sp.week) ? sp.week : dayOf())
+  const view = sp.view === 'week'
+    ? 'week' as const
+    : sp.view === 'calendar' ? 'calendar' as const : 'day' as const
+
+  // Умолчания — день, месяц и неделя, в которых сервер (UTC). Промахнуться
+  // они могут ровно на те часы, когда в Києві уже завтра, а в UTC ещё
+  // сегодня, и только если человек пришёл по адресу без параметра; сам
+  // переключатель кладёт туда МЕСТНЫЙ день (см. bookings-client).
+  const day = isDay(sp.day) ? sp.day : dayOf()
+  const weekStart = mondayOf(isDay(sp.week) ? sp.week : day)
+  const month = isMonth(sp.month) ? sp.month : monthOf(day)
 
   const supabase = await createClient()
 
   const q = supabase.from('v_bookings').select(FIELDS).eq('tenant_id', m.tenantId)
 
+  // ОКНО ЗАПРОСА ШИРЕ ПОКАЗАННОГО НА СУТКИ С КАЖДОЙ СТОРОНЫ — и это одно
+  // и то же решение во всех трёх видах. Колонку и строку выбирает БРАУЗЕР
+  // в местном поясе (тот же приём, что у времени в списке: оно печатается
+  // без указания зоны), а сервер отбирает в UTC. Без запаса запись
+  // понедельника на 01:00 по Києву лежала бы в воскресенье по UTC и
+  // в сетку не попадала бы вовсе. Лишние сутки отбрасывает сам вид.
+  const window = (from: string, to: string) =>
+    q.overlaps('period', `[${from}T00:00:00Z,${to}T00:00:00Z)`).order('period')
+
   const { data } = view === 'week'
-    // Окно шире недели на сутки с каждой стороны. Колонку дня выбирает
-    // БРАУЗЕР в местном поясе (тот же приём, что у списка дня: он печатает
-    // время без указания зоны), а сервер отбирает в UTC. Без запаса запись
-    // понедельника на 01:00 по Києву лежала бы в воскресенье по UTC
-    // и в сетку не попадала бы вовсе. Лишние сутки отбрасывает сама сетка.
-    ? await q
-      .overlaps('period', `[${shiftDay(weekStart, -1)}T00:00:00Z,${shiftDay(weekStart, 8)}T00:00:00Z)`)
-      .order('period')
-      .limit(300)
-    // Список дня — как был: ближайшее, начиная со вчера.
-    : await q
-      .gte('period', `[${new Date(Date.now() - 864e5).toISOString()},)`)
-      .order('period')
-      .limit(100)
+    ? await window(shiftDay(weekStart, -1), shiftDay(weekStart, 8)).limit(300)
+    : view === 'calendar'
+      // Месяц целиком: в сетке у каждого дня стоит точка «здесь есть
+      // записи», и посчитать её можно только по всем записям месяца.
+      // Предел выше недельного — тридцать дней салона это сотни записей,
+      // а обрезанный хвост означал бы дни без точек, то есть ложь
+      // на единственном признаке, который сетка показывает.
+      ? await window(shiftDay(monthStart(month), -1), shiftDay(monthEnd(month), 1)).limit(1000)
+      : await window(shiftDay(day, -1), shiftDay(day, 2)).limit(200)
 
   return (
     <AppShell modules={m.modules} perms={m.perms}>
       <BookingsClient
         view={view}
         weekStart={weekStart}
+        month={month}
+        day={day}
         tenantId={m.tenantId}
         // `orders.write` решает только, рисовать ли «Новий запис»: то же
         // право проверяет внутри себя сам `create_booking` (0105).

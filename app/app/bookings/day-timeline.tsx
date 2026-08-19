@@ -1,0 +1,213 @@
+'use client'
+
+import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
+import { useT } from '@/lib/i18n/client'
+import { localeOf } from '@/lib/i18n/format'
+import { IconBack, IconChevronRight, IconUser } from '@/components/icons'
+import { eventTone, isVoid, statusLabel, type B } from './status'
+import { dayOf, shiftDay } from './week'
+import { dayHref, dayLabel } from './month'
+import { BookingSheet } from './booking-sheet'
+
+// ── Таймлайн дня (хендофф CRESKO, раздел D «Записи», вид «День») ────────────
+//
+// Час — это СТРОКА, а не пиксели по высоте. Разница с недельной сеткой
+// принципиальная: там высота плашки означает длительность и потому
+// считается от `HOUR`, здесь строка занимает столько, сколько занимает
+// её содержимое, — в неё помещается аватар, имя, услуга, бейдж и цена,
+// и растянуть её по минутам значило бы получить пустые полполосы
+// у получасовой записи и обрезанный текст у пятнадцатиминутной.
+//
+// Что это даёт взамен: СВОБОДНЫЙ ЧАС виден как отдельная строка. Ради
+// неё вид и существует — «куда я могу поставить клиента» на неделе
+// не читается вовсе, а здесь это единственная пунктирная плашка.
+const HOUR_MIN = 8   // границы дня по умолчанию: салон работает с 8
+const HOUR_MAX = 20  // до 20, и уже этого сетка не сужает никогда
+const GUTTER = 42    // колонка часов слева, README дословно
+
+export function DayTimeline({ bookings, day }: {
+  bookings: B[]
+  /** Показанный день, `ГГГГ-ММ-ДД`. Живёт в адресе — разбор в `page.tsx`. */
+  day: string
+}) {
+  const t = useT()
+  const [open, setOpen] = useState<B | null>(null)
+
+  // ЧАСЫ БРАУЗЕРА — ТОЛЬКО ПОСЛЕ ГИДРАТАЦИИ, по той же причине, что
+  // и в недельной сетке: запись хранится моментом, а её час считается
+  // в МЕСТНОМ поясе. Сервер живёт в UTC, мастер в Києві — одна и та же
+  // запись встала бы на сервере в 09:00, а в браузере в 12:00, и разметка
+  // сервера разошлась бы с первым кадром клиента.
+  //
+  // Поэтому с сервера приходит КАРКАС — часы 08:00–20:00 и подпись дня,
+  // которые от пояса не зависят, — а записи раскладываются первым же
+  // кадром после гидратации.
+  const [ready, setReady] = useState(false)
+  useEffect(() => { setReady(true) }, [])
+
+  // Записи этого дня по часу начала. Часы дня расширяются по фактическим
+  // записям (самая ранняя минус час, самая поздняя плюс час), но НИКОГДА
+  // не сужаются уже 8–20: день, показанный полосой в два часа, читается
+  // как поломка, а не как «записей нет».
+  const { byHour, hours, count } = useMemo(() => {
+    const map = new Map<number, B[]>()
+    let from = HOUR_MIN
+    let to = HOUR_MAX
+    if (ready) {
+      for (const b of bookings) {
+        const s = new Date(b.start)
+        if (Number.isNaN(s.getTime()) || dayOf(s) !== day) continue
+        const h = s.getHours()
+        map.set(h, [...(map.get(h) ?? []), b])
+        from = Math.min(from, h)
+        to = Math.max(to, Math.min(24, h + 1))
+      }
+    }
+    for (const list of map.values()) {
+      list.sort((x, y) => x.start.localeCompare(y.start))
+    }
+    return {
+      byHour: map,
+      hours: Array.from({ length: Math.max(1, to - from) }, (_, i) => from + i),
+      count: [...map.values()].reduce((n, l) => n + l.length, 0),
+    }
+  }, [bookings, day, ready])
+
+  const hourLabel = (h: number) =>
+    t.dateTime(new Date(2000, 0, 1, h), { hour: '2-digit', minute: '2-digit' })
+
+  return (
+    <div className="flex flex-col gap-3">
+      {/* Шапка дня. Стрелки — ссылки: день живёт в адресе, «назад»
+          браузера возвращает предыдущий, перезагрузка не сбрасывает
+          на сегодня. Зона нажатия — 44px от `.btn-icon`. */}
+      <div className="flex items-center justify-between gap-2">
+        <span className="min-w-0 truncate" style={{ fontSize: 15, fontWeight: 700, color: 'var(--color-text)' }}>
+          {dayLabel(localeOf(t.lang), day)}
+        </span>
+        <span className="flex shrink-0 items-center gap-1">
+          <Link href={dayHref(shiftDay(day, -1))} className="btn-icon"
+                aria-label={t('bookings.day.prev.aria')}>
+            <IconBack size={20} />
+          </Link>
+          <Link href={dayHref(shiftDay(day, 1))} className="btn-icon"
+                aria-label={t('bookings.day.next.aria')}>
+            <IconChevronRight size={20} />
+          </Link>
+        </span>
+      </div>
+
+      {/* Число записей акцентом — из README. Оно отвечает на вопрос,
+          с которым мастер открывает день, до того как он прочитает
+          хоть одну строку. */}
+      <p className="tabular" style={{ fontSize: 13, fontWeight: 650, color: 'var(--color-accent-ink)' }}>
+        {t.plural('bookings.day.count', count)}
+      </p>
+
+      <div className="flex flex-col gap-2">
+        {hours.map((h) => {
+          const list = byHour.get(h) ?? []
+          return (
+            <div key={h} className="flex items-start gap-2">
+              <span className="tabular shrink-0"
+                    style={{
+                      width: GUTTER, textAlign: 'right', paddingTop: 10,
+                      fontSize: 12, fontWeight: 600, color: 'var(--color-faint)',
+                    }}>
+                {hourLabel(h)}
+              </span>
+
+              <span className="flex min-w-0 flex-1 flex-col gap-2">
+                {list.length === 0 ? (
+                  // Свободный час. Пунктир, а не сплошная рамка: это
+                  // не объект, а его отсутствие, и сплошная граница
+                  // читалась бы как ещё одна запись. И не кнопка:
+                  // запись заводится одним входом — «Новий запис» выше,
+                  // а двенадцать «кнопок» свободных часов были бы
+                  // двенадцатью вторыми входами в то же действие.
+                  <span style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    gap: 8, minHeight: 'var(--tap-min)', padding: '10px 12px',
+                    borderRadius: 'var(--radius-control)',
+                    border: '1px dashed var(--color-border-strong)',
+                    background: 'var(--color-surface-2)',
+                  }}>
+                    <span className="tabular" style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-muted)' }}>
+                      {hourLabel(h)} – {hourLabel((h + 1) % 24)}
+                    </span>
+                    <span style={{ fontSize: 12, color: 'var(--color-faint)' }}>
+                      {t('bookings.day.free')}
+                    </span>
+                  </span>
+                ) : list.map((b) => {
+                  const tone = eventTone(b.status)
+                  return (
+                    <button key={b.id} type="button" onClick={() => setOpen(b)}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 10,
+                              width: '100%', minHeight: 'var(--tap-min)',
+                              padding: '10px 12px', textAlign: 'left',
+                              borderRadius: 'var(--radius-control)',
+                              border: `1px solid ${tone.line}`,
+                              background: tone.fill,
+                            }}>
+                      {/* Аватар-кружок 34px из README. Фотографий клиентов
+                          в продукте нет вовсе, поэтому в кружке значок,
+                          а не буква имени: инициал «А» одинаков у Анни,
+                          Анастасії й Аліни, то есть не различает никого. */}
+                      <span aria-hidden style={{
+                        width: 34, height: 34, borderRadius: 999,
+                        display: 'grid', placeItems: 'center', flexShrink: 0,
+                        background: 'var(--color-surface)', color: tone.ink,
+                      }}>
+                        <IconUser size={18} />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="tabular block" style={{
+                          fontSize: 12, fontWeight: 600, color: tone.ink,
+                          textDecoration: isVoid(b.status) ? 'line-through' : undefined,
+                        }}>
+                          {t.dateTime(b.start, { hour: '2-digit', minute: '2-digit' })}
+                          {' – '}
+                          {t.dateTime(b.end, { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        <span className="block truncate"
+                              style={{ fontSize: 13, fontWeight: 650, color: 'var(--color-text)' }}>
+                          {b.name}
+                        </span>
+                        <span className="block truncate"
+                              style={{ fontSize: 12, color: 'var(--color-muted)' }}>
+                          {b.variant || b.title}
+                        </span>
+                      </span>
+                      <span className="flex shrink-0 flex-col items-end gap-1">
+                        <span className={
+                          b.status === 'completed' ? 'badge-success'
+                          : b.status === 'booked' ? 'badge-warn'
+                          : isVoid(b.status) ? 'badge'
+                          : 'badge-accent'
+                        }>
+                          {statusLabel(t, b.status)}
+                        </span>
+                        <span className="tabular"
+                              style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-text)' }}>
+                          {t.money(b.price)}
+                        </span>
+                      </span>
+                    </button>
+                  )
+                })}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Точки статуса, как в списке дня, здесь нет: состояние записи
+          в плашке несут и тон заливки, и бейдж словом, а третий показ
+          одной величины — это третий источник правды о ней. */}
+      <BookingSheet booking={open} onClose={() => setOpen(null)} />
+    </div>
+  )
+}

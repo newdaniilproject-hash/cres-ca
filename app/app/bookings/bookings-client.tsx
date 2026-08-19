@@ -2,73 +2,55 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
 import { localeOf } from '@/lib/i18n/format'
-import { dbErrorText } from '@/lib/errors/db'
-import { IconBack, IconCalendar, IconChevronRight } from '@/components/icons'
-import { NEXT, statusLabel, statusTone, type B } from './status'
+import { IconBack, IconCalendar, IconChevronRight, IconGrid, IconList } from '@/components/icons'
 import { NewBookingButton } from './new-booking'
 import { WeekGrid } from './week-grid'
+import { MonthGrid } from './month-grid'
+import { DayTimeline } from './day-timeline'
 import { dayOf, mondayOf, shiftDay, weekHref, weekLabel } from './week'
+import { dayHref, monthHref, monthOf } from './month'
+import type { B } from './status'
 
-// Записи по дням. Кнопки — только разрешённые переходы; финальный
-// «Виконано» сам спишет расходники по техкарте (это делает база).
+// Записи. Три вида одних и тех же данных, и вид живёт в АДРЕСЕ:
+// `?view=calendar&month=…`, `?day=…`, `?view=week&week=…`.
 //
-// Состояния записи (подписи, переходы, тон) переехали в `./status.ts`,
-// когда у экрана появился второй вид: недельная сетка показывает те же
-// записи и обязана предлагать те же переходы. Разбор — в шапке того файла.
+// Состояния записи (подписи, переходы, тон) лежат в `./status.ts`,
+// карточка записи — в `./booking-sheet.tsx`: их читают все три вида,
+// и второй копии ни у чего из этого нет.
 export function BookingsClient({
-  bookings, view, weekStart, tenantId, canWrite,
+  bookings, view, weekStart, month, day, tenantId, canWrite,
 }: {
   bookings: B[]
   /** Какой вид показан. Живёт в адресе — разбор в `page.tsx`. */
-  view: 'day' | 'week'
+  view: 'day' | 'week' | 'calendar'
   /** Понедельник показанной недели, `ГГГГ-ММ-ДД`. */
   weekStart: string
+  /** Показанный месяц, `ГГГГ-ММ`. */
+  month: string
+  /** Показанный день, `ГГГГ-ММ-ДД`. */
+  day: string
   tenantId: string
   /** `orders.write` — то же право, которое проверяет сам `create_booking`. */
   canWrite: boolean
 }) {
   const t = useT()
-  const supabase = useMemo(() => createClient(), [])
-  const router = useRouter()
-  const [busy, setBusy] = useState<string | null>(null)
-  const [err, setErr] = useState('')
 
-  async function move(id: string, to: string) {
-    setBusy(id); setErr('')
-    const { error } = await supabase.rpc('set_booking_status', {
-      p_booking_id: id, p_status: to,
-    })
-    setBusy(null)
-    if (error) { setErr(dbErrorText(t, error)); return }
-    router.refresh()
-  }
+  // Ссылки на «сегодня» ведут в ТЕКУЩИЙ день человека, а его знает только
+  // браузер: сервер живёт в UTC. Считаем после гидратации, до неё — адрес
+  // без параметра, который сервер закрывает своим умолчанием. Так разметка
+  // сервера и первого клиентского кадра совпадает буква в букву.
+  const [localDay, setLocalDay] = useState<string | null>(null)
+  useEffect(() => { setLocalDay(dayOf()) }, [])
 
-  // Подпись дня собирает `t.date` по локали языка интерфейса, а не
-  // жёсткий 'uk-UA'. Пересчитывается при смене языка — он в зависимостях.
-  const byDay = useMemo(() => {
-    const map = new Map<string, B[]>()
-    for (const b of bookings) {
-      const key = t.date(b.start, { weekday: 'long', day: 'numeric', month: 'long' })
-      map.set(key, [...(map.get(key) ?? []), b])
-    }
-    return [...map.entries()]
-  }, [bookings, t])
-
-  // Ссылка на неделю ведёт в ТЕКУЩУЮ неделю человека, а её знает только
-  // браузер: сервер живёт в UTC. Считаем после гидратации, до неё —
-  // адрес без недели, который сервер закрывает своим умолчанием. Так
-  // разметка сервера и первого клиентского кадра совпадает буква в букву;
-  // посчитать местный понедельник прямо в разметке значило бы отдать
-  // разные `href` и получить предупреждение гидратации на пустом месте.
-  const [localWeek, setLocalWeek] = useState<string | null>(null)
-  useEffect(() => { setLocalWeek(mondayOf(dayOf())) }, [])
-  const toWeekHref = localWeek === null
+  const toDayHref = localDay === null ? '/app/bookings' : dayHref(localDay)
+  const toWeekHref = localDay === null
     ? '/app/bookings?view=week'
-    : weekHref(localWeek)
+    : weekHref(mondayOf(localDay))
+  const toMonthHref = localDay === null
+    ? '/app/bookings?view=calendar'
+    : monthHref(monthOf(localDay))
 
   // Подпись недели — тем же сборщиком, что и в сетке (`./week`): одна
   // строка стоит и в мобильном ряду навигации, и подзаголовком веб-хедера.
@@ -77,26 +59,41 @@ export function BookingsClient({
     [weekStart, t],
   )
 
-  // Шапка раздела: слева переключатель вида, справа вход в мастеров.
+  // ── Переключатель вида ──────────────────────────────────────────────────
   //
-  // Вход в мастеров — здесь, внутри раздела, а не пунктом нижней панели:
-  // панель держит то, между чем прыгают за смену, а расписание правят
-  // раз в месяц (CLAUDE.md → «Мобильная версия»). Ссылка стоит выше
-  // развилки «есть записи / пусто» намеренно: на пустом экране она нужнее
-  // всего — записей нет ровно потому, что мастера ещё не заведены.
+  // Геометрия из README (раздел D) дословно: контейнер `padding:4`,
+  // `radius:14`, `1px solid border`; активный вариант на `accentSoft`
+  // с текстом акцентом. Это НЕ общая `.seg` из globals.css — та пилюля
+  // на 999px живёт в настройках профиля (тема, язык), и обе формы
+  // осознанно разные: там переключают настройку, здесь — рабочий вид
+  // экрана во всю ширину.
   //
-  // Переключатель — ССЫЛКИ, а не кнопки с состоянием: вид уезжает
-  // в адрес вместе с неделей, и «назад» браузера возвращает туда,
-  // откуда пришли. Скелетон перехода уже лежит в `loading.tsx`,
+  // Варианты — ССЫЛКИ, а не кнопки с состоянием: вид уезжает в адрес
+  // вместе с днём, месяцем и неделей, и «назад» браузера возвращает
+  // туда, откуда пришли. Скелетон перехода лежит в `loading.tsx`,
   // поэтому нажатие отзывается, не дожидаясь Ирландии.
+  //
+  // ТРЕТИЙ ВАРИАНТ — «Тиждень» — сверх макета, и он остаётся. В хендоффе
+  // его нет, потому что там вида два; в продукте недельная сетка уже
+  // построена и отвечает на вопрос, которого не задают ни месяц, ни
+  // день: «как загружена неделя целиком». Удалить работающий вид
+  // ради совпадения с картинкой значило бы вернуть его через неделю.
+  // По ширине он помещается: три подписи на 390px занимают около 230px
+  // из 358 доступных, и зона нажатия остаётся 44px у каждой.
+  const seg: [string, string, boolean, typeof IconCalendar][] = [
+    [toMonthHref, t('bookings.view.calendar'), view === 'calendar', IconCalendar],
+    [toDayHref, t('bookings.view.day'), view === 'day', IconList],
+    [toWeekHref, t('bookings.view.week'), view === 'week', IconGrid],
+  ]
+
   const head = (
     <>
       {/* ═══ CRESKO Web §2 «Календар» — хедер экрана, ТОЛЬКО lg ═════════
           Плашка со значком, имя экрана тем же ключом, которым его называют
           панель и вкладка браузера; подзаголовок — неделя словами, когда
-          показана сетка, и обычное описание раздела в списке дня. Справа —
-          две иконки-кнопки навигации недели и «Додати запис», как в
-          хендоффе. Кнопка не дублируется, а ПЕРЕЕЗЖАЕТ: мобильный её
+          показана сетка, и обычное описание раздела в остальных видах.
+          Справа — две иконки-кнопки навигации недели и «Додати запис», как
+          в хендоффе. Кнопка не дублируется, а ПЕРЕЕЗЖАЕТ: мобильный её
           экземпляр ниже стоит под `lg:hidden` (шторка формы рисуется
           только у открытой — двух форм в документе не бывает). */}
       <div className="mb-1 hidden items-center gap-3 lg:flex">
@@ -122,9 +119,9 @@ export function BookingsClient({
             {/* «Поточний тиждень» — сверх README: на телефоне он есть,
                 и десктоп, листнувший на месяц вперёд, без него остался бы
                 со стрелками наперевес. Рисуется после гидратации — текущую
-                неделю ЧЕЛОВЕКА знает только браузер (см. `localWeek`). */}
-            {localWeek !== null && localWeek !== weekStart && (
-              <Link href={weekHref(localWeek)} className="btn-secondary t-sm mr-1">
+                неделю ЧЕЛОВЕКА знает только браузер (см. `localDay`). */}
+            {localDay !== null && mondayOf(localDay) !== weekStart && (
+              <Link href={weekHref(mondayOf(localDay))} className="btn-secondary t-sm mr-1">
                 {t('bookings.week.current')}
               </Link>
             )}
@@ -141,117 +138,54 @@ export function BookingsClient({
         {canWrite && <NewBookingButton tenantId={tenantId} className="btn-primary shrink-0" />}
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="seg">
-          <Link href="/app/bookings" className="seg-item" data-active={view === 'day'}>
-            {t('bookings.view.day')}
+      <div style={{
+        display: 'flex', gap: 4, padding: 4,
+        borderRadius: 'var(--radius-card)',
+        border: '1px solid var(--color-border)',
+        background: 'var(--color-surface)',
+      }}>
+        {seg.map(([href, text, active, Icon]) => (
+          <Link key={href} href={href}
+                style={{
+                  flex: 1, minHeight: 'var(--tap-min)',
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  gap: 6,
+                  borderRadius: 'var(--radius-plate)',
+                  fontSize: 13, fontWeight: 650,
+                  background: active ? 'var(--color-accent-soft)' : undefined,
+                  color: active ? 'var(--color-accent-ink)' : 'var(--color-muted)',
+                }}>
+            <Icon size={16} />
+            {text}
           </Link>
-          <Link href={toWeekHref} className="seg-item" data-active={view === 'week'}>
-            {t('bookings.view.week')}
-          </Link>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link href="/app/bookings/staff" className="btn-secondary t-sm">
-            {t('bookings.toStaff')}
-          </Link>
-          {/* Единственный вход в создание записи из кабинета — и он один
-              на оба вида: сетка и список показывают одни и те же записи,
-              и вторая кнопка внутри сетки была бы вторым входом в одно
-              действие (та же ошибка, что разбиралась на складе, М31).
-              На lg кнопка живёт в веб-хедере выше — этот экземпляр
-              прячется, а не дублируется. Разбор самой формы — в шапке
-              `new-booking.tsx`. */}
-          {canWrite && <NewBookingButton tenantId={tenantId} className="btn-primary t-sm lg:hidden" />}
-        </div>
+        ))}
+      </div>
+
+      <div className="flex items-center justify-between gap-2">
+        <Link href="/app/bookings/staff" className="btn-secondary t-sm">
+          {t('bookings.toStaff')}
+        </Link>
+        {/* Единственный вход в создание записи из кабинета — и он один
+            на все три вида: они показывают одни и те же записи, и вторая
+            кнопка внутри вида была бы вторым входом в одно действие (та же
+            ошибка, что разбиралась на складе, М31). На lg кнопка живёт
+            в веб-хедере выше — этот экземпляр прячется, а не дублируется.
+            Разбор самой формы — в шапке `new-booking.tsx`. */}
+        {canWrite && <NewBookingButton tenantId={tenantId} className="btn-primary t-sm lg:hidden" />}
       </div>
     </>
   )
 
-  if (view === 'week') {
-    return (
-      <div className="flex flex-col gap-4">
-        {head}
-        <WeekGrid bookings={bookings} weekStart={weekStart} />
-      </div>
-    )
-  }
-
-  if (bookings.length === 0) {
-    return (
-      <div className="flex flex-col gap-4">
-        {head}
-        <div className="empty card rise">
-          <p className="display t-lg" style={{ color: 'var(--color-text)' }}>
-            {t('bookings.empty.title')}
-          </p>
-          <p>{t('bookings.empty.desc')}</p>
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
       {head}
-      {err && <p className="field-error rise">{err}</p>}
-      {byDay.map(([day, list], di) => (
-        <section key={day} className={`rise-${Math.min(di + 1, 4)}`}>
-          {/* Надзаголовок дня — из макета: капслок, а не серая строка
-              над сплошной карточкой. Разделитель по датам, который
-              список группирует, теперь виден и когда карточек несколько:
-              каждый день — свой отступ и своя подпись, а не одна лента. */}
-          <p className="eyebrow mb-2">{day}</p>
-          <div className="flex flex-col gap-2">
-            {list.map((b) => (
-              <div key={b.id} className="list-card flex-wrap items-start">
-                <span className="status-dot mt-2" data-tone={statusTone(b.status)} />
-                <span className="tabular t-lg shrink-0" style={{ color: 'var(--color-accent)', minWidth: 52 }}>
-                  {t.dateTime(b.start, { hour: '2-digit', minute: '2-digit' })}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="t-md block truncate">
-                    {b.name}
-                    {b.phone && <a href={`tel:${b.phone}`} className="prose-muted"> · {b.phone}</a>}
-                  </span>
-                  <span className="tabular t-xs block truncate" style={{ color: 'var(--color-faint)' }}>
-                    {b.title} · {b.variant} · {b.staff}
-                    {b.deposit > 0
-                      && ` · ${t('bookings.deposit', { sum: t.money(b.deposit) })}`}
-                  </span>
-                </span>
-                <span className="flex shrink-0 flex-col items-end gap-1.5">
-                  <span className={
-                    b.status === 'completed' ? 'badge-success'
-                    : b.status === 'cancelled' || b.status === 'no_show' ? 'badge'
-                    : 'badge-accent'
-                  }>
-                    {statusLabel(t, b.status)}
-                  </span>
-                  {/* Сумма — то, ради чего мастер вообще смотрит на строку
-                      записи мельком: она в макете стоит на самом видном
-                      месте, справа снизу. У нас это `price`, а не сумма
-                      с депозитом — депозит уже назван строкой выше. */}
-                  <span className="tabular t-sm" style={{ color: 'var(--color-faint)' }}>
-                    {t.money(b.price)}
-                  </span>
-                </span>
-                {(NEXT[b.status] ?? []).length > 0 && (
-                  <div className="flex w-full shrink-0 items-center gap-2 pt-1">
-                    {(NEXT[b.status] ?? []).map((a) => (
-                      <button key={a.to}
-                              className={a.kind === 'primary' ? 'btn-primary t-sm' : 'btn-secondary t-sm'}
-                              disabled={busy === b.id}
-                              onClick={() => void move(b.id, a.to)}>
-                        {t(`bookings.action.${a.to}`)}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </section>
-      ))}
+      {view === 'week' ? (
+        <WeekGrid bookings={bookings} weekStart={weekStart} />
+      ) : view === 'calendar' ? (
+        <MonthGrid bookings={bookings} month={month} />
+      ) : (
+        <DayTimeline bookings={bookings} day={day} />
+      )}
     </div>
   )
 }

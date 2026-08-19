@@ -198,7 +198,7 @@
   "inventory.expiry.ok": "Дійсний",
   "inventory.expiry.soon": "Скоро закінчується",
   "inventory.expiry.urgent": "Закінчується",
-  "inventory.expiry.expired": "Прострочений",
+  "inventory.expiry.expired": "Прострочено",
   "inventory.offline.saved": "Збережено офлайн",
   "inventory.offline.desc": "Надішлеться само, щойно зʼявиться мережа.",
   "inventory.scan.camera.aria": "Сканувати камерою",
