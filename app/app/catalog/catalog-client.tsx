@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
 import type { T } from '@/lib/i18n/translate'
 import { Sheet } from '@/components/sheet'
+import { TechCardsClient, type TechCardsData } from '../techcards/techcards-client'
 import {
   IconBox, IconCheck, IconChevronRight, IconClock, IconFilter, IconGrid, IconTag,
 } from '@/components/icons'
@@ -185,11 +186,23 @@ function WebOfferingCard({ t, item, coverUrl, hasStorefront }: {
 
 // Список позиций. Фильтр — по виду и по «чернеткам»: продавец возвращается
 // сюда именно за недоделанным, а не за поиском по всему каталогу.
-export function CatalogClient({ items, error, canWrite, hasStorefront = false }: {
+export function CatalogClient({
+  items, error, canWrite, hasStorefront = false, tech = null,
+}: {
   items: CatalogItem[]
   error: string | null
   /** Есть ли `catalog.write`. Считает сервер — см. `page.tsx`. */
   canWrite: boolean
+  /**
+   * Данные вкладки «Техкарти» — или `null`, если у человека нет модуля
+   * `compliance` либо права `compliance.read`. Тогда вкладки нет вовсе:
+   * решают обе оси, и решают они на сервере (см. `page.tsx`).
+   *
+   * Экран техкарт рисуется ТЕМ ЖЕ компонентом, что и на `/app/techcards`,
+   * а не своей копией списка: две копии одного списка разъезжаются на
+   * первой правке, и правило «один источник правды» здесь ровно про это.
+   */
+  tech?: TechCardsData | null
   /**
    * Модуль `storefront` — вторая ось, не право. Список позиций сам
    * принадлежит модулю `catalog`, но пара строк в нём говорит о витрине:
@@ -204,6 +217,14 @@ export function CatalogClient({ items, error, canWrite, hasStorefront = false }:
   const [filter, setFilter] = useState<Filter>('all')
   const [sort, setSort] = useState<Sort>('recent')
   const [sortOpen, setSortOpen] = useState(false)
+  // Что показывает экран: позиции каталога или техкарты. ТОЛЬКО ТЕЛЕФОН —
+  // переключатель и обе ветки под ним `lg:hidden`, а десктопная раскладка
+  // рисуется всегда и этим состоянием не управляется. Причина: у веб-кабинета
+  // «Техкарти» — свой пункт сайдбара со своим видом (карточка §6, визард §7),
+  // и второй вход в него внутри «Послуг» был бы двумя дверями в одну комнату.
+  // Заодно это снимает вопрос «а что покажет широкий экран, если переключить
+  // на узком и повернуть телефон»: он покажет каталог, как и до правки.
+  const [tab, setTab] = useState<'offerings' | 'tech'>('offerings')
 
   const shown = useMemo(() => {
     const list = items.filter((i) => {
@@ -252,6 +273,11 @@ export function CatalogClient({ items, error, canWrite, hasStorefront = false }:
     ['service', t('catalog.filter.services'), counts.service],
     ['draft', t('catalog.filter.drafts'), counts.draft],
   ]
+
+  // Подпись выбранного вида — из ТОГО ЖЕ списка, что рисует вкладки
+  // и строки шторки: вторая таблица соответствий «значение → подпись»
+  // разошлась бы с первой молча.
+  const filterLabel = tabItems.find(([key]) => key === filter)?.[1] ?? ''
 
   return (
     <div className="flex flex-col gap-5">
@@ -309,6 +335,51 @@ export function CatalogClient({ items, error, canWrite, hasStorefront = false }:
         ))}
       </div>
 
+      {/* ── Переключатель «Послуги · Техкарти» (телефон) ─────────
+          Из макета дословно: два чипа над содержимым экрана. До
+          19.08.2026 техкарты открывались только набором адреса —
+          входящих ссылок из кабинета не было ни одной.
+
+          Ряд ОДИН, а не второй сверху над прежними четырьмя чипами
+          («Усі · Товари · Послуги · Чернетки»): два ряда пилюль подряд
+          и есть то, на что жалуется владелец. Вид и «чернетки» переехали
+          в шторку «Фільтри» — туда, где уже жил порядок списка. Разбор
+          решения — у самой шторки ниже.
+
+          Чипы, а не `.seg`: `.seg` — вид НАСТРОЙКИ (тема, язык, размер
+          текста), её трогают раз в жизни, и высота дорожки 32px меньше
+          зоны нажатия. Здесь переключают содержимое экрана по десять раз
+          за смену. */}
+      {tech && (
+        <div className="rise flex items-center gap-2 lg:hidden">
+          <button type="button" onClick={() => setTab('offerings')}
+                  aria-pressed={tab === 'offerings'}
+                  className={tab === 'offerings' ? 'chip-active' : 'chip'}>
+            {t('app.screen.catalog.title')}
+          </button>
+          <button type="button" onClick={() => setTab('tech')}
+                  aria-pressed={tab === 'tech'}
+                  className={tab === 'tech' ? 'chip-active' : 'chip'}>
+            {t('app.screen.techcards.title')}
+          </button>
+        </div>
+      )}
+
+      {/* ── Техкарти ─────────────────────────────────────────────
+          ТОТ ЖЕ компонент, что и на `/app/techcards`, со своими
+          счётчиками, кнопкой «Нова техкарта», списком карт, историей
+          версий и выпуском следующей. Копии списка здесь нет намеренно:
+          состав вкладки обязан меняться вместе с самим экраном, а не
+          через неделю после него.
+
+          Веб-раскладка внутри него вся `hidden lg:*`, а обёртка —
+          `lg:hidden`: на широком экране не появится ни она, ни он. */}
+      {tech && tab === 'tech' && (
+        <div className="lg:hidden">
+          <TechCardsClient {...tech} />
+        </div>
+      )}
+
       {/* ── Счётчики ─────────────────────────────────────────────
           Все четыре — РЕАЛЬНЫЕ величины: активные, товары, послуги
           и общее число. По прототипу здесь стоял ещё рейтинг и число
@@ -317,7 +388,7 @@ export function CatalogClient({ items, error, canWrite, hasStorefront = false }:
           величина и её место в разделе «Магазин», а не здесь. Плитка
           с придуманным числом хуже отсутствующей плитки: она обещает
           функцию, которой нет. */}
-      {items.length > 0 && (
+      {items.length > 0 && tab === 'offerings' && (
         <section className="rise grid grid-cols-4 gap-2 lg:hidden">
           <div className="metric" data-tone="blue">
             <span className="metric-value">{t.number(items.length)}</span>
@@ -338,50 +409,53 @@ export function CatalogClient({ items, error, canWrite, hasStorefront = false }:
         </section>
       )}
 
-      <div className="scroll-x rise-1 -mx-4 flex items-center gap-2 px-4 pb-1 lg:hidden sm:mx-0 sm:px-0">
-        <button onClick={() => setFilter('all')}
-                className={`${filter === 'all' ? 'chip-active' : 'chip'} shrink-0`}>
-          {t('catalog.filter.all')} {items.length > 0 && `· ${items.length}`}
-        </button>
-        <button onClick={() => setFilter('product')}
-                className={`${filter === 'product' ? 'chip-active' : 'chip'} shrink-0`}>
-          {t('catalog.filter.products')} {counts.product > 0 && `· ${counts.product}`}
-        </button>
-        <button onClick={() => setFilter('service')}
-                className={`${filter === 'service' ? 'chip-active' : 'chip'} shrink-0`}>
-          {t('catalog.filter.services')} {counts.service > 0 && `· ${counts.service}`}
-        </button>
-        <button onClick={() => setFilter('draft')}
-                className={`${filter === 'draft' ? 'chip-active' : 'chip'} shrink-0`}>
-          {t('catalog.filter.drafts')} {counts.draft > 0 && `· ${counts.draft}`}
-        </button>
-      </div>
+      {/* ── Состояние списка + «Фільтри» (телефон) ───────────────
+          Ряд чипов «Усі · Товари · Послуги · Чернетки» отсюда УБРАН
+          и переехал в шторку, а строка слева теперь называет ОБА
+          выбора — вид и порядок: «Усі · Спочатку нові». Причина
+          названа владельцем прямо: элементов на экране слишком много,
+          а два ряда пилюль подряд (новый переключатель плюс прежние
+          фильтры) — это ровно тот случай.
 
-      {/* «Фільтри» из макета — это ПОРЯДОК списка, и открывает он шторку
-          сортировки, а не второй набор чипов. Поля поиска рядом с ним
-          в макете нет и не будет: поиск в кабинете один и живёт в шапке
-          (CLAUDE.md → «Мобильная версия»), а поле на экране требует
-          сначала угадать раздел.
+          Что от этого не потерялось: чипы были ЕДИНСТВЕННЫМ местом,
+          где видно число позиций каждого вида, и числа уехали вместе
+          с ними в шторку — рядом с той же подписью. Что потерялось:
+          вид больше не переключается одним нажатием, а двумя. Это цена,
+          и она заплачена сознательно — фильтр по виду на экране, где
+          каталог салона это два десятка услуг, трогают редко, а место
+          он занимал постоянно.
+
+          Поля поиска рядом нет и не будет: поиск в кабинете один
+          и живёт в шапке (CLAUDE.md → «Мобильная версия»), а поле
+          на экране требует сначала угадать раздел.
 
           Кнопка «Додати» из этого ряда УБРАНА и переехала вниз, под
           список, как в макете. Два входа в одно действие — та же ошибка,
           что разбиралась на складе (М31); здесь она была бы ещё и на
           расстоянии экрана друг от друга. */}
-      <div className="flex items-center justify-between gap-2 lg:hidden">
-        <span className="t-sm" style={{ color: 'var(--color-muted)' }}>
-          {t('catalog.sort.title')}: {t(`catalog.sort.${sort}`)}
-        </span>
-        <button type="button" onClick={() => setSortOpen(true)}
-                className="btn-secondary t-sm flex items-center gap-2">
-          <IconFilter size={16} />
-          {t('catalog.filters')}
-        </button>
-      </div>
+      {tab === 'offerings' && (
+        <div className="flex items-center justify-between gap-2 lg:hidden">
+          <span className="t-sm truncate" style={{ color: 'var(--color-muted)' }}>
+            {filterLabel} · {t(`catalog.sort.${sort}`)}
+          </span>
+          <button type="button" onClick={() => setSortOpen(true)}
+                  className="btn-secondary t-sm flex shrink-0 items-center gap-2">
+            <IconFilter size={16} />
+            {t('catalog.filters')}
+          </button>
+        </div>
+      )}
 
-      {error && <p className="field-error rise">{error}</p>}
+      {error && (
+        <p className={`field-error rise ${tab === 'tech' ? 'hidden lg:block' : ''}`}>{error}</p>
+      )}
 
       {shown.length === 0 ? (
-        <div className="card rise-1">
+        // Пустой список каталога на телефоне не показывается, пока открыты
+        // техкарты: «за цим фільтром нічого немає» под списком техкарт
+        // относилось бы к тому, чего на экране нет. На широком экране
+        // вкладок не существует, и блок остаётся как был.
+        <div className={`card rise-1 ${tab === 'tech' ? 'hidden lg:block' : ''}`}>
           <div className="empty">
             {items.length === 0 ? (
               // Пустой каталог без права записи — не задача этого человека:
@@ -467,7 +541,7 @@ export function CatalogClient({ items, error, canWrite, hasStorefront = false }:
             в одной точке. В макете справа стоит ровно один указатель
             («тут есть ещё»), а всё, что описывает позицию, читается
             одной колонкой сверху вниз. */}
-        <div className="flex flex-col gap-2 lg:hidden">
+        <div className={`flex-col gap-2 lg:hidden ${tab === 'tech' ? 'hidden' : 'flex'}`}>
           {shown.map((i) => (
             <Link key={i.id} href={`/app/catalog/${i.id}`} className="list-card !items-start">
               {i.cover ? (
@@ -573,37 +647,89 @@ export function CatalogClient({ items, error, canWrite, hasStorefront = false }:
 
           На lg она не рисуется: там та же единственная кнопка живёт
           в правом углу веб-хедера выше. */}
-      {canWrite && shown.length > 0 && (
+      {canWrite && shown.length > 0 && tab === 'offerings' && (
         <Link href="/app/catalog/new" className="btn-primary lg:hidden">
           {t('catalog.add.cta')}
         </Link>
       )}
 
-      <p className="field-hint">{t('catalog.hint.published')}</p>
+      {/* Подпись про публикацию — про позиции каталога. Под списком
+          техкарт у неё нет предмета: у карты нет публикации вовсе,
+          она чинна, пока не выпущена следующая, и своё правило она
+          говорит сама (`techcards.footer`). */}
+      <p className={`field-hint ${tab === 'tech' ? 'hidden lg:block' : ''}`}>
+        {t('catalog.hint.published')}
+      </p>
 
-      {/* Шторка сортировки. Список вариантов, а не набор переключателей:
-          порядок ровно один, и два выбранных сразу — это состояние,
-          которого не бывает. Выбор закрывает шторку сам: подтверждать
-          нечего, результат виден в списке за ней. */}
-      <Sheet open={sortOpen} onClose={() => setSortOpen(false)} title={t('catalog.sort.title')}>
-        <div className="flex flex-col gap-1">
-          {SORTS.map((s) => (
-            <button key={s} type="button"
-                    onClick={() => { setSort(s); setSortOpen(false) }}
-                    className="flex items-center justify-between gap-3 text-left"
-                    style={{
-                      minHeight: 'var(--tap-min)',
-                      padding: '0 12px',
-                      borderRadius: 'var(--radius-control)',
-                      fontSize: 14,
-                      fontWeight: sort === s ? 650 : 500,
-                      background: sort === s ? 'var(--color-accent-soft)' : undefined,
-                      color: sort === s ? 'var(--color-accent-ink)' : 'var(--color-text)',
-                    }}>
-              {t(`catalog.sort.${s}`)}
-              {sort === s && <IconCheck size={18} />}
-            </button>
-          ))}
+      {/* Шторка «Фільтри»: ДВА выбора, и оба списком вариантов, а не
+          набором переключателей — и вид, и порядок бывают ровно одни,
+          а два выбранных сразу это состояние, которого не бывает.
+
+          Здесь же теперь живёт вид позиции («Усі · Товари · Послуги ·
+          Чернетки»), уехавший из ряда чипов: у шторки уже была кнопка
+          на экране, и второй орган управления рядом с ней означал бы,
+          что «Фільтри» фильтруют не всё, что на экране названо фильтром.
+          Числа при видах сохранены — до нажатия видно, есть ли там
+          что-нибудь.
+
+          Выбор закрывает шторку: подтверждать нечего, результат виден
+          в списке за ней, а «выбрал и ничего не произошло» человек
+          читает как поломку. Менять оба выбора сразу — редкий случай,
+          и он стоит второго открытия. */}
+      <Sheet open={sortOpen} onClose={() => setSortOpen(false)} title={t('catalog.filters')}>
+        <div className="flex flex-col gap-4">
+          <div>
+            <p className="field-label">{t('catalog.filter.title')}</p>
+            <div className="flex flex-col gap-1">
+              {tabItems.map(([key, label, n]) => (
+                <button key={key} type="button"
+                        onClick={() => { setFilter(key); setSortOpen(false) }}
+                        className="flex items-center justify-between gap-3 text-left"
+                        style={{
+                          minHeight: 'var(--tap-min)',
+                          padding: '0 12px',
+                          borderRadius: 'var(--radius-control)',
+                          fontSize: 14,
+                          fontWeight: filter === key ? 650 : 500,
+                          background: filter === key ? 'var(--color-accent-soft)' : undefined,
+                          color: filter === key ? 'var(--color-accent-ink)' : 'var(--color-text)',
+                        }}>
+                  <span className="min-w-0 truncate">{label}</span>
+                  <span className="flex shrink-0 items-center gap-2">
+                    {n > 0 && (
+                      <span className="tabular" style={{ color: 'var(--color-muted)' }}>
+                        {t.number(n)}
+                      </span>
+                    )}
+                    {filter === key && <IconCheck size={18} />}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="field-label">{t('catalog.sort.title')}</p>
+            <div className="flex flex-col gap-1">
+              {SORTS.map((s) => (
+                <button key={s} type="button"
+                        onClick={() => { setSort(s); setSortOpen(false) }}
+                        className="flex items-center justify-between gap-3 text-left"
+                        style={{
+                          minHeight: 'var(--tap-min)',
+                          padding: '0 12px',
+                          borderRadius: 'var(--radius-control)',
+                          fontSize: 14,
+                          fontWeight: sort === s ? 650 : 500,
+                          background: sort === s ? 'var(--color-accent-soft)' : undefined,
+                          color: sort === s ? 'var(--color-accent-ink)' : 'var(--color-text)',
+                        }}>
+                  {t(`catalog.sort.${s}`)}
+                  {sort === s && <IconCheck size={18} />}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </Sheet>
     </div>

@@ -61,27 +61,23 @@ type Source = (typeof SOURCES)[number]
 const sourceLabel = (t: T, v: string): string =>
   ((SOURCES as readonly string[]).includes(v) ? t(`orders.source.${v as Source}`) : '')
 
-// Точка состояния в карточке — тот же язык, что у значка, но без слов:
-// в списке из тридцати строк тридцать раз прочитанное «Нове» не читается
-// вовсе, а цвет отвечает на «что здесь горит» одним взглядом.
-function statusTone(status: string): string | undefined {
-  switch (status) {
-    case 'new':
-    case 'confirmed':
-    case 'packing':
-    case 'shipped':
-      return 'accent'
-    case 'awaiting_payment':
-    case 'returned':
-      return 'warn'
-    case 'paid':
-    case 'delivered':
-    case 'completed':
-      return 'success'
-    default:
-      return undefined
-  }
-}
+// Заглавная буква — ОФОРМЛЕНИЕ, а не вторая строка словаря. Подписи
+// источников написаны строчными, потому что раньше стояли хвостом
+// приглушённой строки («19 серп., 10:32 · instagram»); в названии
+// карточки тот же хвост начинает отрезок и читается как обрубок.
+// Второго ключа с большой буквы заводить нельзя — это ровно тот случай,
+// когда одно значение начинает жить в двух местах и молча расходится.
+const cap = (s: string): string => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s)
+
+// ⚠️ ТОЧКИ СОСТОЯНИЯ (`statusTone`) ЗДЕСЬ БОЛЬШЕ НЕТ, и это не потеря
+// цвета. Она красилась ровно по тем же четырём веткам, что и значок
+// справа (`orderBadge`), то есть говорила то же самое, только без слов —
+// два кодирования одного признака в одной строке. Осталось то из них,
+// которое человек может прочитать, не зная нашей палитры.
+//
+// Освободившееся место слева занимает плашка из макета (README, розділ G):
+// она делает строку заказом с первого взгляда, ровно как плашка
+// расширения делает строку файлом на экране документов.
 
 export type OrderRow = {
   id: string
@@ -237,39 +233,47 @@ export function OrdersClient({
           и не дающая их увидеть, заставляет искать их фильтром руками
           (та же ошибка, что была на складе, М31). */}
       <section className="rise grid grid-cols-3 gap-2 lg:hidden">
-        <button type="button" className="metric" onClick={() => go('all')}>
+        <button type="button" className="metric" aria-pressed={active === 'all'}
+                onClick={() => go('all')}>
           <span className="metric-value tabular">{t.number(stats.all)}</span>
           <span className="metric-label">{t('orders.stats.all')}</span>
         </button>
-        <button type="button" className="metric" data-tone="blue" onClick={() => go('new')}>
+        <button type="button" className="metric" data-tone="blue"
+                aria-pressed={active === 'new'} onClick={() => go('new')}>
           <span className="metric-value tabular">{t.number(stats.fresh)}</span>
           <span className="metric-label">{t('orders.stats.new')}</span>
         </button>
-        <button type="button" className="metric" data-tone="emerald" onClick={() => go('completed')}>
+        <button type="button" className="metric" data-tone="emerald"
+                aria-pressed={active === 'completed'} onClick={() => go('completed')}>
           <span className="metric-value tabular">{t.number(stats.done)}</span>
           <span className="metric-label">{t('orders.stats.done')}</span>
         </button>
       </section>
 
-      {/* Ручной заказ на телефоне — над полосой статусов, а не плавающей
-          кнопкой поверх списка: снизу уже стоит панель разделов, и третий
-          слой над ней перекрывает последнюю строку списка. */}
-      {canWrite && (
-        <div className="rise flex justify-end lg:hidden">
-          <button type="button" className="btn-primary t-sm"
-                  style={{ minHeight: 'var(--tap-min)' }}
-                  onClick={() => setAdding(true)}>
-            <IconPlus size={16} />
-            {t('orders.new.cta')}
-          </button>
-        </div>
-      )}
+      {/* ⚠️ ЧИПОВ «Усі», «нове» и «завершено» ЗДЕСЬ БОЛЬШЕ НЕТ, И ЭТО
+          НЕ ПОТЕРЯ ФИЛЬТРА. Ровно эти три отбора уже стоят выше плитками,
+          и плитка при этом ещё и называет число — то есть чип был вторым
+          входом в то же самое, только беднее. Заодно ушли три из
+          одиннадцати позиций уезжающей вбок ленты, а плитка получила
+          состояние нажатости (`aria-pressed`), которого ей не хватало:
+          раньше выбранный отбор подсвечивался чипом, и снятая плитка
+          оставила бы человека без ответа на «а что сейчас показано».
 
-      {/* Одиннадцать статусов переносом занимали три строки и съедали
-          первый экран. Одной строкой с прокруткой вбок — как вкладки
-          на складе; перенос на вторую строку смешивал бы их с тем,
-          что стоит рядом. */}
-      <div className="scroll-x rise-1 -mx-4 flex items-center gap-2 px-4 pb-1 sm:mx-0 sm:px-0">
+          Остальные восемь статусов остаются лентой: их не назвать
+          числами (плиток стало бы одиннадцать), а перенос на вторую
+          строку смешал бы их со списком. */}
+      <div className="scroll-x rise-1 -mx-4 flex items-center gap-2 px-4 pb-1 sm:mx-0 sm:px-0 lg:hidden">
+        {ORDER_STATUSES.filter((s) => s !== 'new' && s !== 'completed').map((s) => (
+          <button key={s} onClick={() => go(s)}
+                  className={`${active === s ? 'chip-active' : 'chip'} shrink-0`}>
+            {orderLabel(t, s)}
+          </button>
+        ))}
+      </div>
+
+      {/* На широком экране плиток-фильтров нет (там метрики §19 ведут
+          на «Усі»), поэтому лента статусов остаётся полной. */}
+      <div className="scroll-x rise-1 hidden items-center gap-2 pb-1 lg:flex">
         <button onClick={() => go('all')}
                 className={`${active === 'all' ? 'chip-active' : 'chip'} shrink-0`}>
           {t('orders.filter.all')}
@@ -366,28 +370,47 @@ export function OrdersClient({
           </div>
         </div>
 
+        {/* README, розділ G: плашка зі значком — назва з джерелом —
+            час; праворуч бейдж статусу, під ним сума.
+
+            Порядок правого стовпця саме такий, а не навпаки: гроші —
+            найбільше число на екрані, і поставлені зверху вони
+            перетягують очі на себе в кожному рядку, а шукають у списку
+            «що горить». Стан зверху, сума під ним — так у макеті.
+
+            Мітки «гість» тут немає: у рядку вже шість величин, а
+            відсутність акаунта важить лише тоді, коли замовлення
+            відкрили, — там вона й лишилась. */}
         <div className="rise-1 flex flex-col gap-2 lg:hidden">
           {orders.map((o) => (
             <Link key={o.id} href={`/app/orders/${o.id}`} className="list-card">
-              <span aria-hidden className="status-dot" data-tone={statusTone(o.status)} />
+              <span aria-hidden className="flex shrink-0 items-center justify-center"
+                    style={{
+                      width: 44, height: 44,
+                      borderRadius: 'var(--radius-control)',
+                      background: 'var(--color-accent-soft)',
+                      color: 'var(--color-accent-ink)',
+                    }}>
+                <IconBag size={20} />
+              </span>
               <span className="min-w-0 flex-1">
-                <span className="t-md flex flex-wrap items-center gap-2">
+                {/* Номер, джерело і покупець одним рядком, як у макеті:
+                    «№1042 · Instagram · dm_shop». Джерело переїхало сюди
+                    з приглушеного рядка знизу — воно відповідає на
+                    «звідки це прийшло», а не на «коли». */}
+                <span className="t-md clamp-2 block">
                   <span className="tabular">№{o.number}</span>
-                  <span className="truncate">{o.name}</span>
-                  {/* Гостевой заказ: аккаунта нет, связи с ним тоже — только
-                      имя и телефон из формы. Помечаем, чтобы продавец
-                      не искал несуществующую историю покупок. */}
-                  {o.guest && <span className="badge">{t('orders.badge.guest')}</span>}
+                  {sourceLabel(t, o.source) ? ` · ${cap(sourceLabel(t, o.source))}` : ''}
+                  {' · '}{o.name}
                 </span>
-                <span className="tabular t-xs mt-0.5 block prose-muted">
+                <span className="tabular t-xs mt-0.5 block truncate prose-muted">
                   {t.dateTime(o.createdAt, shortStamp)}
-                  {sourceLabel(t, o.source) ? ` · ${sourceLabel(t, o.source)}` : ''}
                 </span>
               </span>
               <span className="flex shrink-0 flex-col items-end gap-1">
+                <span className={orderBadge(o.status)}>{orderLabel(t, o.status)}</span>
                 {/* Символ валюты ставит Intl (`t.money`), а не подстановка «₴». */}
                 <span className="tabular t-md">{t.money(o.total)}</span>
-                <span className={orderBadge(o.status)}>{orderLabel(t, o.status)}</span>
               </span>
             </Link>
           ))}
@@ -395,10 +418,33 @@ export function OrdersClient({
         </>
       )}
 
-      {orders.length > 0 && (
+      {/* ⚠️ ПОДСКАЗКА ПОД СПИСКОМ ПОЯВЛЯЕТСЯ, ТОЛЬКО КОГДА СПИСОК ОБРЕЗАН.
+          Раньше «Показано 4 із 4» стояло всегда — три строки серого
+          текста под каждым списком, повторяющие плитку «Усього» и ничего
+          не сообщающие. Она нужна ровно в одном случае: выдача упёрлась
+          в сотню, и увиденное — не всё. */}
+      {orders.length > 0 && orders.length < total && (
         <p className="field-hint lg:hidden">
           {t('orders.footer.shown', { shown: orders.length, total })}
         </p>
+      )}
+
+      {/* Ручной заказ на телефоне — плавающей кнопкой, как на складе
+          (М31), а не полосой над списком.
+
+          Прежняя запись здесь («плавающая кнопка перекрывает последнюю
+          строку списка») отменена: `.fab-wide` поднята над нижней
+          панелью и вырезом её собственным правилом, а полоса стоила
+          отдельного ряда на первом экране — там, где макет показывает
+          сразу карточки. Заказ по телефону принимают, пока покупатель
+          на линии: кнопка обязана быть под пальцем на любой прокрутке,
+          а не в конце сотни строк. */}
+      {canWrite && (
+        <button type="button" className="fab-wide lg:hidden"
+                onClick={() => setAdding(true)}>
+          <IconPlus size={18} />
+          {t('orders.new.cta')}
+        </button>
       )}
 
       {/* Форма ручного заказа — одна на обе раскладки. Список после успеха

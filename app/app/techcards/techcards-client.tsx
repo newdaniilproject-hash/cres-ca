@@ -17,12 +17,32 @@ const DAY: Intl.DateTimeFormatOptions = {
   day: 'numeric', month: 'short', year: 'numeric',
 }
 
-type Card = {
+export type Card = {
   id: string; title: string; version: number; steps: unknown
   isActive: boolean; offeringId: string | null; offeringTitle: string | null
   createdAt: string
 }
-type Service = { id: string; title: string }
+export type Service = { id: string; title: string }
+
+/**
+ * Всё, что экрану техкарт нужно от сервера. Тип объявлен ЗДЕСЬ, а не
+ * в загрузчике (`./data.ts`): загрузчик серверный, а вкладка «Техкарти»
+ * на экране «Послуги» — клиентская, и типу нельзя тащить за собой
+ * серверный модуль через границу (CLAUDE.md → «Серверное и клиентское»).
+ */
+export type TechCardsData = {
+  tenantId: string
+  userId: string
+  /**
+   * `compliance.write` — выпуск новой версии карты. Читателю без него
+   * (инспектор, наблюдатель, мастер) кнопок не показываем: утверждение
+   * упёрлось бы в `tech_cards_insert` (0014).
+   */
+  canWrite: boolean
+  cards: Card[]
+  services: Service[]
+  loadError: string
+}
 
 // Ключи шага заданы ТЗ 3.4 — «використані розчини, пропорції, час витримки»,
 // и отчёт для проверяющего читает именно их: step / solution / proportion /
@@ -166,16 +186,7 @@ function VersionList({ t, group, openVersion, setOpenVersion }: {
 
 export function TechCardsClient({
   tenantId, userId, canWrite, cards, services, loadError,
-}: {
-  tenantId: string; userId: string
-  /**
-   * `compliance.write` — выпуск новой версии карты. Читателю без него
-   * (инспектор, наблюдатель, мастер) кнопок не показываем: утверждение
-   * упёрлось бы в `tech_cards_insert` (0014).
-   */
-  canWrite: boolean
-  cards: Card[]; services: Service[]; loadError: string
-}) {
+}: TechCardsData) {
   const t = useT()
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()

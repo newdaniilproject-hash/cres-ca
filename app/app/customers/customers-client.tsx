@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Sheet } from '@/components/sheet'
 import { useToast } from '@/components/toast'
@@ -75,14 +75,28 @@ type Card = {
 }
 
 export function CustomersClient({
-  tenantId, customers, canWrite,
+  tenantId, customers, canWrite, active = 'all',
+  stats = { all: 0, month: 0, idle: 0 },
 }: {
   tenantId: string
   customers: CustomerRow[]
   /** `customers.write`. Только раскладка: границу держит политика 0006. */
   canWrite: boolean
+  /** Выбранный отбор. Значения — те же, что понимает `page.tsx`. */
+  active?: 'all' | 'month' | 'idle'
+  /**
+   * Счётчики по ВСЕЙ базе, а не по выданной сотне (см. `page.tsx`).
+   * Величины мехАнические: сколько всего, сколько было в этом месяце,
+   * у скольких нет ни одного замовлення. «Постійний клієнт» и «середній
+   * чек» из макета сюда НЕ попали намеренно: первого в продукте нет как
+   * понятия, второй не считается без суммы по всей базе — а плитка,
+   * посчитанная по видимой сотне, врёт ровно у того заклада, которому
+   * она нужна.
+   */
+  stats?: { all: number; month: number; idle: number }
 }) {
   const t = useT()
+  const router = useRouter()
   const toast = useToast()
   const supabase = useMemo(() => createClient(), [])
   // Форма новая одна на оба экрана, кнопок две (широкий хедер и узкая

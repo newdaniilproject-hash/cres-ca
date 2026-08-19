@@ -4,6 +4,7 @@ import { currentMembership, can, hasModule } from '@/lib/tenant'
 import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { CatalogClient } from './catalog-client'
+import { loadTechCards } from '../techcards/data'
 import { getT } from '@/lib/i18n/server'
 
 export const dynamic = 'force-dynamic'
@@ -49,7 +50,20 @@ export default async function CatalogPage() {
 
   const supabase = await createClient()
 
-  const { data, error } = await supabase
+  // ── Вкладка «Техкарти» ───────────────────────────────────────────────
+  //
+  // В макете CRESKO экран «Послуги» переключается двумя чипами:
+  // «Послуги · Техкарти». Техкарты — соседний модуль (`compliance`)
+  // и соседнее право (`compliance.read`), поэтому обе оси спрашиваются
+  // ЗДЕСЬ и ровно так же, как их спрашивает `/app/techcards`.
+  //
+  // Не хватает любой из двух — данных нет вовсе, и вкладка не рисуется.
+  // Пустая вкладка была бы третьим ответом на вопрос «мне сюда можно»
+  // рядом с `redirect` и `<ModuleOff>`, и худшим из трёх: молчаливая
+  // пустота читается как «в салоне ничего нет» (0083, 16.08.2026).
+  const showTech = can(m, 'compliance.read') && hasModule(m, 'compliance')
+
+  const offerings = supabase
     .from('offerings')
     .select(
       // Категория и остаток вариантов — теми же вложенными выборками,
@@ -68,10 +82,24 @@ export default async function CatalogPage() {
     .order('updated_at', { ascending: false })
     .limit(200)
 
+  // Обе выборки — ОДНОВРЕМЕННО, а не одна за другой: база в Ирландии,
+  // и последовательные поездки складываются в задержку экрана (правило 6).
+  // Запрос PostgREST уезжает не при построении, а при ожидании, поэтому
+  // складывать их в `Promise.all` можно — так же, как это делает
+  // `loadTechCards` со своими тремя.
+  const [{ data, error }, tech] = await Promise.all([
+    offerings,
+    showTech ? loadTechCards(m) : null,
+  ])
+
   return (
     <AppShell modules={m.modules} perms={m.perms}>
       <CatalogClient
         error={error?.message ?? null}
+        // Данные вкладки «Техкарти» или `null`. Именно `null`, а не пустой
+        // объект: «модуль не куплен либо права нет» и «карт ещё не завели» —
+        // разные вещи, и второе рисует свой экран «Техкарт ще немає».
+        tech={tech}
         // `/app/catalog/new` требует `catalog.write` и разворачивает
         // обратно сюда. Кнопка «Додати» без права вела человека в редирект —
         // снаружи это неотличимо от сломанной кнопки. Право считается
