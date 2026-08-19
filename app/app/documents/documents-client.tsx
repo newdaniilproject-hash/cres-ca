@@ -518,10 +518,19 @@ export function DocumentsClient({
                           <span className="min-w-0 flex-1">
                             {/* Назва документа — данные заклада. */}
                             <span className="t-md clamp-2 block">{d.title}</span>
+                            {/* README (`stockDocs`): «{розмір} · додано {дата}»
+                                — и ровно это, без вида документа.
+                                ⚠️ ВИД ЗДЕСЬ БЫЛ И СНЯТ 19.08.2026 КАК ДУБЛЬ:
+                                название документа человек пишет сам, и форма
+                                загрузки подсказывает ему ровно вид, поэтому
+                                в строке выходило «Висновок СЕС / Висновок СЕС ·
+                                932 КБ», «Паспорт безпеки (MSDS) / MSDS · 1,2 МБ».
+                                Вид остался там, где он не повторяет название:
+                                в форме загрузки и в колонке «Тип» таблицы
+                                широкого экрана. */}
                             <span className="tabular t-xs prose-muted mt-0.5 block truncate">
-                              {kindShort(t, d.kind)}
-                              {d.size !== null ? ` · ${fmtSize(t, d.size)}` : ''}
-                              {' · '}{t.date(d.createdAt, DAY)}
+                              {d.size !== null ? `${fmtSize(t, d.size)} · ` : ''}
+                              {t('documents.doc.added', { date: t.date(d.createdAt, DAY) })}
                             </span>
                           </span>
                         </button>

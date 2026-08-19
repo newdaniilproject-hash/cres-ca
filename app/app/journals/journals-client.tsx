@@ -22,6 +22,20 @@ const AT: Intl.DateTimeFormatOptions = {
   day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
 }
 
+// Только время — «10:15». Хендофф, раздел G (`inspJournals`): у записи
+// журнала час стоит ОТДЕЛЬНОЙ колонкой слева и набран акцентом. Дата
+// в строке при этом не повторяется: её называет заголовок дня над
+// группой (`journalDay` — «Записи за 09.05.2025»).
+const TIME: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit' }
+
+// День записи — «19.08.2026». Заголовок группы; цифрами, а не словом
+// месяца, ровно как в хендоффе («ЗАПИСИ ЗА 9.05.2025»): надзаголовок
+// набран капслоком с разрядкой, и «19 СЕРПНЯ 2026 Р.» занимает в нём
+// всю ширину телефона.
+const DAY: Intl.DateTimeFormatOptions = {
+  day: '2-digit', month: '2-digit', year: 'numeric',
+}
+
 // `performer` — имя исполнителя или null. Null значит «имя не достаётся»
 // (человека вывели из состава команды, оговорка 0083), а НЕ «исполнителя
 // нет»: сами колонки `prepared_by` / `performed_by` объявлены `not null`.
@@ -69,6 +83,65 @@ function Performer({ name }: { name: string | null }) {
     : <span title={t('journals.performer.gone.title')}>
         {t('journals.performer.gone')}
       </span>
+}
+
+// ── Записи журнала, разложенные по дням ────────────────────────────────────
+//
+// Хендофф, раздел F: `journalDay` показывает «Записи за 09.05.2025», то есть
+// журнал читается ДНЯМИ, а не сплошной лентой. Календаря-месяца у нас нет
+// (см. оговорку у самих списков), но день как единица чтения обязан быть:
+// без него у записи негде показать дату, кроме как в строке рядом с часом,
+// а тогда строка перестаёт помещаться на 390px.
+//
+// Список приезжает УЖЕ отсортированным базой по убыванию времени, поэтому
+// группировка идёт подряд, без второй сортировки на клиенте.
+function byDay<R>(rows: R[], at: (r: R) => string): { key: string; at: string; items: R[] }[] {
+  const out: { key: string; at: string; items: R[] }[] = []
+  for (const r of rows) {
+    const key = new Date(at(r)).toDateString()
+    const last = out[out.length - 1]
+    if (last && last.key === key) last.items.push(r)
+    else out.push({ key, at: at(r), items: [r] })
+  }
+  return out
+}
+
+// Строка записи журнала (хендофф, раздел G): час акцентом слева, название
+// и исполнитель посередине, бейдж состояния справа. Нажатие открывает
+// карточку записи — `journalEntry` из раздела F.
+//
+// Объявлена НА ВЕРХНЕМ УРОВНЕ модуля, а не внутри рендера: функция,
+// созданная на каждой отрисовке, — новый тип элемента, и React сносит
+// поддерево (та же грабля, из-за которой формы ниже лежат элементами JSX).
+function EntryRow({ at, title, meta, badge, onOpen }: {
+  at: string; title: string; meta: React.ReactNode
+  badge: React.ReactNode; onOpen: () => void
+}) {
+  const t = useT()
+  return (
+    <div className="row px-5">
+      <button type="button" onClick={onOpen}
+              className="flex min-w-0 flex-1 items-center gap-3 text-left"
+              style={{ minHeight: 'var(--tap-min)' }}>
+        {/* Час — единственное место экрана, где акцент стоит на тексте:
+            по нему запись и находят глазами. 42px — ширина колонки времени
+            из хендоффа (раздел D, вид «День»); без фиксированной ширины
+            «09:05» и «15:45» разъезжаются, и колонка перестаёт быть
+            колонкой. Своего токена под ширину колонки в системе нет —
+            это величина макета, как и 110×78 у плашки техкарты. */}
+        <span className="tabular t-base shrink-0 font-bold"
+              style={{ color: 'var(--color-accent-ink)', width: 42 }}>
+          {t.dateTime(at, TIME)}
+        </span>
+        <span className="min-w-0 flex-1">
+          {/* Назва засобу або пристрою — данные записи журнала. */}
+          <span className="t-md clamp-2 block">{title}</span>
+          <span className="t-xs prose-muted mt-0.5 block truncate">{meta}</span>
+        </span>
+      </button>
+      {badge}
+    </div>
+  )
 }
 
 // Три журнала одним экраном. Каждая запись — одно касание или одна
@@ -223,6 +296,22 @@ export function JournalsClient({
   // записей на пункт в месяц, и тянуть их для всех пунктов сразу — платить
   // за то, что смотрят изредка. Тот же приём, что у колокола и поиска.
   const [history, setHistory] = useState<{ task: Task; rows: HistoryRow[] | null } | null>(null)
+
+  // ── Карточка записи (`journalEntry` из раздела F) ────────────────────────
+  //
+  // Хендофф показывает поля записи таблицей «ключ → значення». Ради этого
+  // строка списка и стала короткой: раньше объём, концентрация, время
+  // и исполнитель были склеены в одну строку под названием и на 390px
+  // занимали три строки текста — то есть карточка записи существовала,
+  // просто её роль исполняла строка списка.
+  //
+  // ⚠️ КНОПОК «Редагувати» И «Видалити запис» ЗДЕСЬ НЕТ, хотя в макете они
+  // есть. Записи санитарных журналов неизменяемы СВОЙСТВОМ БАЗЫ: политик
+  // UPDATE и DELETE у них не существует, плюс триггер безусловно роняет
+  // любую попытку. Кнопка, которая гарантированно упрётся в отказ, хуже
+  // её отсутствия: она обещает то, чего в продукте нет ни у кого, включая
+  // владельца. Ошибочная запись гасится встречной — как движение склада.
+  const [entry, setEntry] = useState<{ title: string; rows: [string, React.ReactNode][] } | null>(null)
 
   async function openHistory(task: Task) {
     setHistory({ task, rows: null })
@@ -757,8 +846,11 @@ export function JournalsClient({
                         onClick={() => void openHistory(task)}>
                   <p className="t-md">{task.name}</p>
                   {task.doneToday && task.doneAt ? (
+                    // Только час: отметка всегда СЕГОДНЯШНЯЯ (запрос
+                    // `entries` обрезан текущим днём), и дата рядом
+                    // с бейджем «сьогодні ✓» повторяла его словом.
                     <p className="t-xs prose-muted">
-                      {t.dateTime(task.doneAt, AT)} · <Performer name={task.donePerformer} />
+                      {t.dateTime(task.doneAt, TIME)} · <Performer name={task.donePerformer} />
                     </p>
                   ) : task.schedule ? (
                     <p className="t-xs prose-muted">{task.schedule}</p>
@@ -922,31 +1014,66 @@ export function JournalsClient({
             )}
           </div>
 
-          <div className="card rise-2 !p-0 lg:hidden">
-            {solutions.length === 0 ? (
+          {/* ── Журнал розчинів по дням (телефон) ────────────────
+              Хендофф, раздел F: «Записи за {дата}» и строка записи
+              с часом акцентом. Бейдж набран ОДНИМ СЛОВОМ («придатний» /
+              «непридатний»): до 19.08.2026 в него уезжала дата
+              окончания срока, и на 390px пилюля переносилась в две
+              строки, разваливая строку записи. Сам срок никуда не делся
+              — он в карточке записи, где у него есть подпись. */}
+          {solutions.length === 0 ? (
+            <div className="card rise-2 lg:hidden">
               <div className="empty">{t('journals.solutions.empty')}</div>
-            ) : solutions.map((s) => {
-              const active = new Date(s.expires_at) > new Date()
-              return (
-                <div key={s.id} className="row px-5">
-                  <div>
-                    {/* Назва засобу и концентрация — данные записи журнала. */}
-                    <p className="t-md">{s.agent_name} · {s.concentration}</p>
-                    <p className="tabular t-xs prose-muted">
-                      {t.number(Number(s.volume))} {s.unit}
-                      {' · '}{t('journals.solution.prepared', { date: t.dateTime(s.prepared_at, AT) })}
-                      {' · '}<Performer name={s.performer} />
-                    </p>
-                  </div>
-                  <span className={active ? 'badge-success tabular' : 'badge tabular'}>
-                    {active
-                      ? t('journals.solution.until', { date: t.dateTime(s.expires_at, AT) })
-                      : t('journals.solution.expired')}
-                  </span>
-                </div>
-              )
-            })}
-          </div>
+            </div>
+          ) : byDay(solutions, (s) => s.prepared_at).map((day) => (
+            <div key={day.key} className="rise-2 flex flex-col gap-2 lg:hidden">
+              <p className="eyebrow">
+                {t('journals.day.records', { date: t.date(day.at, DAY) })}
+              </p>
+              <div className="card !p-0">
+                {day.items.map((s) => {
+                  const active = new Date(s.expires_at) > new Date()
+                  return (
+                    <EntryRow
+                      key={s.id} at={s.prepared_at}
+                      // Назва засобу — данные записи журнала. Концентрация
+                      // ушла во вторую строку: в заголовке она разрывала
+                      // название засоба переносом на 390px, а различают
+                      // засоби по имени, а не по проценту.
+                      title={s.agent_name}
+                      meta={(
+                        <>
+                          {s.concentration}{' · '}<Performer name={s.performer} />
+                        </>
+                      )}
+                      badge={(
+                        <span className={active ? 'badge-success' : 'badge'}>
+                          {active
+                            ? t('journals.solution.valid')
+                            : t('journals.solution.expired')}
+                        </span>
+                      )}
+                      onOpen={() => setEntry({
+                        title: s.agent_name,
+                        rows: [
+                          [t('journals.entry.at'), t.dateTime(s.prepared_at, AT)],
+                          [t('journals.solution.conc.label'), s.concentration],
+                          [t('journals.web.table.volume'),
+                            `${t.number(Number(s.volume))} ${s.unit}`],
+                          [t('journals.web.table.validity'),
+                            active
+                              ? t('journals.solution.until', { date: t.dateTime(s.expires_at, AT) })
+                              : t('journals.solution.expired')],
+                          [t('journals.web.table.performer'),
+                            <Performer key="p" name={s.performer} />],
+                        ],
+                      })}
+                    />
+                  )
+                })}
+              </div>
+            </div>
+          ))}
         </section>
       )}
 
@@ -1002,29 +1129,56 @@ export function JournalsClient({
             )}
           </div>
 
-          <div className="card rise-2 !p-0 lg:hidden">
-            {cycles.length === 0 ? (
+          {/* ── Журнал стерилізації по дням (телефон) ────────────
+              Провал цикла — ТАКАЯ ЖЕ запись, как успешный: журнал
+              обязан показывать её рядом, а не прятать. Красный бейдж
+              и есть то, ради чего проверка сюда смотрит. */}
+          {cycles.length === 0 ? (
+            <div className="card rise-2 lg:hidden">
               <div className="empty">{t('journals.cycles.empty')}</div>
-            ) : cycles.map((c) => (
-              <div key={c.id} className="row px-5">
-                <div>
-                  {/* Назва пристрою — данные записи журнала. */}
-                  <p className="t-md">{c.device}</p>
-                  <p className="tabular t-xs prose-muted">
-                    {t('journals.cycle.line', {
-                      temp: t.number(c.temperature_c),
-                      mins: t.number(c.duration_minutes),
+            </div>
+          ) : byDay(cycles, (c) => c.performed_at).map((day) => (
+            <div key={day.key} className="rise-2 flex flex-col gap-2 lg:hidden">
+              <p className="eyebrow">
+                {t('journals.day.records', { date: t.date(day.at, DAY) })}
+              </p>
+              <div className="card !p-0">
+                {day.items.map((c) => (
+                  <EntryRow
+                    key={c.id} at={c.performed_at}
+                    // Назва пристрою — данные записи журнала.
+                    title={c.device}
+                    meta={(
+                      <>
+                        {t('journals.cycle.line', {
+                          temp: t.number(c.temperature_c),
+                          mins: t.number(c.duration_minutes),
+                        })}
+                        {' · '}<Performer name={c.performer} />
+                      </>
+                    )}
+                    badge={(
+                      <span className={c.indicator_ok ? 'badge-success' : 'badge-danger'}>
+                        {c.indicator_ok ? t('journals.cycle.ok') : t('journals.cycle.fail')}
+                      </span>
+                    )}
+                    onOpen={() => setEntry({
+                      title: c.device,
+                      rows: [
+                        [t('journals.entry.at'), t.dateTime(c.performed_at, AT)],
+                        [t('journals.cycle.temp.label'), `${t.number(c.temperature_c)} °C`],
+                        [t('journals.cycle.mins.label'), t.number(c.duration_minutes)],
+                        [t('journals.web.table.indicator'),
+                          c.indicator_ok ? t('journals.cycle.ok') : t('journals.cycle.fail')],
+                        [t('journals.web.table.performer'),
+                          <Performer key="p" name={c.performer} />],
+                      ],
                     })}
-                    {' · '}{t.dateTime(c.performed_at, AT)}
-                    {' · '}<Performer name={c.performer} />
-                  </p>
-                </div>
-                <span className={c.indicator_ok ? 'badge-success' : 'badge-danger'}>
-                  {c.indicator_ok ? t('journals.cycle.ok') : t('journals.cycle.fail')}
-                </span>
+                  />
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </section>
       )}
 
@@ -1075,29 +1229,51 @@ export function JournalsClient({
             )}
           </div>
 
-          <div className="card rise-1 !p-0 lg:hidden">
-            {audit === null ? (
+          {/* ── Журнал дій по дням (телефон) ─────────────────────
+              Та же строка записи, что и в санитарных журналах: час
+              акцентом слева, событие и автор посередине. Дата уехала
+              из бейджа справа в заголовок дня — она повторялась
+              у каждой строки подряд, а бейджем набирают СОСТОЯНИЕ,
+              и дата в его форме читалась как «статус: 19 серп.».
+              Карточки у записи аудита нет: всё, что о ней известно,
+              уже в строке — открывать нечего. */}
+          {audit === null ? (
+            <div className="card rise-1 lg:hidden">
               <div className="empty">{t('journals.audit.loading')}</div>
-            ) : audit.length === 0 ? (
+            </div>
+          ) : audit.length === 0 ? (
+            <div className="card rise-1 lg:hidden">
               <div className="empty">{t('journals.audit.empty')}</div>
-            ) : audit.map((a) => (
-              <div key={a.id} className="row px-5">
-                <div className="min-w-0">
-                  <p className="t-md truncate">
-                    {actionLabel(t, a.action)}{' '}
-                    {entityLabel(t, a.entity)}
-                    {/* `label` — имя изменённой строки (назва засобу, номер
-                        партії): данные арендатора, не переводятся. */}
-                    {a.label ? <span className="prose-muted"> · {a.label}</span> : null}
-                  </p>
-                  <p className="t-xs prose-muted truncate">
-                    {a.actor_email ?? t('journals.audit.system')}
-                  </p>
-                </div>
-                <span className="badge tabular shrink-0">{t.dateTime(a.at, AT)}</span>
+            </div>
+          ) : byDay(audit, (a) => a.at).map((day) => (
+            <div key={day.key} className="rise-1 flex flex-col gap-2 lg:hidden">
+              <p className="eyebrow">
+                {t('journals.day.records', { date: t.date(day.at, DAY) })}
+              </p>
+              <div className="card !p-0">
+                {day.items.map((a) => (
+                  <div key={a.id} className="row px-5">
+                    <span className="tabular t-base shrink-0 font-bold"
+                          style={{ color: 'var(--color-accent-ink)', width: 42 }}>
+                      {t.dateTime(a.at, TIME)}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="t-md clamp-2 block">
+                        {actionLabel(t, a.action)}{' '}
+                        {entityLabel(t, a.entity)}
+                        {/* `label` — имя изменённой строки (назва засобу,
+                            номер партії): данные арендатора, не переводятся. */}
+                        {a.label ? <span className="prose-muted"> · {a.label}</span> : null}
+                      </span>
+                      <span className="t-xs prose-muted mt-0.5 block truncate">
+                        {a.actor_email ?? t('journals.audit.system')}
+                      </span>
+                    </span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </section>
       )}
       {/* ── Запись в журнал (телефон) ───────────────────────────
@@ -1136,13 +1312,36 @@ export function JournalsClient({
             <div className="flex flex-col">
               {(history?.rows ?? []).map((r) => (
                 <div key={r.id} className="row">
-                  <span className="tabular t-md">{t.dateTime(r.at, AT)}</span>
+                  {/* Дата акцентом — тем же приёмом, что и час в строке
+                      записи: по времени эту таблицу и читают. */}
+                  <span className="tabular t-base font-bold"
+                        style={{ color: 'var(--color-accent-ink)' }}>
+                    {t.dateTime(r.at, AT)}
+                  </span>
                   <span className="t-sm prose-muted"><Performer name={r.performer} /></span>
                 </div>
               ))}
             </div>
           </>
         )}
+      </Sheet>
+
+      {/* ── Картка запису журналу (`journalEntry`, розділ F) ────
+          Поля таблицей «ключ → значення», как в хендоффе. Ни правки,
+          ни удаления: запись санитарного журнала неизменяема свойством
+          базы, и об этом же говорит подпись внизу — иначе отсутствие
+          кнопок читается как «забыли сделать». */}
+      <Sheet open={entry !== null} onClose={() => setEntry(null)}
+             title={entry?.title}>
+        <div className="kv">
+          {(entry?.rows ?? []).map(([label, value]) => (
+            <div key={label} className="kv-row">
+              <span className="kv-key">{label}</span>
+              <span className="kv-val tabular">{value}</span>
+            </div>
+          ))}
+        </div>
+        <p className="field-hint mt-3">{t('journals.entry.hint')}</p>
       </Sheet>
 
     </div>
