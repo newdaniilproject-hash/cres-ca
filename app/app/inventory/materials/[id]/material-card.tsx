@@ -57,6 +57,7 @@ export function MaterialCard({
 }) {
   const t = useT()
   const supabase = useMemo(() => createClient(), [])
+  const photoUrl = (p: string) => supabase.storage.from('media').getPublicUrl(p).data.publicUrl
   const router = useRouter()
   const toast = useToast()
   const [edit, setEdit] = useState(false)
@@ -107,7 +108,13 @@ export function MaterialCard({
   return (
     <div className="flex flex-col gap-4">
 
-      {/* ── Шапка карточки ───────────────────────────────────── */}
+      {/* ── Шапка карточки ───────────────────────────────────────
+          Фото слева, если оно есть. README хендоффа просит блок 4:3
+          над карточкой; здесь он сделан миниатюрой рядом с именем,
+          и это осознанное отступление: фото засоба — опознавательный
+          знак банки, а не витринный кадр товара. Полосу 4:3 во весь
+          экран пришлось бы показывать и тем, у кого фото нет, — то есть
+          отдавать треть первого экрана серому прямоугольнику. */}
       <section className="card rise-1 flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <span className={EXPIRY_BADGE[state]}>{t(EXPIRY_KEY[state])}</span>
@@ -116,7 +123,19 @@ export function MaterialCard({
           )}
           {!canWrite && <span className="badge">{t('inventory.material.badge.readonly')}</span>}
         </div>
-        <h2 className="display t-2xl">{material.name}</h2>
+        <div className="flex items-start gap-3">
+          {material.imagePath && (
+            <span className="list-card-thumb shrink-0" style={{ width: 64, height: 64 }}>
+              {/* Обычный <img>, а не next/image: файл лежит в публичном
+                  бакете Supabase, и оптимизатор Next для него означал бы
+                  ещё один прокси на пути картинки без выигрыша. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={photoUrl(material.imagePath)} alt=""
+                   style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            </span>
+          )}
+          <h2 className="display t-2xl min-w-0 flex-1">{material.name}</h2>
+        </div>
         <p className="t-sm" style={{ color: 'var(--color-muted)' }}>
           {/* Бренд и категория — данные арендатора. */}
           {[material.brand, material.category].filter(Boolean).join(' · ')
@@ -156,6 +175,34 @@ export function MaterialCard({
           <Row label={t('inventory.material.row.unit')} value={material.unit} />
         </div>
       </section>
+
+      {/* ── Своё: заметка и произвольные поля ─────────────────────
+          Показывается только тому, кто их видит: инспектору эти колонки
+          не приходят вовсе (0111), и блок у него просто не рисуется. */}
+      {(material.note || Object.keys(material.attributes ?? {}).length > 0) && (
+        <section className="rise-2">
+          <p className="eyebrow mb-2">{t('inventory.material.own.title')}</p>
+          {material.note && (
+            <div className="card mb-2">
+              <p style={{
+                fontSize: 'calc(13px * var(--type-scale))',
+                lineHeight: 1.6,
+                color: 'var(--color-text)',
+                whiteSpace: 'pre-wrap',
+              }}>
+                {material.note}
+              </p>
+            </div>
+          )}
+          {Object.keys(material.attributes ?? {}).length > 0 && (
+            <div className="kv">
+              {Object.entries(material.attributes ?? {}).map(([k, v]) => (
+                <Row key={k} label={k} value={v} />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* ── Партия и сроки ───────────────────────────────────── */}
       <section className="rise-2">

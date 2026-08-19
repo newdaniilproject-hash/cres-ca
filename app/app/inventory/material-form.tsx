@@ -4,6 +4,9 @@ import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
+import { MEDIA_EXT_BY_MIME, MEDIA_MAX_BYTES } from '@/lib/upload/guard'
+import { verifyUploaded } from '@/lib/upload/client'
+import { IconBox, IconClose } from '@/components/icons'
 
 export type RefItem = { id: string; name: string }
 
@@ -48,6 +51,12 @@ export type MaterialInit = {
    */
   notificationConfirmedAt?: string | null
   paoMonths: number | null
+  /** Фото засоба в публичном бакете `media` (0111). */
+  imagePath?: string | null
+  /** Свободная заметка продавца (0111). */
+  note?: string | null
+  /** Произвольные поля продавца (0111). */
+  attributes?: Record<string, string> | null
 }
 
 // Заведение и правка расходника — одна форма.
@@ -74,6 +83,19 @@ export function MaterialForm({
   const [err, setErr] = useState('')
 
   const [name, setName] = useState(material?.name ?? '')
+  // ── Своё, а не обязательное по регламенту ────────────────────────────
+  //
+  // Паспорт по Техрегламенту №65 (бренд, артикул, INCI, страна, партия,
+  // PAO, нотификация) одинаков у всех и обязателен. А это — склад
+  // КОНКРЕТНОГО продавца: фото банки, чтобы узнать её на полке, заметка
+  // своими словами и любые свои поля. Требование владельца 19.08.2026:
+  // «это его склад, он может делать с ним всё, что хочет».
+  const [imagePath, setImagePath] = useState(material?.imagePath ?? '')
+  const [note, setNote] = useState(material?.note ?? '')
+  const [attrs, setAttrs] = useState<[string, string][]>(
+    Object.entries(material?.attributes ?? {}),
+  )
+  const [photoErr, setPhotoErr] = useState('')
   const [unit, setUnit] = useState(material?.unit ?? UNITS[0])
   const [sku, setSku] = useState(material?.sku ?? '')
   const [category, setCategory] = useState(material?.category ?? '')
@@ -90,6 +112,54 @@ export function MaterialForm({
   const [notificationUrl, setNotificationUrl] = useState(material?.notificationUrl ?? '')
   const [notificationDate, setNotificationDate] = useState(material?.notificationDate ?? '')
   const [pao, setPao] = useState(material?.paoMonths != null ? String(material.paoMonths) : '')
+
+  // ── Фото засоба ─────────────────────────────────────────────────────
+  //
+  // Публичный бакет `media`, как у фотографий товаров: подписывать каждую
+  // миниатюру списка — приговор бюджету отрисовки. Первый сегмент пути —
+  // `tenant_id`: и политика хранилища, и сторож в базе (0111) разбирают
+  // владельца именно из него, другой путь отвергают оба.
+  //
+  // Тип файла проверяется ДВАЖДЫ и это не перестраховка: здесь — по
+  // объявленному типу, ради понятного текста; на сервере — по первым
+  // байтам уже сохранённого файла, потому что расширение придумывает
+  // тот же, кто присылает файл.
+  async function uploadPhoto(file: File) {
+    setPhotoErr('')
+    const raw = (file.name.split('.').pop() ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
+    const mime = file.type
+      || (raw === 'png' ? 'image/png' : raw === 'webp' ? 'image/webp'
+        : raw === 'avif' ? 'image/avif' : 'image/jpeg')
+    if (!(mime in MEDIA_EXT_BY_MIME)) { setPhotoErr(t('upload.reject.mime')); return }
+    if (file.size > MEDIA_MAX_BYTES) { setPhotoErr(t('upload.reject.size')); return }
+
+    setBusy(true)
+    const ext = MEDIA_EXT_BY_MIME[mime]
+    const fname = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}.${ext}`
+    const path = `${tenantId}/materials/${fname}`
+    const up = await supabase.storage.from('media')
+      .upload(path, file, { contentType: mime, upsert: false })
+    if (up.error) { setBusy(false); setPhotoErr(up.error.message); return }
+
+    const rejected = await verifyUploaded('media', path)
+    if (rejected) { setBusy(false); setPhotoErr(t(`upload.reject.${rejected}`)); return }
+
+    // Старое фото убираем сразу: одна картинка на засіб, и оставленный
+    // файл стал бы невидимым мусором навсегда — его уже ничто не найдёт.
+    if (imagePath) await supabase.storage.from('media').remove([imagePath])
+    setImagePath(path)
+    setBusy(false)
+  }
+
+  async function dropPhoto() {
+    if (!imagePath) return
+    setBusy(true)
+    await supabase.storage.from('media').remove([imagePath])
+    setImagePath('')
+    setBusy(false)
+  }
+
+  const photoUrl = (p: string) => supabase.storage.from('media').getPublicUrl(p).data.publicUrl
 
   async function save(e: React.FormEvent) {
     e.preventDefault()
@@ -127,6 +197,13 @@ export function MaterialForm({
       notification_url: cosmetic ? url || null : null,
       notification_date: cosmetic ? notificationDate || null : null,
       pao_months: cosmetic && Number(pao) > 0 ? Number(pao) : null,
+      image_path: imagePath || null,
+      note: note.trim() || null,
+      // Пустые ключи выбрасываем здесь, а не показываем ошибку: строка,
+      // у которой стёрли имя, — это способ удалить поле, а не опечатка.
+      attributes: Object.fromEntries(
+        attrs.map(([k, v]) => [k.trim(), v.trim()]).filter(([k]) => k !== ''),
+      ),
     }
 
     const { error } = material
@@ -253,6 +330,80 @@ export function MaterialForm({
           </div>
         </div>
       )}
+
+      {/* ── Своё: фото, заметка, произвольные поля ────────────────
+          Это НЕ паспорт по регламенту — тот выше и обязателен для всех.
+          Здесь склад конкретного продавца: узнать банку на полке,
+          записать своими словами, завести поле, которого нет ни у кого
+          другого. Требование владельца 19.08.2026: «это его склад,
+          он может делать с ним всё, что хочет». */}
+      <div className="sm:col-span-2">
+        <p className="eyebrow mb-2">{t('inventory.material.own.title')}</p>
+
+        <div className="flex items-start gap-3">
+          {/* Фото — квадратом, а не полосой: в списке оно рисуется
+              миниатюрой, и кадрировать его человек должен там же,
+              где выбирает. */}
+          <span className="list-card-thumb" style={{ width: 72, height: 72 }}>
+            {imagePath
+              // eslint-disable-next-line @next/next/no-img-element
+              ? <img src={photoUrl(imagePath)} alt=""
+                     style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              : <IconBox size={26} />}
+          </span>
+          <div className="min-w-0 flex-1">
+            <label className="field-label">{t('inventory.material.photo.label')}</label>
+            <input type="file" className="input pt-2.5"
+                   accept="image/jpeg,image/png,image/webp,image/avif"
+                   disabled={busy}
+                   onChange={(e) => {
+                     const f = e.target.files?.[0]
+                     if (f) void uploadPhoto(f)
+                     e.target.value = ''
+                   }} />
+            <p className="field-hint">{t('inventory.material.photo.hint')}</p>
+            {imagePath && (
+              <button type="button" className="btn-ghost t-sm" disabled={busy}
+                      onClick={() => void dropPhoto()}>
+                {t('inventory.material.photo.remove')}
+              </button>
+            )}
+            {photoErr && <p className="field-error">{photoErr}</p>}
+          </div>
+        </div>
+
+        <div className="mt-3">
+          <label className="field-label">{t('inventory.material.note.label')}</label>
+          <textarea className="textarea" placeholder={t('inventory.material.note.placeholder')}
+                    value={note} onChange={(e) => setNote(e.target.value)} />
+        </div>
+
+        <div className="mt-3">
+          <label className="field-label">{t('inventory.material.attrs.label')}</label>
+          {attrs.map(([k, v], i) => (
+            <div key={i} className="mb-2 flex gap-2">
+              <input className="input" placeholder={t('inventory.material.attrs.key')}
+                     value={k}
+                     onChange={(e) => setAttrs(attrs.map((row, j) =>
+                       (j === i ? [e.target.value, row[1]] : row)))} />
+              <input className="input" placeholder={t('inventory.material.attrs.value')}
+                     value={v}
+                     onChange={(e) => setAttrs(attrs.map((row, j) =>
+                       (j === i ? [row[0], e.target.value] : row)))} />
+              <button type="button" className="btn-icon shrink-0"
+                      aria-label={t('common.delete')}
+                      onClick={() => setAttrs(attrs.filter((_, j) => j !== i))}>
+                <IconClose size={18} />
+              </button>
+            </div>
+          ))}
+          <button type="button" className="btn-secondary t-sm"
+                  onClick={() => setAttrs([...attrs, ['', '']])}>
+            {t('inventory.material.attrs.add')}
+          </button>
+          <p className="field-hint">{t('inventory.material.attrs.hint')}</p>
+        </div>
+      </div>
 
       {err && <p className="field-error sm:col-span-2">{err}</p>}
 

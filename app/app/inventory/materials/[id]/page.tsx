@@ -82,7 +82,7 @@ export default async function MaterialPage({
       .select(`id, name, unit, category, sku, brand, country_of_origin, inci,
                notification_code, notification_url, notification_date,
                notification_confirmed_at,
-               pao_months, is_cosmetic, is_active`)
+               pao_months, is_cosmetic, is_active, image_path`)
       .eq('id', id)
       .eq('tenant_id', m.tenantId)
       .maybeSingle(),
@@ -90,7 +90,8 @@ export default async function MaterialPage({
       .select(`id, name, unit, category, sku, brand, country_of_origin, inci,
                notification_code, notification_url, notification_date,
                pao_months, is_cosmetic, current_stock, min_stock_threshold,
-               cost_per_unit, supplier_id, location_id, is_active`)
+               cost_per_unit, supplier_id, location_id, is_active,
+               image_path, note, attributes`)
       .eq('id', id)
       .eq('tenant_id', m.tenantId)
       .maybeSingle(),
@@ -178,6 +179,14 @@ export default async function MaterialPage({
           // и признак обязан приезжать тем же путём, что и остальной паспорт.
           notificationConfirmedAt: passport?.notification_confirmed_at ?? null,
           paoMonths: material.pao_months,
+          // Фото приезжает и в компланс-представлении: инспектор его видит,
+          // это опознавательный знак банки, а не коммерция.
+          imagePath: passport?.image_path ?? commerce?.image_path ?? null,
+          // Заметка и свои поля — ТОЛЬКО из коммерческого запроса. Инспектору
+          // он вернул пустоту, и внутренняя кухня заведения ему не покажется
+          // (0111: в `compliance_materials` этих колонок нет вовсе).
+          note: commerce?.note ?? null,
+          attributes: (commerce?.attributes ?? null) as Record<string, string> | null,
         }}
         stock={commerce ? Number(commerce.current_stock) : null}
         batches={(batches ?? []).map((b) => ({
