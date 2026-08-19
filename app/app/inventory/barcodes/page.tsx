@@ -5,6 +5,7 @@ import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { BarcodesClient } from './barcodes-client'
 import { getT } from '@/lib/i18n/server'
+import { dbErrorText } from '@/lib/errors/db'
 
 export const dynamic = 'force-dynamic'
 // Заголовок вкладки — тем же ключом, что и заголовок экрана
@@ -47,13 +48,17 @@ export default async function BarcodesPage() {
 
   const rows = (codes ?? []) as { material_id: string; barcode: string }[]
 
+  // Отказ базы переводится ЗДЕСЬ, а не в клиенте: сырой текст Postgres
+  // печатает значения полей (М25), человеку уходит только своя подпись.
+  const t = await getT()
+
   return (
     <AppShell>
       <BarcodesClient
         tenantId={m.tenantId}
         canWrite={can(m, 'stock.write')}
-        error={error?.message ?? ''}
-        loadError={codesError?.message ?? ''}
+        error={error ? dbErrorText(t, error) : ''}
+        loadError={codesError ? dbErrorText(t, codesError) : ''}
         materials={(materials ?? []).map((mt) => ({
           id: mt.id as string,
           name: mt.name as string,

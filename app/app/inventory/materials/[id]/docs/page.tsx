@@ -5,6 +5,7 @@ import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { MaterialDocs } from './material-docs'
 import { getT } from '@/lib/i18n/server'
+import { dbErrorText } from '@/lib/errors/db'
 
 export const dynamic = 'force-dynamic'
 // Заголовок вкладки — тем же ключом, что и заголовок экрана
@@ -63,6 +64,7 @@ export default async function MaterialDocsPage({
     .order('created_at', { ascending: false }).limit(200)
 
   const { data: { user } } = await supabase.auth.getUser()
+  const t = await getT()
 
   return (
     <AppShell modules={m.modules}>
@@ -85,7 +87,9 @@ export default async function MaterialDocsPage({
           size: d.size_bytes != null ? Number(d.size_bytes) : null,
           mime: d.mime, createdAt: d.created_at,
         }))}
-        loadError={error?.message ?? ''}
+        // Отказ базы — через общий разбор (М25), а не сырым текстом:
+        // сообщение Postgres может нести значение поля.
+        loadError={error ? dbErrorText(t, error) : ''}
       />
     </AppShell>
   )

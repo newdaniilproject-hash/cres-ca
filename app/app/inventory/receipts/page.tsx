@@ -5,6 +5,7 @@ import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { ReceiptsClient } from './receipts-client'
 import { getT } from '@/lib/i18n/server'
+import { dbErrorText } from '@/lib/errors/db'
 
 export const dynamic = 'force-dynamic'
 // Заголовок вкладки — тем же ключом, что и заголовок экрана
@@ -58,7 +59,10 @@ export default async function ReceiptsPage() {
         tenantId={m.tenantId}
         userId={userId ?? ''}
         canWrite={can(m, 'stock.write')}
-        error={error?.message ?? ''}
+        // Отказ базы человеку не показывается сырым: в нём бывает значение
+        // поля. Обезличиваем ЗДЕСЬ, чтобы клиент получал готовый текст
+        // (`lib/errors/db.ts`).
+        error={error ? dbErrorText(await getT(), error) : ''}
         suppliers={suppliers ?? []}
         receipts={(receipts ?? []).map((r) => ({
           id: r.id as string,

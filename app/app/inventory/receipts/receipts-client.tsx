@@ -9,6 +9,8 @@ import type { Key } from '@/lib/i18n/dict'
 import type { T } from '@/lib/i18n/translate'
 import type { RefItem } from '../material-form'
 import { dbErrorText } from '@/lib/errors/db'
+import { Sheet } from '@/components/sheet'
+import { IconInbox } from '@/components/icons'
 
 // Значения enum stock_receipt_status из 0003_inventory.sql — дословно.
 // Четвёртого состояния нет: документ либо готовится, либо уже изменил
@@ -49,6 +51,9 @@ export type ReceiptRow = {
   lines: number
 }
 
+/** Фильтр списка. Задаётся плиткой-счётчиком, как на экране склада. */
+type Flag = 'all' | 'draft' | 'applied' | 'cancelled'
+
 export function ReceiptsClient({
   tenantId, userId, canWrite, receipts, suppliers, error,
 }: {
@@ -62,15 +67,35 @@ export function ReceiptsClient({
   const t = useT()
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
-  // Форма раскрывается на странице, а не модалкой: приёмку заводят
-  // с телефона стоя над коробкой, и клавиатура перекрывает модальное окно.
+  // Форма — шторкой снизу, как все формы кабинета. Прежний довод «форма
+  // на странице, потому что клавиатура перекрывает модалку» устарел:
+  // Sheet порталится в body, держит высоту в dvh и запас под клавиатуру,
+  // а кнопка отправки прижата футером и с экрана не уезжает.
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  const [flag, setFlag] = useState<Flag>('all')
 
   const [supplierId, setSupplierId] = useState('')
   const [docNumber, setDocNumber] = useState('')
   const [note, setNote] = useState('')
+
+  // ── Счётчики, они же фильтр ──────────────────────────────────────────
+  // Тон несёт состояние документа, тем же смыслом, что и бейдж строки:
+  // amber — черновик ждёт работы, emerald — проведено, blue — скасовано
+  // (это не беда, а отброшенная заготовка; rose кричал бы об ошибке,
+  // которой нет). Плитка с нулём не нажимается: фильтр, дающий пустой
+  // список, — обещание показать то, чего нет.
+  const stats = useMemo(() => {
+    const count = (s: string) => receipts.filter((r) => r.status === s).length
+    return [
+      { key: 'draft', n: count('draft'), label: t('inventory.receipts.metric.draft'), tone: 'amber' },
+      { key: 'applied', n: count('applied'), label: t('inventory.receipts.metric.applied'), tone: 'emerald' },
+      { key: 'cancelled', n: count('cancelled'), label: t('inventory.receipts.metric.cancelled'), tone: 'blue' },
+    ] as const
+  }, [receipts, t])
+
+  const shown = flag === 'all' ? receipts : receipts.filter((r) => r.status === flag)
 
   async function create(e: React.FormEvent) {
     e.preventDefault()
@@ -100,77 +125,72 @@ export function ReceiptsClient({
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="rise flex flex-wrap items-center gap-2">
-        <Link href="/app/inventory" className="btn-ghost">← {t('inventory.link.stock')}</Link>
-        <Link href="/app/inventory/movements" className="btn-ghost">
-          {t('inventory.link.movements')}
-        </Link>
-        {canWrite && (
-          <button type="button" className="btn-primary ml-auto t-md"
-                  onClick={() => { setOpen(!open); setErr('') }}>
-            {open ? t('inventory.collapse') : t('inventory.receipts.new')}
-          </button>
-        )}
-      </div>
-
-      {/* Текст отказа базы показывается как есть — это её слова, не наши. */}
+      {/* Ошибка загрузки приходит уже обезличенной (dbErrorText на сервере). */}
       {error && (
         <p className="field-error rise">{t('inventory.receipts.loadError')}: {error}</p>
       )}
 
-      {open && canWrite && (
-        <form onSubmit={create} className="card rise grid gap-3 sm:grid-cols-2">
-          <p className="display t-lg sm:col-span-2">{t('inventory.receipts.form.title')}</p>
-
-          <div>
-            <label className="field-label">{t('inventory.receipts.form.supplier.label')}</label>
-            <select className="select" value={supplierId}
-                    onChange={(e) => setSupplierId(e.target.value)}>
-              <option value="">{t('inventory.common.notSet')}</option>
-              {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-            {suppliers.length === 0 && (
-              <p className="field-hint">{t('inventory.receipts.form.supplier.hint')}</p>
-            )}
-          </div>
-
-          <div>
-            <label className="field-label">{t('inventory.receipts.form.number.label')}</label>
-            <input className="input" placeholder={t('inventory.receipts.form.number.placeholder')}
-                   value={docNumber} onChange={(e) => setDocNumber(e.target.value)} />
-          </div>
-
-          <div className="sm:col-span-2">
-            <label className="field-label">{t('inventory.receipts.form.note.label')}</label>
-            <input className="input" placeholder={t('inventory.receipts.form.note.placeholder')}
-                   value={note} onChange={(e) => setNote(e.target.value)} />
-            <p className="field-hint">{t('inventory.receipts.form.note.hint')}</p>
-          </div>
-
-          {err && <p className="field-error sm:col-span-2">{err}</p>}
-
-          <div className="flex gap-2 sm:col-span-2">
-            <button className="btn-primary" disabled={busy}>
-              {t('inventory.receipts.form.submit')}
+      {/* ── Счётчики, они же фильтр ────────────────────────────── */}
+      <section className="rise grid grid-cols-3 gap-2">
+        {stats.map((s) => {
+          const on = flag === s.key
+          const dead = s.n === 0 && !on
+          return (
+            <button key={s.key} type="button" disabled={dead} aria-pressed={on}
+                    data-tone={s.tone}
+                    onClick={() => setFlag(on ? 'all' : s.key)}
+                    className="metric"
+                    style={{ cursor: dead ? 'default' : 'pointer' }}>
+              <span className="metric-value">{t.number(s.n)}</span>
+              <span className="metric-label">{s.label}</span>
             </button>
-            <button type="button" className="btn-ghost" onClick={() => setOpen(false)}>
-              {t('common.cancel')}
-            </button>
-          </div>
-        </form>
+          )
+        })}
+      </section>
+
+      {/* Единственная кнопка создания — над списком. В пустом состоянии
+          её нет: там та же кнопка стоит в `.empty-actions`, и две кнопки
+          одного действия в двадцати сантиметрах друг от друга — тот самый
+          дубляж, из-за которого переделывался склад. */}
+      {canWrite && receipts.length > 0 && (
+        <button type="button" className="btn-primary self-start"
+                onClick={() => { setOpen(true); setErr('') }}>
+          {t('inventory.receipts.new')}
+        </button>
       )}
 
       <section className="card rise-1 !p-0">
-        {receipts.length === 0 ? (
+        {shown.length === 0 ? (
           <div className="empty">
-            {t('inventory.receipts.empty')}
-            {canWrite && (
-              <button type="button" className="btn-primary" onClick={() => setOpen(true)}>
-                {t('inventory.receipts.create')}
-              </button>
+            <span className="empty-icon"><IconInbox size={24} /></span>
+            <p className="empty-title">
+              {receipts.length === 0
+                ? t('inventory.receipts.empty.title')
+                : t('inventory.empty.filteredTitle')}
+            </p>
+            <p className="empty-desc">
+              {receipts.length === 0
+                ? t('inventory.receipts.empty.desc')
+                : t('inventory.empty.filtered')}
+            </p>
+            {/* Без права на запись кнопки нет вовсе — пустой ряд действий
+                оставил бы под текстом висящий отступ. */}
+            {(receipts.length > 0 || canWrite) && (
+              <div className="empty-actions">
+                {receipts.length === 0 ? (
+                  <button type="button" className="btn-primary"
+                          onClick={() => { setOpen(true); setErr('') }}>
+                    {t('inventory.receipts.create')}
+                  </button>
+                ) : (
+                  <button type="button" className="btn-secondary" onClick={() => setFlag('all')}>
+                    {t('inventory.filter.reset')}
+                  </button>
+                )}
+              </div>
             )}
           </div>
-        ) : receipts.map((r) => (
+        ) : shown.map((r) => (
           <Link key={r.id} href={`/app/inventory/receipts/${r.id}`} className="row px-5">
             <div className="min-w-0">
               <p className="tabular t-md truncate">
@@ -195,6 +215,45 @@ export function ReceiptsClient({
       </section>
 
       <p className="field-hint">{t('inventory.receipts.hint')}</p>
+
+      {/* ── Форма нового приймання ─────────────────────────────── */}
+      <Sheet open={open && canWrite} onClose={() => setOpen(false)}
+             title={t('inventory.receipts.form.title')}
+             footer={
+               <button form="receipt-form" className="btn-primary w-full" disabled={busy}>
+                 {t('inventory.receipts.form.submit')}
+               </button>
+             }>
+        {/* id связывает кнопку футера с формой: футер лежит вне <form>. */}
+        <form id="receipt-form" onSubmit={create} className="grid gap-3">
+          <div>
+            <label className="field-label">{t('inventory.receipts.form.supplier.label')}</label>
+            <select className="select" value={supplierId}
+                    onChange={(e) => setSupplierId(e.target.value)}>
+              <option value="">{t('inventory.common.notSet')}</option>
+              {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+            {suppliers.length === 0 && (
+              <p className="field-hint">{t('inventory.receipts.form.supplier.hint')}</p>
+            )}
+          </div>
+
+          <div>
+            <label className="field-label">{t('inventory.receipts.form.number.label')}</label>
+            <input className="input" placeholder={t('inventory.receipts.form.number.placeholder')}
+                   value={docNumber} onChange={(e) => setDocNumber(e.target.value)} />
+          </div>
+
+          <div>
+            <label className="field-label">{t('inventory.receipts.form.note.label')}</label>
+            <input className="input" placeholder={t('inventory.receipts.form.note.placeholder')}
+                   value={note} onChange={(e) => setNote(e.target.value)} />
+            <p className="field-hint">{t('inventory.receipts.form.note.hint')}</p>
+          </div>
+
+          {err && <p className="field-error">{err}</p>}
+        </form>
+      </Sheet>
     </div>
   )
 }

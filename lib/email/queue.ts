@@ -26,6 +26,7 @@ const BUTTONS: Record<string, EmailButton> = {
   'seller.booking_created': { label: 'Відкрити запис',      url: abs('/app/bookings') },
   'cosmetics.expiry_14d':   { label: 'Відкрити склад',      url: abs('/app/inventory') },
   'cosmetics.expiry_7d':    { label: 'Відкрити склад',      url: abs('/app/inventory') },
+  'stock.reorder_digest':   { label: 'Список закупівлі',    url: abs('/app/inventory/reorder') },
 }
 
 /**

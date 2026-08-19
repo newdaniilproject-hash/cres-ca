@@ -5,6 +5,7 @@ import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { ReorderClient } from './reorder-client'
 import { getT } from '@/lib/i18n/server'
+import { dbErrorText } from '@/lib/errors/db'
 
 export const dynamic = 'force-dynamic'
 // Заголовок вкладки — тем же ключом, что и заголовок экрана
@@ -39,10 +40,14 @@ export default async function ReorderPage() {
     .eq('tenant_id', m.tenantId)
     .limit(300)
 
+  // Отказ базы переводится ЗДЕСЬ, а не в клиенте: сырой текст Postgres
+  // печатает значения полей (М25), человеку уходит только своя подпись.
+  const t = await getT()
+
   return (
     <AppShell>
       <ReorderClient
-        error={error?.message ?? ''}
+        error={error ? dbErrorText(t, error) : ''}
         items={(data ?? []).map((r) => ({
           kind: r.kind as string,
           id: r.id as string,

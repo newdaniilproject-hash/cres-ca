@@ -2,8 +2,10 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { currentMembership, can, hasModule } from '@/lib/tenant'
 import { ModuleOff } from '@/components/module-gate'
+import { AppShell } from '@/components/shell'
 import { CountsClient } from './counts-client'
 import { getT } from '@/lib/i18n/server'
+import { dbErrorText } from '@/lib/errors/db'
 
 export const dynamic = 'force-dynamic'
 // Заголовок вкладки — тем же ключом, что и заголовок экрана
@@ -73,41 +75,47 @@ export default async function CountsPage() {
     material_id: string | null
   }[]
 
+  const t = await getT()
+
   return (
-    <CountsClient
-      tenantId={m.tenantId}
-      canWrite={can(m, 'stock.write')}
-      error={error?.message ?? ''}
-      counts={(counts ?? []).map((c) => {
-        const own = lines.filter((l) => l.count_id === c.id)
-        const done = own.filter((l) => l.counted_qty != null)
-        return {
-          id: c.id as string,
-          status: c.status as string,
-          note: (c.note as string | null) ?? null,
-          startedAt: c.started_at as string,
-          appliedAt: (c.applied_at as string | null) ?? null,
-          total: own.length,
-          filled: done.length,
-          // Расхождения показываем прямо в списке: «проведено» само по себе
-          // не говорит, сошлось у мастера или разъехалось на десять позиций.
-          mismatches: done.filter((l) => Number(l.counted_qty) !== Number(l.expected_qty)).length,
-          materials: own.filter((l) => l.material_id != null).length,
-        }
-      })}
-      variants={(variants ?? []).map((v) => ({
-        id: v.id as string,
-        title: `${(v.offerings as unknown as { title: string } | null)?.title ?? ''} · ${v.name}`,
-        unit: v.unit as string,
-        stock: Number(v.stock_qty),
-      }))}
-      materials={(materials ?? []).map((x) => ({
-        id: x.id as string,
-        title: x.name as string,
-        unit: x.unit as string,
-        category: (x.category as string | null) ?? '',
-        stock: Number(x.current_stock),
-      }))}
-    />
+    <AppShell>
+      <CountsClient
+        tenantId={m.tenantId}
+        canWrite={can(m, 'stock.write')}
+        // Переводится ЗДЕСЬ, общим разбором: сырой текст Postgres человеку
+        // не показывается (М25), клиенту едет уже готовая подпись.
+        error={error ? dbErrorText(t, error) : ''}
+        counts={(counts ?? []).map((c) => {
+          const own = lines.filter((l) => l.count_id === c.id)
+          const done = own.filter((l) => l.counted_qty != null)
+          return {
+            id: c.id as string,
+            status: c.status as string,
+            note: (c.note as string | null) ?? null,
+            startedAt: c.started_at as string,
+            appliedAt: (c.applied_at as string | null) ?? null,
+            total: own.length,
+            filled: done.length,
+            // Расхождения показываем прямо в списке: «проведено» само по себе
+            // не говорит, сошлось у мастера или разъехалось на десять позиций.
+            mismatches: done.filter((l) => Number(l.counted_qty) !== Number(l.expected_qty)).length,
+            materials: own.filter((l) => l.material_id != null).length,
+          }
+        })}
+        variants={(variants ?? []).map((v) => ({
+          id: v.id as string,
+          title: `${(v.offerings as unknown as { title: string } | null)?.title ?? ''} · ${v.name}`,
+          unit: v.unit as string,
+          stock: Number(v.stock_qty),
+        }))}
+        materials={(materials ?? []).map((x) => ({
+          id: x.id as string,
+          title: x.name as string,
+          unit: x.unit as string,
+          category: (x.category as string | null) ?? '',
+          stock: Number(x.current_stock),
+        }))}
+      />
+    </AppShell>
   )
 }

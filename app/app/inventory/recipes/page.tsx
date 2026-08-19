@@ -5,6 +5,7 @@ import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { RecipesClient } from './recipes-client'
 import { getT } from '@/lib/i18n/server'
+import { dbErrorText } from '@/lib/errors/db'
 
 export const dynamic = 'force-dynamic'
 // Заголовок вкладки — тем же ключом, что и заголовок экрана
@@ -76,12 +77,16 @@ export default async function RecipesPage() {
     }
   })
 
+  // Отказ базы переводится ЗДЕСЬ, а не в клиенте: сырой текст Postgres
+  // печатает значения полей (М25), человеку уходит только своя подпись.
+  const t = await getT()
+
   return (
     <AppShell>
       <RecipesClient
         canWrite={can(m, 'catalog.write')}
-        error={error?.message ?? ''}
-        loadError={rowsRes?.error?.message ?? ''}
+        error={error ? dbErrorText(t, error) : ''}
+        loadError={rowsRes?.error ? dbErrorText(t, rowsRes.error) : ''}
         materials={(materials ?? []).map((mt) => ({
           id: mt.id as string,
           name: mt.name as string,

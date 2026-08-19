@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Sheet } from '@/components/sheet'
 import { useToast } from '@/components/toast'
+import { useConfirm } from '@/components/confirm'
+import { IconClose, IconDoc, IconDownload } from '@/components/icons'
 import { DOC_KINDS, documentSignedUrl, fmtSize, type DocKind } from '@/lib/documents'
 import { DOC_EXT_BY_MIME, DOC_MAX_BYTES } from '@/lib/upload/guard'
 import { verifyUploaded } from '@/lib/upload/client'
@@ -68,6 +70,7 @@ export function MaterialDocs({
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
   const toast = useToast()
+  const confirm = useConfirm()
 
   const [filter, setFilter] = useState<'all' | DocKind>('all')
   const [add, setAdd] = useState(false)
@@ -162,7 +165,7 @@ export function MaterialDocs({
       // убираем сразу, чтобы не копить мусор в приватном бакете.
       await supabase.storage.from('documents').remove([path])
       setBusy(null)
-      toast.error(t('inventory.docs.error.record'), error.message)
+      toast.error(t('inventory.docs.error.record'), dbErrorText(t, error))
       return
     }
 
@@ -210,18 +213,26 @@ export function MaterialDocs({
   }
 
   async function remove(doc: Doc) {
-    if (!window.confirm(t('inventory.docs.delete.confirm', { title: doc.title }))) return
+    // Шторка подтверждения вместо window.confirm: системное окно рисуется
+    // чужим стилем, в обёртке выглядит сбоем и не переводится словарём.
+    const ok = await confirm({
+      title: t('common.delete'),
+      body: t('inventory.docs.delete.confirm', { title: doc.title }),
+      action: t('common.delete'),
+      tone: 'danger',
+    })
+    if (!ok) return
     setBusy(doc.id)
     // Сначала запись, потом файл. Обратный порядок опаснее: строка
     // реестра, которая обещает инспектору документ, а файла уже нет, —
     // хуже, чем файл, на который никто не ссылается.
     const { error } = await supabase.from('material_documents').delete().eq('id', doc.id)
-    if (error) { setBusy(null); toast.error(t('inventory.docs.error.delete'), error.message); return }
+    if (error) { setBusy(null); toast.error(t('inventory.docs.error.delete'), dbErrorText(t, error)); return }
     const { error: storageError } = await supabase.storage.from('documents').remove([doc.path])
     setBusy(null)
     if (storageError) {
       toast.warn(t('inventory.docs.deleted.partial'),
-        `${t('inventory.docs.storageLeft')}: ${storageError.message}`)
+        `${t('inventory.docs.storageLeft')}: ${dbErrorText(t, storageError)}`)
     } else toast.success(t('inventory.docs.deleted'))
     router.refresh()
   }
@@ -239,7 +250,7 @@ export function MaterialDocs({
       notification_date: f.date || null,
     }).eq('id', material.id)
     setBusy(null)
-    if (error) { toast.error(t('inventory.docs.moz.saveError'), error.message); return }
+    if (error) { toast.error(t('inventory.docs.moz.saveError'), dbErrorText(t, error)); return }
     setMoz(false)
     toast.success(t('inventory.docs.moz.saved'))
     router.refresh()
@@ -247,38 +258,52 @@ export function MaterialDocs({
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="t-sm rise" style={{ color: 'var(--color-muted)' }}>
-        {material.name}{material.brand ? ` · ${material.brand}` : ''}
-      </p>
-
       {loadError && <p className="field-error rise">{loadError}</p>}
 
-      {/* ── Фильтры по виду ──────────────────────────────────── */}
-      <div className="rise-1 flex flex-wrap gap-2">
+      {/* ── Фильтры по виду ──────────────────────────────────────
+          Одной строкой с прокруткой вбок, без переноса: перенесённый
+          фильтр смешивается с тем, что стоит ниже. Кнопка создания
+          из этого ряда убрана — действие не фильтр. */}
+      <div className="scroll-x rise-1 -mx-4 flex gap-2 px-4 pb-1 sm:mx-0 sm:px-0">
         {FILTERS.filter((f) => f === 'all' || (counts[f] ?? 0) > 0).map((f) => (
           <button key={f} type="button" onClick={() => setFilter(f)}
-                  className={filter === f ? 'chip-active' : 'chip'}>
+                  className={`${filter === f ? 'chip-active' : 'chip'} shrink-0`}>
             {f === 'all' ? t('inventory.docs.filter.all') : kindShort(t, f)}
             {' '}{t.number(counts[f] ?? 0)}
           </button>
         ))}
-        {canWrite && (
+      </div>
+
+      {/* Кнопка добавления — одна на экран: при пустом списке она живёт
+          в .empty-actions, и вторая здесь была бы дублем. */}
+      {canWrite && docs.length > 0 && (
+        <div className="rise-1 flex">
           <button type="button" className="btn-primary ml-auto t-sm"
                   onClick={() => setAdd(true)}>{t('inventory.docs.add')}</button>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* ── Список файлов ────────────────────────────────────── */}
       <section className="card rise-2 !p-0">
         {shown.length === 0 ? (
           <div className="empty">
-            {docs.length === 0
-              ? t('inventory.docs.empty.none')
-              : t('inventory.docs.empty.filter')}
+            <span className="empty-icon"><IconDoc size={24} /></span>
+            <p className="empty-title">
+              {docs.length === 0
+                ? t('inventory.docs.emptyTitle')
+                : t('inventory.empty.filteredTitle')}
+            </p>
+            <p className="empty-desc">
+              {docs.length === 0
+                ? t('inventory.docs.empty.none')
+                : t('inventory.docs.empty.filter')}
+            </p>
             {canWrite && docs.length === 0 && (
-              <button type="button" className="btn-primary" onClick={() => setAdd(true)}>
-                {t('inventory.docs.uploadFirst')}
-              </button>
+              <div className="empty-actions">
+                <button type="button" className="btn-primary" onClick={() => setAdd(true)}>
+                  {t('inventory.docs.uploadFirst')}
+                </button>
+              </div>
             )}
           </div>
         ) : shown.map((d) => (
@@ -322,11 +347,17 @@ export function MaterialDocs({
               )
             )}
             <span className="flex shrink-0 items-center gap-1">
+              {/* Значки — инлайновый SVG из components/icons: текстовые
+                  глифы приезжают квадратами на части прошивок. */}
               <button className="btn-icon" aria-label={t('inventory.docs.download.aria')}
-                      disabled={busy === d.id} onClick={() => void download(d)}>⤓</button>
+                      disabled={busy === d.id} onClick={() => void download(d)}>
+                <IconDownload size={18} />
+              </button>
               {canWrite && (
                 <button className="btn-icon" aria-label={t('common.delete')}
-                        disabled={busy === d.id} onClick={() => void remove(d)}>✕</button>
+                        disabled={busy === d.id} onClick={() => void remove(d)}>
+                  <IconClose size={18} />
+                </button>
               )}
             </span>
           </div>
@@ -436,6 +467,8 @@ export function MaterialDocs({
       </Sheet>
 
       <p className="field-hint rise-3">{t('inventory.docs.hint')}</p>
+
+      {confirm.element}
     </div>
   )
 }

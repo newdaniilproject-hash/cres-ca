@@ -10,6 +10,8 @@ import { useT } from '@/lib/i18n/client'
 import type { Key } from '@/lib/i18n/dict'
 import type { T } from '@/lib/i18n/translate'
 import { dbErrorText } from '@/lib/errors/db'
+import { Sheet } from '@/components/sheet'
+import { IconArrows } from '@/components/icons'
 
 // Значения enum stock_movement_type из 0003_inventory.sql, в том же порядке.
 export const MOVEMENT_TYPES: string[] = [
@@ -145,6 +147,34 @@ export function MovementsClient({
       : `/app/inventory/movements?type=${next}`)
   }
 
+  // ── Счётчики, они же фильтр (как на экране склада) ──────────────────
+  //
+  // Считаются из ПОКАЗАННЫХ строк, то есть честно отвечают «что в этом
+  // журнале», а не «что было за всю историю»: сервер отдаёт последние 200
+  // движений, и глубже счётчик не видит. Когда фильтр по типу уже стоит,
+  // остальные плитки уходят в ноль и гаснут — это не поломка, а следствие:
+  // сервер прислал только отфильтрованное.
+  //
+  // Тон несёт смысл движения, как и бейджи ниже: emerald — остаток вырос,
+  // rose — ушёл, blue — продажа (штатный расход), amber — переміщення.
+  //
+  // «Переміщення» — ОДНА плитка на ДВА типа (transfer_out/transfer_in):
+  // для мастера это одно событие «банку перенесли», а не два. Фильтр
+  // в адресе одиночный, поэтому нажатие ведёт на «зі складу» — парный
+  // «на склад» рядом в чипах. Плитка с нулём не нажимается: фильтр,
+  // дающий пустой список, — обещание показать то, чего нет.
+  const metrics = useMemo(() => {
+    const count = (...types: string[]) =>
+      movements.filter((mv) => types.includes(mv.type)).length
+    const rows: { types: string[]; n: number; label: string; tone: string }[] = [
+      { types: ['receipt'], n: count('receipt'), label: t('inventory.movements.metric.receipt'), tone: 'emerald' },
+      { types: ['write_off'], n: count('write_off'), label: t('inventory.movements.metric.writeOff'), tone: 'rose' },
+      { types: ['sale'], n: count('sale'), label: t('inventory.movements.metric.sale'), tone: 'blue' },
+      { types: ['transfer_out', 'transfer_in'], n: count('transfer_out', 'transfer_in'), label: t('inventory.movements.metric.transfer'), tone: 'amber' },
+    ]
+    return rows
+  }, [movements, t])
+
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     setBusy(true); setErr('')
@@ -192,6 +222,7 @@ export function MovementsClient({
         })
         opKey.current = ''
         setItemId(''); setQty(''); setNote('')
+        setOpen(false)
         toast.info(t('inventory.offline.saved'), t('inventory.movements.offline.desc'))
         return
       }
@@ -204,6 +235,9 @@ export function MovementsClient({
     setBusy(false)
     opKey.current = ''
     setItemId(''); setQty(''); setNote('')
+    // Списание — разовое действие, а не серия, поэтому шторка закрывается:
+    // результат виден первой строкой журнала, и это лучший «успех».
+    setOpen(false)
     toast.success(t('inventory.movements.recorded'), `${label} · ${t.number(amount)} ${unit}`)
     router.refresh()
   }
@@ -213,122 +247,91 @@ export function MovementsClient({
     day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
   })
 
+  // Пустой журнал без фильтра — это заведение, где ещё не было приёмки:
+  // списывать нечего, и кнопка списания там не нужна. С фильтром кнопка
+  // остаётся: остаток есть, просто движений этого типа не было.
+  const emptyJournal = movements.length === 0 && active === 'all'
+
   return (
     <div className="flex flex-col gap-5">
-      <div className="rise flex flex-wrap items-center gap-2">
-        <Link href="/app/inventory" className="btn-ghost">← {t('inventory.link.stock')}</Link>
-        <Link href="/app/inventory/receipts" className="btn-ghost">
-          {t('inventory.link.receipts')}
-        </Link>
-        {canWrite && (
-          <button type="button" className="btn-primary ml-auto t-md"
-                  onClick={() => { setOpen(!open); setErr('') }}>
-            {open ? t('inventory.collapse') : t('inventory.movements.open')}
-          </button>
-        )}
-      </div>
-
-      {/* Текст отказа базы показывается как есть — это её слова, не наши. */}
+      {/* Ошибка загрузки приходит уже обезличенной (dbErrorText на сервере). */}
       {error && (
         <p className="field-error rise">{t('inventory.movements.loadError')}: {error}</p>
       )}
 
-      {open && canWrite && (
-        <form onSubmit={submit} className="card rise grid gap-3 sm:grid-cols-2">
-          <p className="display t-lg sm:col-span-2">{t('inventory.movements.form.title')}</p>
-
-          <div className="flex flex-wrap gap-2 sm:col-span-2">
-            <button type="button" className={type === 'write_off' ? 'chip-active' : 'chip'}
-                    onClick={() => setType('write_off')}>
-              {t('inventory.movements.action.writeOff')}
+      {/* ── Счётчики, они же фильтр ──────────────────────────────
+          Как на складе: крупное цветное число, мелкая подпись, нажатие
+          ставит фильтр по типу, повторное — снимает. */}
+      <section className="rise grid grid-cols-4 gap-2">
+        {metrics.map((s) => {
+          const on = s.types.includes(active)
+          const dead = s.n === 0 && !on
+          return (
+            <button key={s.types[0]} type="button" disabled={dead} aria-pressed={on}
+                    data-tone={s.tone}
+                    onClick={() => go(on ? 'all' : s.types[0])}
+                    className="metric"
+                    style={{ cursor: dead ? 'default' : 'pointer' }}>
+              <span className="metric-value">{t.number(s.n)}</span>
+              <span className="metric-label">{s.label}</span>
             </button>
-            <button type="button" className={type === 'return' ? 'chip-active' : 'chip'}
-                    onClick={() => setType('return')}>
-              {t('inventory.movements.form.return')}
-            </button>
-          </div>
+          )
+        })}
+      </section>
 
-          <p className="field-hint sm:col-span-2 !mt-0">{t('inventory.movements.form.hint')}</p>
-
-          <div className="flex flex-wrap gap-2 sm:col-span-2">
-            <button type="button" className={kind === 'material' ? 'chip-active' : 'chip'}
-                    onClick={() => { setKind('material'); setItemId('') }}>
-              {t('inventory.pick.material')}
-            </button>
-            <button type="button" className={kind === 'goods' ? 'chip-active' : 'chip'}
-                    onClick={() => { setKind('goods'); setItemId('') }}>
-              {t('inventory.pick.goods')}
-            </button>
-          </div>
-
-          <div className="sm:col-span-2">
-            <label className="field-label">{t('inventory.movements.form.item.label')}</label>
-            <select required className="select" value={itemId}
-                    onChange={(e) => setItemId(e.target.value)}>
-              <option value="">{t('inventory.common.choose')}</option>
-              {options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
-            </select>
-          </div>
-
-          <div>
-            <label className="field-label">
-              {unit
-                ? t('inventory.movements.form.qty.labelUnit', { unit })
-                : t('inventory.movements.form.qty.label')}
-            </label>
-            {/* Вводиться завжди додатне число: знак ставить не людина,
-                а тип руху — так помилитися в ньому неможливо. */}
-            <input required type="number" className="input"
-                   min={kind === 'goods' ? '1' : '0.001'}
-                   step={kind === 'goods' ? '1' : 'any'}
-                   value={qty} onChange={(e) => setQty(e.target.value)} />
-          </div>
-
-          <div>
-            <label className="field-label">{t('inventory.movements.form.reason.label')}</label>
-            <input required className="input"
-                   placeholder={type === 'write_off'
-                     ? t('inventory.movements.form.reason.writeOff.placeholder')
-                     : t('inventory.movements.form.reason.return.placeholder')}
-                   value={note} onChange={(e) => setNote(e.target.value)} />
-            <p className="field-hint">{t('inventory.movements.form.reason.hint')}</p>
-          </div>
-
-          {err && <p className="field-error sm:col-span-2">{err}</p>}
-
-          <div className="flex gap-2 sm:col-span-2">
-            <button className="btn-primary" disabled={busy || !itemId || !qty || !note.trim()}>
-              {type === 'write_off'
-                ? t('inventory.movements.form.submit.writeOff')
-                : t('inventory.movements.form.submit.return')}
-            </button>
-            <button type="button" className="btn-ghost" onClick={() => setOpen(false)}>
-              {t('common.cancel')}
-            </button>
-          </div>
-        </form>
-      )}
-
-      {/* Фильтр по типу */}
-      <div className="rise-1 flex flex-wrap items-center gap-2">
-        <button onClick={() => go('all')} className={active === 'all' ? 'chip-active' : 'chip'}>
+      {/* ── Фильтр по типу ───────────────────────────────────────
+          Одной строкой с горизонтальной прокруткой: восемь чипов
+          в перенос занимали три строки и толкали список вниз. */}
+      <div className="scroll-x rise-1 -mx-4 flex gap-2 px-4 pb-1 sm:mx-0 sm:px-0">
+        <button onClick={() => go('all')}
+                className={`${active === 'all' ? 'chip-active' : 'chip'} shrink-0`}>
           {t('inventory.movements.filter.all')}
         </button>
         {/* Параметр назван `type`, а не `t`: `t` — переводчик. */}
         {MOVEMENT_TYPES.map((mvType) => (
           <button key={mvType} onClick={() => go(mvType)}
-                  className={active === mvType ? 'chip-active' : 'chip'}>
+                  className={`${active === mvType ? 'chip-active' : 'chip'} shrink-0`}>
             {movementLabel(t, mvType)}
           </button>
         ))}
       </div>
 
+      {/* Единственное действие экрана — над списком, а не в своей шапке:
+          заголовков и навигации на экранах нет, назад ведёт оболочка. */}
+      {canWrite && !emptyJournal && (
+        <button type="button" className="btn-primary self-start"
+                onClick={() => { setOpen(true); setErr('') }}>
+          {t('inventory.movements.open')}
+        </button>
+      )}
+
       <section className="card rise-2 !p-0">
         {movements.length === 0 ? (
           <div className="empty">
-            {active === 'all'
-              ? t('inventory.movements.empty.all')
-              : t('inventory.movements.empty.type')}
+            <span className="empty-icon"><IconArrows size={24} /></span>
+            <p className="empty-title">
+              {active === 'all'
+                ? t('inventory.movements.empty.title')
+                : t('inventory.empty.filteredTitle')}
+            </p>
+            <p className="empty-desc">
+              {active === 'all'
+                ? t('inventory.movements.empty.all')
+                : t('inventory.movements.empty.type')}
+            </p>
+            <div className="empty-actions">
+              {active === 'all' ? (
+                // Первое движение рождается приёмкой, а не этим экраном, —
+                // поэтому единственная кнопка пустого журнала ведёт туда.
+                <Link href="/app/inventory/receipts" className="btn-primary">
+                  {t('inventory.movements.empty.cta')}
+                </Link>
+              ) : (
+                <button type="button" className="btn-secondary" onClick={() => go('all')}>
+                  {t('inventory.filter.reset')}
+                </button>
+              )}
+            </div>
           </div>
         ) : movements.map((mv) => (
           <div key={mv.id} className="row px-5">
@@ -375,6 +378,84 @@ export function MovementsClient({
           {t('inventory.movements.limit', { n: t.number(movements.length) })}
         </p>
       )}
+
+      {/* ── Форма списания/возврата ──────────────────────────────
+          Шторкой, а не блоком на странице: раздвигающийся блок уводил
+          список вниз, и мастер терял место, где был. Кнопка действия —
+          в футере шторки: она прижата к низу и не уезжает под клавиатуру
+          вместе с содержимым (`.sheet-foot` + dvh). */}
+      <Sheet open={open && canWrite} onClose={() => setOpen(false)}
+             title={t('inventory.movements.form.title')}
+             footer={
+               <button form="movement-form" className="btn-primary w-full"
+                       disabled={busy || !itemId || !qty || !note.trim()}>
+                 {type === 'write_off'
+                   ? t('inventory.movements.form.submit.writeOff')
+                   : t('inventory.movements.form.submit.return')}
+               </button>
+             }>
+        {/* id связывает кнопку футера с формой: футер лежит вне <form>. */}
+        <form id="movement-form" onSubmit={submit} className="grid gap-3">
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className={type === 'write_off' ? 'chip-active' : 'chip'}
+                    onClick={() => setType('write_off')}>
+              {t('inventory.movements.action.writeOff')}
+            </button>
+            <button type="button" className={type === 'return' ? 'chip-active' : 'chip'}
+                    onClick={() => setType('return')}>
+              {t('inventory.movements.form.return')}
+            </button>
+          </div>
+
+          <p className="field-hint !mt-0">{t('inventory.movements.form.hint')}</p>
+
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className={kind === 'material' ? 'chip-active' : 'chip'}
+                    onClick={() => { setKind('material'); setItemId('') }}>
+              {t('inventory.pick.material')}
+            </button>
+            <button type="button" className={kind === 'goods' ? 'chip-active' : 'chip'}
+                    onClick={() => { setKind('goods'); setItemId('') }}>
+              {t('inventory.pick.goods')}
+            </button>
+          </div>
+
+          <div>
+            <label className="field-label">{t('inventory.movements.form.item.label')}</label>
+            <select required className="select" value={itemId}
+                    onChange={(e) => setItemId(e.target.value)}>
+              <option value="">{t('inventory.common.choose')}</option>
+              {options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label className="field-label">
+              {unit
+                ? t('inventory.movements.form.qty.labelUnit', { unit })
+                : t('inventory.movements.form.qty.label')}
+            </label>
+            {/* Вводиться завжди додатне число: знак ставить не людина,
+                а тип руху — так помилитися в ньому неможливо. */}
+            <input required type="number" className="input"
+                   min={kind === 'goods' ? '1' : '0.001'}
+                   step={kind === 'goods' ? '1' : 'any'}
+                   value={qty} onChange={(e) => setQty(e.target.value)} />
+          </div>
+
+          <div>
+            <label className="field-label">{t('inventory.movements.form.reason.label')}</label>
+            <input required className="input"
+                   placeholder={type === 'write_off'
+                     ? t('inventory.movements.form.reason.writeOff.placeholder')
+                     : t('inventory.movements.form.reason.return.placeholder')}
+                   value={note} onChange={(e) => setNote(e.target.value)} />
+            <p className="field-hint">{t('inventory.movements.form.reason.hint')}</p>
+          </div>
+
+          {err && <p className="field-error">{err}</p>}
+        </form>
+      </Sheet>
     </div>
   )
 }

@@ -5,6 +5,7 @@ import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { MovementsClient } from './movements-client'
 import { getT } from '@/lib/i18n/server'
+import { dbErrorText } from '@/lib/errors/db'
 
 export const dynamic = 'force-dynamic'
 // Заголовок вкладки — тем же ключом, что и заголовок экрана
@@ -68,7 +69,10 @@ export default async function MovementsPage({
         tenantId={m.tenantId}
         canWrite={can(m, 'stock.write')}
         active={active}
-        error={error?.message ?? ''}
+        // Отказ базы человеку не показывается сырым: в нём бывает значение
+        // поля (телефон, имя). Обезличиваем ЗДЕСЬ, чтобы клиент получал
+        // уже готовый текст (`lib/errors/db.ts`).
+        error={error ? dbErrorText(await getT(), error) : ''}
         movements={(data ?? []).map((mv) => {
           const v = mv.offering_variants as unknown as
             { name: string; unit: string; offerings: { title: string } | null } | null

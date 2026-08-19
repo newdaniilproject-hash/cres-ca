@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Sheet } from '@/components/sheet'
@@ -8,9 +9,11 @@ import { useToast } from '@/components/toast'
 import { enqueue, isNetworkError, newKey } from '@/lib/offline/queue'
 import { useT } from '@/lib/i18n/client'
 import { noteIfImmutable } from '@/lib/security-log'
+import { dbErrorText } from '@/lib/errors/db'
 import type { Key } from '@/lib/i18n/dict'
 import { EXPIRY_KEY } from '../../../inventory-client'
 import { EXPIRY_BADGE, daysLeft, expiryState } from '@/lib/expiry'
+import { IconLabel, IconQr } from '@/components/icons'
 
 type Container = {
   id: string; code: string; status: string
@@ -21,12 +24,15 @@ type Container = {
 }
 type Batch = { id: string; number: string; expiry: string }
 
+// Строка «поле — значение» — теми же классами .kv-row/.kv-key/.kv-val,
+// что и паспорт на карточке засоба: две разные таблицы одного вида
+// разъезжаются на первой правке темы. Значения здесь числовые и датные,
+// поэтому tabular стоит на всех.
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="flex items-start justify-between gap-4"
-         style={{ paddingBlock: 'var(--space-2)' }}>
-      <span className="t-sm shrink-0" style={{ color: 'var(--color-muted)' }}>{label}</span>
-      <span className="tabular t-md min-w-0 text-right">{value}</span>
+    <div className="kv-row">
+      <span className="kv-key">{label}</span>
+      <span className="kv-val tabular">{value}</span>
     </div>
   )
 }
@@ -68,12 +74,30 @@ export function PaoControl({
   const [busy, setBusy] = useState<string | null>(null)
   const [decantOf, setDecantOf] = useState<Container | null>(null)
   const [label, setLabel] = useState<{ code: string; id: string; text: string } | null>(null)
+  // «Активні» по умолчанию: мастеру за креслом нужны живые банки.
+  // «Всі» показывает и закрытые со списанными — история не исчезает
+  // навсегда, как это делал прежний фильтр без переключателя.
+  const [scope, setScope] = useState<'active' | 'all'>('active')
 
   // Розлив — это дочерняя ёмкость. Родительские банки и дозаторы
   // разделены не по объёму, а по происхождению: у дозатора есть parent_id.
   const jars = containers.filter((c) => c.parentId === null)
   const decants = containers.filter((c) => c.parentId !== null)
   const live = jars.filter((c) => c.status === 'sealed' || c.status === 'opened')
+  const shownJars = scope === 'active' ? live : jars
+
+  // Счётчики над списком — ответы на вопросы смены: сколько банок в работе,
+  // у каких горит срок, был ли уже розлив сегодня. Считаются из данных
+  // экрана, отдельный запрос им не нужен.
+  const openedCount = jars.filter((c) => c.status === 'opened').length
+  const soonCount = containers.filter((c) => {
+    if (c.status !== 'opened') return false
+    const left = daysLeft(c.useBy)
+    return left != null && left >= 0 && left <= 7
+  }).length
+  const todayStr = new Date().toDateString()
+  const decantsToday = decants.filter((d) =>
+    d.decantedAt && new Date(d.decantedAt).toDateString() === todayStr).length
 
   const batchOf = (id: string | null) => batches.find((b) => b.id === id) ?? null
 
@@ -97,9 +121,11 @@ export function PaoControl({
       // Сторож ёмкости (0014/0044: «дата вскрытия не редактируется»)
       // роняет транзакцию — записать событие изнутри неё нельзя, оно
       // откатится вместе с попыткой. Пишем отсюда (0085, решение 4).
+      // Сырой текст нужен только сторожу журнала; человеку — общий
+      // разбор dbErrorText (М25), сообщение Postgres на экран не едет.
       const message = e instanceof Error ? e.message : String(e)
       void noteIfImmutable(supabase, message, 'ємність: відкриття')
-      toast.error(t('inventory.pao.error.open'), message)
+      toast.error(t('inventory.pao.error.open'), dbErrorText(t, e))
       return
     }
     setBusy(null)
@@ -128,7 +154,7 @@ export function PaoControl({
       }
       const message = e instanceof Error ? e.message : String(e)
       void noteIfImmutable(supabase, message, 'ємність: закриття')
-      toast.error(t('inventory.container.saveError'), message)
+      toast.error(t('inventory.container.saveError'), dbErrorText(t, e))
       return
     }
     setBusy(null)
@@ -171,7 +197,7 @@ export function PaoControl({
         toast.info(t('inventory.offline.saved'), t('inventory.pao.decant.offline'))
         return
       }
-      toast.error(t('inventory.pao.decant.error'), e instanceof Error ? e.message : String(e))
+      toast.error(t('inventory.pao.decant.error'), dbErrorText(t, e))
       return
     }
     const child = (Array.isArray(data) ? data[0] : data) as { id: string; code: string } | null
@@ -198,55 +224,105 @@ export function PaoControl({
     setBusy(c.id)
     const { data, error } = await supabase.rpc('container_label', { p_container_id: c.id })
     setBusy(null)
-    if (error) { toast.error(t('inventory.pao.label.error'), error.message); return }
+    if (error) { toast.error(t('inventory.pao.label.error'), dbErrorText(t, error)); return }
     setLabel({ code: c.code, id: c.id, text: String(data ?? '') })
   }
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="t-sm rise" style={{ color: 'var(--color-muted)' }}>{material.name}</p>
       {loadError && <p className="field-error rise">{loadError}</p>}
 
       {material.isCosmetic && material.paoMonths == null && (
         <p className="field-hint rise">{t('inventory.pao.noPao')}</p>
       )}
 
+      {/* ── Счётчики смены ───────────────────────────────────────
+          Крупное число и мелкая подпись (`.metric`), как на главном
+          экране склада. Не кнопки: фильтр здесь один и живёт в `.seg`
+          ниже, плитка-который-не-нажимается честнее плитки-обманки. */}
+      <section className="grid grid-cols-3 gap-2 rise-1">
+        <div className="metric">
+          <span className="metric-value">{t.number(openedCount)}</span>
+          <span className="metric-label">{t('inventory.pao.metric.opened')}</span>
+        </div>
+        <div className="metric" data-tone={soonCount > 0 ? 'amber' : undefined}>
+          <span className="metric-value">{t.number(soonCount)}</span>
+          <span className="metric-label">{t('inventory.pao.metric.soon')}</span>
+        </div>
+        <div className="metric">
+          <span className="metric-value">{t.number(decantsToday)}</span>
+          <span className="metric-label">{t('inventory.pao.metric.today')}</span>
+        </div>
+      </section>
+
+      {/* Переключатель «Активні / Всі»: прежний фильтр прятал закрытые
+          и списанные банки НАВСЕГДА, и историю нельзя было увидеть. */}
+      <div className="seg self-start rise-1">
+        {(['active', 'all'] as const).map((s) => (
+          <button key={s} type="button" className="seg-item"
+                  data-active={scope === s} aria-pressed={scope === s}
+                  onClick={() => setScope(s)}>
+            {s === 'active' ? t('inventory.pao.scope.active') : t('inventory.pao.scope.all')}
+          </button>
+        ))}
+      </div>
+
       {/* ── Банки: учёт PAO по каждой ────────────────────────── */}
-      {live.length === 0 ? (
-        <div className="card rise-1 empty">{t('inventory.pao.empty')}</div>
-      ) : live.map((c) => {
+      {shownJars.length === 0 ? (
+        <div className="card rise-1">
+          <div className="empty">
+            <span className="empty-icon"><IconQr size={24} /></span>
+            <p className="empty-title">{t('inventory.pao.emptyTitle')}</p>
+            <p className="empty-desc">{t('inventory.pao.empty')}</p>
+            {/* Завести банку отсюда нельзя — форма заведения живёт на
+                главном экране склада. Честная ссылка вместо тупика. */}
+            <div className="empty-actions">
+              <Link href="/app/inventory" className="btn-secondary">
+                {t('inventory.pao.empty.go')}
+              </Link>
+            </div>
+          </div>
+        </div>
+      ) : shownJars.map((c) => {
         const state = expiryState(c.useBy)
         const left = daysLeft(c.useBy)
         const b = batchOf(c.batchId)
+        const closed = c.status !== 'sealed' && c.status !== 'opened'
         return (
           <section key={c.id} className="card rise-1">
             <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
               <h3 className="tabular t-lg">{c.code}</h3>
-              <span className={EXPIRY_BADGE[state]}>
+              {/* У закрытой и списанной срок больше ничего не значит —
+                  бейдж называет статус, а не пугает «протерміновано». */}
+              <span className={closed ? 'badge' : EXPIRY_BADGE[state]}>
                 {c.status === 'sealed'
                   ? t('inventory.pao.status.sealed')
-                  : t(EXPIRY_KEY[state])}
+                  : closed ? statusLabel(c.status) : t(EXPIRY_KEY[state])}
               </span>
             </div>
 
-            {/* Номер партии и объём — данные арендатора. */}
-            <Row label={t('inventory.pao.row.batch')} value={b?.number ?? '—'} />
-            <Row label={t('inventory.pao.row.volume')}
-                 value={c.volume != null
-                   ? `${t.number(c.volume)} ${c.unit ?? material.unit}`
-                   : '—'} />
-            <Row label={t('inventory.pao.row.openedAt')} value={t.date(c.openedAt)} />
-            <Row label={t('inventory.pao.row.pao')}
-                 value={(c.paoMonths ?? material.paoMonths)
-                   ? t.plural('inventory.pao.months', (c.paoMonths ?? material.paoMonths)!)
-                   : '—'} />
-            <Row label={t('inventory.pao.row.useBy')}
-                 value={c.useBy
-                   ? <>{t.date(c.useBy)}{left != null && left >= 0
-                       ? ` · ${t.plural('inventory.days', left)}`
-                       : ''}</>
-                   : t('inventory.pao.useBy.pending')} />
-            <Row label={t('inventory.pao.row.status')} value={statusLabel(c.status)} />
+            {/* Обёртка нужна правилу :last-child — без неё нижняя строка
+                держит разделитель перед кнопками. */}
+            <div>
+              {/* Номер партии и объём — данные арендатора. */}
+              <Row label={t('inventory.pao.row.batch')} value={b?.number ?? '—'} />
+              <Row label={t('inventory.pao.row.volume')}
+                   value={c.volume != null
+                     ? `${t.number(c.volume)} ${c.unit ?? material.unit}`
+                     : '—'} />
+              <Row label={t('inventory.pao.row.openedAt')} value={t.date(c.openedAt)} />
+              <Row label={t('inventory.pao.row.pao')}
+                   value={(c.paoMonths ?? material.paoMonths)
+                     ? t.plural('inventory.pao.months', (c.paoMonths ?? material.paoMonths)!)
+                     : '—'} />
+              <Row label={t('inventory.pao.row.useBy')}
+                   value={c.useBy
+                     ? <>{t.date(c.useBy)}{left != null && left >= 0
+                         ? ` · ${t.plural('inventory.days', left)}`
+                         : ''}</>
+                     : t('inventory.pao.useBy.pending')} />
+              <Row label={t('inventory.pao.row.status')} value={statusLabel(c.status)} />
+            </div>
 
             <div className="mt-3 flex flex-wrap gap-2">
               {c.status === 'sealed' && canOpen && (
@@ -293,7 +369,11 @@ export function PaoControl({
           <span className="badge tabular">{t.number(decants.length)}</span>
         </div>
         {decants.length === 0 ? (
-          <div className="empty !py-6">{t('inventory.pao.decants.empty')}</div>
+          <div className="empty">
+            <span className="empty-icon"><IconLabel size={24} /></span>
+            <p className="empty-title">{t('inventory.pao.decants.emptyTitle')}</p>
+            <p className="empty-desc">{t('inventory.pao.decants.emptyDesc')}</p>
+          </div>
         ) : decants.map((d) => {
           const state = expiryState(d.useBy)
           return (
@@ -316,7 +396,9 @@ export function PaoControl({
                 </span>
                 <button className="btn-icon" aria-label={t('inventory.pao.label.aria')}
                         disabled={busy === d.id}
-                        onClick={() => void showLabel(d)}>▤</button>
+                        onClick={() => void showLabel(d)}>
+                  <IconLabel size={18} />
+                </button>
               </span>
             </div>
           )

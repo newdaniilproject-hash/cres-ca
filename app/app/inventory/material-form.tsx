@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
+import { dbErrorText } from '@/lib/errors/db'
 import { MEDIA_EXT_BY_MIME, MEDIA_MAX_BYTES } from '@/lib/upload/guard'
 import { verifyUploaded } from '@/lib/upload/client'
 import { IconBox, IconClose } from '@/components/icons'
@@ -139,7 +140,7 @@ export function MaterialForm({
     const path = `${tenantId}/materials/${fname}`
     const up = await supabase.storage.from('media')
       .upload(path, file, { contentType: mime, upsert: false })
-    if (up.error) { setBusy(false); setPhotoErr(up.error.message); return }
+    if (up.error) { setBusy(false); setPhotoErr(dbErrorText(t, up.error)); return }
 
     const rejected = await verifyUploaded('media', path)
     if (rejected) { setBusy(false); setPhotoErr(t(`upload.reject.${rejected}`)); return }
@@ -214,9 +215,11 @@ export function MaterialForm({
     // 23505 — нарушение уникальности (tenant_id, name). Текст Postgres
     // мастеру в салоне ничего не объясняет, поэтому переводим.
     if (error) {
+      // Экранная подпись для дубля лучше общей; запасной путь — общий
+      // разбор dbErrorText, а не сырой текст Postgres (М25).
       setErr(error.code === '23505'
         ? t('inventory.material.error.duplicate')
-        : error.message)
+        : dbErrorText(t, error))
       return
     }
     router.refresh()
@@ -280,6 +283,13 @@ export function MaterialForm({
           <option value="">{t('inventory.common.notSet')}</option>
           {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
         </select>
+        {/* Селект меняет место МОЛЧА — след в журнале движений оставляет
+            только «Перемістити» на карточке (relocate_stock, 0113).
+            Подсказка стоит лишь при правке: у нового засоба карточки
+            ещё нет, и отсылать к ней не к чему. */}
+        {material && (
+          <p className="field-hint">{t('inventory.material.location.hint')}</p>
+        )}
       </div>
 
       <label className="t-md flex items-center gap-2 sm:col-span-2"
@@ -344,11 +354,11 @@ export function MaterialForm({
           {/* Фото — квадратом, а не полосой: в списке оно рисуется
               миниатюрой, и кадрировать его человек должен там же,
               где выбирает. */}
-          <span className="list-card-thumb" style={{ width: 72, height: 72 }}>
+          <span className="list-card-thumb">
             {imagePath
               // eslint-disable-next-line @next/next/no-img-element
               ? <img src={photoUrl(imagePath)} alt=""
-                     style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                     className="h-full w-full object-cover" />
               : <IconBox size={26} />}
           </span>
           <div className="min-w-0 flex-1">

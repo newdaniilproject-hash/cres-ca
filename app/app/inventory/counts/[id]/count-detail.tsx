@@ -9,6 +9,8 @@ import { enqueue, isNetworkError, list as queueList, onQueueChange } from '@/lib
 import { useT } from '@/lib/i18n/client'
 import { countBadge, countStatusLabel, humanizeCount, qty } from '../counts-client'
 import { Scanner } from '@/components/scanner'
+import { useConfirm } from '@/components/confirm'
+import { IconClipboard, IconScan } from '@/components/icons'
 
 export type CountCard = {
   id: string
@@ -44,6 +46,10 @@ export function CountDetail({
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
   const toast = useToast()
+  // Подтверждение проведения — шторкой, а не window.confirm: системное
+  // окно рисуется чужим стилем, не переводится и в обёртке выглядит
+  // как сбой (см. components/confirm.tsx).
+  const confirm = useConfirm()
   const counting = count.status === 'counting'
   const editable = counting && canWrite
 
@@ -216,11 +222,31 @@ export function CountDetail({
       return
     }
 
+    // Проведение необратимо, поэтому шторка перечисляет, что именно
+    // произойдёт: строки с расхождением лягут коригуванням у журнал,
+    // незаполненные останутся как были, документ закроется навсегда.
     const unfilled = lines.length - filled
-    const warn = unfilled > 0
-      ? `${t('inventory.count.apply.unfilled', { n: t.number(unfilled) })} `
-      : ''
-    if (!confirm(`${warn}${t('inventory.count.apply.confirm')}`)) return
+    const ok = await confirm({
+      title: t('inventory.count.apply.sheet.title'),
+      body: (
+        <div className="flex flex-col gap-2">
+          {unfilled > 0 && (
+            <p className="t-md">
+              {t('inventory.count.apply.unfilled', { n: t.number(unfilled) })}
+            </p>
+          )}
+          <p className="t-md">
+            {mismatches > 0
+              ? t('inventory.count.apply.sheet.diffs', { n: t.number(mismatches) })
+              : t('inventory.count.apply.sheet.clean')}
+          </p>
+          <p className="t-md">{t('inventory.count.apply.sheet.final')}</p>
+        </div>
+      ),
+      action: t('inventory.count.apply.submit'),
+      tone: 'danger',
+    })
+    if (!ok) return
 
     setBusy('apply'); setErr('')
     // Единственный путь: функция в одной транзакции проводит все расхождения
@@ -229,9 +255,12 @@ export function CountDetail({
     const { error } = await supabase.rpc('apply_stock_count', { p_count_id: count.id })
     setBusy(null)
     if (error) {
-      setErr(isNetworkError(new Error(error.message))
+      // В разбор уходит САМА ошибка, а не `new Error(error.message)`:
+      // обёртка теряла код SQLSTATE, и незнакомый отказ показывался
+      // без кода в скобках. Сети хватает текста сообщения.
+      setErr(isNetworkError(error.message)
         ? t('inventory.count.apply.offline')
-        : humanizeCount(t, error.message))
+        : humanizeCount(t, error))
       return
     }
     toast.success(t('inventory.count.applied.title'),
@@ -286,7 +315,8 @@ export function CountDetail({
         </div>
       </section>
 
-      {/* Текст отказа базы показывается как есть — это её слова, не наши. */}
+      {/* Текст уже переведён общим разбором (`dbErrorText`) на сервере —
+          сырые слова Postgres человеку не показываются. */}
       {loadError && (
         <p className="field-error rise">{t('inventory.count.linesError')}: {loadError}</p>
       )}
@@ -309,11 +339,14 @@ export function CountDetail({
                     className="btn-secondary shrink-0">
               {t('inventory.count.scan.find')}
             </button>
+            {/* Значок — инлайновым SVG из общего файла, а не текстовым
+                глифом: «⌗» рисуется в каждой системе по-своему и на части
+                прошивок приезжает квадратом (см. components/icons.tsx). */}
             <button type="button" onClick={() => setCamera(true)}
                     className="btn-primary shrink-0"
                     title={t('inventory.scan.camera.aria')}
                     aria-label={t('inventory.scan.camera.aria')}>
-              ⌗
+              <IconScan size={18} />
             </button>
           </div>
           {scanMiss && <p className="field-error">{scanMiss}</p>}
@@ -321,16 +354,19 @@ export function CountDetail({
         </section>
       )}
 
-      {/* ── Фильтр состояния ─────────────────────────────────── */}
+      {/* ── Фильтр состояния ─────────────────────────────────────
+          Одной строкой с горизонтальной прокруткой, как ряды чипов
+          по всему кабинету: перенос на вторую строку смешивал бы их
+          с тем, что стоит рядом. */}
       {lines.length > 0 && (
-        <div className="rise-2 flex flex-wrap gap-2">
+        <div className="scroll-x rise-2 -mx-4 flex gap-2 px-4 pb-1 sm:mx-0 sm:px-0">
           {([
             ['all', t('inventory.count.filter.all', { n: t.number(lines.length) })],
             ['todo', t('inventory.count.filter.todo', { n: t.number(lines.length - filled) })],
             ['diff', t('inventory.count.filter.diff', { n: t.number(mismatches) })],
           ] as const).map(([key, label]) => (
             <button key={key} type="button"
-                    className={filter === key ? 'chip-active' : 'chip'}
+                    className={`${filter === key ? 'chip-active' : 'chip'} shrink-0`}
                     onClick={() => setFilter(key)}>
               {label}
             </button>
@@ -342,12 +378,35 @@ export function CountDetail({
       <section className="card rise-3 !p-0">
         <div className="px-5">
           {lines.length === 0 ? (
-            <div className="empty">{t('inventory.count.empty')}</div>
-          ) : visible.length === 0 ? (
+            // Полное пустое состояние с выходом: пустой документ — тупик,
+            // и без действия человек оставался в нём без дороги назад.
             <div className="empty">
-              {filter === 'todo'
-                ? t('inventory.count.todoEmpty')
-                : t('inventory.count.diffEmpty')}
+              <span className="empty-icon"><IconClipboard size={24} /></span>
+              <p className="empty-title">{t('inventory.count.linesEmpty.title')}</p>
+              <p className="empty-desc">{t('inventory.count.empty')}</p>
+              <div className="empty-actions">
+                <Link href="/app/inventory/counts" className="btn-secondary">
+                  {t('inventory.count.backToCounts')}
+                </Link>
+              </div>
+            </div>
+          ) : visible.length === 0 ? (
+            // Пусто ПОД ФИЛЬТРОМ: строки есть, их спрятал чип. Действие
+            // снимает фильтр здесь же — иначе это читается как пропажа.
+            <div className="empty">
+              <span className="empty-icon"><IconClipboard size={24} /></span>
+              <p className="empty-title">
+                {filter === 'todo'
+                  ? t('inventory.count.todoEmpty')
+                  : t('inventory.count.diffEmpty')}
+              </p>
+              <p className="empty-desc">{t('inventory.count.filterEmpty.desc')}</p>
+              <div className="empty-actions">
+                <button type="button" className="btn-secondary"
+                        onClick={() => setFilter('all')}>
+                  {t('inventory.filter.reset')}
+                </button>
+              </div>
             </div>
           ) : visible.map((l) => {
             const diff = diffOf(l)
@@ -436,7 +495,13 @@ export function CountDetail({
                   : t('inventory.count.readonly.noRight')}
             </p>
           )}
-          <Link href="/app/inventory/movements" className="btn-ghost ml-auto">
+          {/* Путь назад к списку инвентаризаций: единственная ссылка вела
+              в журнал рухів, и вернуться к перечню было нечем, кроме
+              системного «назад». */}
+          <Link href="/app/inventory/counts" className="btn-secondary ml-auto">
+            {t('inventory.count.backToCounts')}
+          </Link>
+          <Link href="/app/inventory/movements" className="btn-ghost">
             {t('inventory.link.movements')}
           </Link>
         </div>
@@ -447,6 +512,9 @@ export function CountDetail({
       )}
       <Scanner open={camera} onClose={() => setCamera(false)}
                onResult={(v) => { void lookup(v) }} />
+
+      {/* Шторка подтверждения проведения — один раз в конце разметки. */}
+      {confirm.element}
 
     </div>
   )

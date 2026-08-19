@@ -8,6 +8,7 @@ import { useT } from '@/lib/i18n/client'
 import type { T } from '@/lib/i18n/translate'
 import { dbErrorText } from '@/lib/errors/db'
 import { Scanner } from '@/components/scanner'
+import { IconBarcode, IconChevronRight, IconClose, IconScan } from '@/components/icons'
 
 export type MaterialCodes = {
   id: string
@@ -48,7 +49,6 @@ export function BarcodesClient({
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
 
-  const [query, setQuery] = useState('')
   const [openId, setOpenId] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [err, setErr] = useState('')
@@ -56,13 +56,10 @@ export function BarcodesClient({
   // раскрытого одновременно быть не может.
   const [code, setCode] = useState('')
 
-  const shown = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return q
-      ? materials.filter((mt) => mt.name.toLowerCase().includes(q)
-        || mt.codes.some((c) => c.toLowerCase().includes(q)))
-      : materials
-  }, [materials, query])
+  // Своего поля поиска на экране НЕТ (решение владельца 19.08.2026): поиск
+  // один на весь кабинет и живёт в шапке. Поле здесь искало только по этому
+  // экрану, то есть требовало сначала угадать раздел. Не возвращать.
+  const shown = materials
 
   function toggle(id: string) {
     setOpenId(openId === id ? null : id)
@@ -109,11 +106,8 @@ export function BarcodesClient({
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="rise flex flex-wrap items-center gap-2">
-        <Link href="/app/inventory" className="btn-ghost">← {t('inventory.link.stock')}</Link>
-      </div>
-
-      {/* Текст отказа базы показывается как есть — это её слова, не наши. */}
+      {/* Отказ загрузки приезжает с сервера уже переведённым (`dbErrorText`
+          в page.tsx): сырой текст Postgres печатает значения полей (М25). */}
       {error && (
         <p className="field-error rise">{t('inventory.barcodes.materialsError')}: {error}</p>
       )}
@@ -122,52 +116,48 @@ export function BarcodesClient({
       )}
       {err && <p className="field-error rise">{err}</p>}
 
-      <section className="card rise">
-        <p className="eyebrow">{t('inventory.barcodes.about.eyebrow')}</p>
-        <p className="t-md mt-2 prose-muted">
-          <strong>{t('inventory.barcodes.about.factory.title')}</strong>{' '}
-          {t('inventory.barcodes.about.factory.desc')}
-          <br />
-          <strong>{t('inventory.barcodes.about.own.title')}</strong>{' '}
-          {t('inventory.barcodes.about.own.desc')}
-        </p>
-      </section>
-
-      <input className="input rise-1" placeholder={t('inventory.barcodes.search.placeholder')}
-             value={query} onChange={(e) => setQuery(e.target.value)} />
-
-      <section className="card rise-2 !p-0">
+      <section className="card rise-1 !p-0">
         {shown.length === 0 ? (
+          // Коды привязываются к засобам, а засоби заводятся на складе —
+          // отсюда действие ведёт туда, где пустоту можно исправить.
           <div className="empty">
-            {materials.length === 0
-              ? t('inventory.barcodes.empty.noMaterials')
-              : t('inventory.barcodes.empty.search')}
+            <span className="empty-icon"><IconBarcode size={24} /></span>
+            <p className="empty-title">{t('inventory.barcodes.empty.title')}</p>
+            <p className="empty-desc">{t('inventory.barcodes.empty.noMaterials')}</p>
+            <div className="empty-actions">
+              <Link href="/app/inventory" className="btn-primary">
+                {t('inventory.barcodes.empty.action')}
+              </Link>
+            </div>
           </div>
         ) : shown.map((mt) => {
           const open = openId === mt.id
           return (
             <div key={mt.id} className="px-5">
-              <div className="row">
-                <button type="button" className="min-w-0 flex-1 text-left"
-                        onClick={() => toggle(mt.id)}>
-                  <p className="t-md truncate">{mt.name}</p>
-                  <p className="tabular t-xs mt-0.5 prose-muted">
+              {/* Вся строка — ОДНА кнопка. Раньше тело строки и «+» справа
+                  звали один и тот же toggle — два входа в одно действие.
+                  Шеврон — указатель, а не кнопка: нажимается строка. */}
+              <button type="button" className="row w-full text-left"
+                      style={{ minHeight: 'var(--tap-min)' }}
+                      aria-expanded={open}
+                      onClick={() => toggle(mt.id)}>
+                <span className="min-w-0 flex-1">
+                  <span className="t-md block truncate">{mt.name}</span>
+                  <span className="tabular t-xs mt-0.5 block prose-muted">
                     {mt.category ? `${mt.category} · ` : ''}
                     {mt.codes.length === 0
                       ? t('inventory.barcodes.noCodes')
                       : t('inventory.barcodes.count', { n: t.number(mt.codes.length) })}
-                  </p>
-                </button>
-                <div className="flex shrink-0 items-center gap-2">
+                  </span>
+                </span>
+                <span className="flex shrink-0 items-center gap-2">
                   <span className={`tabular ${mt.codes.length === 0 ? 'badge' : 'badge-success'}`}>
                     {t.number(mt.codes.length)}
                   </span>
-                  <button type="button" className="btn-icon" onClick={() => toggle(mt.id)}
-                          title={open ? t('inventory.collapse') : t('inventory.barcodes.expand')}>
-                    {open ? '−' : '+'}
-                  </button>
-                </div>
-              </div>
+                  <IconChevronRight
+                    className={`prose-muted shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} />
+                </span>
+              </button>
 
               {open && (
                 <div className="pb-5">
@@ -182,7 +172,9 @@ export function BarcodesClient({
                                     aria-label={t('inventory.barcodes.unlink.aria')}
                                     disabled={busy !== null}
                                     onClick={() => void remove(mt.id, c)}>
-                              ✕
+                              {/* Значок, а не глиф «✕»: текстовые символы
+                                  рисуются каждой прошивкой по-своему. */}
+                              <IconClose size={18} />
                             </button>
                           )}
                         </div>
@@ -197,8 +189,12 @@ export function BarcodesClient({
                         <input className="input" placeholder={t('inventory.barcodes.new.placeholder')}
                                value={code} onChange={(e) => setCode(e.target.value)}
                                autoComplete="off" inputMode="text" />
-                        <button type="button" className="btn-secondary shrink-0"
+                        {/* Кнопка остаётся: она наполняет конкретное поле,
+                            а не ищет по складу, как сканер в шапке. */}
+                        <button type="button"
+                                className="btn-secondary inline-flex shrink-0 items-center gap-1.5"
                                 onClick={() => setCamera(true)}>
+                          <IconScan size={18} />
                           {t('inventory.barcodes.scan')}
                         </button>
                       </div>
