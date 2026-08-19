@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Sheet } from '@/components/sheet'
 import { useT } from '@/lib/i18n/client'
-import { IconBell } from '@/components/icons'
+import { IconBell, IconClock } from '@/components/icons'
 
 // ── Колокол в шапке ─────────────────────────────────────────────────────────
 //
@@ -99,42 +99,19 @@ export function NotifyBell({ tenantPerms }: { tenantPerms: string[] }) {
         )}
       </button>
 
-      <Sheet open={open} onClose={() => setOpen(false)} title={t('app.chrome.bell.title')}>
-        {rows === null ? (
-          <div className="flex flex-col gap-2">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="skeleton-row px-1"><span /><span /><span /><span /></div>
-            ))}
-          </div>
-        ) : rows.length === 0 ? (
-          <div className="empty">
-            <span className="empty-icon"><IconBell size={24} /></span>
-            <p className="empty-title">{t('app.chrome.bell.empty')}</p>
-            <p className="empty-desc">{t('app.chrome.bell.emptyDesc')}</p>
-          </div>
-        ) : (
-          <div className="flex flex-col">
-            {rows.map((r) => (
-              <div key={r.id} className="row">
-                <span className="min-w-0">
-                  {/* Название события — служебный код (`booking.reminder`),
-                      и человеку он ничего не говорит. Переводим по словарю,
-                      а незнакомое показываем как есть: молчать о письме,
-                      которое уйдёт клиенту, хуже, чем показать его код. */}
-                  <span className="t-md block truncate">{eventLabel(t, r.event)}</span>
-                  <span className="t-xs block truncate" style={{ color: 'var(--color-faint)' }}>
-                    {t.date(r.send_after, {
-                      day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
-                    })} · {r.channel}
-                  </span>
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
+      <Sheet open={open} onClose={() => setOpen(false)} title={t('app.chrome.bell.sheetTitle')}>
+        <NotifyList t={t} rows={rows} />
       </Sheet>
     </>
   )
+}
+
+// Тон значка по смыслу события. Тонов три, а не палитра под каждое имя:
+// «горит» (срок годности), «скоро» (напоминание) и нейтральное остальное.
+function toneOf(event: string): string {
+  if (event.startsWith('expiry')) return 'rose'
+  if (event.includes('reminder')) return 'amber'
+  return 'blue'
 }
 
 // Подписи известных событий. Ключей мало намеренно: список пополняется
@@ -149,4 +126,75 @@ function eventLabel(t: ReturnType<typeof useT>, event: string): string {
     'expiry.warning': t('app.chrome.bell.event.expiry'),
   }
   return known[event] ?? event
+}
+
+// ── Содержимое шторки ───────────────────────────────────────────────────────
+//
+// Отдельным экспортом, а не разметкой внутри `NotifyBell`, по той же причине,
+// по которой это сделано у «Сьогодні»: очередь живёт за входом и на живых
+// данных, а сверить её вид с макетом надо на стенде приёмки. Переводчик
+// приходит пропом — второй `useT()` внутри дал бы тот же результат, но
+// стенд не смог бы подставить строки, которых ещё нет в словаре.
+export function NotifyList({ t, rows }: { t: ReturnType<typeof useT>; rows: Row[] | null }) {
+  return (
+    <>
+    {rows === null ? (
+      <div className="flex flex-col gap-2">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="skeleton-row px-1"><span /><span /><span /><span /></div>
+        ))}
+      </div>
+    ) : rows.length === 0 ? (
+      <div className="empty">
+        <span className="empty-icon"><IconBell size={24} /></span>
+        <p className="empty-title">{t('app.chrome.bell.empty')}</p>
+        <p className="empty-desc">{t('app.chrome.bell.emptyDesc')}</p>
+      </div>
+    ) : (
+      <>
+        {/* Строка счёта, как в макете. «Прочитати всі» рядом с ней НЕТ
+            и быть пока не может: у `notification_outbox` нет признака
+            прочитанного — есть `pending` / `sent`. Кнопка, которая
+            ничего не меняет в базе, — это та же мёртвая навигация,
+            ради которой колокол вообще показывает настоящую очередь,
+            а не выдуманную ленту. */}
+        <p className="t-sm mb-3 prose-muted">
+          {t('app.chrome.bell.pending', { n: t.number(rows.length) })}
+        </p>
+        <div className="flex flex-col gap-2">
+          {rows.map((r) => (
+            // Карточками с зазором, а не сплошным списком с линейками:
+            // у строки две-три величины, и в сплошном списке соседние
+            // уведомления слипаются в одно.
+            <div key={r.id} className="list-card">
+              {/* Тон плашки — по СМЫСЛУ события, а не по порядку строки:
+                  срок годности красный, напоминание жёлтое, остальное
+                  нейтрально-синее. Четыре одинаковых значка читаются
+                  как один блок, и глаз не находит тревожный. */}
+              <span className="stat-tile-icon shrink-0" data-tone={toneOf(r.event)}>
+                <IconClock size={17} />
+              </span>
+              <span className="min-w-0 flex-1">
+                {/* Название события — служебный код (`booking.reminder`),
+                    и человеку он ничего не говорит. Переводим по словарю,
+                    а незнакомое показываем как есть: молчать о письме,
+                    которое уйдёт клиенту, хуже, чем показать его код. */}
+                <span className="t-md block truncate">{eventLabel(t, r.event)}</span>
+                {/* Канал (`email` / `push`) отсюда убран: это значение
+                    перечисления, служебное имя нашей очереди, и человеку
+                    оно не отвечает ни на один вопрос. Остаётся время —
+                    единственное, что ему тут нужно знать. */}
+                <span className="t-sm block truncate" style={{ color: 'var(--color-faint)' }}>
+                  {t.date(r.send_after, {
+                    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+                  })}
+                </span>
+              </span>
+            </div>
+          ))}
+        </div>
+      </>
+        )}
+    </>
+  )
 }

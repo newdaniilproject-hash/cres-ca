@@ -4,7 +4,8 @@ import { createClient } from '@/lib/supabase/server'
 import { currentMembership, currentUserId, can, hasModule } from '@/lib/tenant'
 import { AppShell } from '@/components/shell'
 import { getT } from '@/lib/i18n/server'
-import { IconAlert, IconBox, IconCalendar, IconClock } from '@/components/icons'
+import { IconBox, IconCalendar, IconClock } from '@/components/icons'
+import { TodayMobile, type TodayAttention } from './today-mobile'
 
 export const dynamic = 'force-dynamic'
 
@@ -135,14 +136,37 @@ export default async function AppHome() {
     return start >= todayStart && start <= todayEnd
   })
 
-  // «Потребує уваги» — сумма трёх разных бед, а не своя выборка: запись
-  // без подтверждения, ёмкость на подходе к сроку, позиция на исходе.
-  // Каждое слагаемое уже посчитано своим блоком ниже; здесь оно только
-  // складывается для карточки-героя.
-  const needsAttention =
-    todays.filter((b) => b.status === 'booked').length
-    + (expiring ?? []).length
-    + (low ?? []).length
+  // «Потребує уваги» — сумма двух разных бед: ёмкость на подходе к сроку
+  // и позиция на исходе. Собирается ОДНИМ списком, а не двумя секциями,
+  // потому что в карточке-герое это одно число: раздельные блоки не давали
+  // ему ни одного выхода и при этом вели двумя ссылками в один «Склад».
+  //
+  // Записи без подтверждения в это число больше не входят. Они уже видны
+  // выше — своей строкой в расписании и жёлтым бейджем «нова», — а число,
+  // которое больше списка под ним, читается как потерянные строки.
+  //
+  // Ссылки: страницы склада стоят на `stock.read` И модуле `inventory`
+  // (это и есть `seeStock`). Без него строка не ведёт никуда — ссылка,
+  // разворачивающая обратно сюда, хуже её отсутствия.
+  const stockHref = seeStock ? '/app/inventory' : null
+  const soon = Date.now() + 3 * 864e5
+  const attention: TodayAttention[] = [
+    ...(expiring ?? []).map((c) => ({
+      key: `c:${c.code}`,
+      title: c.material_name as string,
+      sub: t('home.expiring.container', { code: c.code as string }),
+      badge: t('home.expiring.until', { date: t.date(c.use_by) }),
+      hot: new Date(c.use_by as string).getTime() <= soon,
+      href: stockHref,
+    })),
+    ...(low ?? []).map((r, i) => ({
+      key: `l:${i}`,
+      title: r.title as string,
+      sub: t('home.attention.low'),
+      badge: t('home.reorder.item', { n: t.number(Number(r.to_order)) }),
+      href: seeStock ? '/app/inventory/reorder' : null,
+    })),
+  ]
 
   const firstName = (me?.full_name ?? '').trim().split(/\s+/)[0] || ''
 
@@ -199,52 +223,30 @@ export default async function AppHome() {
         </div>
       )}
 
-      {/* Приветствие по имени — из прототипа. Заголовок экрана здесь
-          намеренно остаётся именем ЗАВЕДЕНИЯ (`headingOf` в app-shell.tsx,
-          решение зафиксировано там), а не превращается в «Доброго ранку»:
-          в панели он одинаков для всех разделов и отвечает на вопрос
-          «де я», а не «хто я». Личное обращение поэтому — отдельной
-          строкой в теле экрана, не в заголовке. */}
-      {/* Без «доброго ранку/дня/вечора»: часы для этого выбора были бы
-          СЕРВЕРНЫЕ (функция физически рисует страницу в Дублине, UTC),
+      {/* ── Телефон: приветствие, карточка дня, расписание, «потребує уваги» ──
+          Разметка живёт в `today-mobile.tsx` — там же разбор, почему
+          она вынесена и почему это не клиентский компонент. Сюда
+          приходят только уже посчитанные значения.
+
+          Приветствие БЕЗ «доброго ранку/дня/вечора»: часы для этого выбора
+          были бы СЕРВЕРНЫЕ (функция физически рисует страницу в Дублине),
           а не человека в Києві — «доброго ранку» провисело бы до полудня
           по местному времени продавца. Дешевле и честнее одно приветствие
           без времени суток, чем неправильное время суток. */}
-      {firstName && (
-        <p className="t-lg rise mb-4 lg:hidden">{t('home.greeting', { name: firstName })}</p>
-      )}
-
-      {/* ── Карточка-герой ────────────────────────────────────────
-          По прототипу CRESKO: сплошная акцентная плашка с двумя
-          числами дня. Показывается только тому, кто видит хотя бы
-          один из блоков ниже, — карточка со счётом «0 і 0» на пустом
-          экране была бы утверждением о заведении, которого человек
-          не имеет права знать (см. разбор про право и модуль выше). */}
-      {(seeBookings || seeContainers || seeStock) && (
-        <div className="today-hero rise-1 mb-6 lg:hidden">
-          <p className="today-hero-eyebrow">{t('home.hero.eyebrow')}</p>
-          <div className="today-hero-row">
-            {seeBookings && (
-              <div className="today-hero-stat">
-                <span className="today-hero-icon"><IconCalendar size={20} /></span>
-                <span>
-                  <span className="today-hero-value tabular block">{t.number(todays.length)}</span>
-                  <span className="today-hero-label block">
-                    {t.plural('home.hero.bookings', todays.length)}
-                  </span>
-                </span>
-              </div>
-            )}
-            <div className="today-hero-stat">
-              <span className="today-hero-icon"><IconAlert size={20} /></span>
-              <span>
-                <span className="today-hero-value tabular block">{t.number(needsAttention)}</span>
-                <span className="today-hero-label block">{t('home.hero.attention')}</span>
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
+      <TodayMobile
+        t={t}
+        name={firstName}
+        showBookings={seeBookings}
+        showAttention={seeContainers || seeStock}
+        bookings={todays.map((b) => ({
+          id: b.id as string,
+          startISO: String(b.period).match(/"([^"]+)"/)?.[1] ?? '',
+          name: (b.contact_name as string) ?? '',
+          service: [b.title, b.variant_name].filter(Boolean).join(' · '),
+          status: b.status as string,
+        }))}
+        attention={attention}
+      />
 
       {/* ── CRESKO Web: дашборд «Сьогодні» (только lg) ─────────────
           README §1: H1 29px с датой, два ряда по три карточки.
@@ -430,124 +432,6 @@ export default async function AppHome() {
                   </div>
                 ))}
           </section>
-        )}
-      </div>
-
-      <div className="grid gap-4 lg:hidden">
-        {/* Записи сегодня */}
-        {seeBookings && (
-        <section className="rise-1 lg:col-span-2">
-          <div className="section-head">
-            <p className="eyebrow">{t('home.bookings.title')}</p>
-            <Link href="/app/bookings" className="btn-ghost t-sm">{t('home.bookings.all')}</Link>
-          </div>
-          {todays.length === 0 ? (
-            <div className="card empty !py-8">{t('home.bookings.empty')}</div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {todays.map((b) => {
-                // Переменная названа `start`, а не `t`: `t` — переводчик.
-                const start = new Date(String(b.period).match(/"([^"]+)"/)?.[1] ?? '')
-                const initial = (b.contact_name || '?').trim().charAt(0).toUpperCase()
-                return (
-                  <div key={b.id} className="list-card">
-                    <span className="tabular t-lg shrink-0" style={{ color: 'var(--color-accent)', minWidth: 52 }}>
-                      {t.dateTime(start, { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                    <span className="list-anchor"
-                          style={{ background: 'var(--color-accent-soft)', color: 'var(--color-accent-ink)' }}>
-                      {initial}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      {/* Имя клиента, название услуги и варианта — данные. */}
-                      <span className="t-md block truncate">{b.contact_name}</span>
-                      <span className="t-xs block truncate" style={{ color: 'var(--color-faint)' }}>
-                        {b.title} · {b.variant_name}
-                      </span>
-                    </span>
-                    {/* Статус записи — значение перечисления
-                        (`booking_status_transitions`), переводится подпись. */}
-                    <span className={`shrink-0 ${b.status === 'confirmed' ? 'badge-success' : 'badge'}`}>
-                      {b.status === 'booked'
-                        ? t('home.booking.status.booked')
-                        : b.status === 'arrived'
-                        ? t('home.booking.status.arrived')
-                        : t('home.booking.status.ok')}
-                    </span>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </section>
-        )}
-
-        {/* Сроки годности */}
-        {seeContainers && (
-        <section className="rise-2">
-          <div className="section-head">
-            <p className="eyebrow">{t('home.expiring.title')}</p>
-            {/* Сам блок стоит на `compliance.read`, а склад за ссылкой —
-                на `stock.read`: `/app/inventory` разворачивает обратно
-                сюда всех, у кого его нет, то есть инспектора. Ссылка,
-                возвращающая на ту же страницу, — это та же сломанная
-                навигация, ради которой выше прячется кнопка «До публікації».
-                В `seeStock` теперь входит и модуль `inventory`: без него
-                `/app/inventory` отвечает экраном «розділ не підключено»,
-                и ссылка вела бы туда же — в отказ. */}
-            {seeStock && (
-              <Link href="/app/inventory" className="btn-ghost t-sm">
-                {t('home.expiring.stock')}
-              </Link>
-            )}
-          </div>
-          {(expiring ?? []).length === 0 ? (
-            <div className="card empty !py-8">{t('home.expiring.empty')}</div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {(expiring ?? []).map((c) => (
-                <div key={c.code} className="list-card">
-                  <span className="min-w-0 flex-1">
-                    {/* Назва засобу і код ємності — данные заклада. */}
-                    <span className="t-md block truncate">{c.material_name}</span>
-                    <span className="t-xs block truncate" style={{ color: 'var(--color-faint)' }}>
-                      {t('home.expiring.container', { code: c.code })}
-                    </span>
-                  </span>
-                  <span className="badge-warn tabular shrink-0">
-                    {t('home.expiring.until', { date: t.date(c.use_by) })}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-        )}
-
-        {/* Что закупить */}
-        {seeStock && (
-        <section className="rise-3 lg:col-span-2">
-          <div className="section-head">
-            <p className="eyebrow">{t('home.reorder.title')}</p>
-            <Link href="/app/inventory" className="btn-ghost t-sm">
-              {t('home.reorder.stock')}
-            </Link>
-          </div>
-          {(low ?? []).length === 0 ? (
-            <div className="card empty !py-8">{t('home.reorder.empty')}</div>
-          ) : (
-            <div className="card">
-            <div className="flex flex-wrap gap-2">
-              {/* Назва позиції — данные; переводится только «докупити». */}
-              {(low ?? []).map((r, i) => (
-                <span key={i} className="badge-warn tabular">
-                  {r.title} · {t('home.reorder.item', { n: t.number(Number(r.to_order)) })}
-                </span>
-              ))}
-            </div>
-            </div>
-          )}
-        </section>
         )}
       </div>
     </AppShell>
