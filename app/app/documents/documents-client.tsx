@@ -9,7 +9,7 @@ import type { T } from '@/lib/i18n/translate'
 
 import { DOC_KINDS as KINDS, documentSignedUrl, fmtSize, type DocKind } from '@/lib/documents'
 import { Sheet } from '@/components/sheet'
-import { IconDoc } from '@/components/icons'
+import { IconAlert, IconBeaker, IconDoc, IconLayers } from '@/components/icons'
 import {
   DOC_EXT_BY_MIME as EXT_BY_MIME,
   DOC_MAX_BYTES as MAX_BYTES,
@@ -37,6 +37,13 @@ const DAY: Intl.DateTimeFormatOptions = {
   day: 'numeric', month: 'short', year: 'numeric',
 }
 
+// Дата и время загрузки — «12 січ., 14:05». Колонка «Оновлено» в таблице
+// десктопа: на широком экране есть где показать час, а у документов, которые
+// заливают пачкой в один день, час — единственное, что их различает.
+const AT: Intl.DateTimeFormatOptions = {
+  day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+}
+
 type Material = {
   id: string; name: string; unit: string
   brand: string | null; isCosmetic: boolean
@@ -46,6 +53,12 @@ type Doc = {
   title: string; path: string; createdAt: string
   /** Размер и тип файла (0059). Могут быть пустыми у старых загрузок. */
   size: number | null; mime: string | null
+  /**
+   * Имя загрузившего. Null значит «имя не достаётся» — человека вывели
+   * из состава команды (оговорка 0083), а не «документ загрузил никто»:
+   * колонка `uploaded_by` объявлена `not null` ещё в 0014.
+   */
+  uploader: string | null
 }
 
 // Плашка расширения в строке документа (README: «плашка PDF 38px,
@@ -96,6 +109,54 @@ export function DocumentsClient({
 
   // Косметика без единого документа — то, из-за чего приходит предписание.
   const missing = materials.filter((m) => m.isCosmetic && !byMaterial.has(m.id))
+
+  // Название засоба по его id — для колонки «Засіб» в таблице десктопа.
+  // Таблица плоская (документы всех засобів одним списком по дате), поэтому
+  // название приходится доставать, а не наследовать от секции, как на телефоне.
+  const materialById = useMemo(
+    () => new Map(materials.map((m) => [m.id, m])),
+    [materials],
+  )
+
+  // ── CRESKO Web: метрики экрана ───────────────────────────────────────────
+  // Пять плиток README — но только те, что считаются из НАШИХ данных.
+  // Плитки «термін документа спливає» здесь нет и быть не может: срока
+  // действия у `material_documents` не существует ни колонкой, ни смыслом
+  // (MSDS и висновок СЕС бессрочны), а плитка, считающая ноль из ничего,
+  // — это обещание следить за тем, за чем система не следит.
+  const metrics = [
+    {
+      key: 'total', label: t('documents.web.metric.total'), n: documents.length,
+      tone: 'blue' as const, icon: IconDoc, note: '',
+    },
+    {
+      key: 'msds', label: t('documents.web.metric.msds'),
+      n: documents.filter((d) => d.kind === 'msds').length,
+      tone: 'violet' as const, icon: IconBeaker, note: '',
+    },
+    {
+      key: 'materials', label: t('documents.web.metric.materials'), n: materials.length,
+      tone: 'emerald' as const, icon: IconLayers, note: '',
+    },
+    {
+      key: 'cosmetic', label: t('documents.web.metric.cosmetic'),
+      n: materials.filter((m) => m.isCosmetic).length,
+      tone: 'amber' as const, icon: IconLayers, note: '',
+    },
+    {
+      key: 'missing', label: t('documents.web.metric.missing'), n: missing.length,
+      tone: 'rose' as const, icon: IconAlert,
+      // Примечание только у той плитки, где оно говорит, что делать.
+      note: missing.length > 0 ? t('documents.badge.needDocs') : '',
+    },
+  ]
+
+  // Колонки таблицы CRESKO Web. Единственное место, где размер задаётся
+  // строкой, — так велит `.wtable`: сетку задаёт экран, а не класс.
+  // Последняя колонка фиксированной ширины: в ней «Завантажити» (btn-ghost,
+  // около 108px) и крестик (btn-icon, 44px по --tap-min). Доля вместо
+  // пикселей сжимала бы кнопки на узком ноутбуке, и подпись переносилась бы.
+  const WGRID = '2.4fr 1.1fr 1.3fr 1fr 1.1fr 168px'
 
   async function upload(e: React.FormEvent) {
     e.preventDefault()
@@ -222,8 +283,24 @@ export function DocumentsClient({
           `stock.read`), и ряд у него был из двух кнопок неизвестно
           куда. Единственное действие экрана — загрузить документ,
           и оно теперь одно и на виду. */}
+      {/* ── CRESKO Web: хедер экрана (только lg) ─────────────────
+          Слева имя экрана тем же ключом, которым его называет панель
+          и вкладка браузера; справа — то же единственное действие,
+          что и на телефоне. Кнопка одна на обе раскладки по смыслу,
+          но не по разметке: на телефоне она во всю ширину под шапкой,
+          на вебе — в правом углу хедера. */}
+      <div className="hidden items-center justify-between lg:flex">
+        <h1 className="webh1">{t('app.screen.documents.title')}</h1>
+        {canWrite && (
+          <button type="button" className="btn-primary"
+                  onClick={() => { setErr(''); setUploading(true) }}>
+            {t('documents.upload.submit')}
+          </button>
+        )}
+      </div>
+
       {canWrite && (
-        <button type="button" className="btn-primary rise"
+        <button type="button" className="btn-primary rise lg:hidden"
                 onClick={() => { setErr(''); setUploading(true) }}>
           {t('documents.upload.submit')}
         </button>
@@ -231,6 +308,28 @@ export function DocumentsClient({
 
       {loadError && <p className="field-error rise">{loadError}</p>}
       {err && <p className="field-error rise">{err}</p>}
+
+      {/* ── CRESKO Web: метрики (только lg) ──────────────────────
+          Плитки не нажимаются: фильтра по ним на этом экране нет,
+          а плитка, которая выглядит кнопкой и ничего не делает, —
+          сломанная навигация.
+
+          Пять в ряд только с 1280px. На 1024 у кабинета остаётся
+          728px после сайдбара — по 132px на плитку, и подпись
+          «Косметика без документів» встаёт в три строки, ломая ряд
+          об одну плитку. До xl их три. */}
+      <section className="rise hidden gap-4 lg:grid lg:grid-cols-3 xl:grid-cols-5">
+        {metrics.map((s) => (
+          <div key={s.key} className="wmetric">
+            <span className="min-w-0">
+              <span className="wmetric-label block">{s.label}</span>
+              <span className="wmetric-value tabular block">{t.number(s.n)}</span>
+              {s.note && <span className="wmetric-note mt-0.5 block">{s.note}</span>}
+            </span>
+            <span className="wmetric-icon" data-tone={s.tone}><s.icon size={19} /></span>
+          </div>
+        ))}
+      </section>
 
       {missing.length > 0 && (
         <div className="card-flat rise-1 flex flex-wrap items-center gap-3">
@@ -249,7 +348,107 @@ export function DocumentsClient({
           </div>
         </div>
       ) : (
-        <div className="flex flex-col gap-4">
+        <>
+        {/* ── CRESKO Web: документы таблицей (только lg) ─────────
+            Список плоский и отсортирован по дате загрузки — так его
+            и отдаёт страница. Группировка по засобу, как на телефоне,
+            здесь была бы двадцатью таблицами по две строки; вместо
+            неё колонка «Засіб», по которой сортирует глаз.
+
+            Засоби БЕЗ документов в таблицу не попадают — их видно
+            плиткой «Косметика без документів» выше и полосой ниже:
+            строка-пустышка в списке документов означала бы, что
+            документ есть, просто он пустой. */}
+        <section className="hidden lg:block">
+          <div className="wtable">
+            <div className="wtable-head" style={{ gridTemplateColumns: WGRID }}>
+              <span>{t('documents.web.table.document')}</span>
+              <span>{t('documents.web.table.kind')}</span>
+              <span>{t('documents.web.table.material')}</span>
+              <span>{t('documents.web.table.author')}</span>
+              <span>{t('documents.web.table.updated')}</span>
+              <span>{t('documents.web.table.actions')}</span>
+            </div>
+            {documents.length === 0 ? (
+              <div className="empty">{t('documents.docs.empty')}</div>
+            ) : documents.map((d) => {
+              const mt = materialById.get(d.materialId)
+              return (
+                <div key={d.id} className="wtable-row" style={{ gridTemplateColumns: WGRID }}>
+                  {/* Ячейка названия — кнопка «переглянути», то есть
+                      ровно то действие, которым строка открывается
+                      на телефоне. Строка целиком кнопкой быть не может:
+                      справа живут ещё две, а кнопка внутри кнопки
+                      недопустима. Зона нажатия — `--tap-min`: тем же
+                      экраном пользуются с планшета. */}
+                  <button type="button" disabled={busy === d.id}
+                          onClick={() => void view(d)}
+                          className="flex min-w-0 items-center gap-3 text-left"
+                          style={{ minHeight: 'var(--tap-min)' }}>
+                    <span aria-hidden className="doc-ext"
+                          data-tone={extOf(d.mime) === 'PDF' ? 'danger' : undefined}>
+                      {extOf(d.mime)}
+                    </span>
+                    <span className="min-w-0">
+                      {/* Назва документа — данные заклада. */}
+                      <span className="block truncate font-semibold"
+                            style={{ color: 'var(--color-text)' }}>{d.title}</span>
+                      {d.size !== null && (
+                        <span className="tabular block truncate"
+                              style={{ color: 'var(--color-faint)' }}>
+                          {fmtSize(t, d.size)}
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                  <span><span className="badge">{kindShort(t, d.kind)}</span></span>
+                  <span className="min-w-0">
+                    {mt
+                      ? (
+                        // Название ведёт в карточку засоба — тот же адрес,
+                        // что и заголовок секции на телефоне.
+                        <Link href={`/app/inventory/materials/${mt.id}`}
+                              className="block truncate"
+                              style={{ color: 'var(--color-accent-ink)' }}>
+                          {mt.name}
+                        </Link>
+                      )
+                      : t('common.noValue')}
+                  </span>
+                  <span className="truncate">
+                    {d.uploader ?? (
+                      <span title={t('documents.web.uploader.gone.title')}>
+                        {t('documents.web.uploader.gone')}
+                      </span>
+                    )}
+                  </span>
+                  <span className="tabular">{t.dateTime(d.createdAt, AT)}</span>
+                  <span className="flex items-center gap-1">
+                    <button className="btn-ghost" disabled={busy === d.id}
+                            onClick={() => void download(d)}>
+                      {t('documents.doc.download')}
+                    </button>
+                    {canWrite && (
+                      // Подпись для скринридера — из словаря: «✕» он не прочтёт.
+                      <button className="btn-icon" aria-label={t('common.delete')}
+                              disabled={busy === d.id}
+                              onClick={() => void remove(d)}>✕</button>
+                    )}
+                  </span>
+                </div>
+              )
+            })}
+            {documents.length > 0 && (
+              <div className="wtable-foot">
+                <span className="tabular">
+                  {t('documents.web.table.total', { n: t.number(documents.length) })}
+                </span>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <div className="flex flex-col gap-4 lg:hidden">
           {materials.map((m) => {
             const docs = byMaterial.get(m.id) ?? []
             return (
@@ -329,6 +528,7 @@ export function DocumentsClient({
             )
           })}
         </div>
+        </>
       )}
 
       {/* ── Загрузка документа ────────────────────────────────
