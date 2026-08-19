@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
 
 // ── Выбор темы ──────────────────────────────────────────────────────────────
@@ -16,7 +17,7 @@ import { useT } from '@/lib/i18n/client'
 // владелец назвал ровно две темы (правило 8 — выключено значит удалено).
 const KEY = 'theme'
 
-type Choice = 'light' | 'dark'
+export type Choice = 'light' | 'dark'
 
 // Скрипт исполняется ДО отрисовки, синхронно в <head>. Иначе первый кадр
 // рисуется умолчанием, и человек с тёмной темой видит вспышку белого.
@@ -63,6 +64,40 @@ function nativeBar(dark: boolean) {
   } catch { /* мост не обязателен: в браузере его нет вовсе */ }
 }
 
+// ── Где на самом деле живёт выбор ───────────────────────────────────────────
+//
+// Требование владельца 19.08.2026: «хочу чтобы смена темы синхронизировалась
+// между вебом и мобом и запоминалась».
+//
+// `localStorage` этого не умеет и уметь не может: обёртка открывает тот же
+// боевой сайт, но в своём веб-вью, а у веб-вью собственное хранилище —
+// не общее с Safari или Chrome того же телефона. Кука тем же и кончается,
+// банка кук у веб-вью тоже своя.
+//
+// Поэтому источник правды — `profiles.theme` (миграция 0109), а localStorage
+// остаётся КЕШЕМ ради первого кадра: класс на <html> обязан встать
+// синхронно, до отрисовки, а сходить в базу синхронно нельзя.
+//
+// Порядок такой:
+//   1. загрузочный скрипт ставит класс из localStorage — мгновенно;
+//   2. макет кабинета знает тему из базы и правит класс своим скриптом,
+//      если она разошлась (`app/app/layout.tsx`) — до первого кадра
+//      кабинета, без вспышки;
+//   3. переключатель пишет в оба места сразу.
+//
+// Запись в базу — БЕЗ ожидания ответа: тема обязана переключиться в тот же
+// кадр, а сеть здесь не в критическом пути. Не получилось записать (нет
+// связи) — на этом устройстве всё равно применилось и запомнилось.
+async function remember(choice: Choice) {
+  try {
+    const supabase = createClient()
+    const { data } = await supabase.auth.getSession()
+    const id = data.session?.user.id
+    if (!id) return
+    await supabase.from('profiles').update({ theme: choice }).eq('id', id)
+  } catch { /* до входа профиля нет, и это нормальный случай */ }
+}
+
 function apply(choice: Choice) {
   const root = document.documentElement
   root.classList.toggle('dark', choice === 'dark')
@@ -96,48 +131,62 @@ export function ThemeToggle({ className = '' }: { className?: string }) {
   const [choice, setChoice] = useState<Choice>('light')
 
   useEffect(() => {
-    // Читаем не localStorage, а КЛАСС: его уже поставил загрузочный скрипт,
-    // и это единственное место, где состояние точно совпадает с картинкой.
+    // Читаем не localStorage, а КЛАСС: его уже поставил загрузочный скрипт
+    // (а в кабинете мог поправить серверный), и это единственное место,
+    // где состояние точно совпадает с картинкой.
     setChoice(document.documentElement.classList.contains('dark') ? 'dark' : 'light')
   }, [])
 
   function pick(next: Choice) {
+    if (next === choice) return
     setChoice(next)
     apply(next)
+    void remember(next)
   }
 
-  // `value` — служебное значение (оно же ключ в localStorage), оно не
-  // переводится. Значок — символ, а не текст. Переводится только подпись.
+  // Подписи СЛОВАМИ, а не значками солнца и месяца. Значок здесь ничего
+  // не экономит — места хватает, — а «☾» на половине Android рисуется
+  // квадратом: это не шрифт интерфейса, а эмодзи-глиф, и его наличие
+  // зависит от прошивки. Теми же квадратами в этом проекте уже приезжали
+  // «◫ ◷ ⊘» на телефоне владельца (КОНСПЕКТЫ.md, М32).
   const options = [
-    { value: 'light', label: '☀', title: 'theme.light' },
-    { value: 'dark', label: '☾', title: 'theme.dark' },
-  ] as const satisfies readonly { value: Choice; label: string; title: string }[]
+    { value: 'light', title: 'theme.light' },
+    { value: 'dark', title: 'theme.dark' },
+  ] as const satisfies readonly { value: Choice; title: string }[]
 
   return (
-    <div
-      className={`inline-flex items-center gap-0.5 rounded-full border p-0.5 ${className}`}
-      style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface-2)' }}
-      role="group"
-      aria-label={t('theme.aria')}
-    >
+    <div className={`seg ${className}`} role="group" aria-label={t('theme.aria')}>
       {options.map((o) => (
         <button
           key={o.value}
           type="button"
           onClick={() => pick(o.value)}
-          title={t(o.title)}
-          aria-label={t(o.title)}
           aria-pressed={choice === o.value}
-          className="btn-icon t-md rounded-full leading-none transition-colors"
-          style={
-            choice === o.value
-              ? { background: 'var(--color-accent)', color: 'var(--color-accent-text)' }
-              : { color: 'var(--color-muted)' }
-          }
+          data-active={choice === o.value}
+          className="seg-item"
         >
-          {o.label}
+          {t(o.title)}
         </button>
       ))}
     </div>
   )
+}
+
+// Тема, известная СЕРВЕРУ, применяется до первого кадра кабинета.
+//
+// Скрипт возвращается разметкой макета и исполняется на месте, то есть
+// до того, как браузер нарисует содержимое. Эффектом это делать нельзя:
+// эффект случается ПОСЛЕ отрисовки, и человек, выбравший тёмную тему
+// на телефоне, увидел бы на вебе белую вспышку и перекраску.
+//
+// localStorage правится тем же скриптом — иначе следующая загрузка
+// снова начнётся с устаревшего значения и вспышка вернётся.
+export function themeServerScript(choice: Choice) {
+  return `(function(){try{`
+    + `var c=${JSON.stringify(choice)};`
+    + `document.documentElement.classList.toggle('dark',c==='dark');`
+    + `localStorage.setItem('${KEY}',c);`
+    + `var m=document.querySelector('meta[name="theme-color"]');`
+    + `if(m)m.setAttribute('content',c==='dark'?'${BAR.dark}':'${BAR.light}');`
+    + `}catch(e){}})()`
 }

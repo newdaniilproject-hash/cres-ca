@@ -1,6 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Sheet } from '@/components/sheet'
 import { useToast } from '@/components/toast'
@@ -69,6 +70,24 @@ export function CustomersClient({
 
   const [card, setCard] = useState<Card | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+
+  // Приход из общего поиска: `/app/customers?id=<uuid>` открывает карточку
+  // сразу. Своей страницы у клиента нет (список плюс шторка), поэтому
+  // ссылка ведёт на список и говорит, кого именно показать, — иначе
+  // найденного человека пришлось бы искать второй раз уже глазами.
+  //
+  // Карточку по-прежнему отдаёт `customer_card`, а не выборка из списка:
+  // право на контакты и строка в журнале доступа не обходятся ни ссылкой,
+  // ни чем-либо ещё. Адрес чистится сразу — иначе «назад» открывало бы
+  // карточку снова, а обновление страницы писало бы в журнал второй раз.
+  const sp = useSearchParams()
+  useEffect(() => {
+    const id = sp.get('id')
+    if (!id) return
+    window.history.replaceState(null, '', '/app/customers')
+    void openCard(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sp])
 
   async function openCard(id: string) {
     setBusy(id)

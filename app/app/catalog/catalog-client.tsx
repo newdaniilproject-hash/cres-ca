@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
 import type { T } from '@/lib/i18n/translate'
-import { IconBox, IconClock, IconSearch } from '@/components/icons'
+import { IconBox, IconClock } from '@/components/icons'
 
 export type CatalogItem = {
   id: string
@@ -53,17 +53,12 @@ export function CatalogClient({ items, error, canWrite, hasStorefront = false }:
   const t = useT()
   const supabase = useMemo(() => createClient(), [])
   const [filter, setFilter] = useState<Filter>('all')
-  const [q, setQ] = useState('')
 
-  const shown = useMemo(() => {
-    const needle = q.trim().toLowerCase()
-    return items.filter((i) => {
-      if (filter === 'draft' && i.status !== 'draft') return false
-      if ((filter === 'product' || filter === 'service') && i.kind !== filter) return false
-      if (needle && !`${i.title} ${i.subtitle ?? ''} ${i.slug}`.toLowerCase().includes(needle)) return false
-      return true
-    })
-  }, [items, filter, q])
+  const shown = useMemo(() => items.filter((i) => {
+    if (filter === 'draft' && i.status !== 'draft') return false
+    if ((filter === 'product' || filter === 'service') && i.kind !== filter) return false
+    return true
+  }), [items, filter])
 
   const counts = useMemo(() => ({
     product: items.filter((i) => i.kind === 'product').length,
@@ -104,22 +99,6 @@ export function CatalogClient({ items, error, canWrite, hasStorefront = false }:
           </div>
         </section>
       )}
-
-      {/* Поиск — той же пилюлей, что на складе (`.searchfield`, М31/М32):
-          один вид поля поиска на весь кабинет, а не свой на каждом
-          экране. Раньше появлялся только при восьми и более позициях —
-          порог убран: поле дешёвое, а условное появление/исчезновение
-          строки над списком само по себе дёргает раскладку. */}
-      <label className="searchfield rise-1">
-        <span aria-hidden><IconSearch size={19} /></span>
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder={t('catalog.search.placeholder')}
-          aria-label={t('catalog.search.placeholder')}
-          autoComplete="off"
-        />
-      </label>
 
       <div className="scroll-x rise-1 -mx-4 flex items-center gap-2 px-4 pb-1 sm:mx-0 sm:px-0">
         <button onClick={() => setFilter('all')}

@@ -28,10 +28,9 @@ export type Container = {
 // строк на экране одиннадцать и разъехаться они не должны.
 function Row({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
   return (
-    <div className="flex items-start justify-between gap-4"
-         style={{ paddingBlock: 'var(--space-2)' }}>
-      <span className="t-sm shrink-0" style={{ color: 'var(--color-muted)' }}>{label}</span>
-      <span className={`t-md min-w-0 text-right ${mono ? 'tabular' : ''}`}>{value}</span>
+    <div className="kv-row">
+      <span className="kv-key">{label}</span>
+      <span className={`kv-val ${mono ? 'tabular' : ''}`}>{value}</span>
     </div>
   )
 }
@@ -140,32 +139,27 @@ export function MaterialCard({
         )}
       </section>
 
-      {/* ── Паспорт засоба (ТЗ 3.1) ──────────────────────────── */}
-      <section className="card rise-2">
-        <h3 className="t-sm mb-1" style={{ color: 'var(--color-faint)' }}>
-          {t('inventory.material.passport.title')}
-        </h3>
-        <Row label={t('inventory.material.row.brand')} value={material.brand ?? '—'} />
-        <Row label={t('inventory.material.row.sku')} value={material.sku ?? '—'} mono />
-        <Row label={t('inventory.material.row.category')} value={material.category ?? '—'} />
-        <Row label={t('inventory.material.row.country')} value={material.country ?? '—'} />
-        <Row label={t('inventory.material.row.unit')} value={material.unit} />
-        {material.inci && (
-          <div style={{ paddingBlock: 'var(--space-2)' }}>
-            <p className="t-sm" style={{ color: 'var(--color-muted)' }}>
-              {t('inventory.material.row.inci')}
-            </p>
-            <p className="t-sm mt-1">{material.inci}</p>
-          </div>
-        )}
+      {/* ── Паспорт засоба (ТЗ 3.1) ──────────────────────────────
+          README, розділ C, блок 1: Бренд, Артикул, Категорія,
+          Країна-виробник. INCI отсюда УБРАН и стоит своей секцией
+          ниже, как в спецификации: это абзац состава, а не строка
+          таблицы — в «ключ → значение» он занимал пять строк высоты
+          и ломал ритм остальных. */}
+      <section className="rise-2">
+        <p className="eyebrow mb-2">{t('inventory.material.passport.title')}</p>
+        <div className="kv">
+          <Row label={t('inventory.material.row.brand')} value={material.brand ?? '—'} />
+          <Row label={t('inventory.material.row.sku')} value={material.sku ?? '—'} mono />
+          <Row label={t('inventory.material.row.category')} value={material.category ?? '—'} />
+          <Row label={t('inventory.material.row.country')} value={material.country ?? '—'} />
+          <Row label={t('inventory.material.row.unit')} value={material.unit} />
+        </div>
       </section>
 
       {/* ── Партия и сроки ───────────────────────────────────── */}
-      <section className="card rise-2">
-        <div className="mb-1 flex items-center justify-between gap-3">
-          <h3 className="t-sm" style={{ color: 'var(--color-faint)' }}>
-            {t('inventory.material.batches.title')}
-          </h3>
+      <section className="rise-2">
+        <div className="section-head">
+          <p className="eyebrow">{t('inventory.material.batches.title')}</p>
           {canWrite && (
             <button type="button" className="btn-ghost t-sm"
                     onClick={() => setBatchEdit('new')}>
@@ -176,14 +170,19 @@ export function MaterialCard({
 
         {active ? (
           <>
-            {/* Номер партии — данные арендатора, не переводится. */}
-            <Row label={t('inventory.material.row.batchNumber')} value={active.number} mono />
-            <Row label={t('inventory.material.row.made')} value={t.date(active.made)} mono />
-            <Row label={t('inventory.material.row.expiry')} value={t.date(active.expiry)} mono />
-            <Row label={t('inventory.material.row.pao')}
-                 value={material.paoMonths ? `${t.number(material.paoMonths)}M` : '—'} mono />
-            <Row label={t('inventory.material.row.status')}
-                 value={<span className={EXPIRY_BADGE[state]}>{t(EXPIRY_KEY[state])}</span>} />
+            {/* README, розділ C, блок 2 «Партія та терміни»:
+                Номер партії, Дата виробництва, Термін придатності,
+                PAO, Статус — статус кольором стану. */}
+            <div className="kv">
+              {/* Номер партии — данные арендатора, не переводится. */}
+              <Row label={t('inventory.material.row.batchNumber')} value={active.number} mono />
+              <Row label={t('inventory.material.row.made')} value={t.date(active.made)} mono />
+              <Row label={t('inventory.material.row.expiry')} value={t.date(active.expiry)} mono />
+              <Row label={t('inventory.material.row.pao')}
+                   value={material.paoMonths ? `${t.number(material.paoMonths)}M` : '—'} mono />
+              <Row label={t('inventory.material.row.status')}
+                   value={<span className={EXPIRY_BADGE[state]}>{t(EXPIRY_KEY[state])}</span>} />
+            </div>
             {canWrite && (
               <button type="button" className="btn-ghost mt-1 t-sm"
                       onClick={() => setBatchEdit(active)}>

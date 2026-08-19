@@ -16,16 +16,22 @@ export async function generateMetadata() {
   return { title: t('app.screen.inventory.title') }
 }
 
-// Склад: счётчики сверху, быстрые действия, сканер и поиск, ниже —
-// расходники, ёмкости и товары. Все данные грузим на сервере параллельно.
+// Склад: счётчики сверху, быстрые действия, сканер, ниже — расходники,
+// ёмкости и товары. Все данные грузим на сервере параллельно.
 export default async function InventoryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; scan?: string }>
+  searchParams: Promise<{ scan?: string }>
 }) {
-  // Поиск и сканер живут в верхней строке оболочки и приходят сюда
-  // адресом: ?q= из поля, ?scan=1 из кнопки камеры. Так строка работает
-  // с любого экрана, а склад открывается уже в нужном состоянии.
+  // Сканер живёт в верхней строке оболочки и приходит сюда адресом
+  // (?scan=1): значок работает с любого экрана, а склад открывается уже
+  // с включённой камерой.
+  //
+  // Параметра `?q=` здесь больше НЕТ. Поиск стал один на весь кабинет
+  // и живёт в шапке (`components/global-search.tsx`, решение владельца
+  // 19.08.2026): он ищет сразу по расходникам, каталогу, клиентам
+  // и заказам, и приводить его результат к адресу одного экрана незачем —
+  // найденное открывается своей карточкой.
   const sp = await searchParams
   const m = await currentMembership()
   if (!m) redirect('/register/seller')
@@ -98,7 +104,6 @@ export default async function InventoryPage({
   return (
     <AppShell modules={m.modules} perms={m.perms}>
       <InventoryClient
-        initialQuery={sp.q ?? ''}
         initialScan={sp.scan === '1'}
         tenantId={m.tenantId}
         userId={userId ?? ''}
