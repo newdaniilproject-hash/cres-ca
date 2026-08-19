@@ -2723,3 +2723,134 @@ body.kb-open .m-actionbar {
 @media (min-width: 1024px) {
   .webmain { padding: 28px 32px 40px; }
 }
+
+/* ── CRESKO Web: примитивы экранов ───────────────────────────────
+   Размеры из README дословно (типографика 29/27/25/17/14/13/12,
+   таблицы гридом, табы с чертой 2px). Классы живут только в lg-ветках
+   разметки: на телефоне эти блоки скрыты utility-классами, поэтому
+   media-обёртка большинству не нужна. */
+.webh1 {
+  font-size: 29px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  color: var(--color-text);
+}
+.webh1[data-size='27'] { font-size: 27px; }
+.webh2 { font-size: 17px; font-weight: 700; color: var(--color-text); }
+.webcard {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  padding: 20px;
+}
+/* Нижняя кнопка-ссылка карточки — через пунктирный разделитель. */
+.webcard-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--web-border-dash, var(--color-border));
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--color-accent-ink);
+}
+/* Метрика: слева подпись 13 / число 25/800 / примечание 12, справа
+   иконка-плашка 38px тоном по смыслу. */
+.wmetric {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 16px 18px;
+}
+.wmetric-label { font-size: 13px; color: var(--color-muted); }
+.wmetric-value { font-size: 25px; font-weight: 800; color: var(--color-text); }
+.wmetric-note  { font-size: 12px; color: var(--web-muted-soft, var(--color-muted)); }
+.wmetric-icon {
+  width: 38px; height: 38px; flex-shrink: 0;
+  border-radius: 11px;
+  display: flex; align-items: center; justify-content: center;
+}
+.wmetric-icon[data-tone='blue']    { background: var(--tone-blue-soft);    color: var(--tone-blue); }
+.wmetric-icon[data-tone='amber']   { background: var(--tone-amber-soft);   color: var(--tone-amber); }
+.wmetric-icon[data-tone='rose']    { background: var(--tone-rose-soft);    color: var(--tone-rose); }
+.wmetric-icon[data-tone='emerald'] { background: var(--tone-emerald-soft); color: var(--tone-emerald); }
+.wmetric-icon[data-tone='violet']  { background: var(--tone-violet-soft);  color: var(--tone-violet); }
+/* Табы: черта 2px у активного, лента с нижней границей. */
+.wtabs {
+  display: flex;
+  gap: 26px;
+  border-bottom: 1px solid var(--color-border);
+}
+.wtab {
+  padding: 0 0 12px;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--color-muted);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.wtab:hover { color: var(--web-text-body, var(--color-text)); }
+.wtab[data-active='true'] {
+  color: var(--color-accent-ink);
+  border-bottom-color: var(--color-accent);
+}
+/* Грид-таблица: колонки задаёт экран (gridTemplateColumns по README). */
+.wtable {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  overflow: hidden;
+}
+.wtable-head {
+  display: grid;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--color-muted);
+}
+.wtable-row {
+  display: grid;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--web-border-row, var(--color-border));
+  font-size: 13px;
+  color: var(--web-text-secondary, var(--color-text));
+  text-align: left;
+  width: 100%;
+}
+.wtable-row:last-of-type { border-bottom: 0; }
+.wtable-row:hover { background: var(--web-hover-row, var(--color-surface-2)); }
+.wtable-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  border-top: 1px solid var(--color-border);
+  font-size: 13px;
+  color: var(--color-muted);
+}
+/* Синяя кнопка — ТОЛЬКО «Приймання» на складе и его модалка (README). */
+.btn-blue {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 42px;
+  padding: 0 16px;
+  border-radius: 10px;
+  background: var(--web-blue-action, #2563EB);
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 650;
+}
+.btn-blue:hover { background: var(--web-blue-action-hover, #1D4FD8); }

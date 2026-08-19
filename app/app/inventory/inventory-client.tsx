@@ -16,8 +16,9 @@ import type { Key } from '@/lib/i18n/dict'
 import { EXPIRY_BADGE, type ExpiryState, expiryState } from '@/lib/expiry'
 import { Scanner } from '@/components/scanner'
 import {
-  IconArrows, IconBarcode, IconBeaker, IconBox, IconClipboard, IconClose,
-  IconBag, IconDoc, IconInbox, IconList, IconLow, IconQr, IconScan,
+  IconAlert, IconArrows, IconBarcode, IconBeaker, IconBox, IconCheck,
+  IconClipboard, IconClock, IconClose, IconBag, IconDoc, IconInbox,
+  IconLayers, IconList, IconLow, IconQr, IconScan,
 } from '@/components/icons'
 
 type Container = {
@@ -349,6 +350,20 @@ export function InventoryClient({
   //
   // Товар заводится в каталоге вместе с ценой и фото — второй формы
   // для того же самого на складе быть не должно, поэтому здесь ссылка.
+  // ── Вкладки — ОДИН список на обе раскладки ───────────────────────────
+  // На телефоне они чипы, на lg — .wtab с чертой. Имена и порядок живут
+  // здесь один раз: два списка разъехались бы на первой новой вкладке.
+  const tabItems = [
+    ['all', t('inventory.tab.all')],
+    ['materials', t('inventory.tab.materials')],
+    ['containers', `${t('inventory.tab.containers')}${containers.length ? ` · ${t.number(containers.length)}` : ''}`],
+    ['goods', t('inventory.tab.goods')],
+  ] as const
+
+  // Колонки таблицы CRESKO Web (экран «Склад»): единственное место,
+  // где размеры задаются строкой, — так велит .wtable (грид задаёт экран).
+  const WGRID = '2.4fr 1.2fr .7fr .5fr 1.1fr 1fr 40px'
+
   const fab: { label: string; href?: string; onClick?: () => void } = tab === 'goods'
     ? { href: '/app/catalog', label: t('inventory.action.addInCatalog') }
     : tab === 'containers'
@@ -374,6 +389,19 @@ export function InventoryClient({
 
   return (
     <div className="flex flex-col gap-5">
+
+      {/* ── CRESKO Web: хедер экрана (только lg) ─────────────────
+          Слева имя экрана тем же ключом, что и вкладка браузера;
+          справа «Приймання» — ЕДИНСТВЕННАЯ синяя кнопка кабинета
+          (README: btn-blue живёт только тут и в модалке приймання).
+          `?new=1` открывает форму нового документа сразу — тем же
+          приёмом, каким `?scan=1` открывает камеру здесь. */}
+      <div className="hidden items-center justify-between lg:flex">
+        <h1 className="webh1">{t('app.screen.inventory.title')}</h1>
+        <Link href="/app/inventory/receipts?new=1" className="btn-blue">
+          {t('app.screen.inventory.receipts.title')}
+        </Link>
+      </div>
 
       {/* ── Результат сканирования ───────────────────────────────
           Первым блоком и только после скана. Крестик обязателен:
@@ -471,15 +499,56 @@ export function InventoryClient({
           Одной строкой с горизонтальной прокруткой. Перенос на вторую
           строку смешивал бы их с тем, что стоит рядом, — ровно так
           «+ Засіб» оказывался под «Товари» и читался как фильтр. */}
-      <div className="scroll-x rise-1 -mx-4 flex gap-2 px-4 pb-1 sm:mx-0 sm:px-0">
-        {([
-          ['all', t('inventory.tab.all')],
-          ['materials', t('inventory.tab.materials')],
-          ['containers', `${t('inventory.tab.containers')}${containers.length ? ` · ${t.number(containers.length)}` : ''}`],
-          ['goods', t('inventory.tab.goods')],
-        ] as const).map(([key, label]) => (
+      <div className="scroll-x rise-1 -mx-4 flex gap-2 px-4 pb-1 lg:hidden sm:mx-0 sm:px-0">
+        {tabItems.map(([key, label]) => (
           <button key={key} onClick={() => switchTab(key)}
                   className={`${tab === key ? 'chip-active' : 'chip'} shrink-0`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── CRESKO Web: метрики (только lg) ──────────────────────
+          Те же четыре числа и тот же клик-фильтр, что у мобильного
+          ряда ниже, — но в виде .wmetric с иконкой-плашкой (README).
+          Подписи длинные: на вебе плитке есть где дышать, и «Закінч.»
+          выглядело бы обрезком. Активный фильтр — рамка акцентом:
+          у .wmetric нет своего активного состояния, а заливать плитку
+          кобальтом значит спорить с единственной синей кнопкой выше. */}
+      <section className="hidden gap-4 rise-1 lg:grid lg:grid-cols-4">
+        {([
+          { key: 'all', n: stats.total, label: t('inventory.stats.total'), tone: 'blue', icon: IconLayers },
+          { key: 'ok', n: stats.ok, label: t('inventory.stats.ok'), tone: 'emerald', icon: IconCheck },
+          { key: 'soon', n: stats.soon, label: t('inventory.stats.soon'), tone: 'amber', icon: IconClock },
+          { key: 'expired', n: stats.expired, label: t('inventory.stats.expired'), tone: 'rose', icon: IconAlert },
+        ] as const).map((s) => {
+          const on = flag === s.key
+          const dead = s.key !== 'all' && s.n === 0
+          return (
+            <button key={s.key} type="button" disabled={dead} aria-pressed={on}
+                    onClick={() => setFlag(on ? 'all' : s.key)}
+                    className="wmetric text-left"
+                    style={{
+                      cursor: dead ? 'default' : 'pointer',
+                      borderColor: on ? 'var(--color-accent)' : undefined,
+                    }}>
+              <span className="min-w-0">
+                <span className="wmetric-label block">{s.label}</span>
+                <span className="wmetric-value tabular block">{t.number(s.n)}</span>
+              </span>
+              <span className="wmetric-icon" data-tone={s.tone}><s.icon size={19} /></span>
+            </button>
+          )
+        })}
+      </section>
+
+      {/* ── CRESKO Web: вкладки чертой (только lg) ───────────────
+          Тот же tabItems и тот же switchTab, что и у чипов, —
+          отличается только вид. */}
+      <div className="wtabs hidden lg:flex">
+        {tabItems.map(([key, label]) => (
+          <button key={key} type="button" onClick={() => switchTab(key)}
+                  className="wtab" data-active={tab === key}>
             {label}
           </button>
         ))}
@@ -498,7 +567,7 @@ export function InventoryClient({
           Нажатие переключает фильтр, повторное — снимает. Плитка
           с нулём не нажимается: фильтр, дающий пустой список, —
           это обещание показать то, чего нет. */}
-      <section className="rise-1 grid grid-cols-4 gap-2">
+      <section className="rise-1 grid grid-cols-4 gap-2 lg:hidden">
         {([
           // Подписи КОРОТКИЕ и своими ключами. Четыре плитки в ряд на 390px
           // дают около 86px на плитку, и «Мало на складі» переносится на две
@@ -533,7 +602,11 @@ export function InventoryClient({
 
           Тона по README: Надходження — success, Списання — warning
           (приход и расход разного знака), остальные нейтральные. */}
-      <section className="rise-2">
+      {/* На lg «Швидкі дії» скрыты: приймання уже в хедере экрана,
+          сканер — в шапке кабинета, а место этого блока в хендоффе
+          занимает правая рейка (отдельная работа). Дубли действий
+          на десктопе — тот же грех, за который переделывался телефон. */}
+      <section className="rise-2 lg:hidden">
         <p className="eyebrow mb-2">{t('inventory.quick.title')}</p>
         <div className="quick-row">
           <button type="button" className="quick-tile" onClick={() => setCamera(true)}>
@@ -610,6 +683,10 @@ export function InventoryClient({
         </section>
       ) : (
         <>
+        {/* Мобильный список карточек — как был; на lg вместо него таблица
+            ниже. Обёртка повторяет gap родителя, чтобы зазоры секций
+            не изменились ни на пиксель. */}
+        <div className="flex flex-col gap-5 lg:hidden">
           {/* ── Расходники ──────────────────────────────────────── */}
           {showMaterials && shownMaterials.length > 0 && (
             <section className="rise">
@@ -763,6 +840,158 @@ export function InventoryClient({
               </div>
             </section>
           )}
+        </div>
+
+        {/* ── CRESKO Web: таблица склада (только lg) ─────────────
+            То же отфильтрованное множество, что и карточки выше:
+            shownMaterials / shownContainers / shownVariants плюс те же
+            show*-флаги вкладок — второй логики фильтрации здесь нет,
+            поэтому пустая таблица возможна только там, где пуст
+            и мобильный список (а это состояние перехватывает ternary).
+
+            Колонки хендоффа «Категорія» и «Місце» здесь заменены:
+            категории и места зберігання в пропсах списка НЕТ (их не
+            выбирает страница), а колонка из одних прочерков — мёртвый
+            вес. Вместо них — вид записи (полезен на вкладке «Всі»)
+            и термін придатності: обе колонки живут на реальных данных. */}
+        <section className="hidden rise lg:block">
+          <div className="wtable">
+            <div className="wtable-head" style={{ gridTemplateColumns: WGRID }}>
+              <span>{t('inventory.web.table.item')}</span>
+              <span>{t('inventory.web.table.kind')}</span>
+              <span>{t('inventory.web.table.stock')}</span>
+              <span>{t('inventory.material.row.unit')}</span>
+              <span>{t('inventory.web.table.expiry')}</span>
+              <span>{t('inventory.material.row.status')}</span>
+              <span aria-hidden />
+            </div>
+
+            {/* Расходники. Залишок краснеет просроченным и желтеет на
+                исходе срока или ниже порога — тем же условием, каким
+                мобильная карточка выбирает badge-warn. */}
+            {showMaterials && shownMaterials.map((mt) => {
+              const state = expiryState(mt.expiry)
+              const low = mt.threshold > 0 && mt.stock <= mt.threshold
+              return (
+                <Link key={`m-${mt.id}`} href={`/app/inventory/materials/${mt.id}`}
+                      className="wtable-row" style={{ gridTemplateColumns: WGRID }}>
+                  <span className="min-w-0">
+                    {/* Название и бренд — данные арендатора. */}
+                    <span className="block truncate font-semibold" style={{ color: 'var(--color-text)' }}>
+                      {mt.name}
+                    </span>
+                    {(mt.brand || mt.sku) && (
+                      <span className="block truncate" style={{ color: 'var(--color-faint)' }}>
+                        {[mt.brand, mt.sku].filter(Boolean).join(' · ')}
+                      </span>
+                    )}
+                  </span>
+                  <span>{t('inventory.web.kind.material')}</span>
+                  <span className="tabular"
+                        style={state === 'expired'
+                          ? { color: 'var(--color-danger)' }
+                          : (low || state === 'soon' || state === 'urgent')
+                            ? { color: 'var(--tone-amber)' }
+                            : undefined}>
+                    {t.number(mt.stock)}
+                  </span>
+                  <span>{mt.unit}</span>
+                  <span className="tabular">{mt.expiry ? short(mt.expiry) : '—'}</span>
+                  <span>
+                    {state !== 'none'
+                      ? <span className={EXPIRY_BADGE[state]}>{t(EXPIRY_KEY[state])}</span>
+                      : '—'}
+                  </span>
+                  <span aria-hidden className="text-right" style={{ color: 'var(--color-faint)' }}>›</span>
+                </Link>
+              )
+            })}
+
+            {/* Ёмкости — тем же гридом: залишок = обʼєм, термін = use_by.
+                Строка ведёт туда же, куда мобильная карточка, — в контроль
+                вскрытия засоба. */}
+            {showContainers && shownContainers.map((c) => {
+              const state = expiryState(c.useBy)
+              return (
+                <Link key={`c-${c.id}`} href={`/app/inventory/materials/${c.materialId}/pao`}
+                      className="wtable-row" style={{ gridTemplateColumns: WGRID }}>
+                  <span className="min-w-0">
+                    <span className="block truncate font-semibold" style={{ color: 'var(--color-text)' }}>
+                      {c.material}
+                    </span>
+                    <span className="block truncate" style={{ color: 'var(--color-faint)' }}>
+                      {c.code}
+                      {c.openedAt ? ` · ${t('inventory.container.openedAt', { date: short(c.openedAt) })}` : ''}
+                    </span>
+                  </span>
+                  <span>{t('inventory.web.kind.container')}</span>
+                  <span className="tabular"
+                        style={state === 'expired' ? { color: 'var(--color-danger)' } : undefined}>
+                    {c.volume != null ? t.number(c.volume) : '—'}
+                  </span>
+                  <span>{c.unit ?? '—'}</span>
+                  <span className="tabular">{c.useBy ? short(c.useBy) : '—'}</span>
+                  <span>
+                    {c.useBy
+                      ? <span className={EXPIRY_BADGE[state]}>{t(EXPIRY_KEY[state])}</span>
+                      : c.status === 'sealed'
+                        ? <span className="badge">{t('inventory.container.sealed')}</span>
+                        : '—'}
+                  </span>
+                  <span aria-hidden className="text-right" style={{ color: 'var(--color-faint)' }}>›</span>
+                </Link>
+              )
+            })}
+
+            {/* Товары. Срока годности у них нет — в колонке термін честный
+                прочерк, статус говорит только про остаток. */}
+            {showGoods && shownVariants.map((v) => {
+              const low = v.tracked && v.threshold > 0 && v.stock <= v.threshold
+              return (
+                <Link key={`v-${v.id}`} href={`/app/catalog/${v.offeringId}`}
+                      className="wtable-row" style={{ gridTemplateColumns: WGRID }}>
+                  <span className="min-w-0">
+                    <span className="block truncate font-semibold" style={{ color: 'var(--color-text)' }}>
+                      {v.title}
+                    </span>
+                    <span className="block truncate" style={{ color: 'var(--color-faint)' }}>
+                      {v.name}
+                      {v.reserved > 0 ? ` · ${t('inventory.goods.reserved', { n: t.number(v.reserved) })}` : ''}
+                    </span>
+                  </span>
+                  <span>{t('inventory.web.kind.good')}</span>
+                  <span className="tabular"
+                        style={low ? { color: 'var(--tone-amber)' } : undefined}>
+                    {v.tracked ? t.number(v.stock) : '—'}
+                  </span>
+                  <span>{v.unit}</span>
+                  <span>—</span>
+                  <span>
+                    {!v.tracked
+                      ? <span className="badge">{t('inventory.goods.untracked')}</span>
+                      : low
+                        ? <span className="badge-warn">{t('inventory.stats.short.low')}</span>
+                        : '—'}
+                  </span>
+                  <span aria-hidden className="text-right" style={{ color: 'var(--color-faint)' }}>›</span>
+                </Link>
+              )
+            })}
+
+            <div className="wtable-foot">
+              <span className="tabular">{t('inventory.web.table.total', { n: t.number(visible) })}</span>
+              {/* Денежные итоги — только на вкладке товаров, как и мобильные
+                  плитки: посреди смешанного списка они перебивали бы метрики. */}
+              {tab === 'goods' && totals && totals.units > 0 && (
+                <span className="tabular">
+                  {t('inventory.goods.cost')}: {t.money(totals.cost)}
+                  {' · '}
+                  {t('inventory.goods.retail')}: {t.money(totals.retail)}
+                </span>
+              )}
+            </div>
+          </div>
+        </section>
         </>
       )}
 
