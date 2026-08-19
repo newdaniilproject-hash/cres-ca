@@ -199,6 +199,8 @@
   "inventory.stats.low": "Мало на складі",
 
   "inventory.stats.short.total": "Позицій",
+  "inventory.stats.ok": "Дійсні",
+  "inventory.stats.short.ok": "Дійсні",
   "inventory.stats.short.soon": "Закінч.",
   "inventory.stats.short.expired": "Прострочені",
   "inventory.stats.short.low": "Мало",

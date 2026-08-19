@@ -44,7 +44,7 @@ type ContainerHit = {
 
 type Tab = 'all' | 'materials' | 'containers' | 'goods'
 /** Состояние, по которому отфильтрован список. Задаётся плиткой-счётчиком. */
-type Flag = 'all' | 'soon' | 'expired' | 'low'
+type Flag = 'all' | 'ok' | 'soon' | 'expired'
 
 // Подпись состояния срока — из словаря, а не из `lib/expiry.ts`.
 // Само состояние там и остаётся: пороги (14 и 7 дней) — правило склада,
@@ -161,6 +161,12 @@ export function InventoryClient({
 
   // ── Счётчики. Считаются по тем же порогам, что и рассылка, ──
   // иначе экран и письмо разойдутся: тут зелено, а письмо уже пришло.
+  // Набор счётчиков — из README: Позицій · Дійсні · Закінч. · Прострочені.
+  // «Дійсні» (а не «Мало на складі», как было) закрывает ряд по одной оси —
+  // СРОК ГОДНОСТИ: сколько всего, сколько в порядке, сколько на исходе,
+  // сколько просрочено, и четыре числа складываются в общее. Прежний
+  // «Мало» мерил другую величину — остаток, — и в ряду из четырёх читался
+  // как часть той же суммы, хотя ею не был.
   const stats = useMemo(() => {
     const items = [
       ...materials.map((m) => expiryState(m.expiry)),
@@ -168,9 +174,9 @@ export function InventoryClient({
     ]
     return {
       total: materials.length + containers.length + variants.length,
+      ok: items.filter((s) => s === 'ok').length,
       soon: items.filter((s) => s === 'soon' || s === 'urgent').length,
       expired: items.filter((s) => s === 'expired').length,
-      low: materials.filter((m) => m.threshold > 0 && m.stock <= m.threshold).length,
     }
   }, [materials, containers, variants])
 
@@ -184,20 +190,33 @@ export function InventoryClient({
   // У ёмкости нет порога остатка, у товара нет срока — поэтому «Мало»
   // не показывает ёмкостей, а «Прострочені» не показывает товаров.
   // Это не пробел, а честный ответ: такого состояния у них не бывает.
-  const passFlag = (state: ExpiryState, low: boolean) =>
+  const passFlag = (state: ExpiryState) =>
     flag === 'all' ? true
-      : flag === 'soon' ? (state === 'soon' || state === 'urgent')
-        : flag === 'expired' ? state === 'expired'
-          : low
+      : flag === 'ok' ? state === 'ok'
+        : flag === 'soon' ? (state === 'soon' || state === 'urgent')
+          : state === 'expired'
 
-  const shownMaterials = materials.filter((m) =>
-    match(m.name, m.brand, m.sku, m.batch)
-    && passFlag(expiryState(m.expiry), m.threshold > 0 && m.stock <= m.threshold))
-  const shownContainers = containers.filter((c) =>
-    match(c.code, c.material) && passFlag(expiryState(c.useBy), false))
-  const shownVariants = variants.filter((v) =>
-    match(v.title, v.name)
-    && passFlag('none', v.threshold > 0 && v.stock <= v.threshold))
+  // ⚠️ ПРОБЛЕМНЫЕ ПОЗИЦИИ ВВЕРХ — требование README: «Проблемні позиції
+  // сортуються вгору (expired → soon → ok)». Без этого просроченная банка
+  // лежит там, куда её положил алфавит, и экран, который существует ради
+  // ответа «що горить», прячет ответ в середину списка.
+  const RANK: Record<ExpiryState, number> = {
+    expired: 0, urgent: 1, soon: 2, ok: 3, none: 4,
+  }
+  const byProblem = <T,>(items: T[], state: (x: T) => ExpiryState) =>
+    [...items].sort((a, b) => RANK[state(a)] - RANK[state(b)])
+
+  const shownMaterials = byProblem(
+    materials.filter((m) => match(m.name, m.brand, m.sku, m.batch)
+      && passFlag(expiryState(m.expiry))),
+    (m) => expiryState(m.expiry))
+  const shownContainers = byProblem(
+    containers.filter((c) => match(c.code, c.material) && passFlag(expiryState(c.useBy))),
+    (c) => expiryState(c.useBy))
+  // У товара срока годности нет вовсе, поэтому он виден только без фильтра
+  // состояния — «прострочених товарів» не бывает, и показывать их под этим
+  // фильтром значило бы соврать о причине попадания в список.
+  const shownVariants = variants.filter((v) => match(v.title, v.name) && flag === 'all')
 
   const showMaterials = tab === 'all' || tab === 'materials'
   const showContainers = tab === 'all' || tab === 'containers'
@@ -487,9 +506,9 @@ export function InventoryClient({
           // об одну подпись. Длинные названия остаются там, где место есть:
           // на снимаемой метке фильтра под счётчиками.
           { key: 'all', n: stats.total, label: t('inventory.stats.short.total'), tone: 'blue' },
+          { key: 'ok', n: stats.ok, label: t('inventory.stats.short.ok'), tone: 'emerald' },
           { key: 'soon', n: stats.soon, label: t('inventory.stats.short.soon'), tone: 'amber' },
           { key: 'expired', n: stats.expired, label: t('inventory.stats.short.expired'), tone: 'rose' },
-          { key: 'low', n: stats.low, label: t('inventory.stats.short.low'), tone: 'emerald' },
         ] as const).map((s) => {
           const on = flag === s.key
           const dead = s.key !== 'all' && s.n === 0
@@ -507,30 +526,31 @@ export function InventoryClient({
       </section>
 
       {/* ── Швидкі дії ───────────────────────────────────────────
-          По прототипу: ряд цветных плиток, уезжающий вбок. Здесь
-          лежит то, что мастер делает У РАБОЧЕГО МЕСТА, — сканировать
-          и списать; приёмка и инвентаризация тоже тут, потому что
-          в прототипе этот ряд и есть вход в операции склада.
-          Остальные экраны раздела — ниже, карточкой «Ще у складі». */}
+          README: ЧЕТЫРЕ В РЯД, иконка-плашка 32px + подпись 10px.
+          Была уезжающая вбок лента — на 375px четвёртая плитка
+          оставалась за краем, и «Інвентаризація» существовала только
+          для того, кто догадался потянуть ряд пальцем.
+
+          Тона по README: Надходження — success, Списання — warning
+          (приход и расход разного знака), остальные нейтральные. */}
       <section className="rise-2">
         <p className="eyebrow mb-2">{t('inventory.quick.title')}</p>
-        <div className="scroll-x -mx-4 flex gap-2 px-4 pb-1 sm:mx-0 sm:px-0">
-          <button type="button" className="quick-tile shrink-0"
-                  onClick={() => setCamera(true)}>
-            <span className="quick-tile-icon" data-tone="blue"><IconScan size={19} /></span>
-            <span className="t-sm">{t('inventory.quick.scan')}</span>
+        <div className="quick-row">
+          <button type="button" className="quick-tile" onClick={() => setCamera(true)}>
+            <span className="quick-tile-icon" data-tone="blue"><IconScan size={18} /></span>
+            {t('inventory.quick.scan')}
           </button>
-          <Link href="/app/inventory/receipts" className="quick-tile shrink-0">
-            <span className="quick-tile-icon" data-tone="emerald"><IconInbox size={19} /></span>
-            <span className="t-sm">{t('inventory.quick.receipts')}</span>
+          <Link href="/app/inventory/receipts" className="quick-tile">
+            <span className="quick-tile-icon" data-tone="emerald"><IconInbox size={18} /></span>
+            {t('inventory.quick.receipts')}
           </Link>
-          <Link href="/app/inventory/movements" className="quick-tile shrink-0">
-            <span className="quick-tile-icon" data-tone="amber"><IconArrows size={19} /></span>
-            <span className="t-sm">{t('inventory.quick.movements')}</span>
+          <Link href="/app/inventory/movements" className="quick-tile">
+            <span className="quick-tile-icon" data-tone="amber"><IconArrows size={18} /></span>
+            {t('inventory.quick.movements')}
           </Link>
-          <Link href="/app/inventory/counts" className="quick-tile shrink-0">
-            <span className="quick-tile-icon" data-tone="violet"><IconClipboard size={19} /></span>
-            <span className="t-sm">{t('inventory.quick.counts')}</span>
+          <Link href="/app/inventory/counts" className="quick-tile">
+            <span className="quick-tile-icon" data-tone="violet"><IconClipboard size={18} /></span>
+            {t('inventory.quick.counts')}
           </Link>
         </div>
       </section>
@@ -558,9 +578,9 @@ export function InventoryClient({
           {flag !== 'all' && (
             <button type="button" className="chip" onClick={() => setFlag('all')}
                     style={{ borderColor: 'var(--color-accent)', color: 'var(--color-accent-ink)' }}>
-              {t(flag === 'soon' ? 'inventory.stats.soon'
-                : flag === 'expired' ? 'inventory.stats.expired'
-                  : 'inventory.stats.low')}
+              {t(flag === 'ok' ? 'inventory.stats.ok'
+                : flag === 'soon' ? 'inventory.stats.soon'
+                  : 'inventory.stats.expired')}
               <IconClose size={14} className="ml-1.5" />
             </button>
           )}

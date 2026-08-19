@@ -552,7 +552,8 @@ function AppShellInner({
                   prefetch
                   onClick={() => setGoing(tab.href)}
                   data-active={active(tab)}>
-              <span aria-hidden><tab.icon size={22} /></span>
+              {/* 26px — размер из README; было 22. */}
+              <span aria-hidden><tab.icon size={26} /></span>
               {t(tab.label)}
             </Link>
           ))}
