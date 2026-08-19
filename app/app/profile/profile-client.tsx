@@ -7,7 +7,7 @@ import { Sheet } from '@/components/sheet'
 import { ThemeToggle } from '@/components/theme'
 import { TextSize } from '@/components/text-size'
 import { useToast } from '@/components/toast'
-import { IconExit, IconGear, IconUser } from '@/components/icons'
+import { IconExit, IconGear, IconLock, IconMail, IconUser } from '@/components/icons'
 import { useT } from '@/lib/i18n/client'
 import type { T } from '@/lib/i18n/translate'
 
@@ -162,14 +162,21 @@ export function ProfileClient({
         <p className="field-hint mt-2">{t('profile.account.hint')}</p>
       </section>
 
-      {/* ── Безопасность ─────────────────────────────────────── */}
+      {/* ── Безопасность ─────────────────────────────────────────
+          Значок-якорь у каждой строки, как в макете CRESKO: там
+          у каждого пункта свой кружок со значком, а не голый текст
+          с шевроном. Один и тот же `.list-anchor`, что и у остальных
+          списков кабинета, — не заводим для профиля свой вид строки. */}
       <section className="card rise-2 !p-0">
         <button type="button" onClick={() => setPass(true)}
                 className="row w-full px-5 text-left" style={{ minHeight: 'var(--tap-min)' }}>
-          <span>
-            <span className="t-md block">{t('profile.password.title')}</span>
-            <span className="t-xs block" style={{ color: 'var(--color-faint)' }}>
-              {t('profile.password.desc')}
+          <span className="flex min-w-0 items-center gap-3">
+            <span className="list-anchor"><IconLock size={18} /></span>
+            <span className="min-w-0">
+              <span className="t-md block">{t('profile.password.title')}</span>
+              <span className="t-xs block truncate" style={{ color: 'var(--color-faint)' }}>
+                {t('profile.password.desc')}
+              </span>
             </span>
           </span>
           <span aria-hidden style={{ color: 'var(--color-faint)' }}>›</span>
@@ -177,10 +184,13 @@ export function ProfileClient({
 
         <button type="button" onClick={() => setMail(true)}
                 className="row w-full px-5 text-left" style={{ minHeight: 'var(--tap-min)' }}>
-          <span>
-            <span className="t-md block">{t('profile.email.title')}</span>
-            <span className="t-xs block" style={{ color: 'var(--color-faint)' }}>
-              {t('profile.email.desc')}
+          <span className="flex min-w-0 items-center gap-3">
+            <span className="list-anchor"><IconMail size={18} /></span>
+            <span className="min-w-0">
+              <span className="t-md block">{t('profile.email.title')}</span>
+              <span className="t-xs block truncate" style={{ color: 'var(--color-faint)' }}>
+                {t('profile.email.desc')}
+              </span>
             </span>
           </span>
           <span aria-hidden style={{ color: 'var(--color-faint)' }}>›</span>
@@ -191,11 +201,11 @@ export function ProfileClient({
             пункт, который ничего не открывает, хуже отсутствующего. */}
         {canSettings && (
           <Link href="/app/settings" className="row px-5" style={{ minHeight: 'var(--tap-min)' }}>
-            <span className="flex items-center gap-3">
-              <span aria-hidden style={{ color: 'var(--color-muted)' }}><IconGear size={20} /></span>
-              <span>
+            <span className="flex min-w-0 items-center gap-3">
+              <span className="list-anchor"><IconGear size={18} /></span>
+              <span className="min-w-0">
                 <span className="t-md block">{t('profile.settings.title')}</span>
-                <span className="t-xs block" style={{ color: 'var(--color-faint)' }}>
+                <span className="t-xs block truncate" style={{ color: 'var(--color-faint)' }}>
                   {t('profile.settings.desc')}
                 </span>
               </span>

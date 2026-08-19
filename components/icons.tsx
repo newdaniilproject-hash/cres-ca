@@ -314,6 +314,26 @@ export function IconBeaker({ size = 22, className }: P) {
   )
 }
 
+/** Замок — пароль і безпека. */
+export function IconLock({ size = 22, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <rect x="5" y="11" width="14" height="9" rx="2" />
+      <path d="M8 11V7.5a4 4 0 018 0V11" />
+    </svg>
+  )
+}
+
+/** Конверт — пошта. */
+export function IconMail({ size = 22, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <rect x="3.5" y="5.5" width="17" height="13" rx="2" />
+      <path d="M4 7l8 6 8-6" />
+    </svg>
+  )
+}
+
 /** Список — справочники. */
 export function IconList({ size = 22, className }: P) {
   return (

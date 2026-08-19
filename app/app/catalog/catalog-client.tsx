@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
 import type { T } from '@/lib/i18n/translate'
+import { IconBox, IconClock, IconSearch } from '@/components/icons'
 
 export type CatalogItem = {
   id: string
@@ -16,6 +17,8 @@ export type CatalogItem = {
   listed: boolean
   currency: string
   price: number | null
+  /** Тільки для послуг; у товару завжди null. */
+  durationMinutes: number | null
   variants: number
   cover: string | null
 }
@@ -65,6 +68,7 @@ export function CatalogClient({ items, error, canWrite, hasStorefront = false }:
   const counts = useMemo(() => ({
     product: items.filter((i) => i.kind === 'product').length,
     service: items.filter((i) => i.kind === 'service').length,
+    active: items.filter((i) => i.status === 'active').length,
     draft: items.filter((i) => i.status === 'draft').length,
   }), [items])
 
@@ -72,36 +76,76 @@ export function CatalogClient({ items, error, canWrite, hasStorefront = false }:
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="rise flex flex-wrap items-center gap-2">
+      {/* ── Счётчики ─────────────────────────────────────────────
+          Все четыре — РЕАЛЬНЫЕ величины: активные, товары, послуги
+          и общее число. По прототипу здесь стоял ещё рейтинг и число
+          «в акції», но акций и промокодов в продукте нет (модуль
+          `marketing` пуст, CLAUDE.md), а рейтинг заведения — витринная
+          величина и её место в разделе «Магазин», а не здесь. Плитка
+          с придуманным числом хуже отсутствующей плитки: она обещает
+          функцию, которой нет. */}
+      {items.length > 0 && (
+        <section className="rise grid grid-cols-4 gap-2">
+          <div className="metric" data-tone="blue">
+            <span className="metric-value">{t.number(items.length)}</span>
+            <span className="metric-label">{t('catalog.stats.total')}</span>
+          </div>
+          <div className="metric" data-tone="emerald">
+            <span className="metric-value">{t.number(counts.active)}</span>
+            <span className="metric-label">{t('catalog.stats.active')}</span>
+          </div>
+          <div className="metric">
+            <span className="metric-value">{t.number(counts.service)}</span>
+            <span className="metric-label">{t('catalog.stats.services')}</span>
+          </div>
+          <div className="metric">
+            <span className="metric-value">{t.number(counts.product)}</span>
+            <span className="metric-label">{t('catalog.stats.products')}</span>
+          </div>
+        </section>
+      )}
+
+      {/* Поиск — той же пилюлей, что на складе (`.searchfield`, М31/М32):
+          один вид поля поиска на весь кабинет, а не свой на каждом
+          экране. Раньше появлялся только при восьми и более позициях —
+          порог убран: поле дешёвое, а условное появление/исчезновение
+          строки над списком само по себе дёргает раскладку. */}
+      <label className="searchfield rise-1">
+        <span aria-hidden><IconSearch size={19} /></span>
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder={t('catalog.search.placeholder')}
+          aria-label={t('catalog.search.placeholder')}
+          autoComplete="off"
+        />
+      </label>
+
+      <div className="scroll-x rise-1 -mx-4 flex items-center gap-2 px-4 pb-1 sm:mx-0 sm:px-0">
         <button onClick={() => setFilter('all')}
-                className={filter === 'all' ? 'chip-active' : 'chip'}>
+                className={`${filter === 'all' ? 'chip-active' : 'chip'} shrink-0`}>
           {t('catalog.filter.all')} {items.length > 0 && `· ${items.length}`}
         </button>
         <button onClick={() => setFilter('product')}
-                className={filter === 'product' ? 'chip-active' : 'chip'}>
+                className={`${filter === 'product' ? 'chip-active' : 'chip'} shrink-0`}>
           {t('catalog.filter.products')} {counts.product > 0 && `· ${counts.product}`}
         </button>
         <button onClick={() => setFilter('service')}
-                className={filter === 'service' ? 'chip-active' : 'chip'}>
+                className={`${filter === 'service' ? 'chip-active' : 'chip'} shrink-0`}>
           {t('catalog.filter.services')} {counts.service > 0 && `· ${counts.service}`}
         </button>
         <button onClick={() => setFilter('draft')}
-                className={filter === 'draft' ? 'chip-active' : 'chip'}>
+                className={`${filter === 'draft' ? 'chip-active' : 'chip'} shrink-0`}>
           {t('catalog.filter.drafts')} {counts.draft > 0 && `· ${counts.draft}`}
         </button>
         {canWrite && (
-          <Link href="/app/catalog/new" className="btn-primary ml-auto t-sm">
+          <Link href="/app/catalog/new" className="btn-primary ml-auto shrink-0 t-sm">
             {t('catalog.add')}
           </Link>
         )}
       </div>
 
       {error && <p className="field-error rise">{error}</p>}
-
-      {items.length > 8 && (
-        <input className="input rise-1" placeholder={t('catalog.search.placeholder')}
-               value={q} onChange={(e) => setQ(e.target.value)} />
-      )}
 
       {shown.length === 0 ? (
         <div className="card rise-1">
@@ -132,54 +176,66 @@ export function CatalogClient({ items, error, canWrite, hasStorefront = false }:
           </div>
         </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
+        // Один столбец карточек, а не сетка 2×N: у позиции теперь строка
+        // тривалості (для послуг) вдобавок к бейджам, и в узкой колонке
+        // сетки 390px она переносится и делает половину карточек выше
+        // другой половины. Список ровный — карточки ровные (М31/М32).
+        <div className="flex flex-col gap-2">
           {shown.map((i) => (
-            <Link key={i.id} href={`/app/catalog/${i.id}`} className="card-link rise-1 !p-3">
-              <div className="flex items-center gap-3">
-                {i.cover ? (
-                  // next/image здесь не нужен: это миниатюра 64×64 с CDN,
-                  // размеры оригинала мы не храним.
-                  <img src={cover(i.cover)} alt=""
-                       className="h-16 w-16 shrink-0 object-cover"
-                       style={{ borderRadius: 'var(--radius-control)' }} />
-                ) : (
-                  <div className="card-flat flex h-16 w-16 shrink-0 items-center justify-center !p-0 t-xl prose-muted">
-                    {i.kind === 'service' ? '◷' : '◫'}
-                  </div>
+            <Link key={i.id} href={`/app/catalog/${i.id}`} className="list-card !items-start">
+              {i.cover ? (
+                // next/image здесь не нужен: это миниатюра 64×64 с CDN,
+                // размеры оригинала мы не храним.
+                <img src={cover(i.cover)} alt="" className="list-card-thumb object-cover" />
+              ) : (
+                // Значок, не символ: текстовые глифы вроде «◷ ◫» на части
+                // телефонов рисуются квадратами (М31 — та же грабля,
+                // уже пойманная на складе).
+                <span className="list-card-thumb">
+                  {i.kind === 'service' ? <IconClock size={20} /> : <IconBox size={20} />}
+                </span>
+              )}
+
+              <span className="min-w-0 flex-1">
+                <span className="t-md clamp-2 block">{i.title}</span>
+                {i.subtitle && (
+                  <span className="t-xs mt-0.5 block truncate" style={{ color: 'var(--color-faint)' }}>
+                    {i.subtitle}
+                  </span>
                 )}
+                {/* Тривалість — тільки в послуг, і тільки коли задана.
+                    Формат «60 хв», а не «1 год»: варіанти рідко переходять
+                    годинну позначку, а секунди читача не цікавлять. */}
+                {i.durationMinutes != null && (
+                  <span className="tabular t-xs mt-0.5 block" style={{ color: 'var(--color-faint)' }}>
+                    {t('catalog.duration', { n: t.number(i.durationMinutes) })}
+                  </span>
+                )}
+                <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  <span className={i.status === 'active' ? 'badge-success'
+                    : i.status === 'draft' ? 'badge-warn' : 'badge'}>
+                    {statusLabel(t, i.status)}
+                  </span>
+                  {i.variants > 1 && (
+                    <span className="badge">{t.plural('catalog.variants.count', i.variants)}</span>
+                  )}
+                  {/* «Поза каталогом» — про общий каталог маркетплейса,
+                      то есть про витрину. Без модуля отметка сообщала бы
+                      об отсутствии в списке, которого у заведения нет. */}
+                  {hasStorefront && !i.listed && (
+                    <span className="badge">{t('catalog.badge.unlisted')}</span>
+                  )}
+                </span>
+              </span>
 
-                <div className="min-w-0 flex-1">
-                  <p className="t-lg truncate">{i.title}</p>
-                  {i.subtitle && <p className="t-xs truncate prose-muted">{i.subtitle}</p>}
-                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                    <span className={i.status === 'active' ? 'badge-success'
-                      : i.status === 'draft' ? 'badge-warn' : 'badge'}>
-                      {statusLabel(t, i.status)}
-                    </span>
-                    <span className="badge">
-                      {i.kind === 'service' ? t('catalog.kind.service') : t('catalog.kind.product')}
-                    </span>
-                    {i.variants > 1 && (
-                      <span className="badge">{t.plural('catalog.variants.count', i.variants)}</span>
-                    )}
-                    {/* «Поза каталогом» — про общий каталог маркетплейса,
-                        то есть про витрину. Без модуля отметка сообщала бы
-                        об отсутствии в списке, которого у заведения нет. */}
-                    {hasStorefront && !i.listed && (
-                      <span className="badge">{t('catalog.badge.unlisted')}</span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="shrink-0 text-right">
-                  <p className="tabular t-md">
-                    {/* Символ валюты ставит Intl (`t.money`), а не мы:
-                        ручная подстановка «₴» ломается на второй валюте
-                        и ставит символ не с той стороны в английской. */}
-                    {i.price != null ? t.money(i.price, i.currency) : '—'}
-                  </p>
-                </div>
-              </div>
+              <span className="shrink-0 text-right">
+                <span className="tabular t-md block">
+                  {/* Символ валюты ставит Intl (`t.money`), а не мы:
+                      ручная подстановка «₴» ломается на второй валюте
+                      и ставит символ не с той стороны в английской. */}
+                  {i.price != null ? t.money(i.price, i.currency) : '—'}
+                </span>
+              </span>
             </Link>
           ))}
         </div>

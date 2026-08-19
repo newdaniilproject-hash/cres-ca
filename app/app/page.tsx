@@ -1,9 +1,10 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { currentMembership, can, hasModule } from '@/lib/tenant'
+import { currentMembership, currentUserId, can, hasModule } from '@/lib/tenant'
 import { AppShell } from '@/components/shell'
 import { getT } from '@/lib/i18n/server'
+import { IconAlert, IconCalendar } from '@/components/icons'
 
 export const dynamic = 'force-dynamic'
 
@@ -55,8 +56,9 @@ export default async function AppHome() {
 
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
   const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999)
+  const userId = await currentUserId()
 
-  const [{ data: shop }, bookingsRes, lowRes, expiringRes] =
+  const [{ data: shop }, { data: me }, bookingsRes, lowRes, expiringRes] =
     await Promise.all([
       // `storefront_enabled` и `slug` отсюда убраны: их не читал никто,
       // а сведения это витринные — набирать их в запрос заведению без
@@ -64,6 +66,13 @@ export default async function AppHome() {
       // плашке «у чернетці», и она ниже спрашивает модуль.
       supabase.from('tenants').select('name, status')
         .eq('id', m.tenantId).single(),
+      // Имя человека для карточки-героя. `currentUserId()` берёт id
+      // из уже разобранного токена (без сети, CLAUDE.md → правило 3),
+      // а `full_name` — это ОДИН лёгкий запрос к своей же строке
+      // `profiles`, а не поход к серверу авторизации.
+      userId
+        ? supabase.from('profiles').select('full_name').eq('id', userId).maybeSingle()
+        : Promise.resolve({ data: null }),
       seeBookings ? supabase.from('bookings')
         .select('id, number, title, variant_name, period, status, contact_name')
         .eq('tenant_id', m.tenantId)
@@ -99,6 +108,17 @@ export default async function AppHome() {
     return start >= todayStart && start <= todayEnd
   })
 
+  // «Потребує уваги» — сумма трёх разных бед, а не своя выборка: запись
+  // без подтверждения, ёмкость на подходе к сроку, позиция на исходе.
+  // Каждое слагаемое уже посчитано своим блоком ниже; здесь оно только
+  // складывается для карточки-героя.
+  const needsAttention =
+    todays.filter((b) => b.status === 'booked').length
+    + (expiring ?? []).length
+    + (low ?? []).length
+
+  const firstName = (me?.full_name ?? '').trim().split(/\s+/)[0] || ''
+
   return (
     <AppShell modules={m.modules} perms={m.perms}>
       {/* Кнопка ведёт на /app/settings, а туда пускает только
@@ -119,53 +139,107 @@ export default async function AppHome() {
         </div>
       )}
 
+      {/* Приветствие по имени — из прототипа. Заголовок экрана здесь
+          намеренно остаётся именем ЗАВЕДЕНИЯ (`headingOf` в app-shell.tsx,
+          решение зафиксировано там), а не превращается в «Доброго ранку»:
+          в панели он одинаков для всех разделов и отвечает на вопрос
+          «де я», а не «хто я». Личное обращение поэтому — отдельной
+          строкой в теле экрана, не в заголовке. */}
+      {/* Без «доброго ранку/дня/вечора»: часы для этого выбора были бы
+          СЕРВЕРНЫЕ (функция физически рисует страницу в Дублине, UTC),
+          а не человека в Києві — «доброго ранку» провисело бы до полудня
+          по местному времени продавца. Дешевле и честнее одно приветствие
+          без времени суток, чем неправильное время суток. */}
+      {firstName && (
+        <p className="t-lg rise mb-4">{t('home.greeting', { name: firstName })}</p>
+      )}
+
+      {/* ── Карточка-герой ────────────────────────────────────────
+          По прототипу CRESKO: сплошная акцентная плашка с двумя
+          числами дня. Показывается только тому, кто видит хотя бы
+          один из блоков ниже, — карточка со счётом «0 і 0» на пустом
+          экране была бы утверждением о заведении, которого человек
+          не имеет права знать (см. разбор про право и модуль выше). */}
+      {(seeBookings || seeContainers || seeStock) && (
+        <div className="today-hero rise-1 mb-6">
+          <p className="today-hero-eyebrow">{t('home.hero.eyebrow')}</p>
+          <div className="today-hero-row">
+            {seeBookings && (
+              <div className="today-hero-stat">
+                <span className="today-hero-icon"><IconCalendar size={20} /></span>
+                <span>
+                  <span className="today-hero-value tabular block">{t.number(todays.length)}</span>
+                  <span className="today-hero-label block">
+                    {t.plural('home.hero.bookings', todays.length)}
+                  </span>
+                </span>
+              </div>
+            )}
+            <div className="today-hero-stat">
+              <span className="today-hero-icon"><IconAlert size={20} /></span>
+              <span>
+                <span className="today-hero-value tabular block">{t.number(needsAttention)}</span>
+                <span className="today-hero-label block">{t('home.hero.attention')}</span>
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="grid gap-4 lg:grid-cols-2">
         {/* Записи сегодня */}
         {seeBookings && (
-        <section className="card rise-1">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="t-lg">{t('home.bookings.title')}</h2>
+        <section className="rise-1 lg:col-span-2">
+          <div className="section-head">
+            <p className="eyebrow">{t('home.bookings.title')}</p>
             <Link href="/app/bookings" className="btn-ghost t-sm">{t('home.bookings.all')}</Link>
           </div>
           {todays.length === 0 ? (
-            <div className="empty !py-8">{t('home.bookings.empty')}</div>
+            <div className="card empty !py-8">{t('home.bookings.empty')}</div>
           ) : (
-            todays.map((b) => {
-              // Переменная названа `start`, а не `t`: `t` — переводчик.
-              const start = new Date(String(b.period).match(/"([^"]+)"/)?.[1] ?? '')
-              return (
-                <div key={b.id} className="row">
-                  <div className="flex items-center gap-3">
-                    <span className="tabular t-xl" style={{ color: 'var(--color-accent)' }}>
+            <div className="flex flex-col gap-2">
+              {todays.map((b) => {
+                // Переменная названа `start`, а не `t`: `t` — переводчик.
+                const start = new Date(String(b.period).match(/"([^"]+)"/)?.[1] ?? '')
+                const initial = (b.contact_name || '?').trim().charAt(0).toUpperCase()
+                return (
+                  <div key={b.id} className="list-card">
+                    <span className="tabular t-lg shrink-0" style={{ color: 'var(--color-accent)', minWidth: 52 }}>
                       {t.dateTime(start, { hour: '2-digit', minute: '2-digit' })}
                     </span>
-                    <div>
+                    <span className="list-anchor"
+                          style={{ background: 'var(--color-accent-soft)', color: 'var(--color-accent-ink)' }}>
+                      {initial}
+                    </span>
+                    <span className="min-w-0 flex-1">
                       {/* Имя клиента, название услуги и варианта — данные. */}
-                      <p className="t-md">{b.contact_name}</p>
-                      <p className="t-xs prose-muted">{b.title} · {b.variant_name}</p>
-                    </div>
+                      <span className="t-md block truncate">{b.contact_name}</span>
+                      <span className="t-xs block truncate" style={{ color: 'var(--color-faint)' }}>
+                        {b.title} · {b.variant_name}
+                      </span>
+                    </span>
+                    {/* Статус записи — значение перечисления
+                        (`booking_status_transitions`), переводится подпись. */}
+                    <span className={`shrink-0 ${b.status === 'confirmed' ? 'badge-success' : 'badge'}`}>
+                      {b.status === 'booked'
+                        ? t('home.booking.status.booked')
+                        : b.status === 'arrived'
+                        ? t('home.booking.status.arrived')
+                        : t('home.booking.status.ok')}
+                    </span>
                   </div>
-                  {/* Статус записи — значение перечисления
-                      (`booking_status_transitions`), переводится подпись. */}
-                  <span className={b.status === 'confirmed' ? 'badge-success' : 'badge'}>
-                    {b.status === 'booked'
-                      ? t('home.booking.status.booked')
-                      : b.status === 'arrived'
-                      ? t('home.booking.status.arrived')
-                      : t('home.booking.status.ok')}
-                  </span>
-                </div>
-              )
-            })
+                )
+              })}
+            </div>
           )}
         </section>
         )}
 
         {/* Сроки годности */}
         {seeContainers && (
-        <section className="card rise-2">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="t-lg">{t('home.expiring.title')}</h2>
+        <section className="rise-2">
+          <div className="section-head">
+            <p className="eyebrow">{t('home.expiring.title')}</p>
             {/* Сам блок стоит на `compliance.read`, а склад за ссылкой —
                 на `stock.read`: `/app/inventory` разворачивает обратно
                 сюда всех, у кого его нет, то есть инспектора. Ссылка,
@@ -181,38 +255,41 @@ export default async function AppHome() {
             )}
           </div>
           {(expiring ?? []).length === 0 ? (
-            <div className="empty !py-8">{t('home.expiring.empty')}</div>
+            <div className="card empty !py-8">{t('home.expiring.empty')}</div>
           ) : (
-            (expiring ?? []).map((c) => (
-              <div key={c.code} className="row">
-                <div>
-                  {/* Назва засобу і код ємності — данные заклада. */}
-                  <p className="t-md">{c.material_name}</p>
-                  <p className="t-xs prose-muted">
-                    {t('home.expiring.container', { code: c.code })}
-                  </p>
+            <div className="flex flex-col gap-2">
+              {(expiring ?? []).map((c) => (
+                <div key={c.code} className="list-card">
+                  <span className="min-w-0 flex-1">
+                    {/* Назва засобу і код ємності — данные заклада. */}
+                    <span className="t-md block truncate">{c.material_name}</span>
+                    <span className="t-xs block truncate" style={{ color: 'var(--color-faint)' }}>
+                      {t('home.expiring.container', { code: c.code })}
+                    </span>
+                  </span>
+                  <span className="badge-warn tabular shrink-0">
+                    {t('home.expiring.until', { date: t.date(c.use_by) })}
+                  </span>
                 </div>
-                <span className="badge-warn tabular">
-                  {t('home.expiring.until', { date: t.date(c.use_by) })}
-                </span>
-              </div>
-            ))
+              ))}
+            </div>
           )}
         </section>
         )}
 
         {/* Что закупить */}
         {seeStock && (
-        <section className="card rise-3 lg:col-span-2">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="t-lg">{t('home.reorder.title')}</h2>
+        <section className="rise-3 lg:col-span-2">
+          <div className="section-head">
+            <p className="eyebrow">{t('home.reorder.title')}</p>
             <Link href="/app/inventory" className="btn-ghost t-sm">
               {t('home.reorder.stock')}
             </Link>
           </div>
           {(low ?? []).length === 0 ? (
-            <div className="empty !py-8">{t('home.reorder.empty')}</div>
+            <div className="card empty !py-8">{t('home.reorder.empty')}</div>
           ) : (
+            <div className="card">
             <div className="flex flex-wrap gap-2">
               {/* Назва позиції — данные; переводится только «докупити». */}
               {(low ?? []).map((r, i) => (
@@ -220,6 +297,7 @@ export default async function AppHome() {
                   {r.title} · {t('home.reorder.item', { n: t.number(Number(r.to_order)) })}
                 </span>
               ))}
+            </div>
             </div>
           )}
         </section>

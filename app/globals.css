@@ -89,11 +89,21 @@
   --tone-emerald: #16a34a;   --tone-emerald-soft: rgb(22 163 74 / 0.08);
   --tone-violet: #7c3aed;    --tone-violet-soft: rgb(124 58 237 / 0.10);
 
-  /* Радиус растёт вместе с размером объекта: значок — поле —
-     карточка — шторка. Смешивать ступени нельзя. */
-  --radius-control: 0.875rem;
-  --radius-card: 1.125rem;
-  --radius-hero: 1.5rem;
+  /* ── Радиусы. Значения из README хендоффа, дословно ──────────
+     Раньше здесь стояли «похожие» ступени в rem (14/18/24px),
+     подобранные по рендеру. Хендофф даёт точную геометрию, и она
+     мельче: карточка 14, а не 18; поле и чип 12, а не 14. Разница
+     в 4px на карточке видна сразу — именно она делала вид
+     «скруглённее макета».
+
+     Радиус растёт вместе с размером объекта, ступени не смешиваются:
+     значок-плашка → поле/чип → карточка → диалог → шторка → пилюля. */
+  --radius-plate: 10px;    /* иконка-плашка в строке списка       */
+  --radius-control: 12px;  /* поле, чип, вторичная кнопка         */
+  --radius-card: 14px;     /* карточка, главная кнопка            */
+  --radius-calendar: 16px; /* контейнер календаря                 */
+  --radius-dialog: 18px;   /* диалог подтверждения                */
+  --radius-hero: 20px;     /* шторка снизу (20px 20px 0 0)        */
 
   /* Тень, а не граница, отделяет карточку от фона. Два слоя:
      ближний даёт край, дальний — высоту. */
@@ -120,12 +130,15 @@
   --dur-slow: 400ms;     /* крупные появления */
   --dur-exit: 140ms;
 
-  /* Высоты управляющих элементов. Поле выше кнопки на 6px намеренно:
-     в форме поле — главное, кнопка при нём. */
+  /* Высоты управляющих элементов — из README хендоффа:
+     поле 48, главная кнопка 52 (диапазон 50–54), вторичная 48,
+     иконка-кнопка в шапке 40×40, поиск на экране 44.          */
   --h-sm: 32px;
-  --h-md: 40px;
-  --h-lg: 48px;
-  --h-input: 46px;
+  --h-md: 40px;        /* иконка-кнопка шапки, 40×40           */
+  --h-search: 44px;    /* строка поиска на экране              */
+  --h-lg: 48px;        /* вторичная кнопка                     */
+  --h-input: 48px;     /* поле ввода                           */
+  --h-primary: 52px;   /* главная кнопка                       */
 
   --tap-min: 44px;
 
@@ -173,13 +186,20 @@
      44px, то есть крупному тексту есть где стоять.                */
   --type-scale: 1;
 
-  --text-xs: calc(12px * var(--type-scale));   --lh-xs: 1.4;    /* подсказка, ошибка поля */
-  --text-sm: calc(14px * var(--type-scale));   --lh-sm: 1.5;    /* вторичный текст, подпись */
-  --text-base: calc(16px * var(--type-scale)); --lh-base: 1.55; /* основной текст, поля */
-  --text-lg: calc(18px * var(--type-scale));   --lh-lg: 1.4;    /* заголовок карточки */
-  --text-xl: calc(22px * var(--type-scale));   --lh-xl: 1.3;    /* заголовок экрана */
-  --text-2xl: calc(28px * var(--type-scale));  --lh-2xl: 1.25;  /* заголовок раздела */
-  --text-3xl: calc(36px * var(--type-scale));  --lh-3xl: 1.15;  /* витрина, крупные цифры */
+  /* ⚠️ ШКАЛА ЗАКРЫТАЯ. README хендоффа: «Уся шкала розмірів (єдина
+     на всі екрани, інших значень не існує)» —
+     10 · 12 · 13 · 14 · 15 · 16 · 17 · 21 · 22 · 24 · 30.
+     Промежуточного размера завести НЕЛЬЗЯ: как только появляется
+     18-й или 19-й кегль, шкала перестаёт быть шкалой и дальше растёт
+     по одному размеру на экран. Отсюда же ушли прежние 18/28/36 —
+     их в списке нет.                                              */
+  --text-xs: calc(12px * var(--type-scale));   --lh-xs: 1.4;    /* мета, вторичный текст */
+  --text-sm: calc(13px * var(--type-scale));   --lh-sm: 1.5;    /* подзаголовок, значение в таблице */
+  --text-base: calc(14px * var(--type-scale)); --lh-base: 1.55; /* основной текст строк, поля */
+  --text-lg: calc(15px * var(--type-scale));   --lh-lg: 1.4;    /* заголовок карточки, значение метрики */
+  --text-xl: calc(17px * var(--type-scale));   --lh-xl: 1.3;    /* заголовок диалога */
+  --text-2xl: calc(22px * var(--type-scale));  --lh-2xl: 1.25;  /* заголовок экрана, имя позиции */
+  --text-3xl: calc(30px * var(--type-scale));  --lh-3xl: 1.15;  /* H1 экранов входа */
 
   /* Цифры в таблицах и списках не должны прыгать при обновлении:
      моноширинные цифры дают ровный столбец.                    */
@@ -557,9 +577,16 @@ html.dark {
   .badge-warn    { background: var(--color-warn-soft); border-color: transparent; color: var(--color-warn); }
   .badge-danger  { background: var(--color-danger-soft); border-color: transparent; color: var(--color-danger); }
 
+  /* Чип-фильтр. Геометрия из README: padding 7px 14px, radius 99px,
+     12px/650. `min-height: --tap-min` держит зону нажатия 44px, не
+     раздувая саму пилюлю: паддинг рисует её высоту, min-height
+     добирает недостающее прозрачной областью нажатия. */
   .chip, .chip-active {
-    @apply inline-flex items-center h-9 px-4 text-sm font-medium border select-none cursor-pointer;
-    /* h-9 (36px) — ниже --tap-min, это кликабельные кнопки фильтров. */
+    @apply inline-flex items-center justify-center border select-none cursor-pointer;
+    padding: 7px 14px;
+    font-size: calc(12px * var(--type-scale));
+    line-height: calc(16px * var(--type-scale));
+    font-weight: 650;
     min-height: var(--tap-min);
     border-radius: 999px;
     transition: all var(--dur-fast);
@@ -731,8 +758,14 @@ html.dark {
     background: color-mix(in srgb, var(--color-surface) 86%, transparent);
     box-shadow: var(--shadow-lift);
   }
+  /* README: іконка 26px, підпис 10px/600, gap 3px. Было 11px —
+     размера 11 в закрытой шкале нет (см. `--text-*`). */
   .bottomnav-item {
-    @apply flex flex-col items-center justify-center gap-0.5 text-[11px] font-medium;
+    @apply flex flex-col items-center justify-center;
+    gap: 3px;
+    font-size: calc(10px * var(--type-scale));
+    line-height: calc(13px * var(--type-scale));
+    font-weight: 600;
     min-height: var(--tap-min);
     border-radius: 999px;
     color: var(--color-muted);
@@ -768,10 +801,32 @@ html.dark {
 
   /* Круглая кнопка-иконка строки. Размер задаётся кнопкой, а не
      иконкой: зона нажатия обязана быть 44px даже у картинки 20px. */
-  .iconbtn, .avatarbtn {
+  /* Иконка-кнопка шапки. README: 40×40, radius 12px, 1px border,
+     background surface — КВАДРАТ со скруглением, а не круг. Круглыми
+     они были подобраны по рендеру; в макете круглый только аватар.
+     Зона нажатия добирается до 44px прозрачным outline-ом (см. ниже),
+     чтобы не раздувать саму кнопку. */
+  .iconbtn {
+    @apply relative flex items-center justify-center;
+    width: var(--h-md);
+    height: var(--h-md);
+    border-radius: var(--radius-control);
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-muted);
+    transition: color var(--dur-fast), background var(--dur-fast), border-color var(--dur-fast);
+  }
+  /* Зона нажатия 44px при кнопке 40px — псевдоэлементом, а не размером:
+     иначе кнопки в шапке разъедутся на 4px друг от друга. */
+  .iconbtn::after {
+    content: '';
+    position: absolute;
+    inset: calc((var(--tap-min) - var(--h-md)) / -2);
+  }
+  .avatarbtn {
     @apply flex items-center justify-center;
-    width: var(--tap-min);
-    height: var(--tap-min);
+    width: var(--h-md);
+    height: var(--h-md);
     border-radius: 999px;
     border: 1px solid var(--color-border);
     background: var(--color-surface);
@@ -884,15 +939,23 @@ html.dark {
      Интерлиньяж масштабируется ВМЕСТЕ с кеглем: оставить его в пикселях
      значит получить наползающие строки на крупном шрифте. Вес, трекинг
      и всё остальное множитель не трогает. */
-  .t-xs   { font-size: calc(11px * var(--type-scale)); line-height: calc(14px * var(--type-scale)); font-weight: 500; }
+  /* Размеры — только из закрытой шкалы README (см. её у `--text-*`).
+     Прежние 11 / 19 / 28 / 40 в списке отсутствуют и заменены
+     ближайшей РОЛЬЮ, а не ближайшим числом: 11→10 (бейдж, подпись
+     таба), 19→17 (заголовок диалога), 28→24 (H1 онбординга),
+     40→30 (H1 входа). Вес и трекинг хендофф не задаёт покомпонентно —
+     они остаются нашими. */
+  .t-xs   { font-size: calc(10px * var(--type-scale)); line-height: calc(13px * var(--type-scale)); font-weight: 600; }
   .t-sm   { font-size: calc(12px * var(--type-scale)); line-height: calc(16px * var(--type-scale)); font-weight: 500; }
   .t-base { font-size: calc(13px * var(--type-scale)); line-height: calc(18px * var(--type-scale)); font-weight: 500; }
-  .t-md   { font-size: calc(14px * var(--type-scale)); line-height: calc(20px * var(--type-scale)); font-weight: 550; }
-  .t-lg   { font-size: calc(16px * var(--type-scale)); line-height: calc(22px * var(--type-scale)); font-weight: 600; letter-spacing: -0.01em; }
-  .t-xl   { font-size: calc(19px * var(--type-scale)); line-height: calc(24px * var(--type-scale)); font-weight: 650; letter-spacing: -0.015em; }
+  .t-md   { font-size: calc(14px * var(--type-scale)); line-height: calc(20px * var(--type-scale)); font-weight: 650; }
+  .t-lg   { font-size: calc(15px * var(--type-scale)); line-height: calc(20px * var(--type-scale)); font-weight: 700; letter-spacing: -0.01em; }
+  .t-xl   { font-size: calc(17px * var(--type-scale)); line-height: calc(22px * var(--type-scale)); font-weight: 700; letter-spacing: -0.015em; }
   .t-2xl  { font-size: calc(22px * var(--type-scale)); line-height: calc(28px * var(--type-scale)); font-weight: 700; letter-spacing: -0.02em; }
-  .t-3xl  { font-size: calc(28px * var(--type-scale)); line-height: calc(34px * var(--type-scale)); font-weight: 700; letter-spacing: -0.025em; }
-  .t-4xl  { font-size: calc(40px * var(--type-scale)); line-height: calc(48px * var(--type-scale)); font-weight: 800; letter-spacing: -0.03em; }
+  .t-3xl  { font-size: calc(24px * var(--type-scale)); line-height: calc(30px * var(--type-scale)); font-weight: 750; letter-spacing: -0.02em; }
+  .t-4xl  { font-size: calc(30px * var(--type-scale)); line-height: calc(36px * var(--type-scale)); font-weight: 750; letter-spacing: -0.02em; }
+  /* Витрина (публичный лендинг) — вне хендоффа: он описывает мобильный
+     кабинет. Этот кегль там и остаётся, в приложении не используется. */
   .t-5xl  { font-size: clamp(40px, 7vw, 56px); line-height: 1.05; font-weight: 800; letter-spacing: -0.04em; }
 
   /* Цифры, которые обновляются: цены, остатки, счётчики, время.
@@ -968,11 +1031,13 @@ html.dark {
      в шапке (шапка занята календарём, колоколом, сканером и аватаром).
      Пилюля во всю ширину, значок слева, плейсхолдер называет, по чему
      ищем, — «Назва, бренд, партія…», а не безличное «Пошук». */
+  /* README: поле пошуку 44px, radius 12px, іконка лупи faint 17px.
+     Не пилюля (999px) — прямоугольник со скруглением 12, как поле. */
   .searchfield {
     @apply flex w-full items-center gap-2.5 border;
-    height: var(--h-input);
-    padding-inline: var(--space-4);
-    border-radius: 999px;
+    height: var(--h-search);
+    padding-inline: 12px;
+    border-radius: var(--radius-control);
     border-color: var(--color-border);
     background: var(--color-surface);
     color: var(--color-faint);
@@ -997,19 +1062,21 @@ html.dark {
      первого экрана, а число и так читается мгновенно. Цвет несёт
      тот же смысл, что и раньше (rose — сломано, amber — сломается),
      но теперь красится само число, а не квадратик рядом с ним.    */
+  /* Плитка-счётчик. README: padding 10px 6px, radius 12px,
+     число 17px/800, подпись 10px/muted. */
   .metric {
     @apply flex flex-col items-center justify-center gap-0.5 border text-center;
-    padding: var(--space-3) var(--space-2);
+    padding: 10px 6px;
     border-radius: var(--radius-control);
     border-color: var(--color-border);
     background: var(--color-surface);
     min-height: var(--tap-min);
   }
   .metric-value {
-    font-size: calc(20px * var(--type-scale));
-    line-height: calc(24px * var(--type-scale));
-    font-weight: 700;
-    letter-spacing: -0.02em;
+    font-size: calc(17px * var(--type-scale));
+    line-height: calc(22px * var(--type-scale));
+    font-weight: 800;
+    letter-spacing: -0.01em;
     font-variant-numeric: tabular-nums;
     color: var(--color-text);
   }
@@ -1018,8 +1085,8 @@ html.dark {
   .metric[data-tone='emerald'] .metric-value { color: var(--tone-emerald); }
   .metric[data-tone='blue']    .metric-value { color: var(--tone-blue); }
   .metric-label {
-    font-size: calc(11px * var(--type-scale));
-    line-height: calc(14px * var(--type-scale));
+    font-size: calc(10px * var(--type-scale));
+    line-height: calc(13px * var(--type-scale));
     color: var(--color-muted);
   }
   .metric[aria-pressed='true'] {
@@ -1032,21 +1099,30 @@ html.dark {
      (`.scroll-x`): действий больше, чем влезает в ширину телефона,
      а переносить их на вторую строку значит смешать с тем, что
      стоит ниже.                                                   */
+  /* Быстрое действие. README: ЧЕТЫРЕ В РЯД (не уезжающая вбок лента),
+     иконка-плашка 32px + подпись 10px. Четыре штуки в ряд помещаются
+     на 375px именно потому, что плитка узкая и подпись мелкая —
+     на прокрутку это менять не нужно, она тут ничего не решает. */
+  .quick-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
   .quick-tile {
-    @apply flex flex-col items-start gap-2.5 border;
-    width: 104px;
-    padding: var(--space-3);
-    border-radius: var(--radius-card);
+    @apply flex flex-col items-center gap-1.5 border text-center;
+    padding: 10px 4px;
+    border-radius: var(--radius-control);
     border-color: var(--color-border);
     background: var(--color-surface);
     color: var(--color-text);
+    min-height: var(--tap-min);
+    font-size: calc(10px * var(--type-scale));
+    line-height: calc(13px * var(--type-scale));
+    font-weight: 600;
     transition: border-color var(--dur-fast), transform var(--dur-fast);
   }
   .quick-tile:active { transform: scale(0.97); }
   .quick-tile-icon {
-    width: 38px; height: 38px;
-    border-radius: var(--radius-control);
+    width: 32px; height: 32px;
+    border-radius: var(--radius-plate);
     display: grid; place-items: center;
+    flex-shrink: 0;
     background: var(--tone-blue-soft);
     color: var(--tone-blue);
   }
@@ -1093,7 +1169,8 @@ html.dark {
   }
 
   .list-card-thumb {
-    width: 46px; height: 46px;
+    /* README: мініатюра 48px, radius 12px. */
+    width: 48px; height: 48px;
     border-radius: var(--radius-control);
     display: grid; place-items: center;
     flex-shrink: 0;
@@ -1101,6 +1178,62 @@ html.dark {
     color: var(--color-faint);
     overflow: hidden;
   }
+
+  /* ── Карточка-герой «Сьогодні» ────────────────────────────────
+     Из прототипа: сплошная акцентная плашка наверху экрана «Сьогодні»
+     с одним-двумя числами — «що вже призначено» и «що потребує уваги».
+     Заливка АКЦЕНТОМ, а не мягким тоном: это единственное место
+     в кабинете, где акцент используется как фон целого блока, а не
+     только кнопки, — и это осознанно повторяет прототип, а не
+     разошедшийся с системой цвет по месту. Текст поверх — всегда белый,
+     в обеих темах: `--color-accent-text`, а не `--color-text`.        */
+  .today-hero {
+    @apply flex flex-col gap-4;
+    padding: var(--space-5);
+    border-radius: var(--radius-hero);
+    background: var(--color-accent);
+    color: var(--color-accent-text);
+  }
+  .today-hero-eyebrow {
+    @apply text-xs font-bold uppercase;
+    letter-spacing: 0.1em;
+    opacity: 0.75;
+  }
+  .today-hero-row { @apply flex items-center gap-6; }
+  .today-hero-stat { @apply flex items-center gap-3; }
+  .today-hero-icon {
+    width: 44px; height: 44px;
+    border-radius: 999px;
+    display: grid; place-items: center;
+    background: rgb(255 255 255 / 0.18);
+    flex-shrink: 0;
+  }
+  .today-hero-value {
+    font-size: calc(24px * var(--type-scale));
+    line-height: calc(28px * var(--type-scale));
+    font-weight: 750;
+    letter-spacing: -0.02em;
+  }
+  .today-hero-label {
+    font-size: calc(13px * var(--type-scale));
+    line-height: calc(17px * var(--type-scale));
+    opacity: 0.85;
+  }
+
+  /* ── Точка статуса записи ─────────────────────────────────────
+     Из прототипа: перед временем стоит закрашенный кружок — состояние
+     видно ДО того, как прочитана хоть одна буква. Три тона, а не
+     повторение всей палитры бейджей: этого достаточно, чтобы отличить
+     «горит» (очікує) от «в порядке» (решено) от «закрыто» (отмена/неявка/
+     выполнено — эти три уже не требуют действия, и цвет у них общий,
+     нейтральный). */
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 999px; flex-shrink: 0;
+    background: var(--color-faint);
+  }
+  .status-dot[data-tone='accent'] { background: var(--color-accent); }
+  .status-dot[data-tone='warn']   { background: var(--tone-amber); }
+  .status-dot[data-tone='success']{ background: var(--tone-emerald); }
 
   /* ── Плавающая кнопка ───────────────────────────────────────
      Главное действие экрана. Поднята над нижней панелью на её
