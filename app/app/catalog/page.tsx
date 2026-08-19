@@ -20,7 +20,7 @@ type VariantRow = {
   id: string; price: number | null; duration_minutes: number | null
   track_stock: boolean; stock_qty: number | null
   /** Строки рецептуры варианта. Нужен только их СЧЁТ — см. ниже. */
-  variant_materials: { id: string }[] | null
+  variant_materials: { material_id: string }[] | null
 }
 
 // Название категории приезжает вложенной выборкой. PostgREST на связи
@@ -62,7 +62,7 @@ export default async function CatalogPage() {
        categories(name),
        offering_media(path, position),
        offering_variants(id, price, duration_minutes, track_stock, stock_qty,
-                         variant_materials(id))`,
+                         variant_materials(material_id))`,
     )
     .eq('tenant_id', m.tenantId)
     .order('updated_at', { ascending: false })
