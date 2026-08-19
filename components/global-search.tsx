@@ -71,10 +71,16 @@ const SECTION_TITLE = {
 const safe = (q: string) => q.replace(/[,()%*\\]/g, ' ').trim()
 
 export function GlobalSearch({
-  modules, perms,
+  modules, perms, compact = false,
 }: {
   modules?: TenantModule[]
   perms?: string[]
+  /**
+   * Значком вместо строки. Только там, где строке не хватает места:
+   * на внутренних экранах шапку уже занимают стрелка «назад» и имя
+   * экрана. На корневых разделах — всегда строка.
+   */
+  compact?: boolean
 }) {
   const t = useT()
   const pathname = usePathname()
@@ -223,10 +229,30 @@ export function GlobalSearch({
 
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)}
-              aria-label={t('app.search.aria')} className="iconbtn shrink-0">
-        <IconSearch />
-      </button>
+      {/* Строка, а не значок (поправка владельца 19.08.2026: «поисковая
+          строка в хедере пропала»). Значок открывал тот же поиск, но
+          молчал о себе: строка — это ещё и приглашение искать.
+
+          Это КНОПКА в виде поля, а не поле. Печатать прямо в шапке
+          нельзя: у неё `backdrop-filter`, своя высота и липкое
+          положение, а поднявшаяся клавиатура закрыла бы выдачу.
+          Шторка держит поле, список и клавиатуру одним слоем —
+          так же сделаны телеграм и почта на телефоне. */}
+      {compact ? (
+        <button type="button" onClick={() => setOpen(true)}
+                aria-label={t('app.search.aria')} className="iconbtn shrink-0">
+          <IconSearch />
+        </button>
+      ) : (
+        <button type="button" onClick={() => setOpen(true)}
+                aria-label={t('app.search.aria')}
+                className="searchfield min-w-0 flex-1 text-left">
+          <IconSearch size={18} />
+          <span className="truncate" style={{ fontSize: 'max(15px, var(--text-lg))' }}>
+            {t('app.search.short')}
+          </span>
+        </button>
+      )}
 
       <Sheet open={open} onClose={() => setOpen(false)} title={t('app.search.title')}>
         <label className="searchfield mb-3">
