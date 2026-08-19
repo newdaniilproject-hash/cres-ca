@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { currentMembership, can } from '@/lib/tenant'
+import { currentMembership, can, hasModule } from '@/lib/tenant'
 import { AppShell } from '@/components/shell'
 import { SettingsClient } from './settings-client'
 import { getT } from '@/lib/i18n/server'
@@ -68,6 +68,13 @@ export default async function SettingsPage() {
         shop={shop}
         canWrite={can(m, 'settings.write')}
         canSeeTeam={canSeeTeam}
+        // ⚠️ ЭТОТ ПРИЗНАК НЕ ПЕРЕДАВАЛСЯ ВОВСЕ, и умолчание `false`
+        // в клиенте молча прятало публичную ссылку У ВСЕХ — включая
+        // заклады с модулем `storefront`. То есть адреса, который кладут
+        // в шапку Instagram, на экране «Магазин» не было ни у кого,
+        // и починка описана прямо в комментарии к пропу: «одна строка
+        // в page.tsx». Вот она.
+        hasStorefront={hasModule(m, 'storefront')}
         team={((team?.data ?? []) as TeamRow[]).map((t) => ({
           userId: t.user_id, role: t.role,
           name: t.full_name, email: t.email,

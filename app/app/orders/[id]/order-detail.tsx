@@ -308,19 +308,25 @@ export function OrderDetail({
                 <span className="kv-val tabular">{order.tracking}</span>
               </div>
             )}
-            {order.comment && (
-              <div className="kv-row">
-                <span className="kv-key">{t('orders.detail.comment.label')}</span>
-                <span className="kv-val">{order.comment}</span>
-              </div>
-            )}
-            {order.cancelReason && (
-              <div className="kv-row">
-                <span className="kv-key">{t('orders.detail.cancel.label')}</span>
-                <span className="kv-val">{order.cancelReason}</span>
-              </div>
-            )}
           </div>
+          {/* Комментарий покупателя и причина отмены — НЕ строки таблицы:
+              их подписи в словаре написаны с двоеточием на конце, потому
+              что задуманы началом предложения («Коментар покупця: …»),
+              а в столбце «ключ → значення» двоеточие лишнее. Резать его
+              из перевода нельзя — это было бы вторым правилом о том, как
+              строка выглядит, живущим в коде. */}
+          {order.comment && (
+            <p className="t-md mt-2">
+              <span className="prose-muted">{t('orders.detail.comment.label')} </span>
+              {order.comment}
+            </p>
+          )}
+          {order.cancelReason && (
+            <p className="t-md mt-1">
+              <span className="prose-muted">{t('orders.detail.cancel.label')} </span>
+              {order.cancelReason}
+            </p>
+          )}
           {order.guest && (
             <p className="field-hint mt-2">{t('orders.detail.buyer.guestHint')}</p>
           )}

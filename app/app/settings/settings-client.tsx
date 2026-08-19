@@ -86,6 +86,7 @@ export function SettingsClient({
   const [phone, setPhone] = useState(shop.contact_phone ?? '')
   const [state, setState] = useState<'idle' | 'busy' | 'saved' | 'error'>('idle')
   const [error, setError] = useState('')
+  const [copied, setCopied] = useState(false)
 
   // Выбранный раздел — ТОЛЬКО для широкого экрана. Умолчание `null`:
   // панель не рисуется, список занимает всю ширину. Открывать первый
@@ -152,21 +153,34 @@ export function SettingsClient({
   // двухколоночную сетку формы в панели приходится гасить явно —
   // иначе поле «Місто» получает сто пикселей.
 
-  /** Витрина: адрес публичной страницы и состояние публикации. */
-  function publicBody() {
+  /**
+   * Витрина: адрес публичной страницы и состояние публикации.
+   *
+   * `withState` — потому что признак публикации живёт РОВНО В ОДНОМ месте
+   * на каждой раскладке: на телефоне это метка в шапке-герое (макет
+   * `shop`), на широком экране — вот эта строка в панели. Показать оба
+   * значило бы дважды сообщить одно и то же в одном экране.
+   */
+  function publicBody(withState = true) {
     return (
       <div className="flex flex-wrap items-center gap-2">
         {/* Адрес витрины — данные, а не текст. */}
         <code className="card-flat t-md !px-3 !py-2 break-all">{publicUrl}</code>
+        {/* Кнопка без ответа читается как сломанная: буфер обмена ничего
+            не показывает сам. Отсюда состояние `copied`. */}
         <button type="button" className="btn-secondary t-sm"
-                onClick={() => navigator.clipboard.writeText(publicUrl)}>
-          {t('common.copy')}
+                onClick={() => {
+                  void navigator.clipboard.writeText(publicUrl)
+                  setCopied(true)
+                  setTimeout(() => setCopied(false), 2000)
+                }}>
+          {copied ? t('common.copied') : t('common.copy')}
         </button>
-        {shop.storefront_enabled ? (
+        {withState && (shop.storefront_enabled ? (
           <span className="badge-success">{t('settings.public.published')}</span>
         ) : (
           <span className="badge-warn">{t('settings.public.draft')}</span>
-        )}
+        ))}
       </div>
     )
   }
@@ -465,27 +479,72 @@ export function SettingsClient({
           там, где сегодня всё видно сразу. Тела разделов — те же
           функции, что зовёт панель справа. */}
       <div className="flex flex-col gap-5 lg:hidden">
-        {/* Публичная ссылка — то, что уходит в шапку Instagram.
-            Весь блок принадлежит модулю `storefront`: и адрес сторінки,
-            и отметка «опубліковано / чернетка» — это состояние витрины. */}
-        {hasStorefront && (
-          <section className="card rise-1">
-            <h2 className="t-lg mb-1">{t('settings.public.title')}</h2>
-            <p className="t-md mb-3 prose-muted">{t('settings.public.desc')}</p>
-            {publicBody()}
-          </section>
-        )}
+        {/* ── Шапка-герой закладу (макет `shop`) ────────────────────────
+            README, розділ G: «Обкладинка + статистика + сітка послуг +
+            контактні картки». Обложки и сетки услуг здесь нет намеренно:
+            колонки под обложку у заклада не существует, а «популярні
+            послуги» — это каталог, у которого свой раздел в панели.
+            Показывать чужую сетку вторым входом в тот же каталог значит
+            завести на экране второй путь туда же.
+
+            Статистики из макета — рейтинг, підписники, «рекомендують» —
+            тоже нет: подписчиков продукт не считает вовсе, а рисовать
+            плитку ради круглого числа — это ровно то, за что был снят
+            рейтинг с экрана послуг (М32).
+
+            Что осталось — то, ради чего сюда заходят: как заклад выглядит
+            снаружи и та самая ссылка, которая уходит в шапку Instagram.
+            Признак публикации стоит здесь же кнопкой-меткой, как
+            в макете, а не отдельной секцией строкой ниже. */}
+        <section className="card rise-1">
+          <div className="flex items-center gap-3">
+            <span aria-hidden className="flex shrink-0 items-center justify-center"
+                  style={{
+                    width: 56, height: 56,
+                    borderRadius: 999,
+                    background: 'var(--color-accent-soft)',
+                    color: 'var(--color-accent-ink)',
+                    fontSize: 24, fontWeight: 700,
+                  }}>
+              {shop.name.trim().charAt(0).toUpperCase()}
+            </span>
+            <div className="min-w-0 flex-1">
+              {/* Название и адрес — данные заклада, не переводятся. */}
+              <p className="t-xl clamp-2">{shop.name}</p>
+              <p className="t-sm mt-0.5 truncate prose-muted">
+                {[shop.city, shop.address].filter(Boolean).join(', ') || shop.tagline}
+              </p>
+            </div>
+            {hasStorefront && (
+              shop.storefront_enabled
+                ? <span className="badge-success shrink-0">{t('settings.public.published')}</span>
+                : <span className="badge-warn shrink-0">{t('settings.public.draft')}</span>
+            )}
+          </div>
+
+          {hasStorefront && (
+            <>
+              <div className="divider my-4" />
+              <p className="t-sm mb-2 prose-muted">{t('settings.public.desc')}</p>
+              {publicBody(false)}
+            </>
+          )}
+        </section>
 
         {/* Данные заведения */}
         {shopForm(false)}
 
-        {/* Команда */}
-        <section className="card rise-3 !p-0">
-          <div className="flex items-center justify-between p-5 pb-3">
-            <h2 className="t-lg">{t('settings.team.title')}</h2>
-          </div>
-          {teamBody(false)}
-        </section>
+        {/* ⚠️ СРЕЗА СОСТАВА КОМАНДЫ ЗДЕСЬ БОЛЬШЕ НЕТ, И ЭТО СНЯТЫЙ ДУБЛЬ.
+            Он показывал список без единого действия и заканчивался
+            кнопкой «Керувати доступами», ведущей на `/app/team` — экран,
+            который и так лежит пунктом в шторке под аватаром. То есть
+            на телефоне было ДВА входа в команду, и один из них тратил
+            карточку на нередактируемую копию чужого экрана.
+
+            На широком экране список остаётся: там разделы живут колонкой
+            с панелью справа, и «Команда» — её законный раздел, а не
+            дубль пункта навигации. Тела `teamBody` это не касается —
+            оно одно на обе раскладки и зовётся панелью. */}
 
         {/* Ваши данные: выгрузка заведения.
 
@@ -498,14 +557,14 @@ export function SettingsClient({
             РАЗДЕЛОВ внутри `tenant_export` (0102). */}
         <section className="card rise-3">
           <h2 className="t-lg mb-1">{t('settings.export.title')}</h2>
-          <p className="t-md mb-3 prose-muted">{t('settings.export.desc')}</p>
+          <p className="t-sm mb-3 prose-muted">{t('settings.export.desc')}</p>
           {exportBody()}
         </section>
 
         {/* Безпека: видалення акаунта */}
         <section className="card rise-3">
           <h2 className="t-lg mb-1">{t('settings.security.title')}</h2>
-          <p className="t-md mb-3 prose-muted">{t('settings.security.desc')}</p>
+          <p className="t-sm mb-3 prose-muted">{t('settings.security.desc')}</p>
           {securityBody()}
         </section>
       </div>
