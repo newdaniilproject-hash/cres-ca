@@ -1707,7 +1707,13 @@ html[data-native] .appshell > div { padding-top: 0; }
    содержимым, поэтому запас снизу и так большой — но при поднятой
    клавиатуре его не хватает ровно на её высоту, и последнее поле
    формы оказывается недостижимым. --kb меряет keyboard-fit.tsx. */
-html[data-native] .appshell { padding-bottom: calc(8rem + var(--kb, 0px)); }
+/* Запас = подъём панели (12px) + её высота + зазор + вырез + клавиатура.
+   Стояло 8rem «с запасом» — и владелец прочитал это как дыру над панелью
+   («внизу очень много пустого пространства»). Запас не должен быть виден
+   на глаз: панель плавающая, под ней и так просвечивает содержимое. */
+html[data-native] .appshell {
+  padding-bottom: calc(5.5rem + env(safe-area-inset-bottom) + var(--kb, 0px));
+}
 
 /* Шапка экрана. В вебе это просто заголовок; в обёртке —
    навигационная панель: липкая, уходит под вырез, во всю ширину.
@@ -1812,13 +1818,20 @@ html[data-native] body:has(input:focus, textarea:focus) .bottomnav { display: no
 @media (hover: none) {
   html[data-native] button:active,
   html[data-native] a:active,
-  html[data-native] [role='button']:active,
-  html[data-native] .card-flat:active {
+  html[data-native] [role='button']:active {
     transform: scale(0.975);
     transition: transform var(--dur-instant) var(--ease-out-soft);
   }
   /* Полосу вкладок не давим целиком — давим только сам пункт. */
   html[data-native] .bottomnav:active { transform: none; }
+  /* Затемнение шторки — кнопка на ВЕСЬ экран (закрытие по тапу мимо),
+     и общий отклик давил весь фон: по краям вспыхивали светлые полосы.
+     Затемнению отклик не положен — оно не действие, а выход. */
+  html[data-native] .sheet-backdrop:active { transform: none; }
+  /* `.card-flat:active` здесь СТОЯЛ и давил ЛЮБУЮ серую карточку —
+     блок «Залишок» в форме позиции читался нажимаемым, хотя нажимать
+     в нём нечего (скрин владельца 19.08.2026). Отклик — признак
+     действия; карточка без действия остаётся неподвижной. Не возвращать. */
 }
 
 /* Размер кнопки в шапке — бургер на корневом экране, «назад»
@@ -1916,7 +1929,11 @@ html[data-native] body:has(input:focus, textarea:focus) .bottomnav { display: no
 .sheet-layer .sheet {
   position: absolute;
   inset-inline: 0;
-  bottom: 0;
+  /* Над клавиатурой, а не под ней. Клавиатура ложится ПОВЕРХ страницы
+     (resize: 'none', keyboard-fit.tsx), и «bottom: 0» оставлял нижнюю
+     часть шторки — поля и кнопку — физически закрытой. Скрин владельца
+     19.08.2026: «клавиатура всё закрыла и не видно форму». */
+  bottom: var(--kb, 0px);
   display: flex;
   flex-direction: column;
   max-height: calc(92dvh - var(--kb, 0px));
