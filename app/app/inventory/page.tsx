@@ -66,7 +66,7 @@ export default async function InventoryPage({
         .eq('is_active', true)
         .order('name').limit(200),
       supabase.from('offering_variants')
-        .select('id, name, stock_qty, reserved_qty, min_stock_threshold, unit, track_stock, offerings(title)')
+        .select('id, name, stock_qty, reserved_qty, min_stock_threshold, unit, track_stock, offering_id, offerings(title)')
         .eq('tenant_id', m.tenantId)
         .eq('is_active', true)
         .order('created_at').limit(200),
@@ -123,6 +123,11 @@ export default async function InventoryPage({
         }))}
         variants={(variants ?? []).map((v) => ({
           id: v.id, name: v.name,
+          // Позиция каталога, к которой относится вариант. Нужна затем,
+          // чтобы строка товара ВЕЛА в карточку: до 19.08.2026 товар был
+          // единственным элементом склада без входа — строка выглядела
+          // как остальные, но не открывалась ничем.
+          offeringId: v.offering_id,
           title: (v.offerings as unknown as { title: string })?.title ?? '',
           stock: v.stock_qty, reserved: v.reserved_qty,
           threshold: v.min_stock_threshold, unit: v.unit, tracked: v.track_stock,
