@@ -203,7 +203,11 @@ export function WeekGrid({ bookings, weekStart }: { bookings: B[]; weekStart: st
                          borderRadius: '10px 10px 0 0',
                          background: d === today ? 'var(--color-accent-soft)' : undefined,
                        }}>
-                    <span style={{ display: 'block', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', color: d === today ? 'var(--color-accent-ink)' : 'var(--color-muted)' }}>
+                    {/* Кегль 10 — ступень шкалы для подписи-«шапки»
+                        (README: 10px 700 uppercase). Стоявшие здесь 11px
+                        в шкале не существуют вовсе, а ряд дней недели
+                        в месячной сетке рисуется теми же десятью. */}
+                    <span style={{ display: 'block', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: d === today ? 'var(--color-accent-ink)' : 'var(--color-muted)' }}>
                       {t.date(dayDate(d), { weekday: 'short' })}
                     </span>
                     <span className="tabular" style={{ display: 'block', fontSize: 15, fontWeight: 700, color: d === today ? 'var(--color-accent-ink)' : 'var(--color-text)' }}>
@@ -226,10 +230,13 @@ export function WeekGrid({ bookings, weekStart }: { bookings: B[]; weekStart: st
                 {hours.map((h) => (
                   <div key={h} style={{ height: HOUR, paddingRight: 10, textAlign: 'right' }}>
                     {/* Кегль 12 — из README §2 (підпис години 12px faint);
-                        на телефоне 11: колонка часов там делит 390px
-                        с семью днями, и лишний пиксель кегля — это
-                        лишние пиксели самой колонки. */}
-                    <span className="tabular text-[11px] lg:text-[12px]" style={{ color: 'var(--color-faint)' }}>
+                        на телефоне ступень ниже: колонка часов там делит
+                        390px с семью днями, и лишний пиксель кегля — это
+                        лишние пиксели самой колонки. Ступень именно
+                        СЛЕДУЮЩАЯ (10), а не 11: одиннадцати в шкале нет,
+                        а заведённый ради одного места кегль перестаёт
+                        быть исключением на втором. */}
+                    <span className="tabular text-[10px] lg:text-[12px]" style={{ color: 'var(--color-faint)' }}>
                       {t.dateTime(new Date(2000, 0, 1, h), { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>

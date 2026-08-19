@@ -29,3 +29,8 @@ app/zz-mob3/
 app/zz-mob-svc/
 app/zz-mob-orders/
 app/zz-mob-stock/
+app/zz-mob-jrn/
+
+# Тимчасовий стенд звірки «Послуги» і «Записи». У бій не їде ніколи.
+app/zz-mob-svc2/
+app/zz-mob-mat/

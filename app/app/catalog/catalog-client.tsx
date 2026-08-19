@@ -255,6 +255,10 @@ export function CatalogClient({
     service: items.filter((i) => i.kind === 'service').length,
     active: items.filter((i) => i.status === 'active').length,
     draft: items.filter((i) => i.status === 'draft').length,
+    // «Без матеріалів» — послуги с ПУСТОЙ рецептурой. Именно `=== 0`,
+    // а не «нет величины»: у товара рецептуры не бывает вовсе (`null`),
+    // и считать его недоделанной услугой нельзя.
+    noMaterials: items.filter((i) => i.materials === 0).length,
   }), [items])
 
   const cover = (path: string) => supabase.storage.from('media').getPublicUrl(path).data.publicUrl
@@ -381,22 +385,34 @@ export function CatalogClient({
       )}
 
       {/* ── Счётчики ─────────────────────────────────────────────
-          Все четыре — РЕАЛЬНЫЕ величины: активные, товары, послуги
-          и общее число. По прототипу здесь стоял ещё рейтинг и число
-          «в акції», но акций и промокодов в продукте нет (модуль
-          `marketing` пуст, CLAUDE.md), а рейтинг заведения — витринная
-          величина и её место в разделе «Магазин», а не здесь. Плитка
-          с придуманным числом хуже отсутствующей плитки: она обещает
-          функцию, которой нет. */}
+          Все четыре — РЕАЛЬНЫЕ величины. По прототипу здесь стоял ещё
+          рейтинг и число «в акції», но акций и промокодов в продукте нет
+          (модуль `marketing` пуст, CLAUDE.md), а рейтинг заведения —
+          витринная величина и её место в разделе «Магазин», а не здесь.
+          Плитка с придуманным числом хуже отсутствующей: она обещает
+          функцию, которой нет.
+
+          ПЛИТКА «ПОЗИЦІЙ» СНЯТА 19.08.2026 и заменена на «Без матеріалів»
+          из макета. Две причины, обе про одно и то же число. Первая:
+          «позицій» — это «послуги» плюс «товари», то есть третье число,
+          выводимое из двух соседних в том же ряду. Вторая: то же самое
+          число уже стоит в шторке «Фільтри» строкой «Усі · N», и там оно
+          ещё и НАЖИМАЕТСЯ, а здесь просто лежит.
+
+          Что встало на его место, — величина, которой в ряду не было
+          вовсе, хотя данные для неё приезжают: послуги с пустой
+          рецептурой. Она отвечает на вопрос учёта: со склада не спишется
+          ничего, когда такую запись переведут в «Виконано». Для салона
+          это и есть смысл раздела. */}
       {items.length > 0 && tab === 'offerings' && (
         <section className="rise grid grid-cols-4 gap-2 lg:hidden">
-          <div className="metric" data-tone="blue">
-            <span className="metric-value">{t.number(items.length)}</span>
-            <span className="metric-label">{t('catalog.stats.total')}</span>
-          </div>
           <div className="metric" data-tone="emerald">
             <span className="metric-value">{t.number(counts.active)}</span>
             <span className="metric-label">{t('catalog.stats.active')}</span>
+          </div>
+          <div className="metric">
+            <span className="metric-value">{t.number(counts.noMaterials)}</span>
+            <span className="metric-label">{t('catalog.stats.noMaterials')}</span>
           </div>
           <div className="metric">
             <span className="metric-value">{t.number(counts.service)}</span>
