@@ -7,6 +7,10 @@ import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
 import type { T } from '@/lib/i18n/translate'
 import { dbErrorText } from '@/lib/errors/db'
+import {
+  IconGear, IconBag, IconDoc, IconUsers, IconDownload, IconLock,
+  IconChevronRight, IconClose,
+} from '@/components/icons'
 
 type Shop = {
   id: string; name: string; slug: string; tagline: string | null
@@ -30,6 +34,15 @@ const ROLES = [
 type Role = (typeof ROLES)[number]
 const roleLabel = (t: T, r: string): string =>
   ((ROLES as readonly string[]).includes(r) ? t(`role.${r as Role}`) : r)
+
+// Разделы экрана. Ключ — то, что кладётся в состояние выбора на широком
+// экране; на телефоне те же разделы лежат секциями одна под другой.
+//
+// Список СОБИРАЕТСЯ ниже по тому, что реально есть у смотрящего (витрина
+// приходит модулем), а не задан константой: раздел в списке, за которым
+// на этом экране ничего не стоит, — это сломанная навигация, ровно как
+// колокол, который ничего не открывает.
+type SectionKey = 'public' | 'shop' | 'team' | 'export' | 'security'
 
 // Витрина — отдельный модуль (`storefront`), а страница настроек модуля
 // не требует: в панели «Магазин» им не помечен, потому что здесь же
@@ -74,6 +87,12 @@ export function SettingsClient({
   const [state, setState] = useState<'idle' | 'busy' | 'saved' | 'error'>('idle')
   const [error, setError] = useState('')
 
+  // Выбранный раздел — ТОЛЬКО для широкого экрана. Умолчание `null`:
+  // панель не рисуется, список занимает всю ширину. Открывать первый
+  // раздел заранее нельзя — человек пришёл сюда за одним из пяти,
+  // и предвыбранный шестой отвечает не на его вопрос.
+  const [picked, setPicked] = useState<SectionKey | null>(null)
+
   // Видалення акаунта. Правило Apple 5.1.1(v): без цієї кнопки
   // застосунок не проходить ревʼю. Слово-підтвердження, а не «ви впевнені?»:
   // випадково натиснути двічі можна, випадково надрукувати слово — ні.
@@ -115,39 +134,60 @@ export function SettingsClient({
     setTimeout(() => setState('idle'), 2000)
   }
 
-  return (
-    <div className="flex flex-col gap-5 pb-8">
-      {/* Публичная ссылка — то, что уходит в шапку Instagram.
-          Весь блок принадлежит модулю `storefront`: и адрес сторінки,
-          и отметка «опубліковано / чернетка» — это состояние витрины. */}
-      {hasStorefront && (
-      <section className="card rise-1">
-        <h2 className="t-lg mb-1">{t('settings.public.title')}</h2>
-        <p className="t-md mb-3 prose-muted">{t('settings.public.desc')}</p>
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Адрес витрины — данные, а не текст. */}
-          <code className="card-flat t-md !px-3 !py-2">{publicUrl}</code>
-          <button type="button" className="btn-secondary t-sm"
-                  onClick={() => navigator.clipboard.writeText(publicUrl)}>
-            {t('common.copy')}
-          </button>
-          {shop.storefront_enabled ? (
-            <span className="badge-success">{t('settings.public.published')}</span>
-          ) : (
-            <span className="badge-warn">{t('settings.public.draft')}</span>
-          )}
-        </div>
-      </section>
-      )}
+  // ═══ Тела разделов ══════════════════════════════════════════════════
+  //
+  // Каждое тело — ОДНА функция, которую зовут обе раскладки: секция
+  // на телефоне и панель деталей на широком экране. Вторая копия формы
+  // означала бы, что правка (новое поле закладу, другой текст отказа)
+  // приезжает ровно в одну из них, и разъедутся они молча — это тот же
+  // урок, что и с четырьмя палитрами.
+  //
+  // Заголовок и поясняющая строка в тела НЕ входят: на телефоне их
+  // рисует карточка секции, на широком — шапка панели, и раскладка
+  // у них разная. Дублируется только вызов `t()` с тем же ключом,
+  // то есть текст всё равно живёт в словаре в одном месте.
+  //
+  // `dense` — единственное отличие: панель 420px уже, чем брейкпоинт
+  // `sm` Tailwind, а он считает ширину ОКНА, а не контейнера. Поэтому
+  // двухколоночную сетку формы в панели приходится гасить явно —
+  // иначе поле «Місто» получает сто пикселей.
 
-      {/* Данные заведения */}
-      <form onSubmit={save} className="card rise-2 grid gap-4 sm:grid-cols-2">
-        <div className="sm:col-span-2">
+  /** Витрина: адрес публичной страницы и состояние публикации. */
+  function publicBody() {
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        {/* Адрес витрины — данные, а не текст. */}
+        <code className="card-flat t-md !px-3 !py-2 break-all">{publicUrl}</code>
+        <button type="button" className="btn-secondary t-sm"
+                onClick={() => navigator.clipboard.writeText(publicUrl)}>
+          {t('common.copy')}
+        </button>
+        {shop.storefront_enabled ? (
+          <span className="badge-success">{t('settings.public.published')}</span>
+        ) : (
+          <span className="badge-warn">{t('settings.public.draft')}</span>
+        )}
+      </div>
+    )
+  }
+
+  /** Данные заведения. Сама форма — она же карточка на телефоне. */
+  function shopForm(dense = false) {
+    // На телефоне карточка с появлением, в панели — голая сетка:
+    // карточка внутри карточки даёт двойную рамку.
+    const wrap = dense
+      ? 'grid gap-4'
+      : 'card rise-2 grid gap-4 sm:grid-cols-2'
+    const full = dense ? '' : 'sm:col-span-2'
+
+    return (
+      <form onSubmit={save} className={wrap}>
+        <div className={full}>
           <label className="field-label">{t('settings.shop.name.label')}</label>
           <input required className="input" value={name} disabled={!canWrite}
                  onChange={(e) => setName(e.target.value)} />
         </div>
-        <div className="sm:col-span-2">
+        <div className={full}>
           <label className="field-label">{t('settings.shop.tagline.label')}</label>
           <input className="input" value={tagline} disabled={!canWrite}
                  onChange={(e) => setTagline(e.target.value)}
@@ -169,7 +209,7 @@ export function SettingsClient({
           <input type="tel" className="input" value={phone} disabled={!canWrite}
                  onChange={(e) => setPhone(e.target.value)} />
         </div>
-        <div className="sm:col-span-2">
+        <div className={full}>
           <label className="field-label">{t('settings.shop.about.label')}</label>
           <textarea className="textarea" value={description} disabled={!canWrite}
                     onChange={(e) => setDescription(e.target.value)} />
@@ -177,10 +217,10 @@ export function SettingsClient({
 
         {/* Отказ базы показывается как есть: это её текст, а не наш.
             В словарь он не едет (CLAUDE.md → «Локализация»). */}
-        {state === 'error' && <p className="field-error sm:col-span-2">{error}</p>}
+        {state === 'error' && <p className={`field-error ${full}`}>{error}</p>}
 
         {canWrite && (
-          <div className="flex items-center gap-3 sm:col-span-2">
+          <div className={`flex items-center gap-3 ${full}`}>
             <button className="btn-primary" disabled={state === 'busy'}>
               {state === 'busy' ? t('common.saving') : t('common.save')}
             </button>
@@ -192,12 +232,17 @@ export function SettingsClient({
           </div>
         )}
       </form>
+    )
+  }
 
-      {/* Команда */}
-      <section className="card rise-3 !p-0">
-        <div className="flex items-center justify-between p-5 pb-3">
-          <h2 className="t-lg">{t('settings.team.title')}</h2>
-        </div>
+  /** Состав команды: срез, всё управление — на своём экране. */
+  function teamBody(dense = false) {
+    // На телефоне список живёт в карточке `!p-0`, и строки набирают
+    // свой отступ сами. В панели отступ уже дан самой панелью.
+    const pad = dense ? '' : 'px-5'
+
+    return (
+      <>
         {!canSeeTeam ? (
           // Не пустой список и не «Без імені» на всю команду. Человеку
           // говорят, ЧТО он смотрит и почему этого нет, — отсутствие
@@ -208,7 +253,7 @@ export function SettingsClient({
           </div>
         ) : team.map((member) => (
           // Параметр назван `member`, а не `t`: `t` — переводчик.
-          <div key={member.userId} className="row px-5">
+          <div key={member.userId} className={`row ${pad}`}>
             <div className="min-w-0">
               {/* Имя и почта приходят из `team_overview` (0082) и есть
                   у всех строк. «Без імені» тут означает ровно то, что
@@ -241,36 +286,29 @@ export function SettingsClient({
             гарантированно уводит редиректом обратно, — это не защита,
             а сломанная навигация. */}
         {canSeeTeam && (
-          <div className="px-5 pb-4">
+          <div className={dense ? 'pt-3' : 'px-5 pb-4'}>
             <Link href="/app/team" className="btn-secondary t-sm">
               {t('settings.team.manage')}
             </Link>
           </div>
         )}
-      </section>
+      </>
+    )
+  }
 
-      {/* Ваши данные: выгрузка заведения.
+  /** Выгрузка заведения — свой экран, отсюда только вход. */
+  function exportBody() {
+    return (
+      <Link href="/app/settings/export" className="btn-secondary t-sm">
+        {t('settings.export.open')}
+      </Link>
+    )
+  }
 
-          Стоит ПЕРЕД блоком удаления аккаунта намеренно: человек, дошедший
-          до удаления, чаще всего сначала хочет забрать данные, а не потерять
-          их. Порядок блоков здесь — это и есть подсказка.
-
-          Отдельного права у экрана нет: он открывается по `settings.read`,
-          как и сами настройки, а что именно уедет в файл, решают права
-          РАЗДЕЛОВ внутри `tenant_export` (0102). */}
-      <section className="card rise-3">
-        <h2 className="t-lg mb-1">{t('settings.export.title')}</h2>
-        <p className="t-md mb-3 prose-muted">{t('settings.export.desc')}</p>
-        <Link href="/app/settings/export" className="btn-secondary t-sm">
-          {t('settings.export.open')}
-        </Link>
-      </section>
-
-      {/* Безпека: видалення акаунта */}
-      <section className="card rise-3">
-        <h2 className="t-lg mb-1">{t('settings.security.title')}</h2>
-        <p className="t-md mb-3 prose-muted">{t('settings.security.desc')}</p>
-
+  /** Безпека: удаление аккаунта. */
+  function securityBody() {
+    return (
+      <>
         {/* Вход по Face ID / отпечатку жил на мосту нативной обёртки
             и ушёл вместе с ней (CLAUDE.md → «Мобильная версия»).
             В браузере замка нет и быть не может: биометрия там доступна
@@ -337,7 +375,223 @@ export function SettingsClient({
             </div>
           </div>
         )}
-      </section>
+      </>
+    )
+  }
+
+  // ═══ Описание разделов для списка на широком экране ═════════════════
+  //
+  // Хендофф §17 называет девять рядов, но рисуется РОВНО то, что за этим
+  // экраном стоит: пять разделов, из них витрина — по модулю. Ряд
+  // «Тарифи» или «Сповіщення», за которым сегодня пусто, это обещание
+  // с датой протухания, а не заготовка: тема, язык и размер текста живут
+  // в профиле, биллинга нет вовсе (CLAUDE.md → «Что НЕ решено»).
+  //
+  // Тон плашки — токенами, а не подобранным цветом: значок в каждой
+  // строке своим тоном, иначе пять серых кружков подряд читаются как
+  // один пункт, разбитый переносами.
+  const sections: {
+    key: SectionKey; title: string; desc: string
+    icon: React.ReactNode; bg: string; fg: string
+    body: () => React.ReactNode
+  }[] = [
+    ...(hasStorefront ? [{
+      key: 'public' as const,
+      title: t('settings.public.title'), desc: t('settings.public.desc'),
+      icon: <IconBag size={20} />,
+      bg: 'var(--tone-violet-soft)', fg: 'var(--tone-violet)',
+      body: () => publicBody(),
+    }] : []),
+    {
+      key: 'shop',
+      title: t('settings.shop.title'), desc: t('settings.shop.desc'),
+      icon: <IconDoc size={20} />,
+      bg: 'var(--tone-blue-soft)', fg: 'var(--tone-blue)',
+      body: () => shopForm(true),
+    },
+    {
+      key: 'team',
+      title: t('settings.team.title'), desc: t('settings.team.desc'),
+      icon: <IconUsers size={20} />,
+      bg: 'var(--tone-emerald-soft)', fg: 'var(--tone-emerald)',
+      body: () => teamBody(true),
+    },
+    {
+      key: 'export',
+      title: t('settings.export.title'), desc: t('settings.export.desc'),
+      icon: <IconDownload size={20} />,
+      bg: 'var(--tone-amber-soft)', fg: 'var(--tone-amber)',
+      body: () => exportBody(),
+    },
+    {
+      key: 'security',
+      title: t('settings.security.title'), desc: t('settings.security.desc'),
+      icon: <IconLock size={20} />,
+      bg: 'var(--tone-rose-soft)', fg: 'var(--tone-rose)',
+      body: () => securityBody(),
+    },
+  ]
+
+  const pickedSection = sections.find((s) => s.key === picked) ?? null
+
+  return (
+    <div className="flex flex-col gap-5 pb-8">
+      {/* ═══ CRESKO Web, §17 «Налаштування» — хедер экрана (только lg) ═══
+          Плашка со значком, имя экрана тем же ключом, которым его называет
+          панель и вкладка браузера, и подпись под ним. Кнопки действия
+          справа нет: у экрана нет действия уровня экрана — сохранение
+          принадлежит форме закладу и стоит в ней самой. */}
+      <div className="hidden items-center gap-3 lg:flex">
+        <span aria-hidden className="flex shrink-0 items-center justify-center"
+              style={{
+                width: 44, height: 44,
+                borderRadius: 'var(--radius-plate)',
+                background: 'var(--color-accent-soft)',
+                color: 'var(--color-accent-ink)',
+              }}>
+          <IconGear size={22} />
+        </span>
+        <div className="min-w-0">
+          <h1 className="webh1" data-size="27">{t('app.screen.settings.title')}</h1>
+          <p style={{ fontSize: 14, color: 'var(--color-muted)' }}>
+            {t('app.screen.settings.desc')}
+          </p>
+        </div>
+      </div>
+
+      {/* ═══ Телефон: секции одна под другой ═══════════════════════════
+          Раскладка не тронута: на 390px список-с-панелью не помещается
+          ни в каком виде, а «свернуть в аккордеон» добавило бы нажатие
+          там, где сегодня всё видно сразу. Тела разделов — те же
+          функции, что зовёт панель справа. */}
+      <div className="flex flex-col gap-5 lg:hidden">
+        {/* Публичная ссылка — то, что уходит в шапку Instagram.
+            Весь блок принадлежит модулю `storefront`: и адрес сторінки,
+            и отметка «опубліковано / чернетка» — это состояние витрины. */}
+        {hasStorefront && (
+          <section className="card rise-1">
+            <h2 className="t-lg mb-1">{t('settings.public.title')}</h2>
+            <p className="t-md mb-3 prose-muted">{t('settings.public.desc')}</p>
+            {publicBody()}
+          </section>
+        )}
+
+        {/* Данные заведения */}
+        {shopForm(false)}
+
+        {/* Команда */}
+        <section className="card rise-3 !p-0">
+          <div className="flex items-center justify-between p-5 pb-3">
+            <h2 className="t-lg">{t('settings.team.title')}</h2>
+          </div>
+          {teamBody(false)}
+        </section>
+
+        {/* Ваши данные: выгрузка заведения.
+
+            Стоит ПЕРЕД блоком удаления аккаунта намеренно: человек, дошедший
+            до удаления, чаще всего сначала хочет забрать данные, а не потерять
+            их. Порядок блоков здесь — это и есть подсказка.
+
+            Отдельного права у экрана нет: он открывается по `settings.read`,
+            как и сами настройки, а что именно уедет в файл, решают права
+            РАЗДЕЛОВ внутри `tenant_export` (0102). */}
+        <section className="card rise-3">
+          <h2 className="t-lg mb-1">{t('settings.export.title')}</h2>
+          <p className="t-md mb-3 prose-muted">{t('settings.export.desc')}</p>
+          {exportBody()}
+        </section>
+
+        {/* Безпека: видалення акаунта */}
+        <section className="card rise-3">
+          <h2 className="t-lg mb-1">{t('settings.security.title')}</h2>
+          <p className="t-md mb-3 prose-muted">{t('settings.security.desc')}</p>
+          {securityBody()}
+        </section>
+      </div>
+
+      {/* ═══ Широкий экран: список разделов слева, детали справа ════════
+          Ряд — КНОПКА, а не ссылка: у разделов нет своих адресов, и
+          заводить их пятью маршрутами ради раскладки значит развести
+          один экран на пять и потерять общее состояние формы.
+          Пока раздел не выбран, панели нет вовсе, и список занимает
+          всю ширину — пустая колонка 420px справа сообщала бы, что
+          «здесь что-то не загрузилось». */}
+      <div className="hidden items-start gap-5 lg:flex">
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
+          {sections.map((s) => {
+            const active = picked === s.key
+            return (
+              <button key={s.key} type="button" className="flex w-full items-center gap-3 text-left"
+                      aria-current={active ? 'true' : undefined}
+                      style={{
+                        minHeight: 'var(--tap-min)',
+                        borderRadius: 14,
+                        padding: '15px 16px',
+                        // Запасное значение обязательно: `--web-surface-tint`
+                        // объявлен только в светлой веб-теме, а человек мог
+                        // выбрать тёмную — без него выбранный ряд остался бы
+                        // прозрачным ровно у той половины, которую не смотрят.
+                        background: active
+                          ? 'var(--web-surface-tint, var(--color-surface-2))'
+                          : 'var(--color-surface)',
+                        border: `1px solid ${active
+                          ? 'var(--color-accent-soft)' : 'var(--color-border)'}`,
+                      }}
+                      onClick={() => setPicked(active ? null : s.key)}>
+                <span aria-hidden className="flex shrink-0 items-center justify-center"
+                      style={{
+                        width: 40, height: 40,
+                        borderRadius: 'var(--radius-plate)',
+                        background: s.bg, color: s.fg,
+                      }}>
+                  {s.icon}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate"
+                        style={{ fontSize: 15, fontWeight: 650, color: 'var(--color-text)' }}>
+                    {s.title}
+                  </span>
+                  <span className="block truncate"
+                        style={{ fontSize: 13, color: 'var(--color-muted)' }}>
+                    {s.desc}
+                  </span>
+                </span>
+                <span aria-hidden className="shrink-0"
+                      style={{ color: 'var(--color-faint)' }}>
+                  <IconChevronRight size={18} />
+                </span>
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Ширина 420px — из хендоффа §17. Класс `.wpanel` держит 398px
+            и общий для «Клієнтів» и «Співробітників»; править его ради
+            одного экрана значило бы сдвинуть два чужих. Липкость,
+            прокрутка и появление остаются его. */}
+        {pickedSection && (
+          <aside className="wpanel" style={{ width: 420 }}>
+            {/* Кнопки «назад» здесь нет намеренно: список никуда не делся,
+                он слева и виден целиком. Крестик закрывает панель, а не
+                возвращает на предыдущий экран, — это разные обещания. */}
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h2 className="webh2">{pickedSection.title}</h2>
+                <p className="mt-1" style={{ fontSize: 13, color: 'var(--color-muted)' }}>
+                  {pickedSection.desc}
+                </p>
+              </div>
+              <button type="button" className="btn-icon shrink-0"
+                      aria-label={t('common.close.aria')}
+                      onClick={() => setPicked(null)}>
+                <IconClose size={18} />
+              </button>
+            </div>
+            {pickedSection.body()}
+          </aside>
+        )}
+      </div>
     </div>
   )
 }

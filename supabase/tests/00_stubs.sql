@@ -34,7 +34,11 @@ create table auth.users (
   id uuid primary key default gen_random_uuid(),
   email text,
   banned_until timestamptz,
-  raw_user_meta_data jsonb default '{}'::jsonb
+  raw_user_meta_data jsonb default '{}'::jsonb,
+  -- Момент подтверждения почты. В настоящей auth.users колонка есть
+  -- всегда; на неё сидит триггер привязки гостевой истории (0120),
+  -- и без неё миграция не накатится на пустой стенд.
+  email_confirmed_at timestamptz
 );
 create or replace function auth.uid() returns uuid language sql stable as $$
   select nullif(current_setting('request.jwt.claims', true)::jsonb ->> 'sub', '')::uuid;

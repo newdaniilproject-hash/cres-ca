@@ -1,54 +1,34 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
-import type { T } from '@/lib/i18n/translate'
 import { dbErrorText } from '@/lib/errors/db'
-
-type B = {
-  id: string; number: number; title: string; variant: string; start: string
-  status: string; name: string; phone: string | null
-  price: number; deposit: number; staff: string
-}
-
-// Разрешённые переходы. Подписи здесь больше не лежат: `to` — служебное
-// значение перечисления, оно уезжает в `set_booking_status`, а надпись
-// на кнопке берётся по нему из словаря (`bookings.action.<to>`).
-// Тип `to` не `string` намеренно: забытый ключ ловит `tsc`, а не экран.
-type BookingAction = 'confirmed' | 'cancelled' | 'arrived' | 'no_show' | 'completed'
-const NEXT: Record<string, { to: BookingAction; kind: 'primary' | 'secondary' }[]> = {
-  booked:    [{ to: 'confirmed', kind: 'primary' },
-              { to: 'cancelled', kind: 'secondary' }],
-  confirmed: [{ to: 'arrived', kind: 'primary' },
-              { to: 'no_show', kind: 'secondary' }],
-  arrived:   [{ to: 'completed', kind: 'primary' }],
-}
-
-// Подпись к состоянию записи. Значение (`no_show`) не переводится —
-// переводится подпись. Незнакомое состояние выводится как есть.
-const STATUSES = [
-  'booked', 'confirmed', 'arrived', 'completed', 'cancelled', 'no_show',
-] as const
-type BookingStatus = (typeof STATUSES)[number]
-const statusLabel = (t: T, v: string): string =>
-  ((STATUSES as readonly string[]).includes(v) ? t(`bookings.status.${v as BookingStatus}`) : v)
-
-// Тон точки статуса. Три группы, а не шесть: «очікує підтвердження»
-// (жовтий — вимагає дії просто зараз), «підтверджено/у кріслі» (акцент —
-// відбудеться, все гаразд), «завершено, скасовано, не прийшов» (нейтральний —
-// історія, дію вже не потрібно приймати).
-const statusTone = (v: string): 'warn' | 'accent' | 'success' | undefined =>
-  v === 'booked' ? 'warn'
-    : v === 'confirmed' || v === 'arrived' ? 'accent'
-      : v === 'completed' ? 'success'
-        : undefined
+import { NEXT, statusLabel, statusTone, type B } from './status'
+import { NewBookingButton } from './new-booking'
+import { WeekGrid } from './week-grid'
+import { dayOf, mondayOf } from './week'
 
 // Записи по дням. Кнопки — только разрешённые переходы; финальный
 // «Виконано» сам спишет расходники по техкарте (это делает база).
-export function BookingsClient({ bookings }: { bookings: B[] }) {
+//
+// Состояния записи (подписи, переходы, тон) переехали в `./status.ts`,
+// когда у экрана появился второй вид: недельная сетка показывает те же
+// записи и обязана предлагать те же переходы. Разбор — в шапке того файла.
+export function BookingsClient({
+  bookings, view, weekStart, tenantId, canWrite,
+}: {
+  bookings: B[]
+  /** Какой вид показан. Живёт в адресе — разбор в `page.tsx`. */
+  view: 'day' | 'week'
+  /** Понедельник показанной недели, `ГГГГ-ММ-ДД`. */
+  weekStart: string
+  tenantId: string
+  /** `orders.write` — то же право, которое проверяет сам `create_booking`. */
+  canWrite: boolean
+}) {
   const t = useT()
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
@@ -76,23 +56,67 @@ export function BookingsClient({ bookings }: { bookings: B[] }) {
     return [...map.entries()]
   }, [bookings, t])
 
+  // Ссылка на неделю ведёт в ТЕКУЩУЮ неделю человека, а её знает только
+  // браузер: сервер живёт в UTC. Считаем после гидратации, до неё —
+  // адрес без недели, который сервер закрывает своим умолчанием. Так
+  // разметка сервера и первого клиентского кадра совпадает буква в букву;
+  // посчитать местный понедельник прямо в разметке значило бы отдать
+  // разные `href` и получить предупреждение гидратации на пустом месте.
+  const [localWeek, setLocalWeek] = useState<string | null>(null)
+  useEffect(() => { setLocalWeek(mondayOf(dayOf())) }, [])
+  const weekHref = localWeek === null
+    ? '/app/bookings?view=week'
+    : `/app/bookings?view=week&week=${localWeek}`
+
+  // Шапка раздела: слева переключатель вида, справа вход в мастеров.
+  //
   // Вход в мастеров — здесь, внутри раздела, а не пунктом нижней панели:
   // панель держит то, между чем прыгают за смену, а расписание правят
   // раз в месяц (CLAUDE.md → «Мобильная версия»). Ссылка стоит выше
   // развилки «есть записи / пусто» намеренно: на пустом экране она нужнее
   // всего — записей нет ровно потому, что мастера ещё не заведены.
-  const toStaff = (
-    <div className="flex items-center justify-end">
-      <Link href="/app/bookings/staff" className="btn-secondary t-sm">
-        {t('bookings.toStaff')}
-      </Link>
+  //
+  // Переключатель — ССЫЛКИ, а не кнопки с состоянием: вид уезжает
+  // в адрес вместе с неделей, и «назад» браузера возвращает туда,
+  // откуда пришли. Скелетон перехода уже лежит в `loading.tsx`,
+  // поэтому нажатие отзывается, не дожидаясь Ирландии.
+  const head = (
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="seg">
+        <Link href="/app/bookings" className="seg-item" data-active={view === 'day'}>
+          {t('bookings.view.day')}
+        </Link>
+        <Link href={weekHref} className="seg-item" data-active={view === 'week'}>
+          {t('bookings.view.week')}
+        </Link>
+      </div>
+      <div className="flex items-center gap-2">
+        <Link href="/app/bookings/staff" className="btn-secondary t-sm">
+          {t('bookings.toStaff')}
+        </Link>
+        {/* Единственный вход в создание записи из кабинета — и он один
+            на оба вида: сетка и список показывают одни и те же записи,
+            и вторая кнопка внутри сетки была бы вторым входом в одно
+            действие (та же ошибка, что разбиралась на складе, М31).
+            Разбор самой формы — в шапке `new-booking.tsx`. */}
+        {canWrite && <NewBookingButton tenantId={tenantId} className="btn-primary t-sm" />}
+      </div>
     </div>
   )
+
+  if (view === 'week') {
+    return (
+      <div className="flex flex-col gap-4">
+        {head}
+        <WeekGrid bookings={bookings} weekStart={weekStart} />
+      </div>
+    )
+  }
 
   if (bookings.length === 0) {
     return (
       <div className="flex flex-col gap-4">
-        {toStaff}
+        {head}
         <div className="empty card rise">
           <p className="display t-lg" style={{ color: 'var(--color-text)' }}>
             {t('bookings.empty.title')}
@@ -105,7 +129,7 @@ export function BookingsClient({ bookings }: { bookings: B[] }) {
 
   return (
     <div className="flex flex-col gap-6">
-      {toStaff}
+      {head}
       {err && <p className="field-error rise">{err}</p>}
       {byDay.map(([day, list], di) => (
         <section key={day} className={`rise-${Math.min(di + 1, 4)}`}>

@@ -5,6 +5,7 @@ import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { PublicHeader, PublicFooter, publicT as t } from '@/components/shell'
 import { AttributionCapture } from '@/components/attribution-capture'
+import { AddToCart, CartProvider, type CartVariant } from './cart'
 
 export const revalidate = 60
 
@@ -14,6 +15,10 @@ type Offering = {
   rating_avg: number; rating_count: number
 }
 type Staff = { id: string; name: string; title: string | null }
+type VariantRow = {
+  id: string; offering_id: string; name: string; price: number | null
+  track_stock: boolean; stock_qty: number; reserved_qty: number
+}
 type Shop = {
   id: string; name: string; tagline: string | null; description: string | null
   city: string | null; address: string | null; kind: string
@@ -66,6 +71,50 @@ export default async function ShopPage({
   const services = offerings.filter((o) => o.kind === 'service')
   const products = offerings.filter((o) => o.kind === 'product')
 
+  // ── Варианты товаров: второй запрос, и он объяснён ─────────────────────
+  //
+  // `storefront()` возвращает позиции без вариантов, а корзине нужен
+  // `variant_id`: `create_order` принимает только его — товар без варианта
+  // купить нельзя в принципе (правило 4 CLAUDE.md — характеристики живут
+  // в вариантах). Расширять саму функцию базы — это миграция и правка
+  // общей для витрины, поиска и карты точки; здесь это отдельно названное
+  // изменение, а не побочный эффект корзины.
+  //
+  // Цена запроса — один поход в базу и только когда товары вообще есть.
+  // Страница уже динамическая (она читает куки ради `authed` в шапке —
+  // см. `components/shell.tsx`), так что кэша он не отнимает.
+  //
+  // Читается это анонимом законно: политика `variants_read` (0004) отдаёт
+  // активные варианты активных позиций опубликованной витрины.
+  const productIds = products.map((o) => o.id)
+  const { data: variantRows } = productIds.length
+    ? await supabase
+        .from('offering_variants')
+        .select('id, offering_id, name, price, track_stock, stock_qty, reserved_qty')
+        .in('offering_id', productIds)
+        .eq('is_active', true)
+        .order('position')
+    : { data: [] as VariantRow[] }
+
+  const priceOf = (o: Offering, v: VariantRow) =>
+    Number(v.price ?? o.price ?? 0)
+
+  const cartVariants: CartVariant[] = (variantRows ?? []).flatMap((v) => {
+    const o = products.find((p) => p.id === v.offering_id)
+    if (!o) return []
+    return [{
+      id: v.id,
+      offeringId: v.offering_id,
+      title: o.title,
+      name: v.name,
+      price: priceOf(o, v),
+      currency: o.currency,
+      // Остаток считаем так же, как `variant_available` в базе: остаток
+      // минус резерв. Чужой резерв — это уже не наш товар.
+      available: v.track_stock ? Math.max(0, v.stock_qty - v.reserved_qty) : null,
+    }]
+  })
+
   // Рейтинг лежал в `storefront()` и в этом типе с самого начала и никогда
   // не рисовался (0104). Порог — ровно тот, что назван в правилах домена:
   // меньше пяти оценок показывает «мало оцінок», а не число — единичная
@@ -86,6 +135,10 @@ export default async function ShopPage({
       <AttributionCapture tenantId={shop.id} />
       <PublicHeader authed={!!user} />
 
+      {/* Корзина — клиентский островок вокруг серверной разметки: провайдер
+          клиентский, содержимое внутри него остаётся серверным. Полосу
+          корзины он дорисовывает сам, после содержимого и до подвала. */}
+      <CartProvider slug={slug} tenantId={shop.id} variants={cartVariants}>
       <main className="mx-auto max-w-4xl px-4 sm:px-6">
         {/* Шапка заведения */}
         <section className="rise pt-12 pb-8 text-center">
@@ -153,26 +206,37 @@ export default async function ShopPage({
           <section className="rise-2 pb-8">
             <h2 className="display mb-4 t-xl">{t('public.storefront.products.title')}</h2>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {products.map((o) => (
-                <div key={o.id} id={o.slug} className="card-link">
-                  <div className="mb-3 flex h-32 items-center justify-center"
-                       style={{ borderRadius: 'var(--radius-control)', background: 'var(--color-surface-2)' }}>
-                    <span className="display t-2xl" style={{ color: 'var(--color-faint)' }}>
-                      {o.title.slice(0, 1)}
-                    </span>
+              {products.map((o) => {
+                const mine = cartVariants.filter((v) => v.offeringId === o.id)
+                // Цена в карточке: своя у позиции, иначе самая низкая из
+                // вариантов. Товар, у которого цена живёт только на варианте,
+                // до этого показывался вовсе без цены.
+                const price = o.price != null
+                  ? Number(o.price)
+                  : mine.length > 0 ? Math.min(...mine.map((v) => v.price)) : null
+                return (
+                  <div key={o.id} id={o.slug} className="card-link">
+                    <div className="mb-3 flex h-32 items-center justify-center"
+                         style={{ borderRadius: 'var(--radius-control)', background: 'var(--color-surface-2)' }}>
+                      <span className="display t-2xl" style={{ color: 'var(--color-faint)' }}>
+                        {o.title.slice(0, 1)}
+                      </span>
+                    </div>
+                    <p className="t-lg truncate">{o.title}</p>
+                    {rating(o)}
+                    <div className="mt-1 flex items-center justify-between">
+                      <p className="t-sm prose-muted">{o.subtitle ?? ''}</p>
+                      {price != null && (
+                        <p className="tabular t-md">{t.money(price, o.currency)}</p>
+                      )}
+                    </div>
+                    {/* Кнопка корзины. У услуг остаётся «Записатися» выше —
+                        два разных действия и два разных потока. */}
+                    <AddToCart variants={mine} />
                   </div>
-                  <p className="t-lg truncate">{o.title}</p>
-                  {rating(o)}
-                  <div className="mt-1 flex items-center justify-between">
-                    <p className="t-sm prose-muted">{o.subtitle ?? ''}</p>
-                    {o.price != null && (
-                      <p className="tabular t-md">{t.money(Number(o.price), o.currency)}</p>
-                    )}
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
-            <p className="t-xs mt-4 prose-muted">{t('public.storefront.products.note')}</p>
           </section>
         )}
 
@@ -192,6 +256,7 @@ export default async function ShopPage({
           </section>
         )}
       </main>
+      </CartProvider>
 
       <PublicFooter />
     </>

@@ -16,7 +16,18 @@ export async function generateMetadata() {
 }
 
 type MediaRow = { path: string; position: number }
-type VariantRow = { id: string; price: number | null; duration_minutes: number | null }
+type VariantRow = {
+  id: string; price: number | null; duration_minutes: number | null
+  track_stock: boolean; stock_qty: number | null
+}
+
+// Название категории приезжает вложенной выборкой. PostgREST на связи
+// «многие к одному» отдаёт ОБЪЕКТ, но нетипизированный клиент рисует
+// его массивом — разбираем оба вида, иначе категория молча станет
+// пустой на первой же смене версии supabase-js.
+type CategoryRef = { name: string } | { name: string }[] | null | undefined
+const categoryName = (c: CategoryRef): string | null =>
+  (Array.isArray(c) ? c[0]?.name ?? null : c?.name ?? null)
 
 // Обложка и число вариантов приходят вложенными выборками, а не отдельными
 // запросами: список каталога открывают чаще любого другого экрана кабинета,
@@ -39,8 +50,16 @@ export default async function CatalogPage() {
   const { data, error } = await supabase
     .from('offerings')
     .select(
+      // Категория и остаток вариантов — теми же вложенными выборками,
+      // а не отдельными поездками: карточка каталога на широком экране
+      // показывает и то и другое, а лишний запрос здесь заметен (правило 6).
+      // `categories` — общий справочник платформы, он читается по
+      // `categories_read` (0002) всеми, поэтому связь не вернёт пустоту
+      // из-за прав, как это было с `offerings(title)` у инспектора.
       `id, kind, status, title, subtitle, price, currency, slug, listed,
-       offering_media(path, position), offering_variants(id, price, duration_minutes)`,
+       categories(name),
+       offering_media(path, position),
+       offering_variants(id, price, duration_minutes, track_stock, stock_qty)`,
     )
     .eq('tenant_id', m.tenantId)
     .order('updated_at', { ascending: false })
@@ -74,6 +93,14 @@ export default async function CatalogPage() {
             .map((v) => v.duration_minutes)
             .filter((d): d is number => d != null)
 
+          // Залишок — сумма по вариантам, У КОТОРЫХ он ведётся. Вариант
+          // без учёта (`track_stock = false`) не «ноль на складе», а
+          // «остаток не считаем»: сложить его с остальными значило бы
+          // показать в карточке меньше, чем есть на полке. Если учёта
+          // нет ни у одного варианта — величины нет вовсе (null),
+          // и бейдж остатка не рисуется.
+          const tracked = variants.filter((v) => v.track_stock)
+
           return {
             id: o.id as string,
             kind: o.kind as 'product' | 'service',
@@ -89,6 +116,14 @@ export default async function CatalogPage() {
             durationMinutes: durations.length > 0 ? Math.min(...durations) : null,
             variants: variants.length,
             cover: media[0]?.path ?? null,
+            category: categoryName((o as { categories?: CategoryRef }).categories),
+            // Остаток — величина товара. У услуги её нет по природе,
+            // и триггер каталога держит `track_stock = false` на её
+            // вариантах; спрашивать здесь `kind` — вторая защита от
+            // строки-исключения, заведённой в обход формы.
+            stock: o.kind === 'product' && tracked.length > 0
+              ? tracked.reduce((s, v) => s + (v.stock_qty ?? 0), 0)
+              : null,
           }
         })}
       />

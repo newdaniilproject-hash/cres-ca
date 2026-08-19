@@ -41,6 +41,31 @@ function range(period: string): { from: string; to: string } {
   }
 }
 
+// Предыдущий сопоставимый период — ровно для дельты на плитках (§15).
+// Считается тем же календарём, что и `range`, и по той же причине:
+// «минус 30 дней» в миллисекундах ломается на переходе на летнее время.
+// Сопоставимость важнее красоты: месяц сравнивается с месяцем, окно
+// в 30 дней — с предыдущими 30 днями, а не с календарным месяцем.
+function prevRange(period: string): { from: string; to: string } {
+  const now = new Date()
+  if (period === 'prev') {
+    return {
+      from: iso(new Date(now.getFullYear(), now.getMonth() - 2, 1)),
+      to: iso(new Date(now.getFullYear(), now.getMonth() - 1, 0)),
+    }
+  }
+  if (period === '30d') {
+    return {
+      from: iso(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 59)),
+      to: iso(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30)),
+    }
+  }
+  return {
+    from: iso(new Date(now.getFullYear(), now.getMonth() - 1, 1)),
+    to: iso(new Date(now.getFullYear(), now.getMonth(), 0)),
+  }
+}
+
 export default async function FinancePage({
   searchParams,
 }: {
@@ -57,6 +82,7 @@ export default async function FinancePage({
   const { period: raw } = await searchParams
   const period = raw === 'prev' || raw === '30d' ? raw : 'month'
   const { from, to } = range(period)
+  const prev = prevRange(period)
 
   const supabase = await createClient()
 
@@ -64,6 +90,7 @@ export default async function FinancePage({
     { data: { user } },
     { data: records, error: recordsError },
     { data: sums, error: sumsError },
+    { data: prevSums },
     { data: categories, error: categoriesError },
   ] = await Promise.all([
     supabase.auth.getUser(),
@@ -77,10 +104,22 @@ export default async function FinancePage({
     // Итоги считаются отдельным запросом по всему периоду, а не по видимым
     // двумстам строкам: плитки обязаны сойтись с реальностью, даже когда
     // список обрезан. Тянутся только вид и сумма — это дёшево.
+    //
+    // `occurred_on` тянется здесь же ради графика «Динаміка доходу»:
+    // строить его по видимым двумстам строкам значило бы рисовать провал
+    // в начале месяца ровно там, где список обрезан, а не там, где не было
+    // дохода. Колонка дешёвая, второго запроса не нужно.
+    supabase.from('finance_records')
+      .select('kind, amount, occurred_on')
+      .eq('tenant_id', m.tenantId)
+      .gte('occurred_on', from).lte('occurred_on', to),
+    // Прошлый период — ТОЛЬКО ради дельты на плитках. Ошибка этого запроса
+    // намеренно не попадает в `error`: без дельты экран полон, а красная
+    // строка про «не всі дані» из-за подписи под числом пугает зря.
     supabase.from('finance_records')
       .select('kind, amount')
       .eq('tenant_id', m.tenantId)
-      .gte('occurred_on', from).lte('occurred_on', to),
+      .gte('occurred_on', prev.from).lte('occurred_on', prev.to),
     supabase.from('finance_categories')
       .select('id, kind, name, is_active')
       .eq('tenant_id', m.tenantId)
@@ -94,9 +133,35 @@ export default async function FinancePage({
 
   let income = 0
   let expense = 0
+  // Доход по дням — для графика. Ключ карты это сама дата `occurred_on`,
+  // а не индекс: день без единой записи в карту не попадает и обязан
+  // превратиться в ноль ниже, иначе кривая «перепрыгнет» пустые дни.
+  const byDay = new Map<string, number>()
   for (const r of sums ?? []) {
-    if (r.kind === 'income') income += Number(r.amount)
-    else expense += Number(r.amount)
+    const amount = Number(r.amount)
+    if (r.kind === 'income') {
+      income += amount
+      byDay.set(r.occurred_on, (byDay.get(r.occurred_on) ?? 0) + amount)
+    } else expense += amount
+  }
+
+  let prevIncome = 0
+  let prevExpense = 0
+  for (const r of prevSums ?? []) {
+    if (r.kind === 'income') prevIncome += Number(r.amount)
+    else prevExpense += Number(r.amount)
+  }
+
+  // Ряд по дням периода. Конец — сегодня, а не конец месяца: хвост из
+  // будущих нулей читается как обвал дохода, хотя этих дней ещё не было.
+  const series: { day: string; value: number }[] = []
+  for (
+    const cursor = new Date(`${from}T00:00:00`);
+    iso(cursor) <= (to < today ? to : today) && series.length < 40;
+    cursor.setDate(cursor.getDate() + 1)
+  ) {
+    const key = iso(cursor)
+    series.push({ day: key, value: byDay.get(key) ?? 0 })
   }
 
   return (
@@ -111,6 +176,12 @@ export default async function FinancePage({
         today={today}
         income={income}
         expense={expense}
+        prevIncome={prevIncome}
+        prevExpense={prevExpense}
+        // Число операций — по ВСЕМУ периоду, как и суммы: это тот же
+        // запрос итогов, а не длина обрезанного списка.
+        operations={(sums ?? []).length}
+        series={series}
         error={[recordsError?.message, sumsError?.message, categoriesError?.message]
           .filter(Boolean).join(' · ')}
         records={(records ?? []).map((r) => ({

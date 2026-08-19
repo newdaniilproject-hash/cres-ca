@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
 import type { T } from '@/lib/i18n/translate'
-import { IconBox, IconClock } from '@/components/icons'
+import { IconBox, IconCheck, IconClock, IconGrid } from '@/components/icons'
 
 export type CatalogItem = {
   id: string
@@ -21,6 +21,15 @@ export type CatalogItem = {
   durationMinutes: number | null
   variants: number
   cover: string | null
+  /** Назва категорії довідника платформи. Не заведена — null. */
+  category: string | null
+  /**
+   * Залишок товару сумою по варіантах з обліком. `null` — величини нема:
+   * або це послуга, або облік не ведеться в жодному варіанті. Нуль
+   * і «нема обліку» — різні речі, і бейдж «немає» має право з'явитися
+   * тільки на першому.
+   */
+  stock: number | null
 }
 
 // Подписи к состояниям позиции. Само значение (`draft`, `hidden`) —
@@ -33,6 +42,125 @@ const statusLabel = (t: T, s: string): string =>
   ((STATUSES as readonly string[]).includes(s) ? t(`catalog.status.${s as Status}`) : s)
 
 type Filter = 'all' | 'product' | 'service' | 'draft'
+
+// Бейдж состояния — один и тот же на карточке и в списке: цвет несёт
+// смысл (опубликовано — зелёное, чернетка — жёлтое), и вторая таблица
+// соответствий разъехалась бы с первой.
+const statusBadge = (s: string) =>
+  (s === 'active' ? 'badge-success' : s === 'draft' ? 'badge-warn' : 'badge')
+
+// ── CRESKO Web: карточка позиции (§4 послуги, §11 каталог) ──────────────
+//
+// ОДНО тело на обе сетки: у послуги и товара различаются высота фото,
+// кегль названия и нижняя строка — всё остальное совпадает, и две копии
+// разъехались бы на первой правке (урок М43, «картка учасника»).
+//
+// Карточка ведёт ТУДА ЖЕ, куда мобильная строка, — на `/app/catalog/<id>`.
+// Второго адреса у позиции нет и заводить его незачем.
+function WebOfferingCard({ t, item, coverUrl, hasStorefront }: {
+  t: T
+  item: CatalogItem
+  coverUrl: (path: string) => string
+  hasStorefront: boolean
+}) {
+  const isService = item.kind === 'service'
+  const price = item.price != null ? t.money(item.price, item.currency) : t('common.noValue')
+
+  return (
+    <Link href={`/app/catalog/${item.id}`}
+          className="webcard block overflow-hidden"
+          style={{ padding: 0, minHeight: 'var(--tap-min)' }}>
+      {/* Высоты 132 (послуга) и 150 (товар) — из README дословно.
+          Фото приезжает с CDN и меряется по месту: `next/image` здесь
+          не нужен, размеров оригинала мы не храним. */}
+      <span className="block" style={{ height: isService ? 132 : 150 }}>
+        {item.cover ? (
+          <img src={coverUrl(item.cover)} alt="" className="h-full w-full object-cover" />
+        ) : (
+          // Не серый прямоугольник, а плашка со значком: пустой квадрат
+          // читается как несостоявшаяся загрузка, то есть как поломка.
+          // Значок, а не глиф: «◷ ◫» на части прошивок приезжают
+          // квадратами (М31).
+          <span className="flex h-full w-full items-center justify-center"
+                style={{
+                  background: 'var(--web-surface-tint, var(--color-surface-2))',
+                  color: 'var(--color-faint)',
+                }}>
+            {isService ? <IconClock size={26} /> : <IconBox size={26} />}
+          </span>
+        )}
+      </span>
+
+      <span className="block" style={{ padding: 14 }}>
+        <span className="flex items-start justify-between gap-2">
+          {/* Назва позиції — данные заклада, они не переводятся. */}
+          <span className="clamp-2 block min-w-0"
+                style={{
+                  fontSize: isService ? 15 : 14,
+                  fontWeight: 650,
+                  color: 'var(--color-text)',
+                }}>
+            {item.title}
+          </span>
+          <span className={`${statusBadge(item.status)} shrink-0`}>
+            {statusLabel(t, item.status)}
+          </span>
+        </span>
+
+        {/* Категория — справочник платформы; когда она не выбрана,
+            строку занимает подпись позиции. Пустая строка вместо обеих
+            не рисуется вовсе: место под неё не резервируется, карточки
+            в сетке выравнивает грид. */}
+        <span className="mt-1 flex items-center justify-between gap-2">
+          <span className="min-w-0 truncate" style={{ fontSize: 12, color: 'var(--color-muted)' }}>
+            {item.category ?? item.subtitle ?? ''}
+          </span>
+          {hasStorefront && !item.listed && (
+            <span className="badge shrink-0">{t('catalog.badge.unlisted')}</span>
+          )}
+        </span>
+
+        <span className="mt-3 flex items-center justify-between gap-2 pt-2.5"
+              style={{ borderTop: '1px solid var(--web-border-dash, var(--color-border))' }}>
+          {isService ? (
+            <>
+              {/* Тривалість — тільки коли задана хоч на одному варіанті.
+                  Число витратників (рецептура) здесь НЕ рисуется: связь
+                  `variant_materials` в список каталога не приходит,
+                  а «0 витратників» у послуги с рецептурой — это ложь. */}
+              <span className="tabular" style={{ fontSize: 13, color: 'var(--color-muted)' }}>
+                {item.durationMinutes != null
+                  ? t('catalog.duration', { n: t.number(item.durationMinutes) })
+                  : ''}
+              </span>
+              <span className="tabular"
+                    style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)' }}>
+                {price}
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="tabular"
+                    style={{ fontSize: 16, fontWeight: 800, color: 'var(--color-text)' }}>
+                {price}
+              </span>
+              {/* Остаток есть только там, где его ведут. Ноль — это
+                  «немає в наявності», а отсутствие учёта — не величина,
+                  и бейджа у неё нет. */}
+              {item.stock != null && (
+                <span className={item.stock > 0 ? 'badge shrink-0' : 'badge-warn shrink-0'}>
+                  {item.stock > 0
+                    ? t('catalog.web.stock', { n: t.number(item.stock) })
+                    : t('catalog.web.stock.none')}
+                </span>
+              )}
+            </>
+          )}
+        </span>
+      </span>
+    </Link>
+  )
+}
 
 // Список позиций. Фильтр — по виду и по «чернеткам»: продавец возвращается
 // сюда именно за недоделанным, а не за поиском по всему каталогу.
@@ -69,8 +197,77 @@ export function CatalogClient({ items, error, canWrite, hasStorefront = false }:
 
   const cover = (path: string) => supabase.storage.from('media').getPublicUrl(path).data.publicUrl
 
+  // Сетки веб-версии: §4 — послуги по три в ряд, §11 — товари по четыре.
+  // Делим уже ОТФИЛЬТРОВАННЫЙ список, а не исходный: фильтр «Чернетки»
+  // должен резать обе сетки, иначе он режет только половину экрана.
+  const shownServices = shown.filter((i) => i.kind === 'service')
+  const shownProducts = shown.filter((i) => i.kind === 'product')
+
+  // Вкладки веб-версии и чипы телефона — один и тот же фильтр и одни
+  // и те же числа; отличается только вид.
+  const tabItems: [Filter, string, number][] = [
+    ['all', t('catalog.filter.all'), items.length],
+    ['product', t('catalog.filter.products'), counts.product],
+    ['service', t('catalog.filter.services'), counts.service],
+    ['draft', t('catalog.filter.drafts'), counts.draft],
+  ]
+
   return (
     <div className="flex flex-col gap-5">
+      {/* ── CRESKO Web: хедер экрана (только lg) ─────────────────
+          Слева имя экрана тем же ключом, которым его называет панель
+          и вкладка браузера; справа — то же единственное действие,
+          что и на телефоне. На телефоне кнопка «Додати» стоит в ряду
+          фильтров, здесь — в правом углу хедера: действие одно,
+          разметка разная. */}
+      <div className="hidden items-center justify-between lg:flex">
+        <h1 className="webh1">{t('app.screen.catalog.title')}</h1>
+        {canWrite && (
+          <Link href="/app/catalog/new" className="btn-primary">{t('catalog.add')}</Link>
+        )}
+      </div>
+
+      {/* ── CRESKO Web: метрики (только lg) ──────────────────────
+          Те же четыре числа, что и в мобильном ряду ниже, в виде
+          .wmetric с иконкой-плашкой. Плитки не нажимаются: фильтр
+          живёт во вкладках, и второй орган управления с тем же
+          действием — это два входа в одно место.
+
+          Тон несёт смысл: emerald — опубликованное, violet — послуги
+          (акцент этого раздела), blue — нейтральные счётчики. */}
+      {items.length > 0 && (
+        <section className="rise hidden gap-4 lg:grid lg:grid-cols-4">
+          {([
+            { key: 'total', n: items.length, label: t('catalog.stats.total'), tone: 'blue', icon: IconGrid },
+            { key: 'active', n: counts.active, label: t('catalog.stats.active'), tone: 'emerald', icon: IconCheck },
+            { key: 'service', n: counts.service, label: t('catalog.stats.services'), tone: 'violet', icon: IconClock },
+            { key: 'product', n: counts.product, label: t('catalog.stats.products'), tone: 'blue', icon: IconBox },
+          ] as const).map((s) => (
+            <div key={s.key} className="wmetric">
+              <span className="min-w-0">
+                <span className="wmetric-label block">{s.label}</span>
+                <span className="wmetric-value tabular block">{t.number(s.n)}</span>
+              </span>
+              <span className="wmetric-icon" data-tone={s.tone}><s.icon size={19} /></span>
+            </div>
+          ))}
+        </section>
+      )}
+
+      {/* ── CRESKO Web: вкладки чертой (только lg) ───────────────
+          Тот же `setFilter`, что и у чипов. Счётчик у вкладки —
+          там же, где у чипа: он отвечает на «а есть ли там что-то»
+          до нажатия. */}
+      <div className="wtabs hidden lg:flex">
+        {tabItems.map(([key, label, n]) => (
+          <button key={key} type="button" onClick={() => setFilter(key)}
+                  className="wtab" data-active={filter === key}
+                  style={{ minHeight: 'var(--tap-min)' }}>
+            {label}{n > 0 ? ` · ${t.number(n)}` : ''}
+          </button>
+        ))}
+      </div>
+
       {/* ── Счётчики ─────────────────────────────────────────────
           Все четыре — РЕАЛЬНЫЕ величины: активные, товары, послуги
           и общее число. По прототипу здесь стоял ещё рейтинг и число
@@ -80,7 +277,7 @@ export function CatalogClient({ items, error, canWrite, hasStorefront = false }:
           с придуманным числом хуже отсутствующей плитки: она обещает
           функцию, которой нет. */}
       {items.length > 0 && (
-        <section className="rise grid grid-cols-4 gap-2">
+        <section className="rise grid grid-cols-4 gap-2 lg:hidden">
           <div className="metric" data-tone="blue">
             <span className="metric-value">{t.number(items.length)}</span>
             <span className="metric-label">{t('catalog.stats.total')}</span>
@@ -100,7 +297,7 @@ export function CatalogClient({ items, error, canWrite, hasStorefront = false }:
         </section>
       )}
 
-      <div className="scroll-x rise-1 -mx-4 flex items-center gap-2 px-4 pb-1 sm:mx-0 sm:px-0">
+      <div className="scroll-x rise-1 -mx-4 flex items-center gap-2 px-4 pb-1 lg:hidden sm:mx-0 sm:px-0">
         <button onClick={() => setFilter('all')}
                 className={`${filter === 'all' ? 'chip-active' : 'chip'} shrink-0`}>
           {t('catalog.filter.all')} {items.length > 0 && `· ${items.length}`}
@@ -155,11 +352,51 @@ export function CatalogClient({ items, error, canWrite, hasStorefront = false }:
           </div>
         </div>
       ) : (
-        // Один столбец карточек, а не сетка 2×N: у позиции теперь строка
-        // тривалості (для послуг) вдобавок к бейджам, и в узкой колонке
-        // сетки 390px она переносится и делает половину карточек выше
-        // другой половины. Список ровный — карточки ровные (М31/М32).
-        <div className="flex flex-col gap-2">
+        <>
+        {/* ── CRESKO Web: сетки карточек (только lg) ─────────────
+            Двумя сетками, а не одной: у послуги и товара разные ряды
+            по README (§4 — три в ряд, §11 — четыре), и перемешать их
+            в одну сетку значит выбрать одну ширину карточки для обоих
+            и потерять обе. Заголовок ряда — та же подпись, что и у
+            вкладки фильтра: два имени одной величины расходятся.
+
+            Ряд, в котором после фильтра ничего не осталось, не рисуется
+            вовсе — пустой заголовок сообщал бы о разделе, которого
+            на экране нет. */}
+        <div className="hidden flex-col gap-6 lg:flex">
+          {shownServices.length > 0 && (
+            <section>
+              <h2 className="webh2 mb-3">
+                {t('catalog.filter.services')} · {t.number(shownServices.length)}
+              </h2>
+              <div className="grid grid-cols-3" style={{ gap: 18 }}>
+                {shownServices.map((i) => (
+                  <WebOfferingCard key={i.id} t={t} item={i} coverUrl={cover}
+                                   hasStorefront={hasStorefront} />
+                ))}
+              </div>
+            </section>
+          )}
+          {shownProducts.length > 0 && (
+            <section>
+              <h2 className="webh2 mb-3">
+                {t('catalog.filter.products')} · {t.number(shownProducts.length)}
+              </h2>
+              <div className="grid grid-cols-4" style={{ gap: 18 }}>
+                {shownProducts.map((i) => (
+                  <WebOfferingCard key={i.id} t={t} item={i} coverUrl={cover}
+                                   hasStorefront={hasStorefront} />
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+
+        {/* Один столбец карточек, а не сетка 2×N: у позиции есть строка
+            тривалості (для послуг) вдобавок к бейджам, и в узкой колонке
+            сетки 390px она переносится и делает половину карточек выше
+            другой половины. Список ровный — карточки ровные (М31/М32). */}
+        <div className="flex flex-col gap-2 lg:hidden">
           {shown.map((i) => (
             <Link key={i.id} href={`/app/catalog/${i.id}`} className="list-card !items-start">
               {i.cover ? (
@@ -191,10 +428,7 @@ export function CatalogClient({ items, error, canWrite, hasStorefront = false }:
                   </span>
                 )}
                 <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                  <span className={i.status === 'active' ? 'badge-success'
-                    : i.status === 'draft' ? 'badge-warn' : 'badge'}>
-                    {statusLabel(t, i.status)}
-                  </span>
+                  <span className={statusBadge(i.status)}>{statusLabel(t, i.status)}</span>
                   {i.variants > 1 && (
                     <span className="badge">{t.plural('catalog.variants.count', i.variants)}</span>
                   )}
@@ -218,6 +452,7 @@ export function CatalogClient({ items, error, canWrite, hasStorefront = false }:
             </Link>
           ))}
         </div>
+        </>
       )}
 
       <p className="field-hint">{t('catalog.hint.published')}</p>

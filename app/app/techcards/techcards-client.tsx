@@ -4,8 +4,10 @@ import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
+import type { T } from '@/lib/i18n/translate'
 import { noteIfImmutable } from '@/lib/security-log'
 import { dbErrorText } from '@/lib/errors/db'
+import { IconClipboard, IconLayers, IconPlus, IconScissors } from '@/components/icons'
 
 // Дата выпуска версии — «12 січ. 2024». Набор опций, а не своя `fmt`:
 // форматирует `t.date`, то есть локаль, а не экран.
@@ -75,6 +77,87 @@ function normalizeSteps(raw: unknown): Step[] {
   })
 }
 
+// Карта — это не строка, а стопка версий, поэтому группа, а не запись.
+type Group = { title: string; versions: Card[]; latest: Card; currentId: string | null }
+
+// Вкладки веб-версии. Делят карты по тому, единственному признаку,
+// который у них есть данными: привязана карта к услуге или общая для
+// салона. Вкладок «опубліковані / чернетки», как в других разделах,
+// здесь нет и быть не может: утверждённая карта чернеткой не бывает —
+// она утверждается сразу и навсегда (0014).
+type Tab = 'all' | 'linked' | 'general'
+
+// ── Список версий: ОДНО тело на обе раскладки ──────────────────────────
+//
+// На телефоне он внутри карточки, на вебе — под строкой таблицы. Вторая
+// копия разъехалась бы с первой на первой правке (урок М43, «картка
+// учасника»), а расходятся такие пары всегда и молча.
+function VersionList({ t, group, openVersion, setOpenVersion }: {
+  t: T
+  group: Group
+  openVersion: string | null
+  setOpenVersion: (id: string | null) => void
+}) {
+  return (
+    <div className="flex flex-col">
+      {group.versions.map((v) => {
+        const steps = normalizeSteps(v.steps)
+        const open = openVersion === v.id
+        return (
+          <div key={v.id}>
+            <div className="row">
+              <button className="btn-ghost tabular !px-0"
+                      style={{ minHeight: 'var(--tap-min)' }}
+                      onClick={() => setOpenVersion(open ? null : v.id)}>
+                <span aria-hidden>{open ? '▾' : '▸'}</span>
+                {t('techcards.version.line', {
+                  n: t.number(v.version),
+                  date: t.date(v.createdAt, DAY),
+                  steps: t.number(steps.length),
+                })}
+              </button>
+              <span className={v.id === group.currentId ? 'badge-success' : 'badge'}>
+                {v.id === group.currentId
+                  ? t('techcards.version.current')
+                  : t('techcards.version.archived')}
+              </span>
+            </div>
+            {open && (
+              <ol className="t-md flex flex-col gap-2 pb-3 pl-5">
+                {steps.length === 0 && (
+                  <li className="prose-muted">{t('techcards.steps.empty')}</li>
+                )}
+                {/* Текст шага, раствор, пропорция и примечание —
+                    регламент заклада, то есть данные: они не
+                    переводятся. Переводится только обвязка. */}
+                {steps.map((s, i) => (
+                  <li key={i}>
+                    <span className="font-medium">{i + 1}. {s.step}</span>
+                    {s.minutes && (
+                      <span className="prose-muted">
+                        {' · '}{t('techcards.step.minutesShort', { n: s.minutes })}
+                      </span>
+                    )}
+                    {(s.solution || s.proportion) && (
+                      <p className="t-xs prose-muted">
+                        {s.solution}
+                        {s.solution && s.proportion ? ', ' : ''}
+                        {s.proportion
+                          && t('techcards.step.proportionShort', { value: s.proportion })}
+                      </p>
+                    )}
+                    {s.note && <p className="t-xs prose-muted">{s.note}</p>}
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export function TechCardsClient({
   tenantId, userId, canWrite, cards, services, loadError,
 }: {
@@ -94,9 +177,14 @@ export function TechCardsClient({
   const [openVersion, setOpenVersion] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  // Вкладка и раскрытая строка таблицы — только веб-версия. На телефоне
+  // вкладок нет, поэтому значение остаётся 'all', и мобильный список
+  // видит все карты, как и раньше.
+  const [tab, setTab] = useState<Tab>('all')
+  const [openGroup, setOpenGroup] = useState<string | null>(null)
 
   // Группировка по названию: карта — это не строка, а стопка версий.
-  const groups = useMemo(() => {
+  const groups = useMemo<Group[]>(() => {
     const map = new Map<string, Card[]>()
     for (const c of cards) {
       const list = map.get(c.title)
@@ -113,6 +201,25 @@ export function TechCardsClient({
       }
     })
   }, [cards])
+
+  // Счётчики вкладок считаются по последней версии карты: именно она
+  // говорит, к чему карта относится сегодня.
+  const linked = useMemo(() => groups.filter((g) => g.latest.offeringId), [groups])
+  const general = useMemo(() => groups.filter((g) => !g.latest.offeringId), [groups])
+  const shownGroups = tab === 'linked' ? linked : tab === 'general' ? general : groups
+
+  const tabItems: [Tab, string, number][] = [
+    ['all', t('techcards.web.tab.all'), groups.length],
+    ['linked', t('techcards.web.tab.linked'), linked.length],
+    ['general', t('techcards.web.tab.general'), general.length],
+  ]
+
+  // Колонки §5. «Категорія» заменена на «Версії»: категорий у техкарты
+  // нет ни в базе, ни по смыслу — регламент не товар, — а число версий
+  // это то, ради чего таблица версионная. Мініатюра заменена значком:
+  // фотографии у регламента нет и не будет, а серый квадрат читается
+  // как несостоявшаяся загрузка.
+  const WGRID = '2.4fr 1.4fr 1.2fr 1fr 1.1fr 40px'
 
   function startNew() {
     setErr('')
@@ -208,6 +315,41 @@ export function TechCardsClient({
 
   return (
     <div className="flex flex-col gap-4">
+      {/* ── CRESKO Web: хедер экрана (только lg) ─────────────────
+          Слева имя экрана тем же ключом, которым его называет панель
+          и вкладка браузера; справа — то же единственное действие,
+          что и на телефоне: выпуск новой карты. */}
+      <div className="hidden items-center justify-between lg:flex">
+        <h1 className="webh1">{t('app.screen.techcards.title')}</h1>
+        {canWrite && (
+          <button type="button" className="btn-primary" onClick={startNew}
+                  disabled={draft !== null}>
+            {t('techcards.new')}
+          </button>
+        )}
+      </div>
+
+      {/* ── CRESKO Web: метрики (только lg) ──────────────────────
+          Те же три числа, что и в мобильном ряду ниже, в виде .wmetric
+          с иконкой-плашкой. Плитки не нажимаются: фильтр живёт
+          во вкладках, и второй орган управления с тем же действием —
+          это два входа в одно место. */}
+      <section className="rise hidden gap-4 lg:grid lg:grid-cols-3">
+        {([
+          { key: 'cards', n: groups.length, label: t('techcards.stats.cards'), tone: 'violet', icon: IconClipboard },
+          { key: 'linked', n: linked.length, label: t('techcards.stats.linked'), tone: 'blue', icon: IconScissors },
+          { key: 'versions', n: cards.length, label: t('techcards.stats.versions'), tone: 'emerald', icon: IconLayers },
+        ] as const).map((s) => (
+          <div key={s.key} className="wmetric">
+            <span className="min-w-0">
+              <span className="wmetric-label block">{s.label}</span>
+              <span className="wmetric-value tabular block">{t.number(s.n)}</span>
+            </span>
+            <span className="wmetric-icon" data-tone={s.tone}><s.icon size={19} /></span>
+          </div>
+        ))}
+      </section>
+
       {/* README, розділ G: «стат-хедер». Сетки миниатюр из макета здесь
           НЕТ намеренно: у техкарты нет ни фото, ни чего-либо, что можно
           показать картинкой, — это регламент обработки. Плитка с пустым
@@ -217,7 +359,7 @@ export function TechCardsClient({
           всего, сколько из них привязано к услуге (остальные общие
           по салону) и сколько версий выпущено — последнее и есть
           показатель того, что регламент живёт, а не лежит. */}
-      <section className="rise grid grid-cols-3 gap-2">
+      <section className="rise grid grid-cols-3 gap-2 lg:hidden">
         <div className="metric">
           <span className="metric-value tabular">{t.number(groups.length)}</span>
           <span className="metric-label">{t('techcards.stats.cards')}</span>
@@ -239,7 +381,8 @@ export function TechCardsClient({
           дублирование навигации. Единственное действие экрана —
           создать техкарту, и оно одно. */}
       {canWrite && (
-        <button className="btn-primary rise-1" onClick={startNew} disabled={draft !== null}>
+        <button className="btn-primary rise-1 lg:hidden" onClick={startNew}
+                disabled={draft !== null}>
           {t('techcards.new')}
         </button>
       )}
@@ -369,7 +512,144 @@ export function TechCardsClient({
           </div>
         </div>
       ) : (
-        <div className="flex flex-col gap-4">
+        <>
+        {/* ── CRESKO Web: вкладки чертой (только lg) ─────────────
+            Делят карты по единственному признаку, который у них есть
+            данными: привязана к услуге или общая для салона. */}
+        <div className="wtabs hidden lg:flex">
+          {tabItems.map(([key, label, n]) => (
+            <button key={key} type="button" onClick={() => setTab(key)}
+                    className="wtab" data-active={tab === key}
+                    style={{ minHeight: 'var(--tap-min)' }}>
+              {label}{n > 0 ? ` · ${t.number(n)}` : ''}
+            </button>
+          ))}
+        </div>
+
+        {/* ── CRESKO Web: техкарты таблицей (только lg) ──────────
+            Строка — КАРТА (стопка версий), а не версия: карта и есть
+            то, чем оперирует салон, а версии — её история. Нажатие
+            на название раскрывает историю прямо под строкой: отдельного
+            адреса `/app/techcards/<id>` в продукте нет, и заводить его
+            ради веб-раскладки значит менять навигацию, а не вид.
+
+            Строка целиком кнопкой быть не может: справа живёт кнопка
+            выпуска версии, а кнопка внутри кнопки недопустима. Нажимается
+            ячейка названия — тем же действием, что и на телефоне. */}
+        <section className="hidden lg:block">
+          <div className="wtable">
+            <div className="wtable-head" style={{ gridTemplateColumns: WGRID }}>
+              <span>{t('techcards.web.table.card')}</span>
+              <span>{t('techcards.web.table.service')}</span>
+              <span>{t('techcards.web.table.versions')}</span>
+              <span>{t('techcards.web.table.updated')}</span>
+              <span>{t('techcards.web.table.status')}</span>
+              <span aria-hidden />
+            </div>
+
+            {shownGroups.length === 0 ? (
+              <div className="empty">{t('techcards.web.empty.filter')}</div>
+            ) : shownGroups.map((g) => {
+              const open = openGroup === g.title
+              return (
+                <div key={g.title}>
+                  {/* Черта под строкой задаётся ЗДЕСЬ, а не только классом.
+                      `.wtable-row:last-of-type` снимает её у последней
+                      строки — а внутри обёртки группы каждая строка
+                      последняя, и разделители пропали бы у всех разом.
+                      Раскрытая строка отдаёт черту своему блоку версий,
+                      иначе история отрезана от карты, к которой относится. */}
+                  <div className="wtable-row"
+                       style={{
+                         gridTemplateColumns: WGRID,
+                         borderBottom: open
+                           ? 'none'
+                           : '1px solid var(--web-border-row, var(--color-border))',
+                       }}>
+                    <button type="button" aria-expanded={open}
+                            onClick={() => setOpenGroup(open ? null : g.title)}
+                            className="flex min-w-0 items-center gap-3 text-left"
+                            style={{ minHeight: 'var(--tap-min)' }}>
+                      {/* Плашка 42px вместо миниатюры: у регламента нет
+                          ни фото, ни чего-либо, что можно показать
+                          картинкой. Значок, а не глиф — «▤» на части
+                          прошивок приезжает квадратом (М31). */}
+                      <span aria-hidden
+                            className="flex shrink-0 items-center justify-center"
+                            style={{
+                              width: 42, height: 42, borderRadius: 12,
+                              background: 'var(--color-accent-soft)',
+                              color: 'var(--color-accent-ink)',
+                            }}>
+                        <IconClipboard size={20} />
+                      </span>
+                      <span className="min-w-0">
+                        {/* Назва техкарти — данные заклада. */}
+                        <span className="block truncate font-semibold"
+                              style={{ color: 'var(--color-text)' }}>{g.title}</span>
+                        <span className="block truncate"
+                              style={{ color: 'var(--color-faint)' }}>
+                          {open
+                            ? t('techcards.web.row.hide')
+                            : t('techcards.web.row.show')}
+                        </span>
+                      </span>
+                    </button>
+                    <span className="min-w-0 truncate">
+                      {/* Та же развилка, что и на телефоне: подписать
+                          привязанную карту «загальною» значит соврать
+                          про регламент. */}
+                      {g.latest.offeringTitle
+                        ?? (g.latest.offeringId
+                          ? t('techcards.card.linked')
+                          : t('techcards.field.service.general'))}
+                    </span>
+                    <span className="tabular">{t.number(g.versions.length)}</span>
+                    <span className="tabular">{t.date(g.latest.createdAt, DAY)}</span>
+                    <span>
+                      <span className={g.currentId ? 'badge-success' : 'badge'}>
+                        {g.currentId
+                          ? t('techcards.version.current')
+                          : t('techcards.version.archived')}
+                      </span>
+                    </span>
+                    <span className="text-right">
+                      {canWrite && (
+                        // Подпись для скринридера: «+» он не прочтёт.
+                        <button type="button" className="btn-icon"
+                                aria-label={t('techcards.card.newVersion')}
+                                title={t('techcards.card.newVersion')}
+                                disabled={draft !== null}
+                                onClick={() => startNextVersion(g)}>
+                          <IconPlus size={18} />
+                        </button>
+                      )}
+                    </span>
+                  </div>
+                  {open && (
+                    <div style={{
+                      padding: '0 18px 12px 18px',
+                      borderBottom: '1px solid var(--web-border-row, var(--color-border))',
+                    }}>
+                      <VersionList t={t} group={g}
+                                   openVersion={openVersion} setOpenVersion={setOpenVersion} />
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+
+            {shownGroups.length > 0 && (
+              <div className="wtable-foot">
+                <span className="tabular">
+                  {t('techcards.web.table.total', { n: t.number(shownGroups.length) })}
+                </span>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <div className="flex flex-col gap-4 lg:hidden">
           {groups.map((g) => (
             <section key={g.title} className="card rise-2 flex flex-col gap-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -400,64 +680,12 @@ export function TechCardsClient({
                 )}
               </div>
 
-              <div className="flex flex-col">
-                {g.versions.map((v) => {
-                  const steps = normalizeSteps(v.steps)
-                  const open = openVersion === v.id
-                  return (
-                    <div key={v.id}>
-                      <div className="row">
-                        <button className="btn-ghost tabular !px-0"
-                                onClick={() => setOpenVersion(open ? null : v.id)}>
-                          <span aria-hidden>{open ? '▾' : '▸'}</span>
-                          {t('techcards.version.line', {
-                            n: t.number(v.version),
-                            date: t.date(v.createdAt, DAY),
-                            steps: t.number(steps.length),
-                          })}
-                        </button>
-                        <span className={v.id === g.currentId ? 'badge-success' : 'badge'}>
-                          {v.id === g.currentId
-                            ? t('techcards.version.current')
-                            : t('techcards.version.archived')}
-                        </span>
-                      </div>
-                      {open && (
-                        <ol className="t-md flex flex-col gap-2 pb-3 pl-5">
-                          {steps.length === 0 && (
-                            <li className="prose-muted">{t('techcards.steps.empty')}</li>
-                          )}
-                          {/* Текст шага, раствор, пропорция и примечание —
-                              регламент заклада, то есть данные: они не
-                              переводятся. Переводится только обвязка. */}
-                          {steps.map((s, i) => (
-                            <li key={i}>
-                              <span className="font-medium">{i + 1}. {s.step}</span>
-                              {s.minutes && (
-                                <span className="prose-muted">
-                                  {' · '}{t('techcards.step.minutesShort', { n: s.minutes })}
-                                </span>
-                              )}
-                              {(s.solution || s.proportion) && (
-                                <p className="t-xs prose-muted">
-                                  {s.solution}
-                                  {s.solution && s.proportion ? ', ' : ''}
-                                  {s.proportion
-                                    && t('techcards.step.proportionShort', { value: s.proportion })}
-                                </p>
-                              )}
-                              {s.note && <p className="t-xs prose-muted">{s.note}</p>}
-                            </li>
-                          ))}
-                        </ol>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
+              <VersionList t={t} group={g}
+                           openVersion={openVersion} setOpenVersion={setOpenVersion} />
             </section>
           ))}
         </div>
+        </>
       )}
 
       <p className="field-hint rise-3">{t('techcards.footer')}</p>

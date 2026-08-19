@@ -65,7 +65,11 @@ export default async function CustomersPage() {
         </section>
       )}
 
-      <CustomersClient tenantId={m.tenantId} customers={customers ?? []} />
+      {/* `customers.write` решает только, рисовать ли кнопку «Додати
+          клієнта»: сама вставка идёт под политикой `customers_insert`
+          (0006), и без права она откажет независимо от кнопки. */}
+      <CustomersClient tenantId={m.tenantId} customers={customers ?? []}
+                       canWrite={can(m, 'customers.write')} />
 
       <p className="field-hint rise-2 mt-4">{t('customers.hint')}</p>
     </AppShell>
