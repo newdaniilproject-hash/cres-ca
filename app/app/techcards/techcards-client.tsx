@@ -1,7 +1,6 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
@@ -208,16 +207,42 @@ export function TechCardsClient({
   }
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="rise flex flex-wrap items-center gap-2">
-        {canWrite && (
-          <button className="btn-primary t-sm" onClick={startNew} disabled={draft !== null}>
-            {t('techcards.new')}
-          </button>
-        )}
-        <Link href="/app/journals" className="btn-ghost">{t('techcards.nav.journals')}</Link>
-        <Link href="/app/documents" className="btn-ghost">{t('techcards.nav.documents')}</Link>
-      </div>
+    <div className="flex flex-col gap-4">
+      {/* README, розділ G: «стат-хедер». Сетки миниатюр из макета здесь
+          НЕТ намеренно: у техкарты нет ни фото, ни чего-либо, что можно
+          показать картинкой, — это регламент обработки. Плитка с пустым
+          серым квадратом честнее не станет.
+
+          Числа настоящие и отвечают на разные вопросы: сколько карт
+          всего, сколько из них привязано к услуге (остальные общие
+          по салону) и сколько версий выпущено — последнее и есть
+          показатель того, что регламент живёт, а не лежит. */}
+      <section className="rise grid grid-cols-3 gap-2">
+        <div className="metric">
+          <span className="metric-value tabular">{t.number(groups.length)}</span>
+          <span className="metric-label">{t('techcards.stats.cards')}</span>
+        </div>
+        <div className="metric" data-tone="blue">
+          <span className="metric-value tabular">
+            {t.number(groups.filter((g) => g.latest.offeringId).length)}
+          </span>
+          <span className="metric-label">{t('techcards.stats.linked')}</span>
+        </div>
+        <div className="metric">
+          <span className="metric-value tabular">{t.number(cards.length)}</span>
+          <span className="metric-label">{t('techcards.stats.versions')}</span>
+        </div>
+      </section>
+
+      {/* Ссылок на «Журнали» и «Документи» здесь больше нет: оба раздела
+          лежат под аватаром, и второй вход в них с этого экрана —
+          дублирование навигации. Единственное действие экрана —
+          создать техкарту, и оно одно. */}
+      {canWrite && (
+        <button className="btn-primary rise-1" onClick={startNew} disabled={draft !== null}>
+          {t('techcards.new')}
+        </button>
+      )}
 
       {loadError && <p className="field-error rise">{loadError}</p>}
       {err && <p className="field-error rise">{err}</p>}

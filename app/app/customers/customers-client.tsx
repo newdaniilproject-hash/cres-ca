@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Sheet } from '@/components/sheet'
 import { useToast } from '@/components/toast'
 import { useT } from '@/lib/i18n/client'
+import { IconUsers } from '@/components/icons'
 
 // ── Клиенты: карточка и выгрузка ───────────────────────────────────────────
 //
@@ -145,49 +146,77 @@ export function CustomersClient({
 
   return (
     <>
-      <section className="card rise-1 !p-0">
-        <div className="flex flex-wrap items-center justify-between gap-2 p-5 pb-3">
-          <div>
-            <h2 className="t-lg">{t('customers.list.title')}</h2>
-            <p className="t-sm prose-muted">{t('customers.list.desc')}</p>
-          </div>
-          {customers.length > 0 && (
-            <button type="button" className="btn-secondary t-sm"
-                    disabled={busy === 'export'}
-                    onClick={() => void exportAll()}>
-              {busy === 'export' ? t('common.saving') : t('customers.export.cta')}
-            </button>
-          )}
-        </div>
+      {/* README, розділ G: рядок клієнта — аватар, ім'я, бейдж категорії,
+          останній візит, статистика. Телефона в этой строке НЕТ и быть
+          не может: контакт отдаёт `customer_card` с проверкой права
+          и записью в журнал доступа (0090), а строка списка обошла бы
+          и то, и другое. Всё остальное из макета на месте.
 
-        {customers.length === 0 ? (
-          <div className="empty">{t('customers.empty')}</div>
-        ) : customers.map((c) => (
-          <div key={c.id} className="row px-5">
-            <div className="min-w-0">
-              <p className="t-md truncate">{c.name}</p>
-              <p className="tabular t-xs mt-0.5 prose-muted">
-                {c.last_order_at
-                  ? t('customers.lastVisit', { date: t.date(c.last_order_at) })
-                  : t('customers.noVisits')}
-              </p>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              {Number(c.total_spent) > 0 && (
-                <span className="badge tabular">{t.money(Number(c.total_spent))}</span>
-              )}
-              <span className="badge-accent tabular">
-                {t('customers.ordersCount', { n: Number(c.orders_count) })}
-              </span>
-              <button type="button" className="btn-secondary t-sm"
-                      disabled={busy === c.id}
-                      onClick={() => void openCard(c.id)}>
-                {busy === c.id ? t('common.saving') : t('customers.card.cta')}
-              </button>
-            </div>
-          </div>
-        ))}
+          Аватар — буква имени на плашке, а не картинка: колонки под фото
+          у клиента нет, и пустой серый кружок был бы честнее только на вид. */}
+      <section className="rise flex items-center justify-between gap-3">
+        <p className="eyebrow">{t('customers.list.title')}</p>
+        {customers.length > 0 && (
+          <button type="button" className="btn-ghost t-sm"
+                  disabled={busy === 'export'}
+                  onClick={() => void exportAll()}>
+            {busy === 'export' ? t('common.saving') : t('customers.export.cta')}
+          </button>
+        )}
       </section>
+
+      {customers.length === 0 ? (
+        <section className="card rise-1">
+          <div className="empty">
+            <span className="empty-icon"><IconUsers size={24} /></span>
+            <p className="empty-title">{t('customers.empty')}</p>
+            <p className="empty-desc">{t('customers.list.desc')}</p>
+          </div>
+        </section>
+      ) : (
+        <div className="rise-1 flex flex-col gap-2">
+          {customers.map((c) => (
+            <button key={c.id} type="button" className="list-card"
+                    disabled={busy === c.id}
+                    onClick={() => void openCard(c.id)}>
+              <span aria-hidden className="thumb-sm t-md" style={{ fontWeight: 650 }}>
+                {c.name.trim().charAt(0).toUpperCase()}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="t-md block truncate">{c.name}</span>
+                <span className="tabular t-xs mt-0.5 block prose-muted">
+                  {c.last_order_at
+                    ? t('customers.lastVisit', { date: t.date(c.last_order_at) })
+                    : t('customers.noVisits')}
+                </span>
+                {(c.tags ?? []).length > 0 && (
+                  <span className="mt-1 flex flex-wrap gap-1">
+                    {(c.tags ?? []).slice(0, 2).map((tag) => (
+                      <span key={tag} className="badge">{tag}</span>
+                    ))}
+                  </span>
+                )}
+              </span>
+              <span className="flex shrink-0 flex-col items-end gap-1">
+                {Number(c.total_spent) > 0 && (
+                  <span className="tabular t-md">{t.money(Number(c.total_spent))}</span>
+                )}
+                <span className="badge-accent tabular">
+                  {t('customers.ordersCount', { n: Number(c.orders_count) })}
+                </span>
+              </span>
+              {/* Шеврон обязателен: карточка открывается ЗАПРОСОМ к базе
+                  и оставляет строку в журнале доступа. Строка, которая
+                  выглядит как текст, но что-то делает, — это случайные
+                  открытия в журнале, по которому потом разбираются,
+                  кто смотрел контакты. */}
+              <span aria-hidden className="shrink-0" style={{ color: 'var(--color-faint)' }}>
+                {busy === c.id ? '…' : '›'}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
 
       <Sheet open={card !== null} onClose={() => setCard(null)} title={card?.name}>
         {card && (

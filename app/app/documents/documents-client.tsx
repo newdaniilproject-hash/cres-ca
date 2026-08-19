@@ -7,7 +7,9 @@ import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
 import type { T } from '@/lib/i18n/translate'
 
-import { DOC_KINDS as KINDS, documentSignedUrl, type DocKind } from '@/lib/documents'
+import { DOC_KINDS as KINDS, documentSignedUrl, fmtSize, type DocKind } from '@/lib/documents'
+import { Sheet } from '@/components/sheet'
+import { IconDoc } from '@/components/icons'
 import {
   DOC_EXT_BY_MIME as EXT_BY_MIME,
   DOC_MAX_BYTES as MAX_BYTES,
@@ -42,16 +44,27 @@ type Material = {
 type Doc = {
   id: string; materialId: string; kind: DocKind
   title: string; path: string; createdAt: string
+  /** Размер и тип файла (0059). Могут быть пустыми у старых загрузок. */
+  size: number | null; mime: string | null
+}
+
+// Плашка расширения в строке документа (README: «плашка PDF 38px,
+// 10px/800, danger на dangerSoft»). Расширение берётся из типа файла,
+// а не из имени: имя даёт человек, и «договір.pdf.docx» встречается.
+function extOf(mime: string | null): string {
+  if (!mime) return 'FILE'
+  if (mime.includes('pdf')) return 'PDF'
+  if (mime.includes('word')) return 'DOC'
+  if (mime.startsWith('image/')) return mime.slice(6, 10).toUpperCase()
+  return 'FILE'
 }
 
 export function DocumentsClient({
-  tenantId, userId, canWrite, canStock, materials, documents, loadError,
+  tenantId, userId, canWrite, materials, documents, loadError,
 }: {
   tenantId: string; userId: string
   /** `compliance.write` — загрузка и удаление документов. */
   canWrite: boolean
-  /** `stock.read` — есть ли у читателя раздел «Склад». */
-  canStock: boolean
   materials: Material[]; documents: Doc[]; loadError: string
 }) {
   const t = useT()
@@ -65,6 +78,11 @@ export function DocumentsClient({
   const [fileKey, setFileKey] = useState(0)
   const [busy, setBusy] = useState<string | null>(null)
   const [err, setErr] = useState('')
+  // Форма загрузки — шторкой, а не блоком на странице (README: «кнопка
+  // "Завантажити документ"»). Пять полей занимали первый экран телефона,
+  // а документы, ради которых сюда заходят, начинались за сгибом.
+  // Загружают раз в месяц, смотрят — на каждой проверке.
+  const [uploading, setUploading] = useState(false)
 
   const byMaterial = useMemo(() => {
     const map = new Map<string, Doc[]>()
@@ -130,6 +148,7 @@ export function DocumentsClient({
 
     setBusy(null)
     setTitle(''); setFile(null); setFileKey((k) => k + 1)
+    setUploading(false)
     router.refresh()
   }
 
@@ -196,15 +215,19 @@ export function DocumentsClient({
 
   return (
     <div className="flex flex-col gap-5">
-      {/* «Склад» — только тем, у кого есть `stock.read`. У инспектора его
-          нет (0035), и раздел молча вернул бы его на «Сьогодні». */}
-      <div className="rise flex flex-wrap items-center gap-2">
-        {canStock && (
-          <Link href="/app/inventory" className="btn-ghost">{t('documents.nav.stock')}</Link>
-        )}
-        <Link href="/app/journals" className="btn-ghost">{t('documents.nav.journals')}</Link>
-        <Link href="/app/techcards" className="btn-ghost">{t('documents.nav.techcards')}</Link>
-      </div>
+      {/* Ряда ссылок «Склад · Журнали · Техкарти» здесь больше нет:
+          все три раздела лежат под аватаром, и держать второй вход
+          в них на этом экране значит дублировать навигацию. Ссылка
+          на склад к тому же рисовалась не всем (у инспектора нет
+          `stock.read`), и ряд у него был из двух кнопок неизвестно
+          куда. Единственное действие экрана — загрузить документ,
+          и оно теперь одно и на виду. */}
+      {canWrite && (
+        <button type="button" className="btn-primary rise"
+                onClick={() => { setErr(''); setUploading(true) }}>
+          {t('documents.upload.submit')}
+        </button>
+      )}
 
       {loadError && <p className="field-error rise">{loadError}</p>}
       {err && <p className="field-error rise">{err}</p>}
@@ -216,53 +239,6 @@ export function DocumentsClient({
           </span>
           <p className="t-md prose-muted">{t('documents.missing.desc')}</p>
         </div>
-      )}
-
-      {/* Форма загрузки — под `compliance.write`. Инспектор и наблюдатель
-          читают документы, но не пополняют их: форма, которая гарантированно
-          упрётся в RLS, обещает то, чего нет. */}
-      {canWrite && (
-      <form onSubmit={upload} className="card rise-1 grid gap-3 sm:grid-cols-2">
-        <div>
-          <label className="field-label">{t('documents.upload.material.label')}</label>
-          <select required className="select" value={materialId}
-                  onChange={(e) => setMaterialId(e.target.value)}>
-            <option value="">{t('documents.upload.material.placeholder')}</option>
-            {/* Назва і бренд засобу — данные заклада, не переводятся. */}
-            {materials.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}{m.brand ? ` · ${m.brand}` : ''}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="field-label">{t('documents.upload.kind.label')}</label>
-          <select className="select" value={kind}
-                  onChange={(e) => setKind(e.target.value as DocKind)}>
-            {KINDS.map((k) => (
-              <option key={k} value={k}>{kindLabel(t, k)}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="field-label">{t('documents.upload.title.label')}</label>
-          <input required className="input" placeholder={t('documents.upload.title.placeholder')}
-                 value={title} onChange={(e) => setTitle(e.target.value)} />
-          <p className="field-hint">{t('documents.upload.title.hint')}</p>
-        </div>
-        <div>
-          <label className="field-label">{t('documents.upload.file.label')}</label>
-          <input key={fileKey} required type="file" className="input pt-2.5"
-                 accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx"
-                 onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-          <p className="field-hint">{t('documents.upload.file.hint')}</p>
-        </div>
-        <button className="btn-primary sm:col-span-2 sm:justify-self-start"
-                disabled={busy === 'upload' || !file || !materialId || !title.trim()}>
-          {busy === 'upload' ? t('documents.upload.submitBusy') : t('documents.upload.submit')}
-        </button>
-      </form>
       )}
 
       {materials.length === 0 ? (
@@ -315,11 +291,21 @@ export function DocumentsClient({
                   <div className="flex flex-col">
                     {docs.map((d) => (
                       <div key={d.id} className="row">
-                        <div className="min-w-0">
+                        {/* README: плашка расширения слева — по ней строка
+                            читается как файл, а не как ещё один пункт
+                            списка. Тон `danger` у PDF из макета сохранён:
+                            это его цвет во всех файловых менеджерах. */}
+                        <span aria-hidden className="doc-ext"
+                              data-tone={extOf(d.mime) === 'PDF' ? 'danger' : undefined}>
+                          {extOf(d.mime)}
+                        </span>
+                        <div className="min-w-0 flex-1">
                           {/* Назва документа — данные заклада. */}
                           <p className="t-md truncate">{d.title}</p>
                           <p className="tabular t-xs prose-muted">
-                            {kindShort(t, d.kind)} · {t.date(d.createdAt, DAY)}
+                            {kindShort(t, d.kind)}
+                            {d.size !== null ? ` · ${fmtSize(t, d.size)}` : ''}
+                            {' · '}{t.date(d.createdAt, DAY)}
                           </p>
                         </div>
                         <span className="flex shrink-0 items-center gap-1">
@@ -344,6 +330,56 @@ export function DocumentsClient({
           })}
         </div>
       )}
+
+      {/* ── Загрузка документа ────────────────────────────────
+          Под `compliance.write`. Инспектор и наблюдатель читают
+          документы, но не пополняют их: форма, которая гарантированно
+          упрётся в RLS, обещает то, чего нет. */}
+      <Sheet open={uploading} onClose={() => setUploading(false)}
+             title={t('documents.upload.submit')}>
+        {err && <p className="field-error mb-3">{err}</p>}
+        <form onSubmit={upload} className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label className="field-label">{t('documents.upload.material.label')}</label>
+          <select required className="select" value={materialId}
+                  onChange={(e) => setMaterialId(e.target.value)}>
+            <option value="">{t('documents.upload.material.placeholder')}</option>
+            {/* Назва і бренд засобу — данные заклада, не переводятся. */}
+            {materials.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}{m.brand ? ` · ${m.brand}` : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="field-label">{t('documents.upload.kind.label')}</label>
+          <select className="select" value={kind}
+                  onChange={(e) => setKind(e.target.value as DocKind)}>
+            {KINDS.map((k) => (
+              <option key={k} value={k}>{kindLabel(t, k)}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="field-label">{t('documents.upload.title.label')}</label>
+          <input required className="input" placeholder={t('documents.upload.title.placeholder')}
+                 value={title} onChange={(e) => setTitle(e.target.value)} />
+          <p className="field-hint">{t('documents.upload.title.hint')}</p>
+        </div>
+        <div>
+          <label className="field-label">{t('documents.upload.file.label')}</label>
+          <input key={fileKey} required type="file" className="input pt-2.5"
+                 accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx"
+                 onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+          <p className="field-hint">{t('documents.upload.file.hint')}</p>
+        </div>
+        <button className="btn-primary sm:col-span-2 sm:justify-self-start"
+                disabled={busy === 'upload' || !file || !materialId || !title.trim()}>
+          {busy === 'upload' ? t('documents.upload.submitBusy') : t('documents.upload.submit')}
+        </button>
+      </form>
+      </Sheet>
 
       <p className="field-hint rise-3">{t('documents.footer')}</p>
     </div>

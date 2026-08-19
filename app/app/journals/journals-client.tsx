@@ -273,26 +273,44 @@ export function JournalsClient({
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="rise flex flex-wrap items-center gap-2">
-        {/* Подпись кнопки — интерфейс и переводится. САМ отчёт по этой ссылке
-            собирается всегда по-украински и от языка кабинета не зависит:
-            это документ для Держпродспоживслужби (lib/report/sanitation-report.ts). */}
-        <a href="/app/journals/report" target="_blank" rel="noreferrer"
-           className="btn-primary t-sm">
-          {t('journals.report.open')}
-        </a>
-        <span className="hidden w-px lg:block" />
-        {/* На телефоне эти же вкладки живут в нижней панели приложения —
-            дублировать их чипсами значит съесть экран дважды. */}
+      {/* ⚠️ ВКЛАДКИ ПОКАЗЫВАЮТСЯ НА ВСЕХ ЭКРАНАХ. Раньше на них висело
+          `hidden lg:inline-flex` с объяснением «на телефоне эти же вкладки
+          живут в нижней панели приложения» — и объяснение устарело
+          15.08.2026, когда панель перестала держать экраны раздела
+          и стала держать сами разделы (CLAUDE.md → «Мобильная версия»).
+          С того дня с телефона нельзя было открыть ни «Розчини»,
+          ні «Стерилізацію», ні «Дії»: человек видел первую вкладку
+          и считал, что других журналов в продукте нет.
+
+          Правило шире одного экрана: спрятанное «потому что оно есть
+          в другом месте» стареет молча — другое место меняется, а класс
+          остаётся. Ровно так же было с `.apphead-back` (CLAUDE.md). */}
+      <div className="scroll-x rise -mx-4 flex items-center gap-2 px-4 pb-1 sm:mx-0 sm:px-0">
         <button onClick={() => setTab('cleaning')}
-                className={(tab === 'cleaning' ? 'chip-active' : 'chip') + ' hidden lg:inline-flex'}>{t('journals.tab.cleaning')}</button>
+                className={`${tab === 'cleaning' ? 'chip-active' : 'chip'} shrink-0`}>
+          {t('journals.tab.cleaning')}
+        </button>
         <button onClick={() => setTab('solutions')}
-                className={(tab === 'solutions' ? 'chip-active' : 'chip') + ' hidden lg:inline-flex'}>{t('journals.tab.solutions')}</button>
+                className={`${tab === 'solutions' ? 'chip-active' : 'chip'} shrink-0`}>
+          {t('journals.tab.solutions')}
+        </button>
         <button onClick={() => setTab('sterilization')}
-                className={(tab === 'sterilization' ? 'chip-active' : 'chip') + ' hidden lg:inline-flex'}>{t('journals.tab.sterilization')}</button>
+                className={`${tab === 'sterilization' ? 'chip-active' : 'chip'} shrink-0`}>
+          {t('journals.tab.sterilization')}
+        </button>
         <button onClick={() => setTab('actions')}
-                className={(tab === 'actions' ? 'chip-active' : 'chip') + ' hidden lg:inline-flex'}>{t('journals.tab.actions')}</button>
+                className={`${tab === 'actions' ? 'chip-active' : 'chip'} shrink-0`}>
+          {t('journals.tab.actions')}
+        </button>
       </div>
+
+      {/* Подпись кнопки — интерфейс и переводится. САМ отчёт по этой ссылке
+          собирается всегда по-украински и от языка кабинета не зависит:
+          это документ для Держпродспоживслужби (lib/report/sanitation-report.ts). */}
+      <a href="/app/journals/report" target="_blank" rel="noreferrer"
+         className="btn-secondary rise-1 self-start">
+        {t('journals.report.open')}
+      </a>
 
       {err && <p className="field-error rise">{err}</p>}
 
