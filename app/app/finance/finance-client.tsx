@@ -29,6 +29,31 @@ export type FinanceCategory = {
   kind: FinanceKind
   name: string
   isActive: boolean
+  /** Постоянный расход (аренда) против переменного (материалы) — 0121. */
+  isFixed: boolean
+}
+
+export type PnlRow = {
+  /** Первое число месяца строкой ГГГГ-ММ-ДД. */
+  bucket: string
+  income: number
+  expenseFixed: number
+  expenseVariable: number
+  net: number
+}
+
+export type MarginRow = {
+  variantId: string
+  kind: 'product' | 'service'
+  title: string
+  variantName: string
+  price: number | null
+  /** Своя себестоимость + рецептура (variant_margin_view, 0121). */
+  unitCost: number
+  margin: number | null
+  marginPct: number | null
+  /** Сколько расходников рецептуры БЕЗ себестоимости: >0 — маржа завышена. */
+  missingCosts: number
 }
 
 // Значения периода уезжают в адрес (`?period=30d`) и разбираются
@@ -51,7 +76,7 @@ const day = (t: T, s: string) => t.date(`${s}T00:00:00`, DAY_OPTS)
 
 // ── CRESKO Web §15 ──────────────────────────────────────────────────────
 // Вкладки вида. Значение служебное (по нему идёт отбор), переводится подпись.
-const VIEWS = ['all', 'income', 'expense'] as const
+const VIEWS = ['all', 'income', 'expense', 'analytics'] as const
 type View = (typeof VIEWS)[number]
 
 // График «Динаміка доходу». Размеры в единицах viewBox: SVG растягивается
@@ -131,7 +156,7 @@ function IncomeChart({ t, series }: { t: T; series: { day: string; value: number
 export function FinanceClient({
   tenantId, userId, canWrite, period, from, to, today,
   income, expense, prevIncome, prevExpense, operations, series,
-  records, categories, error,
+  records, categories, pnl, margins, error,
 }: {
   tenantId: string
   userId: string
@@ -151,6 +176,10 @@ export function FinanceClient({
   series: { day: string; value: number }[]
   records: FinanceRecord[]
   categories: FinanceCategory[]
+  /** P&L последних шести месяцев — считает база (0121), не экран. */
+  pnl: PnlRow[]
+  /** Себестоимость и маржа позиций из variant_margin_view (0121). */
+  margins: MarginRow[]
   error: string
 }) {
   const t = useT()
@@ -187,6 +216,7 @@ export function FinanceClient({
   // Справочник категорий
   const [catName, setCatName] = useState('')
   const [catKind, setCatKind] = useState<FinanceKind>('expense')
+  const [catFixed, setCatFixed] = useState(false)
 
   const catById = useMemo(
     () => new Map(categories.map((c) => [c.id, c])),
@@ -263,10 +293,21 @@ export function FinanceClient({
     setBusy('category'); setErr('')
     const { error: insertError } = await supabase.from('finance_categories').insert({
       tenant_id: tenantId, kind: catKind, name: catName.trim(),
+      // Деление на постоянные и переменные — только у расходов (0121).
+      is_fixed: catKind === 'expense' && catFixed,
     })
     setBusy(null)
     if (insertError) { setErr(dbErrorText(t, insertError)); return }
-    setCatName(''); router.refresh()
+    setCatName(''); setCatFixed(false); router.refresh()
+  }
+
+  async function toggleFixed(c: FinanceCategory) {
+    setBusy(c.id); setErr('')
+    const { error: updateError } = await supabase.from('finance_categories')
+      .update({ is_fixed: !c.isFixed }).eq('id', c.id)
+    setBusy(null)
+    if (updateError) { setErr(dbErrorText(t, updateError)); return }
+    router.refresh()
   }
 
   async function toggleCategory(c: FinanceCategory) {
@@ -462,10 +503,96 @@ export function FinanceClient({
       {error && <p className="field-error rise">{t('finance.error.load', { message: error })}</p>}
       {err && <p className="field-error rise">{err}</p>}
 
+      {/* ═══ Аналітика (М46): P&L помесячно и маржа позиций — lg ════════
+          Живёт ВКЛАДКОЙ, а не отдельным экраном: это те же деньги
+          того же заведения, и раздел в панели ради двух таблиц был бы
+          девятым пунктом навигации. Считает база (0121). */}
+      {view === 'analytics' && (
+        <div className="hidden flex-col gap-5 lg:flex">
+          <section className="min-w-0">
+            <p className="webh2 mb-3">{t('finance.pnl.title')}</p>
+            <div className="wtable">
+              <div className="wtable-head" style={{ gridTemplateColumns: '1.2fr 1fr 1fr 1fr 1fr' }}>
+                <span>{t('finance.pnl.month')}</span>
+                <span>{t('finance.pnl.income')}</span>
+                <span>{t('finance.pnl.fixed')}</span>
+                <span>{t('finance.pnl.variable')}</span>
+                <span>{t('finance.pnl.net')}</span>
+              </div>
+              {pnl.length === 0 ? (
+                <div className="empty !py-8">{t('finance.pnl.empty')}</div>
+              ) : pnl.map((r) => (
+                <div key={r.bucket} className="wtable-row"
+                     style={{ gridTemplateColumns: '1.2fr 1fr 1fr 1fr 1fr' }}>
+                  <span className="font-semibold" style={{ color: 'var(--color-text)' }}>
+                    {t.date(`${r.bucket}T00:00:00`, { month: 'long', year: 'numeric' })}
+                  </span>
+                  <span className="tabular">{t.money(r.income)}</span>
+                  <span className="tabular">{t.money(r.expenseFixed)}</span>
+                  <span className="tabular">{t.money(r.expenseVariable)}</span>
+                  <span className="tabular font-semibold"
+                        style={{ color: r.net < 0 ? 'var(--color-danger)' : 'var(--color-success)' }}>
+                    {t.money(r.net)}
+                  </span>
+                </div>
+              ))}
+            </div>
+            {/* Деление работает только когда категории размечены — скажи
+                об этом там, где смотрят на нули, а не в документации. */}
+            <p className="field-hint mt-2">{t('finance.pnl.hint')}</p>
+          </section>
+
+          <section className="min-w-0">
+            <p className="webh2 mb-3">{t('finance.margin.title')}</p>
+            <div className="wtable">
+              <div className="wtable-head" style={{ gridTemplateColumns: '1.8fr .8fr .9fr .9fr .7fr' }}>
+                <span>{t('finance.margin.position')}</span>
+                <span>{t('finance.margin.price')}</span>
+                <span>{t('finance.margin.cost')}</span>
+                <span>{t('finance.margin.margin')}</span>
+                <span />
+              </div>
+              {margins.length === 0 ? (
+                <div className="empty !py-8">{t('finance.margin.empty')}</div>
+              ) : margins.map((r) => (
+                <div key={r.variantId} className="wtable-row"
+                     style={{ gridTemplateColumns: '1.8fr .8fr .9fr .9fr .7fr' }}>
+                  <span className="min-w-0">
+                    <span className="block truncate font-semibold" style={{ color: 'var(--color-text)' }}>
+                      {r.title}
+                    </span>
+                    <span className="block truncate" style={{ fontSize: 12, color: 'var(--color-muted)' }}>
+                      {r.variantName}
+                    </span>
+                  </span>
+                  <span className="tabular">
+                    {r.price === null ? t('common.noValue') : t.money(r.price)}
+                  </span>
+                  <span className="tabular">{t.money(r.unitCost)}</span>
+                  <span className="tabular font-semibold"
+                        style={{ color: r.margin !== null && r.margin < 0
+                          ? 'var(--color-danger)' : 'var(--color-text)' }}>
+                    {r.margin === null ? t('common.noValue')
+                      : `${t.money(r.margin)}${r.marginPct === null ? '' : ` · ${t.percent(r.marginPct)}`}`}
+                  </span>
+                  <span>
+                    {r.missingCosts > 0 && (
+                      <span className="badge-warn">{t('finance.margin.incomplete')}</span>
+                    )}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <p className="field-hint mt-2">{t('finance.margin.hint')}</p>
+          </section>
+        </div>
+      )}
+
       {/* ═══ CRESKO Web §15: нижний ряд 1.05fr / 1fr — ТОЛЬКО lg ════════
           Слева динамика дохода, справа журнал транзакций. Ряд, а не два
           блока подряд: график без строк рядом не отвечает на «а что это
           был за день», а строки без графика не показывают форму месяца. */}
+      {view !== 'analytics' && (
       <div className="hidden gap-5 lg:grid" style={{ gridTemplateColumns: '1.05fr 1fr' }}>
         {/* Подпись НАД карточкой, а не внутри: справа такая же подпись
             стоит над таблицей, у которой своя рамка, — внутри карточки
@@ -607,6 +734,7 @@ export function FinanceClient({
           </div>
         </section>
       </div>
+      )}
 
       {/* Журнал — отдельными карточками, как везде в кабинете.
           На широком экране его заменяет таблица выше — двух списков
@@ -714,6 +842,71 @@ export function FinanceClient({
       )}
       </div>
 
+      {/* ── Аналітика на телефоне — те же данные картками (М46).
+          Паритет: на десктопе это вкладка, второй вкладочной полосы
+          телефону не заводим — блоки стоят после журнала, куда за ними
+          и листают. */}
+      <section className="rise-2 lg:hidden">
+        <h2 className="display mb-3 t-xl">{t('finance.pnl.title')}</h2>
+        {pnl.length === 0 ? (
+          <div className="empty card">{t('finance.pnl.empty')}</div>
+        ) : (
+          <div className="card !p-0">
+            {pnl.map((r) => (
+              <div key={r.bucket} className="row px-4">
+                <span className="min-w-0">
+                  <span className="t-md block capitalize">
+                    {t.date(`${r.bucket}T00:00:00`, { month: 'long', year: 'numeric' })}
+                  </span>
+                  <span className="tabular t-xs mt-0.5 block prose-muted">
+                    {t('finance.pnl.row.detail', {
+                      income: t.money(r.income),
+                      fixed: t.money(r.expenseFixed),
+                      variable: t.money(r.expenseVariable),
+                    })}
+                  </span>
+                </span>
+                <span className="tabular t-md shrink-0"
+                      style={{ color: r.net < 0 ? 'var(--color-danger)' : 'var(--color-success)' }}>
+                  {t.money(r.net)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="field-hint mt-2">{t('finance.pnl.hint')}</p>
+      </section>
+
+      <section className="rise-2 lg:hidden">
+        <h2 className="display mb-3 t-xl">{t('finance.margin.title')}</h2>
+        {margins.length === 0 ? (
+          <div className="empty card">{t('finance.margin.empty')}</div>
+        ) : (
+          <div className="card !p-0">
+            {margins.map((r) => (
+              <div key={r.variantId} className="row px-4">
+                <span className="min-w-0">
+                  <span className="t-md block truncate">{r.title}</span>
+                  <span className="tabular t-xs mt-0.5 block prose-muted">
+                    {r.variantName}
+                    {' · '}
+                    {t('finance.margin.cost')}: {t.money(r.unitCost)}
+                    {r.missingCosts > 0 && <> · {t('finance.margin.incomplete')}</>}
+                  </span>
+                </span>
+                <span className="tabular t-md shrink-0"
+                      style={{ color: r.margin !== null && r.margin < 0
+                        ? 'var(--color-danger)' : undefined }}>
+                  {r.margin === null ? t('common.noValue')
+                    : `${t.money(r.margin)}${r.marginPct === null ? '' : ` · ${t.percent(r.marginPct)}`}`}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="field-hint mt-2">{t('finance.margin.hint')}</p>
+      </section>
+
       <p className="field-hint">{t('finance.hint')}</p>
 
       {/* ── Новая запись ─────────────────────────────────────── */}
@@ -785,10 +978,23 @@ export function FinanceClient({
                       ? (c.kind === 'income' ? 'badge-success' : 'badge-warn')
                       : 'badge'}>
                 {c.name}
+                {/* Пометка «постійна» — данные для P&L (0121), поэтому она
+                    видна и переключается ровно там, где категорию завели. */}
+                {c.kind === 'expense' && c.isFixed && (
+                  <span className="opacity-70">· {t('finance.categories.fixed.badge')}</span>
+                )}
                 {canWrite && (
                   <button className="underline" disabled={busy === c.id}
                           onClick={() => void toggleCategory(c)}>
                     {c.isActive ? t('finance.categories.hide') : t('finance.categories.restore')}
+                  </button>
+                )}
+                {canWrite && c.kind === 'expense' && (
+                  <button className="underline" disabled={busy === c.id}
+                          onClick={() => void toggleFixed(c)}>
+                    {c.isFixed
+                      ? t('finance.categories.fixed.unmark')
+                      : t('finance.categories.fixed.mark')}
                   </button>
                 )}
               </span>
@@ -811,6 +1017,16 @@ export function FinanceClient({
               <option value="expense">{t('finance.categories.kind.expense')}</option>
               <option value="income">{t('finance.categories.kind.income')}</option>
             </select>
+            {/* Галочка только у расхода: у дохода деления на постоянный
+                и переменный не существует как понятия. */}
+            {catKind === 'expense' && (
+              <label className="flex items-center gap-2 py-2"
+                     style={{ minHeight: 'var(--tap-min)' }}>
+                <input type="checkbox" checked={catFixed}
+                       onChange={(e) => setCatFixed(e.target.checked)} />
+                <span className="t-sm">{t('finance.categories.fixed.label')}</span>
+              </label>
+            )}
             <button className="btn-secondary shrink-0"
                     disabled={!catName.trim() || busy === 'category'}>
               {t('finance.categories.add')}

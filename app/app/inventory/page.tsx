@@ -51,7 +51,7 @@ export default async function InventoryPage({
 
   const [
     { data: containers }, { data: materials }, { data: variants }, { data: value },
-    { data: suppliers }, { data: locations }, { data: batches },
+    { data: suppliers }, { data: locations }, { data: batches }, { data: moves },
   ] =
     await Promise.all([
       supabase.from('material_containers')
@@ -84,6 +84,15 @@ export default async function InventoryPage({
         .select('id, material_id, batch_number, expiry_date')
         .eq('tenant_id', m.tenantId)
         .order('expiry_date', { ascending: true }).limit(500),
+      // Последние движения — для правой рейки CRESKO Web (§8): шесть
+      // свежих строк журнала, тот же источник, что у экрана «Рухи».
+      // Чтение по `stock_movements_read` — тому же `stock.read`, что
+      // и весь экран (0003), отдельного права не появляется.
+      supabase.from('stock_movements')
+        .select('id, movement_type, quantity, created_at, materials(name, unit), offering_variants(name, unit, offerings(title))')
+        .eq('tenant_id', m.tenantId)
+        .order('created_at', { ascending: false })
+        .limit(6),
     ])
 
   // Действующая партия на материал. Считаем один раз здесь, а не на
@@ -137,6 +146,22 @@ export default async function InventoryPage({
         }))}
         suppliers={suppliers ?? []}
         locations={locations ?? []}
+        movements={(moves ?? []).map((mv) => {
+          // Название — как на экране «Рухи»: товар через позицию каталога,
+          // расходник своим именем. Тот же способ сборки, что в
+          // `movements/page.tsx`.
+          const v = mv.offering_variants as unknown as
+            { name: string; unit: string; offerings: { title: string } | null } | null
+          const mat = mv.materials as unknown as { name: string; unit: string } | null
+          return {
+            id: mv.id as string,
+            type: mv.movement_type as string,
+            qty: Number(mv.quantity),
+            unit: v?.unit ?? mat?.unit ?? '',
+            title: v ? `${v.offerings?.title ?? ''} · ${v.name}` : mat?.name ?? '—',
+            createdAt: mv.created_at as string,
+          }
+        })}
         batches={(batches ?? []).map((b) => ({
           id: b.id, materialId: b.material_id,
           number: b.batch_number, expiry: b.expiry_date,

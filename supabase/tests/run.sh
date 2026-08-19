@@ -165,6 +165,7 @@ LOG="$(mktemp)"
   psql -f "$ROOT/supabase/tests/39_seller_push_scan.sql"
   psql -f "$ROOT/supabase/tests/40_intent_and_solo.sql"
   psql -f "$ROOT/supabase/tests/41_guest_claim.sql"
+  psql -f "$ROOT/supabase/tests/42_finance_analytics.sql"
   # 24 заводит своих людей, свой заклад и после себя базу не чистит —
   # как 21 и 22. Плюс он ЗАПУСКАЕТ уборку по сроку, то есть удаляет
   # старые строки во всей базе: после него ни один тест ставить нельзя.

@@ -7,7 +7,9 @@ import { useT } from '@/lib/i18n/client'
 import type { T } from '@/lib/i18n/translate'
 import { noteIfImmutable } from '@/lib/security-log'
 import { dbErrorText } from '@/lib/errors/db'
-import { IconClipboard, IconLayers, IconPlus, IconScissors } from '@/components/icons'
+import {
+  IconBack, IconCalendar, IconClipboard, IconLayers, IconPlus, IconScissors,
+} from '@/components/icons'
 
 // Дата выпуска версии — «12 січ. 2024». Набор опций, а не своя `fmt`:
 // форматирует `t.date`, то есть локаль, а не экран.
@@ -177,11 +179,25 @@ export function TechCardsClient({
   const [openVersion, setOpenVersion] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
-  // Вкладка и раскрытая строка таблицы — только веб-версия. На телефоне
-  // вкладок нет, поэтому значение остаётся 'all', и мобильный список
-  // видит все карты, как и раньше.
+  // Вкладка, открытая карточка и шаг визарда — только веб-версия.
+  // На телефоне вкладок нет, значение остаётся 'all', карточка не
+  // рисуется вовсе (`hidden lg:*`), и мобильный список видит все карты,
+  // как и раньше.
   const [tab, setTab] = useState<Tab>('all')
-  const [openGroup, setOpenGroup] = useState<string | null>(null)
+  // README §6 (`techItem`): картка техкарти. Отдельного адреса
+  // `/app/techcards/<id>` в продукте нет, и заводить его ради веб-вида
+  // значит менять навигацию, а не вид, — поэтому карточка живёт
+  // состоянием клиента: строка таблицы открывает её на месте списка.
+  // Ключ — НАЗВАНИЕ группы, а не id версии: карта это стопка версий,
+  // и после выпуска новой версии карточка обязана остаться открытой.
+  const [webCard, setWebCard] = useState<string | null>(null)
+  const [cardTab, setCardTab] = useState<'steps' | 'history'>('steps')
+  // README §7 (`techNew`): шаг визарда. Из пяти шагов макета данными
+  // существуют три: Основне · Етапи · Перевірка. «Матеріали» — это
+  // `variant_materials` каталога (расход, а не регламент; М43 то же
+  // решение у карточки засоба), «Примітки» отдельным полем карта
+  // не хранит — примітка живёт в каждом шаге.
+  const [wstep, setWstep] = useState(0)
 
   // Группировка по названию: карта — это не строка, а стопка версий.
   const groups = useMemo<Group[]>(() => {
@@ -221,8 +237,21 @@ export function TechCardsClient({
   // как несостоявшаяся загрузка.
   const WGRID = '2.4fr 1.4fr 1.2fr 1fr 1.1fr 40px'
 
+  // Открытая карточка ищется в СВЕЖИХ группах, а не хранится копией:
+  // после `router.refresh()` пропсы новые, и копия показывала бы
+  // вчерашнюю версию. Исчезла группа (сменилось название при выпуске
+  // из другого окна) — карточка молча закрывается в список.
+  const webGroup = webCard ? groups.find((g) => g.title === webCard) ?? null : null
+  // Карточка показывает ЧИННУ версию — ту, по которой салон работает
+  // сегодня; если активной нет (все сняты), показывается последняя.
+  const webVersion = webGroup
+    ? webGroup.versions.find((v) => v.id === webGroup.currentId) ?? webGroup.latest
+    : null
+  const webSteps = webVersion ? normalizeSteps(webVersion.steps) : []
+
   function startNew() {
     setErr('')
+    setWstep(0)
     setDraft({ title: '', lockTitle: false, version: 1, offeringId: '', steps: [{ ...EMPTY_STEP }] })
   }
 
@@ -230,6 +259,7 @@ export function TechCardsClient({
   // следующей. Мастеру это привычнее правки: он видит то, по чему работал.
   function startNextVersion(group: { title: string; latest: Card }) {
     setErr('')
+    setWstep(0)
     const base = normalizeSteps(group.latest.steps)
     setDraft({
       title: group.title,
@@ -261,6 +291,19 @@ export function TechCardsClient({
       steps.splice(to, 0, moved)
       return { ...d, steps }
     })
+  }
+
+  // «Далі» визарда пускает вперёд только через ту же проверку, что и
+  // сохранение: пустое название или пустые шаги на «Перевірці» означали
+  // бы отказ в самом конце — там, где человек уже ничего не заполняет.
+  function nextStep() {
+    if (!draft) return
+    setErr('')
+    if (wstep === 0 && !draft.title.trim()) { setErr(t('techcards.error.noTitle')); return }
+    if (wstep === 1 && !draft.steps.some((s) => s.step.trim())) {
+      setErr(t('techcards.error.noSteps')); return
+    }
+    setWstep((w) => Math.min(2, w + 1))
   }
 
   async function save(e: React.FormEvent) {
@@ -318,22 +361,30 @@ export function TechCardsClient({
       {/* ── CRESKO Web: хедер экрана (только lg) ─────────────────
           Слева имя экрана тем же ключом, которым его называет панель
           и вкладка браузера; справа — то же единственное действие,
-          что и на телефоне: выпуск новой карты. */}
+          что и на телефоне: выпуск новой карты.
+
+          Хедер, метрики, вкладки и таблица НЕ рисуются, пока на lg
+          открыта карточка (§6) или визард (§7): в README это отдельные
+          экраны с «Назад до техкарт», а не панель поверх списка.
+          Мобильной раскладки условие не касается — все эти блоки
+          и так `hidden` ниже lg. */}
+      {!draft && !webGroup && (
       <div className="hidden items-center justify-between lg:flex">
         <h1 className="webh1">{t('app.screen.techcards.title')}</h1>
         {canWrite && (
-          <button type="button" className="btn-primary" onClick={startNew}
-                  disabled={draft !== null}>
+          <button type="button" className="btn-primary" onClick={startNew}>
             {t('techcards.new')}
           </button>
         )}
       </div>
+      )}
 
       {/* ── CRESKO Web: метрики (только lg) ──────────────────────
           Те же три числа, что и в мобильном ряду ниже, в виде .wmetric
           с иконкой-плашкой. Плитки не нажимаются: фильтр живёт
           во вкладках, и второй орган управления с тем же действием —
           это два входа в одно место. */}
+      {!draft && !webGroup && (
       <section className="rise hidden gap-4 lg:grid lg:grid-cols-3">
         {([
           { key: 'cards', n: groups.length, label: t('techcards.stats.cards'), tone: 'violet', icon: IconClipboard },
@@ -349,6 +400,7 @@ export function TechCardsClient({
           </div>
         ))}
       </section>
+      )}
 
       {/* README, розділ G: «стат-хедер». Сетки миниатюр из макета здесь
           НЕТ намеренно: у техкарты нет ни фото, ни чего-либо, что можно
@@ -392,7 +444,100 @@ export function TechCardsClient({
 
       {draft && (
         <form onSubmit={save} className="card rise-1 flex flex-col gap-4">
-          <div className="flex items-center justify-between gap-3">
+          {/* ── CRESKO Web §7: шапка визарда (только lg) ────────────
+              «Назад до техкарт» закрывает черновик — черновика в базе
+              не существует, карта затверджується одразу (0014), поэтому
+              и кнопки «Зберегти чернетку» из макета здесь нет: она
+              обещала бы то, чего модель данных не делает. Справа —
+              навигация по шагам; затвердження только с последнего. */}
+          <div className="hidden flex-col gap-3 lg:flex">
+            <button type="button"
+                    className="btn-ghost self-start !px-0"
+                    onClick={() => { setDraft(null); setErr('') }}>
+              <IconBack size={18} />
+              {t('techcards.webitem.back')}
+            </button>
+            <div className="flex items-center justify-between gap-4">
+              <div className="min-w-0">
+                <h1 className="webh1" data-size="27">
+                  {/* Назва техкарти — данные заклада. */}
+                  {draft.lockTitle
+                    ? t('techcards.draft.newVersion', { title: draft.title })
+                    : t('techcards.new')}
+                </h1>
+                <p style={{ fontSize: 14, color: 'var(--color-muted)' }}>
+                  {t('techcards.wizard.subtitle')}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <span className="badge-accent tabular">
+                  {t('techcards.draft.version', { n: t.number(draft.version) })}
+                </span>
+                {wstep > 0 && (
+                  <button type="button" className="btn-secondary"
+                          onClick={() => { setErr(''); setWstep((w) => Math.max(0, w - 1)) }}>
+                    {t('techcards.wizard.prev')}
+                  </button>
+                )}
+                {wstep < 2 ? (
+                  <button type="button" className="btn-primary" onClick={nextStep}>
+                    {t('techcards.wizard.next')}
+                  </button>
+                ) : (
+                  <button className="btn-primary" disabled={busy}>
+                    {busy
+                      ? t('common.saving')
+                      : t('techcards.submit', { n: t.number(draft.version) })}
+                  </button>
+                )}
+              </div>
+            </div>
+            {/* Стрічка шагов из README: кружечок 24px с номером, подпись
+                14/650, активный подчёркнут акцентом. Назад по стрічке
+                можно, вперёд — только через «Далі» с проверкой. */}
+            <div className="flex" style={{ gap: 34 }}>
+              {([
+                t('techcards.wizard.step.basics'),
+                t('techcards.wizard.step.steps'),
+                t('techcards.wizard.step.review'),
+              ] as const).map((label, i) => (
+                <button key={label} type="button"
+                        onClick={() => { if (i < wstep) { setErr(''); setWstep(i) } }}
+                        className="flex items-center gap-2"
+                        style={{
+                          paddingBottom: 6,
+                          borderBottom: i === wstep
+                            ? '2px solid var(--color-accent)'
+                            : '2px solid transparent',
+                          cursor: i < wstep ? 'pointer' : 'default',
+                        }}>
+                  <span className="tabular flex items-center justify-center"
+                        style={{
+                          width: 24, height: 24, borderRadius: 999,
+                          fontSize: 13, fontWeight: 700,
+                          background: i === wstep
+                            ? 'var(--color-accent)'
+                            : 'var(--web-border-dash, var(--color-border))',
+                          color: i === wstep
+                            ? 'var(--color-accent-text)'
+                            : 'var(--web-muted-soft, var(--color-muted))',
+                        }}>
+                    {i + 1}
+                  </span>
+                  <span style={{
+                    fontSize: 14, fontWeight: 650,
+                    color: i === wstep
+                      ? 'var(--color-text)'
+                      : 'var(--web-muted-soft, var(--color-muted))',
+                  }}>
+                    {label}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-3 lg:hidden">
             <h2 className="display t-lg">
               {/* Назва техкарти — данные заклада, она приезжает подстановкой. */}
               {draft.lockTitle
@@ -404,7 +549,7 @@ export function TechCardsClient({
             </span>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className={`grid gap-3 sm:grid-cols-2 ${wstep === 0 ? '' : 'lg:hidden'}`}>
             <div>
               <label className="field-label">{t('techcards.field.title.label')}</label>
               <input
@@ -430,7 +575,7 @@ export function TechCardsClient({
             </div>
           </div>
 
-          <div className="flex flex-col gap-3">
+          <div className={`flex flex-col gap-3 ${wstep === 1 ? '' : 'lg:hidden'}`}>
             {draft.steps.map((step, i) => (
               <div key={i} className="card-flat grid gap-3 sm:grid-cols-[1fr_1fr_7rem]">
                 <div className="sm:col-span-3 flex items-center justify-between gap-2">
@@ -489,7 +634,62 @@ export function TechCardsClient({
             </button>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          {/* ── CRESKO Web §7, шаг «Перевірка» (только lg) ──────────
+              То, что уйдёт в базу, глазами: название, услуга и шаги
+              читаются, а не редактируются. Пустые шаги (без назви дії)
+              при сохранении отбрасываются — здесь они не показываются
+              по той же причине. */}
+          <div className={wstep === 2 ? 'hidden flex-col gap-3 lg:flex' : 'hidden'}>
+            <h3 className="webh2">{t('techcards.wizard.review.title')}</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <span className="field-label">{t('techcards.field.title.label')}</span>
+                {/* Назва і послуга — данные заклада. */}
+                <p style={{ fontWeight: 650 }}>{draft.title}</p>
+              </div>
+              <div>
+                <span className="field-label">{t('techcards.field.service.label')}</span>
+                <p style={{ fontWeight: 650 }}>
+                  {services.find((s) => s.id === draft.offeringId)?.title
+                    ?? t('techcards.field.service.general')}
+                </p>
+              </div>
+            </div>
+            <ol className="flex flex-col">
+              {draft.steps.filter((s) => s.step.trim()).map((s, i) => (
+                <li key={i} className="flex items-start gap-3 py-2.5"
+                    style={{ borderBottom: '1px dashed var(--web-border-dash, var(--color-border))' }}>
+                  <span className="tabular flex shrink-0 items-center justify-center"
+                        style={{
+                          width: 22, height: 22, borderRadius: 999, fontSize: 12,
+                          fontWeight: 700, background: 'var(--color-accent-soft)',
+                          color: 'var(--color-accent-ink)',
+                        }}>
+                    {i + 1}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block" style={{ fontWeight: 650 }}>{s.step}</span>
+                    {(s.solution || s.proportion || s.note) && (
+                      <span className="block" style={{ fontSize: 12, color: 'var(--color-muted)' }}>
+                        {[
+                          s.solution,
+                          s.proportion && t('techcards.step.proportionShort', { value: s.proportion }),
+                          s.note,
+                        ].filter(Boolean).join(' · ')}
+                      </span>
+                    )}
+                  </span>
+                  {s.minutes && (
+                    <span className="tabular shrink-0" style={{ fontSize: 13, fontWeight: 650 }}>
+                      {t('techcards.step.minutesShort', { n: s.minutes })}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ol>
+          </div>
+
+          <div className="flex flex-wrap gap-2 lg:hidden">
             <button className="btn-primary" disabled={busy}>
               {busy
                 ? t('common.saving')
@@ -504,6 +704,218 @@ export function TechCardsClient({
         </form>
       )}
 
+      {/* ── CRESKO Web §6: картка техкарти (только lg) ─────────────
+          Пока открыт визард выпуска версии, карточка спрятана: после
+          затвердження `router.refresh()` привозит свежие версии, и она
+          возвращается уже с новой чинною — ключом служит название.
+
+          Из макета НЕ рисуются, потому что этих данных не существует:
+          фото (у регламента его нет), «Опис» и «Примітки» (карта хранит
+          только шаги), «Матеріали та продукти» (`variant_materials` —
+          расход рецептуры каталога, к техкарте базой не привязан; то же
+          решение, что у карточки засоба в М43), «Файли та вкладення»
+          и «Зняти з публікації» (статуса публикации нет: карта чинна,
+          пока не выпущена следующая). Вместо «Редагувати» — «Створити
+          нову версію»: затверджена версія незмінна (0014), и кнопка
+          правки обещала бы то, что база уронит. */}
+      {webGroup && !draft && (
+        <section className="hidden flex-col gap-4 lg:flex">
+          <button type="button" className="btn-ghost self-start !px-0"
+                  onClick={() => setWebCard(null)}>
+            <IconBack size={18} />
+            {t('techcards.webitem.back')}
+          </button>
+
+          <div className="webcard">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex min-w-0 items-start gap-4">
+                {/* Плашка на месте фото 110×78: у регламента нет
+                    картинки, серый прямоугольник читался бы как
+                    несостоявшаяся загрузка. */}
+                <span aria-hidden className="flex shrink-0 items-center justify-center"
+                      style={{
+                        width: 110, height: 78, borderRadius: 12,
+                        background: 'var(--color-accent-soft)',
+                        color: 'var(--color-accent-ink)',
+                      }}>
+                  <IconClipboard size={30} />
+                </span>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-3">
+                    {/* Назва техкарти — данные заклада. 26px — из §6 README. */}
+                    <h1 className="webh1" style={{ fontSize: 26 }}>{webGroup.title}</h1>
+                    <span className={webGroup.currentId ? 'badge-success' : 'badge'}>
+                      {webGroup.currentId
+                        ? t('techcards.version.current')
+                        : t('techcards.version.archived')}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1"
+                       style={{ fontSize: 13, color: 'var(--color-muted)' }}>
+                    <span className="flex items-center gap-1.5">
+                      <span aria-hidden style={{ color: 'var(--color-accent-ink)' }}>
+                        <IconScissors size={15} />
+                      </span>
+                      {webGroup.latest.offeringTitle
+                        ?? (webGroup.latest.offeringId
+                          ? t('techcards.card.linked')
+                          : t('techcards.field.service.general'))}
+                    </span>
+                    <span className="tabular flex items-center gap-1.5">
+                      <span aria-hidden style={{ color: 'var(--color-accent-ink)' }}>
+                        <IconLayers size={15} />
+                      </span>
+                      {t('techcards.webitem.meta.version', { n: t.number(webVersion?.version ?? 0) })}
+                    </span>
+                    <span className="tabular flex items-center gap-1.5">
+                      <span aria-hidden style={{ color: 'var(--color-accent-ink)' }}>
+                        <IconCalendar size={15} />
+                      </span>
+                      {t('techcards.webitem.meta.approved', {
+                        date: t.date(webVersion?.createdAt ?? webGroup.latest.createdAt, DAY),
+                      })}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              {canWrite && (
+                <button type="button" className="btn-secondary shrink-0"
+                        onClick={() => startNextVersion(webGroup)}>
+                  {t('techcards.card.newVersion')}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Табы §6: из пяти данными существуют два. Опис и Примітки
+              карта не хранит, Матеріали — чужая модель (см. выше). */}
+          <div className="wtabs">
+            {([
+              ['steps', t('techcards.webitem.tab.steps')],
+              ['history', t('techcards.webitem.tab.history')],
+            ] as const).map(([key, label]) => (
+              <button key={key} type="button" className="wtab"
+                      data-active={cardTab === key}
+                      onClick={() => setCardTab(key)}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="grid items-start gap-5"
+               style={{ gridTemplateColumns: 'minmax(0, 1fr) 330px' }}>
+            <div className="flex flex-col gap-4">
+              {cardTab === 'steps' ? (
+                <div className="webcard">
+                  <h2 className="webh2">{t('techcards.webitem.steps.title')}</h2>
+                  {webSteps.length === 0 ? (
+                    <p className="prose-muted mt-3">{t('techcards.steps.empty')}</p>
+                  ) : (
+                    <ol className="mt-2 flex flex-col">
+                      {/* Текст шага, раствор, пропорция и примечание —
+                          регламент заклада, то есть данные: они не
+                          переводятся. Переводится только обвязка. */}
+                      {webSteps.map((s, i) => (
+                        <li key={i} className="flex items-start gap-3 py-2.5"
+                            style={{
+                              borderBottom: i === webSteps.length - 1
+                                ? 'none'
+                                : '1px dashed var(--web-border-dash, var(--color-border))',
+                            }}>
+                          <span className="tabular flex shrink-0 items-center justify-center"
+                                style={{
+                                  width: 22, height: 22, borderRadius: 999, fontSize: 12,
+                                  fontWeight: 700, background: 'var(--color-accent-soft)',
+                                  color: 'var(--color-accent-ink)',
+                                }}>
+                            {i + 1}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block" style={{ fontWeight: 650 }}>{s.step}</span>
+                            {(s.solution || s.proportion || s.note) && (
+                              <span className="block"
+                                    style={{ fontSize: 12, color: 'var(--color-muted)' }}>
+                                {[
+                                  s.solution,
+                                  s.proportion
+                                    && t('techcards.step.proportionShort', { value: s.proportion }),
+                                  s.note,
+                                ].filter(Boolean).join(' · ')}
+                              </span>
+                            )}
+                          </span>
+                          {s.minutes && (
+                            <span className="tabular shrink-0"
+                                  style={{ fontSize: 13, fontWeight: 650 }}>
+                              {t('techcards.step.minutesShort', { n: s.minutes })}
+                            </span>
+                          )}
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </div>
+              ) : (
+                <div className="webcard">
+                  <h2 className="webh2">{t('techcards.webitem.tab.history')}</h2>
+                  <div className="mt-2">
+                    <VersionList t={t} group={webGroup}
+                                 openVersion={openVersion} setOpenVersion={setOpenVersion} />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Права колонка 330px из §6: «Інформація» и блок статуса.
+                Всё в ней — настоящие величины карты. */}
+            <div className="flex flex-col gap-4">
+              <div className="webcard">
+                <h2 className="webh2">{t('techcards.webitem.info.title')}</h2>
+                <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-3">
+                  {([
+                    [t('techcards.webitem.info.service'),
+                      webGroup.latest.offeringTitle
+                        ?? (webGroup.latest.offeringId
+                          ? t('techcards.card.linked')
+                          : t('techcards.field.service.general'))],
+                    [t('techcards.webitem.info.status'),
+                      webGroup.currentId
+                        ? t('techcards.version.current')
+                        : t('techcards.version.archived')],
+                    [t('techcards.webitem.info.version'),
+                      t('techcards.webitem.meta.version', { n: t.number(webVersion?.version ?? 0) })],
+                    [t('techcards.webitem.info.versions'), t.number(webGroup.versions.length)],
+                    [t('techcards.webitem.info.steps'), t.number(webSteps.length)],
+                    [t('techcards.webitem.info.approved'),
+                      t.date(webVersion?.createdAt ?? webGroup.latest.createdAt, DAY)],
+                  ] as const).map(([label, value]) => (
+                    <div key={label} className="min-w-0">
+                      <span className="block" style={{ fontSize: 12, color: 'var(--color-muted)' }}>
+                        {label}
+                      </span>
+                      <span className="tabular block truncate"
+                            style={{ fontSize: 13, fontWeight: 650 }}>
+                        {value}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Аналог блока «Публікація»: у карты нет статуса
+                  публикации, зато есть главное правило её жизни —
+                  и оно уже записано словарём (`techcards.footer`). */}
+              <div className="webcard">
+                <h2 className="webh2">{t('techcards.webitem.publish.title')}</h2>
+                <p className="mt-2" style={{ fontSize: 13, color: 'var(--color-muted)' }}>
+                  {t('techcards.footer')}
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
       {groups.length === 0 ? (
         <div className="card rise-2">
           <div className="empty">
@@ -512,6 +924,8 @@ export function TechCardsClient({
           </div>
         </div>
       ) : (
+        <>
+        {!draft && !webGroup && (
         <>
         {/* ── CRESKO Web: вкладки чертой (только lg) ─────────────
             Делят карты по единственному признаку, который у них есть
@@ -529,9 +943,10 @@ export function TechCardsClient({
         {/* ── CRESKO Web: техкарты таблицей (только lg) ──────────
             Строка — КАРТА (стопка версий), а не версия: карта и есть
             то, чем оперирует салон, а версии — её история. Нажатие
-            на название раскрывает историю прямо под строкой: отдельного
-            адреса `/app/techcards/<id>` в продукте нет, и заводить его
-            ради веб-раскладки значит менять навигацию, а не вид.
+            на название открывает картку (§6) на месте списка: README
+            называет вход в `techItem` именно строкой таблицы, а
+            отдельного адреса `/app/techcards/<id>` в продукте нет —
+            заводить его ради веб-раскладки значит менять навигацию.
 
             Строка целиком кнопкой быть не может: справа живёт кнопка
             выпуска версии, а кнопка внутри кнопки недопустима. Нажимается
@@ -549,95 +964,67 @@ export function TechCardsClient({
 
             {shownGroups.length === 0 ? (
               <div className="empty">{t('techcards.web.empty.filter')}</div>
-            ) : shownGroups.map((g) => {
-              const open = openGroup === g.title
-              return (
-                <div key={g.title}>
-                  {/* Черта под строкой задаётся ЗДЕСЬ, а не только классом.
-                      `.wtable-row:last-of-type` снимает её у последней
-                      строки — а внутри обёртки группы каждая строка
-                      последняя, и разделители пропали бы у всех разом.
-                      Раскрытая строка отдаёт черту своему блоку версий,
-                      иначе история отрезана от карты, к которой относится. */}
-                  <div className="wtable-row"
-                       style={{
-                         gridTemplateColumns: WGRID,
-                         borderBottom: open
-                           ? 'none'
-                           : '1px solid var(--web-border-row, var(--color-border))',
-                       }}>
-                    <button type="button" aria-expanded={open}
-                            onClick={() => setOpenGroup(open ? null : g.title)}
-                            className="flex min-w-0 items-center gap-3 text-left"
-                            style={{ minHeight: 'var(--tap-min)' }}>
-                      {/* Плашка 42px вместо миниатюры: у регламента нет
-                          ни фото, ни чего-либо, что можно показать
-                          картинкой. Значок, а не глиф — «▤» на части
-                          прошивок приезжает квадратом (М31). */}
-                      <span aria-hidden
-                            className="flex shrink-0 items-center justify-center"
-                            style={{
-                              width: 42, height: 42, borderRadius: 12,
-                              background: 'var(--color-accent-soft)',
-                              color: 'var(--color-accent-ink)',
-                            }}>
-                        <IconClipboard size={20} />
-                      </span>
-                      <span className="min-w-0">
-                        {/* Назва техкарти — данные заклада. */}
-                        <span className="block truncate font-semibold"
-                              style={{ color: 'var(--color-text)' }}>{g.title}</span>
-                        <span className="block truncate"
-                              style={{ color: 'var(--color-faint)' }}>
-                          {open
-                            ? t('techcards.web.row.hide')
-                            : t('techcards.web.row.show')}
-                        </span>
-                      </span>
-                    </button>
-                    <span className="min-w-0 truncate">
-                      {/* Та же развилка, что и на телефоне: подписать
-                          привязанную карту «загальною» значит соврать
-                          про регламент. */}
-                      {g.latest.offeringTitle
-                        ?? (g.latest.offeringId
-                          ? t('techcards.card.linked')
-                          : t('techcards.field.service.general'))}
+            ) : shownGroups.map((g) => (
+                <div key={g.title} className="wtable-row"
+                     style={{ gridTemplateColumns: WGRID }}>
+                  <button type="button"
+                          onClick={() => { setWebCard(g.title); setCardTab('steps') }}
+                          className="flex min-w-0 items-center gap-3 text-left"
+                          style={{ minHeight: 'var(--tap-min)' }}>
+                    {/* Плашка 42px вместо миниатюры: у регламента нет
+                        ни фото, ни чего-либо, что можно показать
+                        картинкой. Значок, а не глиф — «▤» на части
+                        прошивок приезжает квадратом (М31). */}
+                    <span aria-hidden
+                          className="flex shrink-0 items-center justify-center"
+                          style={{
+                            width: 42, height: 42, borderRadius: 12,
+                            background: 'var(--color-accent-soft)',
+                            color: 'var(--color-accent-ink)',
+                          }}>
+                      <IconClipboard size={20} />
                     </span>
-                    <span className="tabular">{t.number(g.versions.length)}</span>
-                    <span className="tabular">{t.date(g.latest.createdAt, DAY)}</span>
-                    <span>
-                      <span className={g.currentId ? 'badge-success' : 'badge'}>
-                        {g.currentId
-                          ? t('techcards.version.current')
-                          : t('techcards.version.archived')}
+                    <span className="min-w-0">
+                      {/* Назва техкарти — данные заклада. */}
+                      <span className="block truncate font-semibold"
+                            style={{ color: 'var(--color-text)' }}>{g.title}</span>
+                      <span className="block truncate"
+                            style={{ color: 'var(--color-faint)' }}>
+                        {t('techcards.web.row.open')}
                       </span>
                     </span>
-                    <span className="text-right">
-                      {canWrite && (
-                        // Подпись для скринридера: «+» он не прочтёт.
-                        <button type="button" className="btn-icon"
-                                aria-label={t('techcards.card.newVersion')}
-                                title={t('techcards.card.newVersion')}
-                                disabled={draft !== null}
-                                onClick={() => startNextVersion(g)}>
-                          <IconPlus size={18} />
-                        </button>
-                      )}
+                  </button>
+                  <span className="min-w-0 truncate">
+                    {/* Та же развилка, что и на телефоне: подписать
+                        привязанную карту «загальною» значит соврать
+                        про регламент. */}
+                    {g.latest.offeringTitle
+                      ?? (g.latest.offeringId
+                        ? t('techcards.card.linked')
+                        : t('techcards.field.service.general'))}
+                  </span>
+                  <span className="tabular">{t.number(g.versions.length)}</span>
+                  <span className="tabular">{t.date(g.latest.createdAt, DAY)}</span>
+                  <span>
+                    <span className={g.currentId ? 'badge-success' : 'badge'}>
+                      {g.currentId
+                        ? t('techcards.version.current')
+                        : t('techcards.version.archived')}
                     </span>
-                  </div>
-                  {open && (
-                    <div style={{
-                      padding: '0 18px 12px 18px',
-                      borderBottom: '1px solid var(--web-border-row, var(--color-border))',
-                    }}>
-                      <VersionList t={t} group={g}
-                                   openVersion={openVersion} setOpenVersion={setOpenVersion} />
-                    </div>
-                  )}
+                  </span>
+                  <span className="text-right">
+                    {canWrite && (
+                      // Подпись для скринридера: «+» он не прочтёт.
+                      <button type="button" className="btn-icon"
+                              aria-label={t('techcards.card.newVersion')}
+                              title={t('techcards.card.newVersion')}
+                              onClick={() => startNextVersion(g)}>
+                        <IconPlus size={18} />
+                      </button>
+                    )}
+                  </span>
                 </div>
-              )
-            })}
+            ))}
 
             {shownGroups.length > 0 && (
               <div className="wtable-foot">
@@ -648,6 +1035,8 @@ export function TechCardsClient({
             )}
           </div>
         </section>
+        </>
+        )}
 
         <div className="flex flex-col gap-4 lg:hidden">
           {groups.map((g) => (

@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { MaterialForm, type RefItem } from './material-form'
 import { ContainerForm, type BatchOption } from './container-form'
 import { RefsForm } from './refs-form'
+import { movementLabel } from './movements/movements-client'
 import { Sheet } from '@/components/sheet'
 import { enqueue, isNetworkError } from '@/lib/offline/queue'
 import { useToast } from '@/components/toast'
@@ -48,6 +49,26 @@ type ScanHit = {
 type ContainerHit = {
   id: string; material: string; code: string; status: string
   use_by: string | null; days_left: number | null; expired: boolean
+}
+/** Строка журнала для правой рейки CRESKO Web (последние движения). */
+type Movement = {
+  id: string; type: string; qty: number; unit: string
+  title: string; createdAt: string
+}
+
+// Цвет движения для рейки — ТЕМ ЖЕ смыслом, что `movementBadge` на экране
+// «Рухи»: зелёное — остаток вырос, красное — ушёл, жёлтое — расхождение.
+// Здесь текстом, а не плашкой: в колонке 268px бейдж на каждой строке —
+// шум, а не акцент. Разойтись с movementBadge эта карта может только
+// вместе с enum `stock_movement_type` — тогда править обе.
+const MOVE_INK: Record<string, string> = {
+  receipt: 'var(--color-success)',
+  return: 'var(--color-success)',
+  transfer_in: 'var(--color-success)',
+  sale: 'var(--color-danger)',
+  write_off: 'var(--color-danger)',
+  transfer_out: 'var(--color-danger)',
+  adjustment: 'var(--color-warn)',
 }
 
 type Tab = 'all' | 'materials' | 'containers' | 'goods'
@@ -140,7 +161,7 @@ export const EXPIRY_KEY: Record<ExpiryState, Key> = {
 // первый экран тому, кто заходит сюда раз в неделю.
 export function InventoryClient({
   tenantId, userId, containers, materials, variants, totals,
-  suppliers, locations, batches, initialScan,
+  suppliers, locations, batches, initialScan, movements,
 }: {
   /** Пришло с кнопки сканера в шапке (?scan=1). */
   initialScan: boolean
@@ -153,6 +174,8 @@ export function InventoryClient({
   suppliers: RefItem[]
   locations: RefItem[]
   batches: BatchOption[]
+  /** Последние движения журнала — для правой рейки на lg+. */
+  movements: Movement[]
 }) {
   const t = useT()
   const supabase = useMemo(() => createClient(), [])
@@ -402,6 +425,14 @@ export function InventoryClient({
           {t('app.screen.inventory.receipts.title')}
         </Link>
       </div>
+
+      {/* ── CRESKO Web: двухколонник (§8) ────────────────────────
+          На lg контент делится на основную колонку и правую рейку
+          268px (ширина из README дословно). Ниже lg обёртка — обычный
+          блок, рейка скрыта, и раскладка не меняется ни на пиксель:
+          зазор колонки тот же gap-5, что был у корня. */}
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:gap-6">
+      <div className="flex min-w-0 flex-1 flex-col gap-5">
 
       {/* ── Результат сканирования ───────────────────────────────
           Первым блоком и только после скана. Крестик обязателен:
@@ -998,8 +1029,12 @@ export function InventoryClient({
       {/* ── Ще у складі ──────────────────────────────────────────
           Все остальные экраны раздела одним списком и в одном месте.
           Раньше половина стояла плитками сверху, половина — тусклыми
-          ссылками в самом низу, где их накрывала нижняя панель. */}
-      <section className="rise-3">
+          ссылками в самом низу, где их накрывала нижняя панель.
+          На lg скрыт: те же входы (тот же массив `more` плюс
+          «Довідники») держит правая рейка — второй список тех же
+          ссылок на одном экране был бы тем самым дубляжом, из-за
+          которого экран переделывался. */}
+      <section className="rise-3 lg:hidden">
         <p className="eyebrow mb-2">{t('inventory.more.title')}</p>
         <div className="card !p-0">
           {more.map((it) => (
@@ -1025,6 +1060,81 @@ export function InventoryClient({
           </button>
         </div>
       </section>
+
+      </div>{/* конец основной колонки */}
+
+      {/* ── CRESKO Web: права рейка (§8, только lg) ──────────────
+          «Швидкі дії» — тот же массив `more` плюс «Довідники», что и
+          в «Ще у складі» ниже lg: рейка ЗАМЕНЯЕТ ту карту на десктопе,
+          а не дублирует её (карта на lg скрыта). Свой список ссылок
+          рейка не заводит — два списка разъехались бы на первом новом
+          экране раздела.
+          «Останні рухи» — реальные строки `stock_movements` (шесть
+          свежих, запрос в page.tsx), тем же переводчиком типов, что
+          экран «Рухи». Блока «Топ категорії за вартістю» из README НЕТ
+          намеренно: категорий у записей склада в данных экрана не
+          существует, а рисовать плашки без данных — фикстура. */}
+      <aside className="hidden shrink-0 flex-col gap-4 lg:flex"
+             style={{ width: 268 }}>
+        <section className="webcard rise-1">
+          <p className="webh2 mb-1">{t('inventory.quick.title')}</p>
+          {more.map((it) => (
+            <Link key={`rail-${it.href}${it.label}`} href={it.href}
+                  className="flex items-center gap-3 py-2"
+                  {...(it.blank ? { target: '_blank', rel: 'noreferrer' } : {})}>
+              <span className="list-anchor"><it.icon size={17} /></span>
+              <span className="t-sm min-w-0 flex-1 truncate">{it.label}</span>
+              <span aria-hidden style={{ color: 'var(--color-faint)' }}>›</span>
+            </Link>
+          ))}
+          <button type="button" onClick={() => setAdding('refs')}
+                  className="flex w-full items-center gap-3 py-2 text-left">
+            <span className="list-anchor"><IconList size={17} /></span>
+            <span className="t-sm min-w-0 flex-1 truncate">{t('inventory.action.refs')}</span>
+            <span aria-hidden style={{ color: 'var(--color-faint)' }}>›</span>
+          </button>
+        </section>
+
+        {/* Пустой журнал карточку не рисует: заголовок над пустотой —
+            обещание данных, которых нет. */}
+        {movements.length > 0 && (
+          <section className="webcard rise-2">
+            <p className="webh2 mb-1">{t('inventory.web.rail.movements')}</p>
+            {/* У последней строки черты нет: следом идёт пунктир
+                ссылки .webcard-link, и две линии подряд — грязь. */}
+            {movements.map((mv, i) => (
+              <div key={mv.id} className="flex items-center justify-between gap-3 py-2"
+                   style={{
+                     borderBottom: i === movements.length - 1
+                       ? undefined
+                       : '1px solid var(--web-border-row, var(--color-border))',
+                   }}>
+                <span className="min-w-0">
+                  <span className="t-sm block truncate font-semibold"
+                        style={{ color: MOVE_INK[mv.type] ?? 'var(--color-text)' }}>
+                    {movementLabel(t, mv.type)}
+                  </span>
+                  {/* Название позиции — данные арендатора. */}
+                  <span className="t-xs block truncate" style={{ color: 'var(--color-faint)' }}>
+                    {mv.title} · {t.dateTime(mv.createdAt, {
+                      day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+                    })}
+                  </span>
+                </span>
+                {/* Количество в журнале уже со знаком (0003). */}
+                <span className="tabular t-sm shrink-0"
+                      style={{ color: MOVE_INK[mv.type] ?? 'var(--color-text)' }}>
+                  {mv.qty > 0 ? '+' : ''}{t.number(mv.qty)} {mv.unit}
+                </span>
+              </div>
+            ))}
+            <Link href="/app/inventory/movements" className="webcard-link">
+              {t('inventory.web.rail.allMovements')}
+            </Link>
+          </section>
+        )}
+      </aside>
+      </div>{/* конец двухколонника */}
 
       {/* ── Главное действие ─────────────────────────────────────
           `.fab-wide`, а не круглый плюс: «+ Банка» и «+ Засіб» —

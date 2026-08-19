@@ -86,12 +86,21 @@ export default async function FinancePage({
 
   const supabase = await createClient()
 
+  // Окно P&L — последние шесть месяцев, НЕЗАВИСИМО от выбранного периода:
+  // P&L смотрят помесячно, и обрезать его чипом «30 днів» значит показать
+  // таблицу из одной строки. Считает база (0121) — по всем записям,
+  // а не по загруженным двумстам.
+  const pnlFrom = iso(new Date(new Date().getFullYear(), new Date().getMonth() - 5, 1))
+  const pnlTo = iso(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0))
+
   const [
     { data: { user } },
     { data: records, error: recordsError },
     { data: sums, error: sumsError },
     { data: prevSums },
     { data: categories, error: categoriesError },
+    { data: pnl },
+    { data: margins },
   ] = await Promise.all([
     supabase.auth.getUser(),
     supabase.from('finance_records')
@@ -121,9 +130,19 @@ export default async function FinancePage({
       .eq('tenant_id', m.tenantId)
       .gte('occurred_on', prev.from).lte('occurred_on', prev.to),
     supabase.from('finance_categories')
-      .select('id, kind, name, is_active')
+      .select('id, kind, name, is_active, is_fixed')
       .eq('tenant_id', m.tenantId)
       .order('kind').order('position').order('name'),
+    // P&L и маржа (0121). Ошибки обоих намеренно не попадают в `error`:
+    // без аналитики экран полон, журнал и итоги важнее красной строки.
+    supabase.rpc('finance_pnl', {
+      p_tenant_id: m.tenantId, p_from: pnlFrom, p_to: pnlTo,
+    }),
+    supabase.from('variant_margin_view')
+      .select('variant_id, offering_kind, title, variant_name, price, own_cost, recipe_cost, unit_cost, margin, margin_pct, missing_costs')
+      .eq('tenant_id', m.tenantId)
+      .order('title').order('variant_name')
+      .limit(100),
   ])
 
   // Сегодняшнюю дату для формы считает сервер: если бы её брал браузер,
@@ -202,6 +221,28 @@ export default async function FinancePage({
           kind: c.kind === 'income' ? 'income' as const : 'expense' as const,
           name: c.name,
           isActive: c.is_active,
+          isFixed: c.is_fixed,
+        }))}
+        pnl={(pnl ?? []).map((r: {
+          bucket: string; income: number; expense_fixed: number
+          expense_variable: number; net: number
+        }) => ({
+          bucket: r.bucket,
+          income: Number(r.income),
+          expenseFixed: Number(r.expense_fixed),
+          expenseVariable: Number(r.expense_variable),
+          net: Number(r.net),
+        }))}
+        margins={(margins ?? []).map((r) => ({
+          variantId: r.variant_id,
+          kind: r.offering_kind === 'service' ? 'service' as const : 'product' as const,
+          title: r.title,
+          variantName: r.variant_name,
+          price: r.price === null ? null : Number(r.price),
+          unitCost: Number(r.unit_cost),
+          margin: r.margin === null ? null : Number(r.margin),
+          marginPct: r.margin_pct === null ? null : Number(r.margin_pct),
+          missingCosts: Number(r.missing_costs),
         }))}
       />
     </AppShell>
