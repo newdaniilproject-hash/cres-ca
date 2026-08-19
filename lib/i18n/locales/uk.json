@@ -592,6 +592,8 @@
   "inventory.material.row.country": "Країна-виробник",
   "inventory.material.row.unit": "Одиниця",
   "inventory.material.row.inci": "Склад (INCI)",
+  "inventory.material.inci.title": "Склад (INCI)",
+  "inventory.material.inci.none": "Склад не вказано",
   "inventory.material.batches.title": "ПАРТІЯ ТА ТЕРМІНИ",
   "inventory.material.batches.add": "+ Партія",
   "inventory.material.row.batchNumber": "Номер партії (Batch)",

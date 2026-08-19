@@ -885,6 +885,13 @@ html.dark {
     background: var(--color-surface-2); display: grid; place-items: center;
     flex-shrink: 0; font-size: 14px; color: var(--color-muted); overflow: hidden;
   }
+  /* Тон значка-якоря. README задаёт цветную плашку у навигационных строк
+     («Документи» на accentSoft, «Контроль відкриття» на violetSoft):
+     две строки подряд с одинаковым серым кружком читаются как один
+     пункт, разбитый переносом. Тон — атрибутом, а не цветом по месту:
+     иначе он разъедется с системой при первой правке темы. */
+  .list-anchor[data-tone='accent'] { background: var(--color-accent-soft); color: var(--color-accent-ink); }
+  .list-anchor[data-tone='violet'] { background: var(--tone-violet-soft);  color: var(--tone-violet); }
 
   /* Цвет только для исключения (например, приход в журнале движений),
      а не для нормы — обычное списание/расход остаётся нейтральным. */

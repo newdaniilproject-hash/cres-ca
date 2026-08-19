@@ -10,6 +10,7 @@ import { useT } from '@/lib/i18n/client'
 import { MaterialForm, type MaterialInit, type RefItem } from '../../material-form'
 import { EXPIRY_KEY } from '../../inventory-client'
 import { EXPIRY_BADGE, expiryState } from '@/lib/expiry'
+import { IconDoc, IconQr } from '@/components/icons'
 
 export type Batch = {
   id: string; number: string
@@ -228,10 +229,18 @@ export function MaterialCard({
       </section>
 
       {/* ── Два подэкрана: документы и контроль вскрытия ─────── */}
+      {/* README, розділ C: два навігаційні рядки со ЗНАЧКАМИ на цветных
+          плашках — документы на `accentSoft`, контроль вскрытия на
+          `violetSoft`. Разные тона здесь не украшение: это два разных
+          по смыслу подэкрана (бумаги и физическая банка), и одинаковый
+          серый кружок у обоих читался как один пункт с переносом. */}
       <section className="card rise-3 !p-0">
         <Link href={`/app/inventory/materials/${material.id}/docs`}
               className="row px-5" style={{ minHeight: 'var(--tap-min)' }}>
-          <span className="min-w-0">
+          <span aria-hidden className="list-anchor" data-tone="accent">
+            <IconDoc size={18} />
+          </span>
+          <span className="min-w-0 flex-1">
             <span className="t-md block">{t('inventory.material.docs.title')}</span>
             <span className="t-xs block" style={{ color: 'var(--color-faint)' }}>
               {docsCount > 0
@@ -249,7 +258,10 @@ export function MaterialCard({
 
         <Link href={`/app/inventory/materials/${material.id}/pao`}
               className="row px-5" style={{ minHeight: 'var(--tap-min)' }}>
-          <span className="min-w-0">
+          <span aria-hidden className="list-anchor" data-tone="violet">
+            <IconQr size={18} />
+          </span>
+          <span className="min-w-0 flex-1">
             <span className="t-md block">{t('inventory.material.pao.title')}</span>
             <span className="t-xs block" style={{ color: 'var(--color-faint)' }}>
               {t('inventory.material.pao.desc')}
@@ -266,10 +278,39 @@ export function MaterialCard({
         </Link>
       </section>
 
-      {/* ── Нотификация МОЗ (ТЗ 3.1: посилання/код) ──────────── */}
+      {/* ── Склад (INCI) ──────────────────────────────────────────
+          README, розділ C: своя секция, «текст 12px/1.6 muted у картці».
+          В таблице «ключ → значение» он занимал пять строк высоты
+          и ломал ритм остальных: это абзац состава, а не строка.
+          Показывается только у косметики и только если он заполнен —
+          пустая карточка с заголовком «Склад» сообщает лишь о том,
+          что мы про него помним. */}
+      {material.isCosmetic && material.inci && (
+        <section className="rise-3">
+          <p className="eyebrow mb-2">{t('inventory.material.inci.title')}</p>
+          <div className="card">
+            <p style={{
+              fontSize: 'calc(12px * var(--type-scale))',
+              lineHeight: 1.6,
+              color: 'var(--color-muted)',
+            }}>
+              {material.inci}
+            </p>
+          </div>
+        </section>
+      )}
+
+      {/* ── Нотификация МОЗ (ТЗ 3.1: посилання/код) ────────────────
+          README: инфо-блок на `accentSoft`. Это не украшение: блок
+          несёт код и дату регистрации — то, что проверка спрашивает
+          первым, — и на общем фоне он терялся между карточками. */}
       {material.isCosmetic && (
-        <section className="card-flat rise-3">
-          <h3 className="t-sm mb-1" style={{ color: 'var(--color-faint)' }}>
+        <section className="rise-3" style={{
+          background: 'var(--color-accent-soft)',
+          borderRadius: 'var(--radius-card)',
+          padding: '14px 16px',
+        }}>
+          <h3 className="t-sm mb-1" style={{ color: 'var(--color-accent-ink)' }}>
             {t('inventory.material.moz.title')}
           </h3>
           {material.notificationCode ? (
