@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { currentMembership, can, hasModule } from '@/lib/tenant'
 import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
+import { RecipeBlock } from './recipe-block'
 import { getT } from '@/lib/i18n/server'
 import {
   OfferingForm,
@@ -42,7 +43,8 @@ export default async function OfferingPage({
   const supabase = await createClient()
 
   const [{ data: offering }, { data: variants }, { data: media },
-         { data: categories }, { data: locations }] = await Promise.all([
+         { data: categories }, { data: locations },
+         { data: recipeMaterials }] = await Promise.all([
     supabase.from('offerings')
       .select(`id, kind, status, category_id, sku, slug, title, subtitle, description,
                price, compare_at, currency, tags, listed, published_at,
@@ -62,9 +64,66 @@ export default async function OfferingPage({
     supabase.from('storage_locations')
       .select('id, name').eq('tenant_id', m.tenantId)
       .eq('is_active', true).order('position'),
+    // Расходники для рецептуры. Запрос уходит всегда: отсутствие права
+    // `stock.read` выражается пустым ответом, а не веткой в коде —
+    // то же правило, что в карточке засоба.
+    supabase.from('materials')
+      .select('id, name, unit')
+      .eq('tenant_id', m.tenantId).eq('is_active', true)
+      .order('name').limit(300),
   ])
 
   if (!offering) notFound()
+
+  // Рецептура этой позиции. Отдельным запросом ПОСЛЕ вариантов: у таблицы
+  // `variant_materials` нет своей колонки арендатора (её арендатор —
+  // арендатор варианта), поэтому фильтр идёт по списку вариантов,
+  // а не по `tenant_id`.
+  const variantIds = (variants ?? []).map((v) => v.id as string)
+  const { data: recipeLines } = variantIds.length > 0
+    ? await supabase.from('variant_materials')
+        .select('variant_id, material_id, quantity_per_unit')
+        .in('variant_id', variantIds)
+    : { data: [] }
+
+  // ── Сколько услуг провели и сколько на них ушло ──────────────────────
+  //
+  // Требование владельца: «сколько услуг было проведено, сколько
+  // расходников было истрачено». Считается по ФАКТУ, а не умножением
+  // рецепта на число записей: журнал движений — единственный источник
+  // правды об остатке (правило 5), и рецепт мог меняться между визитами.
+  //
+  // Два запроса вместо соединения: у `stock_movements` нет ссылки
+  // на вариант, связь идёт через `reference_id` записи.
+  const { data: doneBookings } = variantIds.length > 0
+    ? await supabase.from('bookings')
+        .select('id, variant_id')
+        .in('variant_id', variantIds)
+        .eq('status', 'completed')
+        .limit(1000)
+    : { data: [] }
+
+  const bookingIds = (doneBookings ?? []).map((b) => b.id as string)
+  const { data: usedMoves } = bookingIds.length > 0
+    ? await supabase.from('stock_movements')
+        .select('material_id, quantity, reference_id')
+        .eq('reference_type', 'booking')
+        .in('reference_id', bookingIds)
+        .limit(5000)
+    : { data: [] }
+
+  // Проведено — по вариантам; израсходовано — по расходникам.
+  const doneByVariant = new Map<string, number>()
+  for (const b of doneBookings ?? []) {
+    const k = b.variant_id as string
+    doneByVariant.set(k, (doneByVariant.get(k) ?? 0) + 1)
+  }
+  const usedByMaterial = new Map<string, number>()
+  for (const mv of usedMoves ?? []) {
+    const k = mv.material_id as string
+    // Списание лежит в журнале отрицательным числом — показываем модуль.
+    usedByMaterial.set(k, (usedByMaterial.get(k) ?? 0) + Math.abs(Number(mv.quantity)))
+  }
 
   const row = offering as unknown as OfferingRow
 
@@ -112,6 +171,41 @@ export default async function OfferingPage({
         })) as VariantRow[]}
         media={(media ?? []) as MediaRow[]}
       />
+
+      {/* ── Витратники на послугу ─────────────────────────────────
+          Только у услуг: у товара расход по рецептуре тоже возможен,
+          но списывается он в другой момент (при продаже, а не при
+          выполнении), и подключать его тем же блоком значило бы обещать
+          списание, которого не произойдёт. Названо, а не забыто.
+
+          Блок стоит ПОСЛЕ формы позиции, а не внутри неё: рецепт — это
+          отдельная сущность со своими строками, и класть его в форму
+          значило бы связать сохранение позиции с сохранением рецепта.
+
+          ДВА ПРАВА, И ОНИ РАЗНЫЕ. Показ стоит на `stock.read`, а правка —
+          на `catalog.write`, потому что политики `variant_materials`
+          (0075) написаны именно на `catalog.*`: рецепт принадлежит
+          услуге, а не складу. Без `stock.read` блока нет вовсе, а не
+          «пусто»: имена засобів пришли бы пустым списком, и УЖЕ
+          заведённые строки нарисовались бы голыми идентификаторами. */}
+      {row.kind === 'service' && can(m, 'stock.read') && (
+        <RecipeBlock
+          canWrite={can(m, 'catalog.write')}
+          variants={(variants ?? []).map((v) => ({
+            id: v.id as string, name: v.name as string,
+          }))}
+          materials={(recipeMaterials ?? []).map((mm) => ({
+            id: mm.id as string, name: mm.name as string, unit: mm.unit as string,
+          }))}
+          lines={(recipeLines ?? []).map((l) => ({
+            variantId: l.variant_id as string,
+            materialId: l.material_id as string,
+            quantityPerUnit: Number(l.quantity_per_unit),
+          }))}
+          doneByVariant={Object.fromEntries(doneByVariant)}
+          usedByMaterial={Object.fromEntries(usedByMaterial)}
+        />
+      )}
     </AppShell>
   )
 }
