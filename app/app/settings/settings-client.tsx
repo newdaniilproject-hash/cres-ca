@@ -61,7 +61,7 @@ type SectionKey = 'public' | 'shop' | 'presets' | 'team' | 'export' | 'security'
 // и приглашение положить её в шапку Instagram. Лишний отказ виден,
 // лишний доступ — нет.
 export function SettingsClient({
-  shop, canWrite, team, canSeeTeam, hasStorefront = false, presets = [],
+  shop, canWrite, team, canSeeTeam, hasStorefront = false, presets = [], brand = null,
 }: {
   shop: Shop; canWrite: boolean; team: Member[]
   /**
@@ -70,6 +70,8 @@ export function SettingsClient({
    * за ним не ходить сам.
    */
   presets?: { code: string; title: string; description: string | null }[]
+  /** Обраний відтінок бренду (0123) або null. */
+  brand?: string | null
   /**
    * Виден ли состав команды. Право на этот экран — `settings.read`,
    * а имена и почты отдаёт `team_overview` по `team.read` (0082), и это
@@ -93,6 +95,8 @@ export function SettingsClient({
   const [state, setState] = useState<'idle' | 'busy' | 'saved' | 'error'>('idle')
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
+  const [brandColor, setBrandColor] = useState(brand ?? '')
+  const [brandBusy, setBrandBusy] = useState(false)
   const [presetBusy, setPresetBusy] = useState<string | null>(null)
   const [presetDone, setPresetDone] = useState('')
   const [presetError, setPresetError] = useState('')
@@ -329,6 +333,73 @@ export function SettingsClient({
   }
 
   /**
+   * Відтінок бренду (0123).
+   *
+   * Вибирається ВІДТІНОК, а не колір: світлота й насиченість зафіксовані
+   * в globals.css, інакше блідий вибір дає нечитабельну кнопку. Тому тут
+   * готові зразки, а не піпетка на весь спектр — зразок показує рівно те,
+   * що людина отримає, а піпетка обіцяла б більше, ніж ми даємо.
+   *
+   * Зберігається одразу, без кнопки «Зберегти»: значення одне, і результат
+   * видно на екрані в ту ж мить — підтверджувати нема чого.
+   */
+  const BRAND_SWATCHES = [
+    '#2563eb', '#0ea5e9', '#0d9488', '#16a34a',
+    '#ca8a04', '#ea580c', '#dc2626', '#db2777',
+    '#7c3aed', '#4f46e5', '#475569', '#0f766e',
+  ]
+
+  function brandBody() {
+    return (
+      <div className="flex flex-col gap-3">
+        <span className="t-sm" style={{ color: 'var(--color-muted)' }}>
+          {t('settings.brand.desc')}
+        </span>
+        <div className="flex flex-wrap gap-2">
+          {BRAND_SWATCHES.map((c) => (
+            <button key={c} type="button" aria-label={c}
+                    aria-pressed={brandColor.toLowerCase() === c}
+                    disabled={!canWrite || brandBusy}
+                    onClick={() => saveBrand(c)}
+                    className="btn-icon"
+                    style={{
+                      background: c,
+                      borderRadius: 'var(--radius-plate)',
+                      outline: brandColor.toLowerCase() === c
+                        ? '2px solid var(--color-text)' : 'none',
+                      outlineOffset: 2,
+                    }} />
+          ))}
+        </div>
+        {brandColor ? (
+          <div>
+            <button type="button" className="btn-secondary t-sm"
+                    disabled={!canWrite || brandBusy}
+                    onClick={() => saveBrand(null)}>
+              {t('settings.brand.reset')}
+            </button>
+          </div>
+        ) : null}
+      </div>
+    )
+  }
+
+  async function saveBrand(color: string | null) {
+    setBrandBusy(true)
+    const { error } = color
+      ? await supabase.from('tenant_branding')
+          .upsert({ tenant_id: shop.id, brand_color: color }, { onConflict: 'tenant_id' })
+      : await supabase.from('tenant_branding')
+          .update({ brand_color: null }).eq('tenant_id', shop.id)
+    setBrandBusy(false)
+    if (error) { setError(dbErrorText(t, error)); return }
+    setBrandColor(color ?? '')
+    // Відтінок віддає РОЗМІТКА макета кабінету, а не цей компонент, тому
+    // без оновлення сторінки новий акцент не поїде по решті екрана.
+    router.refresh()
+  }
+
+  /**
    * Швидке заповнення довідників готовим набором (0122).
    *
    * Це і є впровадження: людина, яка щойно завела заклад, бачить не
@@ -491,7 +562,7 @@ export function SettingsClient({
       title: t('settings.shop.title'), desc: t('settings.shop.desc'),
       icon: <IconDoc size={20} />,
       bg: 'var(--tone-blue-soft)', fg: 'var(--tone-blue)',
-      body: () => shopForm(true),
+      body: () => (<div className="flex flex-col gap-5">{shopForm(true)}{brandBody()}</div>),
     },
     ...(canWrite ? [{
       key: 'presets' as const,

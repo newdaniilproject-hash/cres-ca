@@ -60,6 +60,12 @@ export default async function SettingsPage() {
   // Готові набори довідників (0122). Список пресетів — це ПРОДУКТ, а не
   // дані закладу: у нього немає `tenant_id`, і читає його будь-хто вошедший.
   // Тягнемо на сервері, щоб клієнт не ходив за списком сам.
+  // Відтінок бренду закладу (0123): один рядок, читається тим самим
+  // правом, що й решта налаштувань.
+  const { data: brandRow } = await supabase
+    .from('tenant_branding').select('brand_color')
+    .eq('tenant_id', m.tenantId).maybeSingle()
+
   const { data: presetRows } = await supabase
     .from('presets')
     .select('code, title, description, kind, position')
@@ -92,6 +98,7 @@ export default async function SettingsPage() {
         // Пресет пропонується тільки той, що підходить виду закладу:
         // салону не потрібен набір категорій магазину товарів. `kind: null`
         // — підходить будь-якому.
+        brand={(brandRow as { brand_color: string | null } | null)?.brand_color ?? null}
         presets={((presetRows ?? []) as PresetRow[])
           .filter((p) => p.kind == null || p.kind === shop.kind)
           .map((p) => ({ code: p.code, title: p.title, description: p.description }))}

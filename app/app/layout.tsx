@@ -56,12 +56,17 @@ export default async function AppLayout({
   // `currentUserId` разбирает уже полученный токен и в сеть не ходит
   // (правило 3): идентификатор человека там же, где его права.
   const userId = await currentUserId()
-  const [{ data: tenant }, { data: profile }, registry] = await Promise.all([
+  const [{ data: tenant }, { data: profile }, registry, { data: brand }] = await Promise.all([
     supabase.from('tenants').select('name').eq('id', m.tenantId).maybeSingle(),
     userId
       ? supabase.from('profiles').select('theme, full_name').eq('id', userId).maybeSingle()
       : Promise.resolve({ data: null }),
     listModules(),
+    // Колір бренду закладу (0123). Тим же одним походом, що й імʼя закладу:
+    // окремий запит заради одного рядка — це зайва секунда на кожне
+    // відкриття кабінету, а він і так ходить у базу в Ірландію.
+    supabase.from('tenant_branding').select('brand_color')
+      .eq('tenant_id', m.tenantId).maybeSingle(),
   ])
   const theme = (profile?.theme === 'dark' ? 'dark' : 'light') as Choice
 
@@ -74,11 +79,22 @@ export default async function AppLayout({
           и переключившийся на телефоне увидел бы на вебе белую вспышку
           и перекраску. Разбор — `components/theme.tsx`. */}
       <script dangerouslySetInnerHTML={{ __html: themeServerScript(theme) }} />
-      <AppShell modules={m.modules} registry={registry}
-                perms={m.perms} shopName={tenant?.name ?? ''}
-                userName={profile?.full_name ?? ''} role={m.role}>
-        {children}
-      </AppShell>
+      {/* Бренд закладу (0123) — РОЗМІТКОЮ, а не скриптом і не ефектом.
+          Значення приходить із сервера разом зі сторінкою, тому кадру
+          з кобальтовим акцентом перед перефарбуванням не існує в принципі:
+          нема чого перефарбовувати. З кольору береться тільки відтінок —
+          виводить його `[data-brand]` у globals.css, і саме там, а не тут:
+          значення стилю живуть в одному місці (правило проекту).
+          Немає рядка — немає атрибута, і акцент лишається продуктовим. */}
+      <div {...(brand?.brand_color
+        ? { 'data-brand': '', style: { '--brand': brand.brand_color } as React.CSSProperties }
+        : {})}>
+        <AppShell modules={m.modules} registry={registry}
+                  perms={m.perms} shopName={tenant?.name ?? ''}
+                  userName={profile?.full_name ?? ''} role={m.role}>
+          {children}
+        </AppShell>
+      </div>
     </LangProvider>
   )
 }
