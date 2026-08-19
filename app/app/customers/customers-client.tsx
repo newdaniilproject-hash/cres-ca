@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Sheet } from '@/components/sheet'
 import { useToast } from '@/components/toast'
 import { useT } from '@/lib/i18n/client'
-import { IconUsers } from '@/components/icons'
+import { IconChevronRight, IconClose, IconUsers } from '@/components/icons'
 
 // ── Клиенты: карточка и выгрузка ───────────────────────────────────────────
 //
@@ -36,6 +36,20 @@ import { IconUsers } from '@/components/icons'
 // экрана. Экран перестал быть таким запросом, но дыра закрывается не
 // экраном, а правами на таблицу. Разбор и предлагаемая починка —
 // `notes/pii-leaks.md`, пункт 1.
+
+// ── CRESKO Web, §3 «Клієнти» — колонки таблицы широкого экрана ────────────
+//
+// Колонки хендоффа взяты один в один, КРОМЕ второй: в макете там телефон,
+// и его здесь нет и быть не может по той же причине, по которой его нет
+// в строке телефонного списка (разбор выше). Место занято числом
+// замовлень — величиной, которая у списка ЕСТЬ: страница отдаёт
+// `orders_count`, `total_spent` и `last_order_at`, и ни одного контакта.
+//
+// Не «пустая колонка с прочерком» и не «показати телефон» кнопкой:
+// первое обещает данные, которых экран не получит, второе означало бы
+// сто открытий карточки ради одного взгляда на список — и сто строк
+// в журнале доступа, по которому потом разбираются, кто смотрел контакты.
+const WGRID = '2fr 1.4fr 1.1fr 1fr 34px'
 
 export type CustomerRow = {
   id: string
@@ -71,6 +85,19 @@ export function CustomersClient({
 
   const [card, setCard] = useState<Card | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  // Куда показывать карточку. Шторка и правая панель — ОДНО состояние
+  // (`card`) и один запрос: два состояния разъехались бы, а два запроса
+  // писали бы в журнал доступа две строки на одно открытие.
+  //
+  // Раскладку решает не ширина окна, а МЕСТО НАЖАТИЯ: таблица живёт под
+  // `hidden lg:flex`, список — под `lg:hidden`, и нажать можно ровно то,
+  // что видно. Проверка ширины в обработчике была бы вторым источником
+  // правды о том, какая раскладка сейчас на экране.
+  const [where, setWhere] = useState<'sheet' | 'panel'>('sheet')
+  // Выбранная строка подсвечивается СРАЗУ, не дожидаясь ответа базы:
+  // карточку отдаёт запрос, а нажатие обязано отзываться в тот же кадр
+  // (CLAUDE.md, правило 6).
+  const [picked, setPicked] = useState<string | null>(null)
 
   // Приход из общего поиска: `/app/customers?id=<uuid>` открывает карточку
   // сразу. Своей страницы у клиента нет (список плюс шторка), поэтому
@@ -86,21 +113,38 @@ export function CustomersClient({
     const id = sp.get('id')
     if (!id) return
     window.history.replaceState(null, '', '/app/customers')
-    void openCard(id)
+    // Приход по ссылке — единственный случай, когда нажатия не было и
+    // спросить о раскладке некого. Здесь (и только здесь) её выясняет
+    // `matchMedia`: эффект клиентский, разметку он не рисует, поэтому
+    // расхождения с серверным рендером не бывает.
+    void openCard(
+      id,
+      window.matchMedia('(min-width: 1024px)').matches ? 'panel' : 'sheet',
+    )
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sp])
 
-  async function openCard(id: string) {
+  async function openCard(id: string, target: 'sheet' | 'panel') {
     setBusy(id)
+    setWhere(target)
+    setPicked(id)
     const { data, error } = await supabase.rpc('customer_card', {
       p_tenant_id: tenantId, p_customer_id: id,
     })
     setBusy(null)
-    if (error) { toast.error(t('customers.card.error'), error.message); return }
+    if (error) {
+      setPicked(null)
+      toast.error(t('customers.card.error'), error.message); return
+    }
     const row = (data as Card[] | null)?.[0]
-    if (!row) { toast.error(t('customers.card.error'), t('customers.card.gone')); return }
+    if (!row) {
+      setPicked(null)
+      toast.error(t('customers.card.error'), t('customers.card.gone')); return
+    }
     setCard(row)
   }
+
+  function closeCard() { setCard(null); setPicked(null) }
 
   async function exportAll() {
     setBusy('export')
@@ -144,8 +188,57 @@ export function CustomersClient({
     toast.success(t('customers.export.done', { n: t.number(rows.length) }))
   }
 
+  // Средний чек считается, а не берётся: колонки под него нет, но обе
+  // величины, из которых он складывается, карточка отдаёт. Показывается
+  // только при непустом числе заказов — деление на ноль дало бы «—»
+  // в плитке, которая обещает деньги.
+  const avg = card && Number(card.orders_count) > 0
+    ? Number(card.total_spent) / Number(card.orders_count)
+    : null
+
   return (
     <>
+      {/* ═══ CRESKO Web, §3 «Клієнти» — ТОЛЬКО lg ════════════════════════
+          Хедер экрана: плашка со значком, имя экрана тем же ключом,
+          которым его называет панель и вкладка браузера, и подпись под
+          ним. Справа — единственное действие уровня экрана.
+
+          Кнопки «Додати клієнта» из макета здесь НЕТ, и это не пропуск:
+          клиента в этом продукте не заводят руками — он появляется сам
+          с первым заказом или записью (о чём говорит и пустое состояние
+          ниже). Кнопка, открывающая форму, которой не существует, — это
+          сломанная навигация, а форма, заведённая ради кнопки, — второй
+          источник клиентов помимо заказов. */}
+      <div className="mb-5 hidden items-center justify-between gap-4 lg:flex">
+        <div className="flex min-w-0 items-center gap-3">
+          <span aria-hidden className="flex shrink-0 items-center justify-center"
+                style={{
+                  width: 44, height: 44,
+                  borderRadius: 'var(--radius-plate)',
+                  background: 'var(--color-accent-soft)',
+                  color: 'var(--color-accent-ink)',
+                }}>
+            <IconUsers size={22} />
+          </span>
+          <div className="min-w-0">
+            <h1 className="webh1" data-size="27">{t('app.screen.customers.title')}</h1>
+            <p style={{ fontSize: 14, color: 'var(--color-muted)' }}>
+              {t('app.screen.customers.desc')}
+            </p>
+          </div>
+        </div>
+        {customers.length > 0 && (
+          // Тот же обработчик, что и у кнопки телефона: выгрузка идёт
+          // через `customers_export` и пишет строку в журнал доступа.
+          // Второй сборки файла здесь нет и заводить её нельзя.
+          <button type="button" className="btn-primary shrink-0"
+                  disabled={busy === 'export'}
+                  onClick={() => void exportAll()}>
+            {busy === 'export' ? t('common.saving') : t('customers.export.cta')}
+          </button>
+        )}
+      </div>
+
       {/* README, розділ G: рядок клієнта — аватар, ім'я, бейдж категорії,
           останній візит, статистика. Телефона в этой строке НЕТ и быть
           не может: контакт отдаёт `customer_card` с проверкой права
@@ -154,7 +247,7 @@ export function CustomersClient({
 
           Аватар — буква имени на плашке, а не картинка: колонки под фото
           у клиента нет, и пустой серый кружок был бы честнее только на вид. */}
-      <section className="rise flex items-center justify-between gap-3">
+      <section className="rise flex items-center justify-between gap-3 lg:hidden">
         <p className="eyebrow">{t('customers.list.title')}</p>
         {customers.length > 0 && (
           <button type="button" className="btn-ghost t-sm"
@@ -174,11 +267,12 @@ export function CustomersClient({
           </div>
         </section>
       ) : (
-        <div className="rise-1 flex flex-col gap-2">
+        <>
+        <div className="rise-1 flex flex-col gap-2 lg:hidden">
           {customers.map((c) => (
             <button key={c.id} type="button" className="list-card"
                     disabled={busy === c.id}
-                    onClick={() => void openCard(c.id)}>
+                    onClick={() => void openCard(c.id, 'sheet')}>
               <span aria-hidden className="thumb-sm t-md" style={{ fontWeight: 650 }}>
                 {c.name.trim().charAt(0).toUpperCase()}
               </span>
@@ -216,9 +310,200 @@ export function CustomersClient({
             </button>
           ))}
         </div>
+
+        {/* ── CRESKO Web: список таблицей + панель деталей (только lg) ──
+            Панель, а не вторая страница: карточку открывают, чтобы
+            сверить её со строкой списка («это та Оксана или другая»),
+            и уводить ради этого с экрана значит заставить вернуться.
+            Ширина 398px и появление — класс `.wpanel`. */}
+        <div className="hidden gap-5 lg:flex">
+          <div className="min-w-0 flex-1">
+            <div className="wtable">
+              <div className="wtable-head" style={{ gridTemplateColumns: WGRID }}>
+                <span>{t('customers.web.table.customer')}</span>
+                <span>{t('customers.web.table.orders')}</span>
+                <span>{t('customers.web.table.last')}</span>
+                <span>{t('customers.web.table.spent')}</span>
+                <span />
+              </div>
+              {customers.map((c) => (
+                // Строка целиком кнопка: внутри неё нет ни одного второго
+                // действия, а открытие карточки — запрос к базе и строка
+                // в журнале доступа. Зона нажатия `--tap-min`: тем же
+                // экраном пользуются с планшета.
+                <button key={c.id} type="button" className="wtable-row"
+                        disabled={busy === c.id}
+                        aria-current={picked === c.id ? 'true' : undefined}
+                        style={{
+                          gridTemplateColumns: WGRID,
+                          minHeight: 'var(--tap-min)',
+                          background: picked === c.id
+                            ? 'var(--color-accent-soft)' : undefined,
+                        }}
+                        onClick={() => void openCard(c.id, 'panel')}>
+                  <span className="flex min-w-0 items-center gap-3">
+                    {/* Аватар — буква имени: колонки под фото у клиента
+                        нет, и пустой серый кружок был бы честнее только
+                        на вид. */}
+                    <span aria-hidden className="list-anchor" data-tone="accent"
+                          style={{ width: 36, height: 36, fontWeight: 650 }}>
+                      {c.name.trim().charAt(0).toUpperCase()}
+                    </span>
+                    <span className="min-w-0">
+                      {/* Имя клиента — данные заклада, не переводится. */}
+                      <span className="block truncate font-semibold"
+                            style={{ color: 'var(--color-text)' }}>{c.name}</span>
+                      {(c.tags ?? []).length > 0 && (
+                        <span className="mt-0.5 flex flex-wrap gap-1">
+                          {(c.tags ?? []).slice(0, 2).map((tag) => (
+                            <span key={tag} className="badge">{tag}</span>
+                          ))}
+                        </span>
+                      )}
+                    </span>
+                  </span>
+                  <span>
+                    <span className="badge-accent tabular">
+                      {t('customers.ordersCount', { n: Number(c.orders_count) })}
+                    </span>
+                  </span>
+                  <span className="tabular">
+                    {c.last_order_at ? t.date(c.last_order_at) : t('common.noValue')}
+                  </span>
+                  <span className="tabular">
+                    {Number(c.total_spent) > 0
+                      ? t.money(Number(c.total_spent))
+                      : t('common.noValue')}
+                  </span>
+                  <span aria-hidden className="flex justify-end"
+                        style={{ color: 'var(--color-faint)' }}>
+                    {busy === c.id ? '…' : <IconChevronRight size={18} />}
+                  </span>
+                </button>
+              ))}
+              <div className="wtable-foot">
+                <span className="tabular">
+                  {t('customers.web.table.total', { n: t.number(customers.length) })}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {where === 'panel' && card && (
+            <aside className="wpanel">
+              <div className="flex items-start justify-between gap-3">
+                <span aria-hidden className="list-anchor" data-tone="accent"
+                      style={{ width: 66, height: 66, fontSize: 24, fontWeight: 700 }}>
+                  {card.name.trim().charAt(0).toUpperCase()}
+                </span>
+                <button type="button" className="btn-icon"
+                        aria-label={t('common.close.aria')}
+                        onClick={closeCard}>
+                  <IconClose size={18} />
+                </button>
+              </div>
+
+              <h2 className="mt-3" style={{ fontSize: 21, fontWeight: 750, lineHeight: 1.2 }}>
+                {card.name}
+              </h2>
+              {(card.tags ?? []).length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {(card.tags ?? []).map((tag) => (
+                    <span key={tag} className="badge">{tag}</span>
+                  ))}
+                </div>
+              )}
+
+              {/* Четыре величины — ровно те, что у карточки есть.
+                  «Останні послуги/замовлення» из макета здесь нет:
+                  `customer_card` отдаёт СЧЁТЧИКИ, а не состав заказов,
+                  и список пришлось бы добирать вторым запросом мимо
+                  журнала доступа. Пустой блок с подписью читался бы
+                  как «заказов не было». */}
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <div className="wmetric">
+                  <span className="min-w-0">
+                    <span className="wmetric-label block">{t('customers.card.spent')}</span>
+                    <span className="wmetric-value tabular block truncate">
+                      {t.money(Number(card.total_spent))}
+                    </span>
+                  </span>
+                </div>
+                <div className="wmetric">
+                  <span className="min-w-0">
+                    <span className="wmetric-label block">{t('customers.card.orders')}</span>
+                    <span className="wmetric-value tabular block truncate">
+                      {t.number(Number(card.orders_count))}
+                    </span>
+                  </span>
+                </div>
+                {avg !== null && (
+                  <div className="wmetric">
+                    <span className="min-w-0">
+                      <span className="wmetric-label block">
+                        {t('customers.web.panel.avg')}
+                      </span>
+                      <span className="wmetric-value tabular block truncate">
+                        {t.money(avg)}
+                      </span>
+                    </span>
+                  </div>
+                )}
+                <div className="wmetric">
+                  <span className="min-w-0">
+                    <span className="wmetric-label block">
+                      {t('customers.web.table.last')}
+                    </span>
+                    <span className="wmetric-value tabular block truncate">
+                      {card.last_order_at ? t.date(card.last_order_at) : t('common.noValue')}
+                    </span>
+                  </span>
+                </div>
+              </div>
+
+              {/* Контакты — из того же `customer_card`, что и в шторке:
+                  право `customers.contacts` проверено, маска наложена,
+                  открытие записано. Обхода этого пути на широком экране
+                  нет и быть не может. */}
+              <p className="webh2 mb-2 mt-5">{t('customers.web.panel.info')}</p>
+              <div className="kv">
+                <div className="kv-row">
+                  <span className="kv-key">{t('customers.card.phone')}</span>
+                  <span className="kv-val tabular">
+                    {card.phone || t('common.noValue')}
+                  </span>
+                </div>
+                <div className="kv-row">
+                  <span className="kv-key">{t('customers.card.email')}</span>
+                  <span className="kv-val truncate">{card.email || t('common.noValue')}</span>
+                </div>
+                <div className="kv-row">
+                  <span className="kv-key">{t('customers.card.since')}</span>
+                  <span className="kv-val tabular">{t.date(card.created_at)}</span>
+                </div>
+                {card.note && (
+                  <div className="kv-row">
+                    <span className="kv-key">{t('customers.card.note')}</span>
+                    <span className="kv-val">{card.note}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Маскировка — не сбой и не «нет данных». Человек должен
+                  понимать, что звёздочки поставили ему намеренно, иначе
+                  он пойдёт искать телефон в обход. */}
+              <p className="field-hint mt-3">{t('customers.card.hint')}</p>
+            </aside>
+          )}
+        </div>
+        </>
       )}
 
-      <Sheet open={card !== null} onClose={() => setCard(null)} title={card?.name}>
+      {/* Шторка — только для узкого экрана: на широком та же карточка
+          лежит в правой панели. Открывается она не классом, а тем, откуда
+          пришло нажатие (`where`): шторка уходит порталом в body, и
+          спрятать её обёрткой `lg:hidden` нельзя. */}
+      <Sheet open={where === 'sheet' && card !== null} onClose={closeCard} title={card?.name}>
         {card && (
           <div className="flex flex-col gap-3">
             <Field label={t('customers.card.phone')} value={card.phone} t={t} />
