@@ -2,6 +2,11 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { currentMembership, currentUserId } from '@/lib/tenant'
 import { AppShell } from '@/components/shell'
+// Реестр модулей — источник правды о разделах кабинета (0110). Читается
+// ЗДЕСЬ, один раз на весь кабинет: макет не перерисовывается при переходах
+// внутри сегмента, и справочник из девяти строк стоит дешевле копии
+// в коде, которая устареет молча.
+import { listModules } from '@/lib/modules'
 // Из `lib/theme-script`, а НЕ из `components/theme`: тот файл клиентский,
 // и вызов его экспорта на сервере роняет весь кабинет в 500
 // («Attempted to call themeServerScript() from the server»). Оплачено
@@ -51,11 +56,12 @@ export default async function AppLayout({
   // `currentUserId` разбирает уже полученный токен и в сеть не ходит
   // (правило 3): идентификатор человека там же, где его права.
   const userId = await currentUserId()
-  const [{ data: tenant }, { data: profile }] = await Promise.all([
+  const [{ data: tenant }, { data: profile }, registry] = await Promise.all([
     supabase.from('tenants').select('name').eq('id', m.tenantId).maybeSingle(),
     userId
       ? supabase.from('profiles').select('theme').eq('id', userId).maybeSingle()
       : Promise.resolve({ data: null }),
+    listModules(),
   ])
   const theme = (profile?.theme === 'dark' ? 'dark' : 'light') as Choice
 
@@ -68,7 +74,8 @@ export default async function AppLayout({
           и переключившийся на телефоне увидел бы на вебе белую вспышку
           и перекраску. Разбор — `components/theme.tsx`. */}
       <script dangerouslySetInnerHTML={{ __html: themeServerScript(theme) }} />
-      <AppShell modules={m.modules} perms={m.perms} shopName={tenant?.name ?? ''}>
+      <AppShell modules={m.modules} registry={registry}
+                perms={m.perms} shopName={tenant?.name ?? ''}>
         {children}
       </AppShell>
     </LangProvider>

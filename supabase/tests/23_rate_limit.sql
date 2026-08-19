@@ -45,7 +45,7 @@ insert into auth.users (id, email) values
 insert into public.tenants (id, slug, name, kind, status, storefront_enabled,
                             listed_in_catalog, city, modules)
 values ('a7a7a7a7-0000-0000-0000-000000000001','rate-shop','ЧАСТОТА','both','active',
-        true, true, 'ХАРКІВ', enum_range(null::public.tenant_module));
+        true, true, 'ХАРКІВ', (select array_agg(code) from public.modules where is_active));
 
 insert into public.tenant_members (tenant_id, user_id, role)
 values ('a7a7a7a7-0000-0000-0000-000000000001','17171717-0000-0000-0000-000000000001','owner');

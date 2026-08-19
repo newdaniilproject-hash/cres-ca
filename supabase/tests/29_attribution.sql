@@ -43,7 +43,7 @@ insert into auth.users (id, email) values
 insert into public.tenants (id, slug, name, kind, status, storefront_enabled,
                             listed_in_catalog, city, modules)
 values ('a7710000-0000-0000-0000-000000000001','attr-shop','АТРИБУЦІЯ','both','active',
-        true, true, 'ХАРКІВ', enum_range(null::public.tenant_module));
+        true, true, 'ХАРКІВ', (select array_agg(code) from public.modules where is_active));
 
 insert into public.tenant_members (tenant_id, user_id, role, permissions) values
   ('a7710000-0000-0000-0000-000000000001','29292929-0000-0000-0000-000000000001','owner','{}'::jsonb);

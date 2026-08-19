@@ -32,6 +32,8 @@ type Material = {
 type Variant = {
   id: string; name: string; title: string; stock: number; reserved: number
   threshold: number; unit: string; tracked: boolean
+  /** Позиция каталога — по ней строка ведёт в карточку товара. */
+  offeringId: string
 }
 type ScanHit = {
   kind: string; title: string; subtitle: string | null; stock_qty: number
@@ -694,8 +696,13 @@ export function InventoryClient({
                 </div>
               )}
               <div className="flex flex-col gap-2">
+                {/* Строка товара ВЕДЁТ в карточку каталога. До 19.08.2026
+                    товар был единственным элементом склада без входа:
+                    выглядел как расходник и ёмкость, но не открывался.
+                    Элемент, который выглядит нажимаемым и не нажимается,
+                    человек читает как поломку, а не как «сюда нельзя». */}
                 {shownVariants.map((v) => (
-                  <div key={v.id} className="list-card">
+                  <Link key={v.id} href={`/app/catalog/${v.offeringId}`} className="list-card">
                     <span className="list-card-thumb"><IconBag size={22} /></span>
                     <div className="min-w-0 flex-1">
                       <p className="t-md truncate">{v.title}
@@ -713,7 +720,7 @@ export function InventoryClient({
                     ) : (
                       <span className="badge">{t('inventory.goods.untracked')}</span>
                     )}
-                  </div>
+                  </Link>
                 ))}
               </div>
             </section>

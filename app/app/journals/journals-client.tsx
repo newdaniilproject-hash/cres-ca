@@ -8,6 +8,7 @@ import { useToast } from '@/components/toast'
 import { useT } from '@/lib/i18n/client'
 import type { T } from '@/lib/i18n/translate'
 import { dbErrorText } from '@/lib/errors/db'
+import { Sheet } from '@/components/sheet'
 
 // Дата и время записи журнала — «16 серп., 14:05». Это НАБОР ОПЦИЙ,
 // а не своя `fmt`: форматирует по-прежнему `t.dateTime`, то есть язык
@@ -29,6 +30,9 @@ type Task = {
   id: string; name: string; schedule: string | null; doneToday: boolean
   donePerformer: string | null; doneAt: string | null
 }
+/** Строка истории отметок по пункту чек-листа. */
+type HistoryRow = { id: string; at: string; performer: string | null }
+
 type Cycle = {
   id: string; device: string; temperature_c: number
   duration_minutes: number; indicator_ok: boolean; performed_at: string
@@ -170,6 +174,44 @@ export function JournalsClient({
   const [temp, setTemp] = useState('180'); const [mins, setMins] = useState('60')
   const [indicator, setIndicator] = useState(true)
   const [newTask, setNewTask] = useState('')
+
+  // ── История отметок по пункту чек-листа ──────────────────────────────────
+  //
+  // ТЗ 3.3 называет это ЖУРНАЛОМ прибирання, а экран до 19.08.2026 показывал
+  // только сегодняшнее состояние: «відмічено о 9:20, Оксана» либо «не
+  // відмічено». Вчерашнего дня не видел никто — ни владелец, ни инспектор,
+  // хотя записи лежат в `cleaning_entries` и печатаются в отчёте для
+  // проверки. То есть данные были, а показать их в приложении было негде:
+  // на вопрос «а позавчера прибирали?» ответом был PDF.
+  //
+  // Грузится ПО НАЖАТИЮ, а не вместе с экраном: у салона это тридцать
+  // записей на пункт в месяц, и тянуть их для всех пунктов сразу — платить
+  // за то, что смотрят изредка. Тот же приём, что у колокола и поиска.
+  const [history, setHistory] = useState<{ task: Task; rows: HistoryRow[] | null } | null>(null)
+
+  async function openHistory(task: Task) {
+    setHistory({ task, rows: null })
+    // Имена исполнителей — отдельным запросом к `compliance_actors`,
+    // а не вложенной связью к `profiles`: та отдаёт профиль ТОЛЬКО про
+    // себя, и связь вернула бы null всем, включая владельца (0083).
+    const [{ data: rows }, { data: actors }] = await Promise.all([
+      supabase.from('cleaning_entries')
+        .select('id, performed_at, performed_by')
+        .eq('task_id', task.id)
+        .order('performed_at', { ascending: false })
+        .limit(60),
+      supabase.from('compliance_actors').select('user_id, full_name'),
+    ])
+    const nameOf = new Map((actors ?? []).map((a) => [a.user_id as string, a.full_name as string | null]))
+    setHistory({
+      task,
+      rows: (rows ?? []).map((r) => ({
+        id: r.id as string,
+        at: r.performed_at as string,
+        performer: nameOf.get(r.performed_by as string) ?? null,
+      })),
+    })
+  }
 
   async function markTask(taskId: string) {
     setBusy(taskId); setErr('')
@@ -328,7 +370,11 @@ export function JournalsClient({
               // Название пункта чек-листа и его расписание — данные заклада,
               // они не переводятся.
               <div key={task.id} className="row px-5">
-                <div>
+                {/* Пункт чек-листа ОТКРЫВАЕТСЯ — это журнал, а не список
+                    состояний на сегодня. Кнопкой, а не ссылкой: история
+                    приезжает шторкой и своего адреса не имеет. */}
+                <button type="button" className="min-w-0 flex-1 text-left"
+                        onClick={() => void openHistory(task)}>
                   <p className="t-md">{task.name}</p>
                   {task.doneToday && task.doneAt ? (
                     <p className="t-xs prose-muted">
@@ -337,7 +383,7 @@ export function JournalsClient({
                   ) : task.schedule ? (
                     <p className="t-xs prose-muted">{task.schedule}</p>
                   ) : null}
-                </div>
+                </button>
                 {task.doneToday || offDone.has(task.id) ? (
                   <span className="badge-success">{t('journals.cleaning.doneToday')}</span>
                 ) : canWrite ? (
@@ -510,6 +556,41 @@ export function JournalsClient({
           </div>
         </section>
       )}
+      {/* ── История отметок по пункту чек-листа ─────────────────
+          ТЗ 3.3 называет это журналом, а не «состоянием на сегодня».
+          Здесь видно ровно то, что напечатано в отчёте для проверки:
+          когда и кто отмечал, без правки — журнал неизменяем и защищён
+          дважды (нет политик UPDATE и DELETE плюс триггер). */}
+      <Sheet open={history !== null} onClose={() => setHistory(null)}
+             title={history?.task.name}>
+        {history?.rows === null ? (
+          <div className="flex flex-col gap-2">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="skeleton-row px-1"><span /><span /><span /><span /></div>
+            ))}
+          </div>
+        ) : (history?.rows ?? []).length === 0 ? (
+          <div className="empty">
+            <p className="empty-title">{t('journals.cleaning.history.empty')}</p>
+            <p className="empty-desc">{t('journals.cleaning.history.emptyDesc')}</p>
+          </div>
+        ) : (
+          <>
+            <p className="field-hint mb-2">
+              {t('journals.cleaning.history.count', { n: (history?.rows ?? []).length })}
+            </p>
+            <div className="flex flex-col">
+              {(history?.rows ?? []).map((r) => (
+                <div key={r.id} className="row">
+                  <span className="tabular t-md">{t.dateTime(r.at, AT)}</span>
+                  <span className="t-sm prose-muted"><Performer name={r.performer} /></span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </Sheet>
+
     </div>
   )
 }
