@@ -93,7 +93,9 @@ export function SettingsClient({
     setKilling(true); setKillError('')
     const { error } = await supabase.rpc('delete_my_account')
     if (error) { setKilling(false); setKillError(dbErrorText(t, error)); return }
-    await supabase.auth.signOut()
+    // scope: 'local' — акаунт уже удалён, глобальный signOut пошёл бы на
+    // сервер с мёртвой сессией; чистим только токены этого устройства.
+    await supabase.auth.signOut({ scope: 'local' })
     // Не router.push: після видалення користувача треба повне
     // перезавантаження, інакше клієнт живе зі знищеною сесією.
     window.location.href = '/'

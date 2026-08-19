@@ -123,7 +123,8 @@ export function MobileLoginForm() {
       if (error.message.toLowerCase().includes('signups not allowed')) {
         setNoAccount(true); return
       }
-      setError(error.message); return
+      // Через переводчик: сырой английский текст GoTrue не показываем (М25).
+      setError(humanAuthError(t, error.message)); return
     }
     setCode(''); setCodeError(''); tick(); setStep('code')
   }
@@ -146,7 +147,9 @@ export function MobileLoginForm() {
     e.preventDefault()
     setBusy(true); setError('')
     const { error } = await supabase.auth.updateUser({ password })
-    if (error) { setBusy(false); setError(error.message); return }
+    // Через переводчик: тут частый ответ «should be different from the old» —
+    // у него своя человеческая ветка, сырой английский не показываем (М25).
+    if (error) { setBusy(false); setError(humanAuthError(t, error.message)); return }
     window.location.href = await nextRoute(supabase)
   }
 

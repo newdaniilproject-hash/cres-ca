@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { PasswordInput, PasswordStrength } from '@/components/auth-ui'
+import { humanAuthError } from '@/lib/auth-errors'
 import { useT } from '@/lib/i18n/client'
 
 // Безопасность: смена пароля, смена почты (с подтверждением обоих
@@ -14,33 +16,50 @@ export default function SecurityPage() {
   const supabase = createClient()
 
   const [password, setPassword] = useState('')
+  const [password2, setPassword2] = useState('')
   const [email, setEmail] = useState('')
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
 
   async function changePassword(e: React.FormEvent) {
     e.preventDefault()
+    // Повтор пароля: опечатка в пароле, набранном вслепую, обнаружилась бы
+    // только на следующем входе — и увела бы человека в восстановление.
+    if (password !== password2) {
+      setMsg({ kind: 'err', text: t('auth.field.mismatch') })
+      return
+    }
     setBusy('pass'); setMsg(null)
     const { error } = await supabase.auth.updateUser({ password })
     setBusy(null)
-    // Отказ показывается текстом базы, как есть; из словаря — успех.
-    setMsg(error ? { kind: 'err', text: error.message }
+    // Отказ — через общий переводчик GoTrue: сырой английский текст
+    // человеку не показываем (М25), сырьё переводчик пишет в консоль сам.
+    setMsg(error ? { kind: 'err', text: humanAuthError(t, error.message) }
                  : { kind: 'ok', text: t('account.security.pass.ok') })
-    if (!error) setPassword('')
+    if (!error) { setPassword(''); setPassword2('') }
   }
 
   async function changeEmail(e: React.FormEvent) {
     e.preventDefault()
     setBusy('email'); setMsg(null)
-    const { error } = await supabase.auth.updateUser({ email })
+    // emailRedirectTo: обе ссылки подтверждения приземляются на нашу
+    // страницу с объяснением «подтвердите и второе письмо», а не на
+    // корень сайта, где человек не понимает, закончил он или нет.
+    const { error } = await supabase.auth.updateUser(
+      { email },
+      { emailRedirectTo: `${window.location.origin}/auth/confirm` },
+    )
     setBusy(null)
-    setMsg(error ? { kind: 'err', text: error.message }
+    setMsg(error ? { kind: 'err', text: humanAuthError(t, error.message) }
                  : { kind: 'ok', text: t('account.security.email.ok') })
   }
 
   async function signOut() {
     setBusy('out')
-    await supabase.auth.signOut()
+    // scope: 'local' — иначе supabase-js по умолчанию гасит сессии ГЛОБАЛЬНО,
+    // и «Вийти» на ноутбуке разлогинивает телефон. Выход со всех устройств —
+    // отдельное осознанное действие в профиле кабинета.
+    await supabase.auth.signOut({ scope: 'local' })
     router.push('/'); router.refresh()
   }
 
@@ -59,11 +78,19 @@ export default function SecurityPage() {
       )}
 
       <form onSubmit={changePassword} className="card rise-1 mt-6 flex flex-col gap-3">
-        <label className="field-label !mb-0" htmlFor="np">{t('account.security.pass.label')}</label>
-        <input id="np" type="password" required minLength={8} className="input"
-               autoComplete="new-password"
-               value={password} onChange={(e) => setPassword(e.target.value)} />
-        <button className="btn-secondary" disabled={busy === 'pass'}>
+        <div>
+          <label className="field-label" htmlFor="np">{t('account.security.pass.label')}</label>
+          <PasswordInput id="np" value={password} onChange={setPassword}
+                         autoComplete="new-password" />
+          <PasswordStrength value={password} />
+        </div>
+        <div>
+          <label className="field-label" htmlFor="np2">{t('auth.field.confirmPassword')}</label>
+          <PasswordInput id="np2" value={password2} onChange={setPassword2}
+                         autoComplete="new-password"
+                         invalid={password2.length > 0 && password2 !== password} />
+        </div>
+        <button className="btn-primary btn-tall" disabled={busy === 'pass' || password.length < 8}>
           {busy === 'pass' ? t('common.saving') : t('account.security.pass.submit')}
         </button>
       </form>
@@ -73,7 +100,7 @@ export default function SecurityPage() {
         <input id="ne" type="email" required className="input"
                value={email} onChange={(e) => setEmail(e.target.value)} />
         <p className="field-hint !mt-0">{t('account.security.email.hint')}</p>
-        <button className="btn-secondary" disabled={busy === 'email'}>
+        <button className="btn-primary btn-tall" disabled={busy === 'email'}>
           {busy === 'email' ? t('account.security.email.busy') : t('account.security.email.submit')}
         </button>
       </form>

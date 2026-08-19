@@ -9,6 +9,7 @@ import { CodeInput } from '../code-input'
 import { nextRoute } from '../where'
 import { AppScreen, Field, keepVisible } from '../ui'
 import { MailIcon, PasswordStrength, mmss } from '@/components/auth-ui'
+import { humanAuthError } from '@/lib/auth-errors'
 import { useT } from '@/lib/i18n/client'
 import { guardSignUp } from '@/lib/ratelimit/guard'
 
@@ -178,7 +179,8 @@ export function MobileRegisterForm() {
         setTaken(true)
         return
       }
-      setError(error.message)
+      // Через переводчик: сырой английский текст GoTrue не показываем (М25).
+      setError(humanAuthError(t, error.message))
       return
     }
 
@@ -212,7 +214,9 @@ export function MobileRegisterForm() {
     setBusy(true); setCodeError('')
     const { error } = await supabase.auth.resend({ type: 'signup', email: email.trim() })
     setBusy(false)
-    if (error) { setCodeError(error.message); return }
+    // Через переводчик: тут частый ответ «for security purposes … after
+    // N seconds», и у него своя ветка со сроком по-человечески.
+    if (error) { setCodeError(humanAuthError(t, error.message)); return }
     tick()
   }
 

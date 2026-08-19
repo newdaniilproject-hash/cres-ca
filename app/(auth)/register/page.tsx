@@ -12,7 +12,9 @@ import { useT } from '@/lib/i18n/client'
 import { guardSignUp } from '@/lib/ratelimit/guard'
 import { AuthShell } from '../auth-shell'
 import { CodeInput } from '@/app/m/code-input'
-import { MailIcon, PasswordInput, SuccessScreen, mmss } from '@/components/auth-ui'
+import {
+  MailIcon, PasswordInput, PasswordStrength, SuccessScreen, mmss,
+} from '@/components/auth-ui'
 
 // Регистрация покупателя. Четыре экрана одного потока: анкета →
 // «перевірте пошту» → код → успех.
@@ -81,6 +83,10 @@ function RegisterInner() {
   const [code, setCode] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  // Почта уже занята подтверждённым акаунтом — отдельная карточка
+  // со ссылками, а не строка ошибки: человеку отсюда два выхода
+  // (войти или сменить пароль), и оба должны быть кнопками.
+  const [taken, setTaken] = useState(false)
   const [codeError, setCodeError] = useState('')
   const [note, setNote] = useState('')
   const [left, setLeft] = useState(0)
@@ -105,7 +111,7 @@ function RegisterInner() {
   async function submitForm(e: React.FormEvent) {
     e.preventDefault()
     if (!ready || busy) return
-    setBusy(true); setError(''); setNote('')
+    setBusy(true); setError(''); setNote(''); setTaken(false)
 
     // Ограничение частоты: 3 регистрации за час с адреса.
     //
@@ -141,17 +147,22 @@ function RegisterInner() {
     setBusy(false)
     if (error) { setError(humanAuthError(t, error.message)); return }
 
-    // ГРАБЛИ. Здесь напрашивается проверка data.user.identities.length === 0
-    // как признак «такой уже есть». Делать её нельзя: Supabase намеренно
-    // возвращает пустой список ВСЕМ, чтобы по форме регистрации нельзя было
-    // перебором узнать, кто зарегистрирован. В первой крес-ке эта проверка
-    // стояла и давала ложные срабатывания — живых людей выбрасывало на «Увійти».
-    // Если почта действительно занята, это честно скажет verifyOtp.
-    void data
+    // Почта уже занята ПОДТВЕРЖДЁННЫМ акаунтом. GoTrue в этом случае
+    // не ошибается, а возвращает user с identities: [] и НЕ шлёт письма —
+    // без этой проверки человек уходил на экран «перевірте пошту»
+    // и ждал код, который не придёт никогда. Для НЕподтверждённой почты
+    // identities непуст и письмо уходит повторно — карточка не мешает.
+    // Та же проверка живёт в app/m/register/register-form.tsx.
+    if (data.user && (data.user.identities?.length ?? 0) === 0) {
+      setTaken(true)
+      return
+    }
 
     // Подтверждение отключено в настройках — сессия выдана сразу.
     if (data.session) {
-      window.location.href = next ?? await nextRoute(supabase)
+      // 'web' обязателен: умолчание у nextRoute — поверхность приложения,
+      // и без него нового пользователя с ВЕБА уносило на /m/shop.
+      window.location.href = next ?? await nextRoute(supabase, 'web')
       return
     }
 
@@ -173,7 +184,8 @@ function RegisterInner() {
     }
     setBusy(false)
     // verifyOtp с type:'signup' уже выдал сессию — членства читаемы.
-    setTarget(next ?? await nextRoute(supabase))
+    // 'web' обязателен: без него nextRoute отвечает адресами приложения.
+    setTarget(next ?? await nextRoute(supabase, 'web'))
     setStep('done')
   }
 
@@ -325,12 +337,17 @@ function RegisterInner() {
           <label className="field-label" htmlFor="email">Email</label>
           <input id="email" type="email" required className="input" autoComplete="email"
                  inputMode="email" autoCapitalize="none" spellCheck={false}
-                 value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
+                 value={email}
+                 onChange={(e) => { setEmail(e.target.value); setTaken(false) }}
+                 placeholder="you@example.com" />
         </div>
         <div>
           <label className="field-label" htmlFor="pass">{t('auth.field.password')}</label>
           <PasswordInput id="pass" value={password} onChange={setPassword}
                          autoComplete="new-password" />
+          {/* Шкала силы — та же, что на /forgot: пароль задаётся дважды
+              в продукте, и оценивается он обязан одинаково. */}
+          <PasswordStrength value={password} />
           <p className={password.length > 0 && password.length < 8 ? 'field-error' : 'field-hint'}>
             {t('auth.password.min')}
           </p>
@@ -364,6 +381,22 @@ function RegisterInner() {
             .
           </span>
         </label>
+
+        {/* Ключи m.register.taken.* общие с формой приложения: текст
+            карточки один, и расходиться между поверхностями ему нельзя. */}
+        {taken && (
+          <div className="card-flat" style={{ borderColor: 'var(--color-accent)' }}>
+            <p className="t-md">{t('m.register.taken.title')}</p>
+            <p className="t-sm mt-1 prose-muted">{t('m.register.taken.desc')}</p>
+            <Link href={loginHref} className="btn-primary btn-tall mt-3">
+              {t('m.register.taken.action')}
+            </Link>
+            <Link href={`/forgot?email=${encodeURIComponent(email.trim())}`}
+                  className="link-quiet mt-2 block text-center">
+              {t('auth.register.taken.forgot')}
+            </Link>
+          </div>
+        )}
 
         {error && <p className="field-error">{error}</p>}
 

@@ -25,11 +25,18 @@ export function authErrorText(t: T, raw: string): string {
 
 // Ошибки формы: регистрация, отправка кода, вход паролем.
 //
-// Последняя строка — `message` как есть, и это осознанно: отказ, который
-// мы не узнали, приходит из базы уже написанным для человека (сторож 0081),
-// и переписывать его здесь значило бы завести второй источник правды.
+// Порядок веток НЕ случаен: частные случаи стоят ДО общих подстрок.
+// «New password should be different» содержит слово password, и общая
+// ветка перевела бы его как «пароль закороткий» — то есть соврала бы.
 export function humanAuthError(t: T, message: string): string {
   const m = message.toLowerCase()
+  // «For security purposes, you can only request this after N seconds» —
+  // самый частый ответ на быстрый повтор кода. Раньше падал в хвост
+  // и приезжал человеку по-английски с каждой кнопки «надіслати ще раз».
+  if (m.includes('for security purposes')) {
+    const sec = lockoutSeconds(message) ?? 60
+    return t('auth.error.tooSoon', { period: lockoutText(t, sec) })
+  }
   if (m.includes('rate limit') || m.includes('too many'))
     return t('auth.error.rateLimit')
   if (m.includes('already registered') || m.includes('already exists'))
@@ -37,9 +44,19 @@ export function humanAuthError(t: T, message: string): string {
   if (isBanned(message)) return t('auth.error.banned')
   if (m.includes('invalid login')) return t('auth.error.credentials')
   if (m.includes('email not confirmed')) return t('auth.error.notConfirmed')
+  // Secure password change: GoTrue просит подтвердить личность заново.
+  if (m.includes('reauthentication')) return t('auth.error.reauth')
+  // Новый пароль совпал со старым — это не «слабый пароль».
+  if (m.includes('different from the old') || m.includes('should be different'))
+    return t('auth.error.samePassword')
   if (m.includes('password')) return t('auth.error.password')
   if (m.includes('email') && m.includes('invalid')) return t('auth.error.email')
-  return message
+  // Неузнанный отказ: общая подпись, сырой текст — только в консоль (М25).
+  // Прежний `return message` отдавал человеку английскую строку GoTrue;
+  // «написан для человека» — это про наши raise exception из базы,
+  // но они сюда и не попадают: у форм БАЗЫ переводчик dbErrorText.
+  console.warn('auth:', message)
+  return t('auth.error.generic')
 }
 
 // ── Замок учётной записи (0085) ────────────────────────────────────────────
