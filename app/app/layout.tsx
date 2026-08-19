@@ -59,7 +59,7 @@ export default async function AppLayout({
   const [{ data: tenant }, { data: profile }, registry] = await Promise.all([
     supabase.from('tenants').select('name').eq('id', m.tenantId).maybeSingle(),
     userId
-      ? supabase.from('profiles').select('theme').eq('id', userId).maybeSingle()
+      ? supabase.from('profiles').select('theme, full_name').eq('id', userId).maybeSingle()
       : Promise.resolve({ data: null }),
     listModules(),
   ])
@@ -75,7 +75,8 @@ export default async function AppLayout({
           и перекраску. Разбор — `components/theme.tsx`. */}
       <script dangerouslySetInnerHTML={{ __html: themeServerScript(theme) }} />
       <AppShell modules={m.modules} registry={registry}
-                perms={m.perms} shopName={tenant?.name ?? ''}>
+                perms={m.perms} shopName={tenant?.name ?? ''}
+                userName={profile?.full_name ?? ''} role={m.role}>
         {children}
       </AppShell>
     </LangProvider>

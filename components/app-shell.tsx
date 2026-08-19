@@ -90,6 +90,13 @@ type Item = {
   href: string
   /** Подпись: либо ключ словаря (для пунктов кода), либо готовая строка. */
   label: Key | { text: string }
+  /**
+   * Строка под названием в шторке профиля. Как и `label`: у пунктов
+   * реестра — готовый текст из `modules.description`, у пунктов кода —
+   * ключ словаря. Пусто — строка рисуется одним названием, а не пустым
+   * местом под ним.
+   */
+  caption?: Key | { text: string }
   icon: (p: { size?: number }) => React.ReactElement
   module?: TenantModule
   perm?: string
@@ -98,11 +105,11 @@ type Item = {
 
 /** Пункты, которые не являются модулями, — они в коде и это решение. */
 const FIXED_TOP: Item[] = [
-  { href: '/app', label: 'app.nav.today', icon: IconHome, exact: true },
+  { href: '/app', label: 'app.nav.today', caption: 'app.nav.today.desc', icon: IconHome, exact: true },
 ]
 const FIXED_BOTTOM: Item[] = [
-  { href: '/app/team', label: 'app.nav.team', icon: IconUsers, perm: 'team.read' },
-  { href: '/app/settings', label: 'app.nav.settings', icon: IconGear, perm: 'settings.read' },
+  { href: '/app/team', label: 'app.nav.team', caption: 'app.nav.team.desc', icon: IconUsers, perm: 'team.read' },
+  { href: '/app/settings', label: 'app.nav.settings', caption: 'app.nav.settings.desc', icon: IconGear, perm: 'settings.read' },
 ]
 /** Профиль — в нижней панели, последним и всегда. */
 const PROFILE: Item = { href: '/app/profile', label: 'app.nav.profile', icon: IconUser }
@@ -119,6 +126,12 @@ const ICONS: Record<string, (p: { size?: number }) => React.ReactElement> = {
 export type NavModule = {
   code: string
   title: string
+  /**
+   * Подпись под названием в шторке профиля («Розклад і зведення дня»).
+   * Данные реестра, а не строка словаря: раздел приносит своё описание
+   * сам, как и название со значком (0110).
+   */
+  description: string | null
   icon: string | null
   route: string | null
   perm: string | null
@@ -137,6 +150,7 @@ const labelOf = (t: T, label: Item['label']) =>
 const itemOf = (m: NavModule): Item => ({
   href: m.route ?? '',
   label: { text: m.title },
+  caption: m.description ? { text: m.description } : undefined,
   icon: ICONS[m.icon ?? ''] ?? IconGear,
   module: m.code,
   perm: m.perm ?? undefined,
@@ -291,6 +305,10 @@ export function AppShell(props: {
   perms?: string[]
   /** Имя заведения — заголовок экрана «Сьогодні». */
   shopName?: string
+  /** Имя человека — первая строка шапки шторки профиля (хендофф). */
+  userName?: string
+  /** Его роль в заведении — вторая строка там же. */
+  role?: string
   /** Кнопка справа в шапке. Читается и рисуется — см. `AppShellInner`. */
   action?: React.ReactNode
   children: React.ReactNode
@@ -312,16 +330,26 @@ export function AppShell(props: {
 }
 
 function AppShellInner({
-  modules, registry, perms, shopName = '', action, children,
+  modules, registry, perms, shopName = '', userName = '', role = '', action, children,
 }: {
   modules?: TenantModule[]
   registry?: NavModule[]
   perms?: string[]
   shopName?: string
+  userName?: string
+  role?: string
   action?: React.ReactNode
   children: React.ReactNode
 }) {
   const t = useT()
+  // Подпись роли. Список закрытый: роль вне его — не «неизвестная роль»
+  // на экране, а отсутствие строки. Печатать `operator` человеку нельзя,
+  // он прочтёт это как ошибку.
+  const ROLE_KEYS = ['owner', 'admin', 'manager', 'operator',
+                     'accountant', 'viewer', 'inspector'] as const
+  const roleLabel = (ROLE_KEYS as readonly string[]).includes(role)
+    ? t(`role.${role as (typeof ROLE_KEYS)[number]}`)
+    : ''
   const pathname = usePathname()
   const params = useSearchParams()
   const router = useRouter()
@@ -734,16 +762,55 @@ function AppShellInner({
       )}
 
       {/* ── Под аватаром: остальные разделы, тема, выход ─────── */}
-      <Sheet open={menu} onClose={() => setMenu(false)} title={t('app.chrome.menu.title')}>
-        <div className="flex flex-col gap-1">
+      <Sheet open={menu} onClose={() => setMenu(false)}>
+        {/* Шапка шторки по хендоффу: аватар 52px, имя 16px/700, под ним
+            роль и заведение 12px `muted`. Заголовка «Меню» здесь больше
+            нет — человек и так знает, что нажал на свой аватар, а строка
+            занимала место, которое в макете отдано имени.
+
+            Бейджа «PRO» из макета НЕТ намеренно: тарифов в продукте не
+            существует (ни `plans`, ни `subscriptions`), и плашка уровня
+            подписки была бы утверждением, которого база не подтверждает.
+            Появится биллинг — появится и она. */}
+        <div className="mb-3 flex items-center gap-3">
+          <span aria-hidden className="flex shrink-0 items-center justify-center"
+                style={{
+                  width: 52, height: 52, borderRadius: 999,
+                  background: 'var(--color-accent-soft)',
+                  color: 'var(--color-accent-ink)',
+                  fontSize: 19, fontWeight: 700,
+                }}>
+            {(userName || shopName || '·').trim().charAt(0).toUpperCase()}
+          </span>
+          <span className="min-w-0">
+            <span className="block truncate" style={{ fontSize: 16, fontWeight: 700 }}>
+              {userName || shopName || t('app.chrome.menu.title')}
+            </span>
+            <span className="block truncate"
+                  style={{ fontSize: 12, color: 'var(--color-muted)' }}>
+              {[roleLabel, shopName].filter(Boolean).join(' · ')}
+            </span>
+          </span>
+        </div>
+
+        <div className="flex flex-col">
           {menuItems.map((s) => (
-            <Link key={s.href + s.label} href={s.href} className="drawer-item"
+            <Link key={s.href + s.label} href={s.href} className="menu-row"
                   onClick={() => setGoing(s.href)}
                   data-active={active(s)}>
-              <span aria-hidden className="flex w-6 justify-center">
-                <s.icon size={20} />
+              {/* Плашка 36px — из хендоффа. Значок в ней акцентом:
+                  в списке из десяти строк он единственный ориентир,
+                  по которому раздел находят, не читая. */}
+              <span aria-hidden className="menu-row-plate"><s.icon size={18} /></span>
+              <span className="min-w-0 flex-1">
+                <span className="menu-row-title">{labelOf(t, s.label)}</span>
+                {s.caption && (
+                  <span className="menu-row-caption">{labelOf(t, s.caption)}</span>
+                )}
               </span>
-              {labelOf(t, s.label)}
+              <span aria-hidden className="shrink-0" style={{ color: 'var(--color-faint)' }}>
+                <IconChevronRight size={18} />
+              </span>
             </Link>
           ))}
         </div>
@@ -771,9 +838,12 @@ function AppShellInner({
           <div className="mt-1 border-t pt-3" style={{ borderColor: 'var(--color-border)' }}>
             <TextSize />
           </div>
+          {/* Выход — `danger`, как в хендоффе. Приглушённым он читался
+              как обычный пункт списка, а это единственное действие
+              шторки, которое нельзя нажать по ошибке. */}
           <button type="button" onClick={() => void signOut()}
                   className="drawer-item mt-1 w-full text-left"
-                  style={{ color: 'var(--color-muted)' }}>
+                  style={{ color: 'var(--color-danger)' }}>
             <span aria-hidden className="flex w-6 justify-center"><IconExit /></span>
             {t('app.chrome.signOut')}
           </button>
