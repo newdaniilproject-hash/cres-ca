@@ -6,7 +6,8 @@ import { createClient } from '@/lib/supabase/client'
 import { Sheet } from '@/components/sheet'
 import { useToast } from '@/components/toast'
 import { useT } from '@/lib/i18n/client'
-import { IconChevronRight, IconClose, IconUsers } from '@/components/icons'
+import { IconChevronRight, IconClose, IconPlus, IconUsers } from '@/components/icons'
+import { NewCustomerSheet } from './new-customer'
 
 // ── Клиенты: карточка и выгрузка ───────────────────────────────────────────
 //
@@ -74,14 +75,20 @@ type Card = {
 }
 
 export function CustomersClient({
-  tenantId, customers,
+  tenantId, customers, canWrite,
 }: {
   tenantId: string
   customers: CustomerRow[]
+  /** `customers.write`. Только раскладка: границу держит политика 0006. */
+  canWrite: boolean
 }) {
   const t = useT()
   const toast = useToast()
   const supabase = useMemo(() => createClient(), [])
+  // Форма новая одна на оба экрана, кнопок две (широкий хедер и узкая
+  // полоса). Двух состояний быть не должно: они разъезжаются, и человек
+  // видит открытой одну шторку, а заполняет вторую.
+  const [adding, setAdding] = useState(false)
 
   const [card, setCard] = useState<Card | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
@@ -203,12 +210,14 @@ export function CustomersClient({
           которым его называет панель и вкладка браузера, и подпись под
           ним. Справа — единственное действие уровня экрана.
 
-          Кнопки «Додати клієнта» из макета здесь НЕТ, и это не пропуск:
-          клиента в этом продукте не заводят руками — он появляется сам
-          с первым заказом или записью (о чём говорит и пустое состояние
-          ниже). Кнопка, открывающая форму, которой не существует, — это
-          сломанная навигация, а форма, заведённая ради кнопки, — второй
-          источник клиентов помимо заказов. */}
+          «Додати клієнта» из макета ЕСТЬ, и прежняя запись здесь («клиента
+          не заводят руками — он появляется сам с первым заказом или
+          записью») отменена: она описывала витрину, а салон работает
+          по телефону. Клиент звонит, и до появления этой формы записать
+          его было нельзя вовсе — ни клиента, ни записи, ни заказа
+          из кабинета не создавалось. Вторым источником клиентов форма
+          не становится: и запись, и заказ по-прежнему находят карточку
+          по телефону, а не заводят свою. */}
       <div className="mb-5 hidden items-center justify-between gap-4 lg:flex">
         <div className="flex min-w-0 items-center gap-3">
           <span aria-hidden className="flex shrink-0 items-center justify-center"
@@ -227,16 +236,26 @@ export function CustomersClient({
             </p>
           </div>
         </div>
-        {customers.length > 0 && (
-          // Тот же обработчик, что и у кнопки телефона: выгрузка идёт
-          // через `customers_export` и пишет строку в журнал доступа.
-          // Второй сборки файла здесь нет и заводить её нельзя.
-          <button type="button" className="btn-primary shrink-0"
-                  disabled={busy === 'export'}
-                  onClick={() => void exportAll()}>
-            {busy === 'export' ? t('common.saving') : t('customers.export.cta')}
-          </button>
-        )}
+        <div className="flex shrink-0 items-center gap-2">
+          {customers.length > 0 && (
+            // Тот же обработчик, что и у кнопки телефона: выгрузка идёт
+            // через `customers_export` и пишет строку в журнал доступа.
+            // Второй сборки файла здесь нет и заводить её нельзя.
+            <button type="button" className="btn-secondary"
+                    disabled={busy === 'export'}
+                    onClick={() => void exportAll()}>
+              {busy === 'export' ? t('common.saving') : t('customers.export.cta')}
+            </button>
+          )}
+          {canWrite && (
+            <button type="button" className="btn-primary"
+                    style={{ minHeight: 'var(--tap-min)' }}
+                    onClick={() => setAdding(true)}>
+              <IconPlus size={18} />
+              {t('customers.add.cta')}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* README, розділ G: рядок клієнта — аватар, ім'я, бейдж категорії,
@@ -247,15 +266,25 @@ export function CustomersClient({
 
           Аватар — буква имени на плашке, а не картинка: колонки под фото
           у клиента нет, и пустой серый кружок был бы честнее только на вид. */}
-      <section className="rise flex items-center justify-between gap-3 lg:hidden">
+      <section className="rise mb-3 flex items-center justify-between gap-3 lg:hidden">
         <p className="eyebrow">{t('customers.list.title')}</p>
-        {customers.length > 0 && (
-          <button type="button" className="btn-ghost t-sm"
-                  disabled={busy === 'export'}
-                  onClick={() => void exportAll()}>
-            {busy === 'export' ? t('common.saving') : t('customers.export.cta')}
-          </button>
-        )}
+        <span className="flex items-center gap-2">
+          {customers.length > 0 && (
+            <button type="button" className="btn-ghost t-sm"
+                    disabled={busy === 'export'}
+                    onClick={() => void exportAll()}>
+              {busy === 'export' ? t('common.saving') : t('customers.export.cta')}
+            </button>
+          )}
+          {canWrite && (
+            <button type="button" className="btn-primary t-sm"
+                    style={{ minHeight: 'var(--tap-min)' }}
+                    onClick={() => setAdding(true)}>
+              <IconPlus size={16} />
+              {t('customers.add.cta')}
+            </button>
+          )}
+        </span>
       </section>
 
       {customers.length === 0 ? (
@@ -538,6 +567,10 @@ export function CustomersClient({
           </div>
         )}
       </Sheet>
+
+      {/* Форма нового клиента — одна на обе раскладки (разбор у состояния
+          `adding` выше). Она сама обновляет список после успеха. */}
+      <NewCustomerSheet tenantId={tenantId} open={adding} onClose={() => setAdding(false)} />
     </>
   )
 }

@@ -45,10 +45,14 @@ export default async function OrdersPage({
   // и не оставляет следа; в карточке заказа он открывается осознанно.
   // Список, отдающий контакты сотне строк за раз, — это выгрузка базы
   // без кнопки «выгрузить». Разбор — notes/pii-leaks.md.
+  //
+  // `paid_amount` тянется ради колонки «Оплата» на десктопе: заказ
+  // «оплачено» по статусу и «деньги пришли» — разные утверждения, и
+  // второе есть только в этом числе.
   let query = supabase
     .from('v_orders')
     .select(
-      'id, number, status, contact_name, buyer_user_id, total, source, created_at',
+      'id, number, status, contact_name, buyer_user_id, total, paid_amount, source, created_at',
       { count: 'exact' },
     )
     .eq('tenant_id', m.tenantId)
@@ -59,29 +63,56 @@ export default async function OrdersPage({
   // с тысячей заказов. README, розділ G: «Статистика (усього / нові /
   // виконані)» — три величины и ровно они, потому что отвечают на
   // «сколько всего», «что требует меня» и «что закрыто».
-  const countOf = (status?: string) => {
+  //
+  // Четвёртая величина «в роботі» (§19) — это не отдельный статус, а всё,
+  // что уже принято и ещё не закрыто: от `confirmed` до `delivered`.
+  // `new` из него исключён намеренно — у него своя плитка, и заказ,
+  // посчитанный дважды, делает сумму плиток больше «усього».
+  const IN_WORK = ['confirmed', 'awaiting_payment', 'paid', 'packing', 'shipped', 'delivered']
+  const countOf = (status?: string | string[]) => {
     let q = supabase.from('v_orders')
       .select('id', { count: 'exact', head: true })
       .eq('tenant_id', m.tenantId)
-    if (status) q = q.eq('status', status)
+    if (Array.isArray(status)) q = q.in('status', status)
+    else if (status) q = q.eq('status', status)
     return q
   }
 
-  const [{ data, error, count }, all, fresh, done] = await Promise.all([
+  const [{ data, error, count }, all, fresh, working, done] = await Promise.all([
     query.order('created_at', { ascending: false }).limit(100),
     countOf(),
     countOf('new'),
+    countOf(IN_WORK),
     countOf('completed'),
   ])
+
+  // Число позиций в заказе — вторым запросом по видимым строкам, а не
+  // связью из `v_orders`: у представления PostgREST выводит связи не всегда,
+  // и отказ в разборе положил бы весь список ради одной колонки. Запрос
+  // отдаёт только `order_id` — это индекс, и он не читает ни цен, ни имён.
+  const ids = (data ?? []).map((o) => o.id)
+  const { data: itemRows } = ids.length
+    ? await supabase.from('order_items').select('order_id')
+        .eq('tenant_id', m.tenantId).in('order_id', ids)
+    : { data: [] as { order_id: string }[] }
+  const itemCount = new Map<string, number>()
+  for (const row of itemRows ?? []) {
+    itemCount.set(row.order_id, (itemCount.get(row.order_id) ?? 0) + 1)
+  }
 
   return (
     <AppShell modules={m.modules} perms={m.perms}>
       <OrdersClient
         active={active}
+        tenantId={m.tenantId}
+        // `orders.write` решает только, рисовать ли кнопку «Нове
+        // замовлення»: сам `create_order` проверяет это право внутри.
+        canWrite={can(m, 'orders.write')}
         total={count ?? 0}
         stats={{
           all: all.count ?? 0,
           fresh: fresh.count ?? 0,
+          working: working.count ?? 0,
           done: done.count ?? 0,
         }}
         error={error?.message ?? ''}
@@ -92,6 +123,8 @@ export default async function OrdersPage({
           name: o.contact_name,
           guest: o.buyer_user_id === null,
           total: Number(o.total),
+          paid: Number(o.paid_amount ?? 0),
+          items: itemCount.get(o.id) ?? 0,
           source: o.source,
           createdAt: o.created_at,
         }))}

@@ -42,6 +42,7 @@ export function BookingFlow({
   const [slot, setSlot] = useState<Slot | null>(null)
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
+  const [email, setEmail] = useState('')
   const [state, setState] = useState<'idle' | 'sending' | 'done' | 'error'>('idle')
   const [error, setError] = useState('')
   const [booked, setBooked] = useState<Booked | null>(null)
@@ -101,6 +102,11 @@ export function BookingFlow({
       p_starts_at: slot.starts_at,
       p_contact_name: name,
       p_contact_phone: phone || null,
+      // Почта необязательна, но это единственный ключ, по которому
+      // гостевая запись подтянется в аккаунт после подтверждения
+      // почты (0120). Телефон таким ключом не является: он ничем
+      // не подтверждается.
+      p_contact_email: email.trim() || null,
       p_attribution_source: attr?.source ?? null,
       p_attribution_label: attr?.label ?? null,
       p_attribution_at: attr?.at ?? null,
@@ -263,6 +269,16 @@ export function BookingFlow({
             <input id="bphone" type="tel" className="input" value={phone}
                    onChange={(e) => setPhone(e.target.value)} placeholder="+380 __ ___ __ __" />
             <p className="field-hint">{t('public.book.phone.hint')}</p>
+          </div>
+          <div>
+            <label className="field-label" htmlFor="bemail">
+              {t('public.book.email.label')}
+            </label>
+            <input id="bemail" type="email" inputMode="email" autoComplete="email"
+                   className="input" value={email}
+                   onChange={(e) => setEmail(e.target.value)}
+                   placeholder={t('public.book.email.placeholder')} />
+            <p className="field-hint">{t('public.book.email.hint')}</p>
           </div>
 
           {variant && depositPercent > 0 && variant.price != null && (

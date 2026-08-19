@@ -79,13 +79,26 @@ export default async function AccountPage() {
           <Link href="/account/security" className="btn-secondary">{t('account.link.security')}</Link>
         </div>
 
-        {memberships.length > 0 && (
+        {/* Заведение есть — вход в кабинет. Заведения нет — предложение
+            его завести: с 19.08.2026 покупатель приземляется ЗДЕСЬ
+            (0118), и без этой карточки путь «клиент решил стать
+            мастером» из продукта пропал бы целиком — регистрация
+            продавца осталась бы доступна только по прямой ссылке. */}
+        {memberships.length > 0 ? (
           <Link href="/app" className="card-link rise-1 mt-6 flex items-center justify-between">
             <div>
               <p className="t-lg">{t('account.business.title')}</p>
               <p className="t-sm mt-0.5 prose-muted">{t('account.business.desc')}</p>
             </div>
             <span className="btn-primary">{t('account.business.open')}</span>
+          </Link>
+        ) : (
+          <Link href="/register/seller" className="card-link rise-1 mt-6 flex items-center justify-between">
+            <div>
+              <p className="t-lg">{t('account.become.title')}</p>
+              <p className="t-sm mt-0.5 prose-muted">{t('account.become.desc')}</p>
+            </div>
+            <span className="btn-secondary">{t('account.become.action')}</span>
           </Link>
         )}
 
