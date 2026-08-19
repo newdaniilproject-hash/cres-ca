@@ -9,6 +9,7 @@ import { useT } from '@/lib/i18n/client'
 import type { T } from '@/lib/i18n/translate'
 import { dbErrorText } from '@/lib/errors/db'
 import { Sheet } from '@/components/sheet'
+import { IconBeaker, IconCheck, IconChevronRight, IconClipboard } from '@/components/icons'
 
 // Дата и время записи журнала — «16 серп., 14:05». Это НАБОР ОПЦИЙ,
 // а не своя `fmt`: форматирует по-прежнему `t.dateTime`, то есть язык
@@ -70,6 +71,7 @@ function Performer({ name }: { name: string | null }) {
 // короткая форма: заполнять их будут между клиентами, стоя.
 export function JournalsClient({
   tenantId, userId, canWrite, canManage, solutions, tasks, cycles,
+  totals, cleaningLastAt,
 }: {
   tenantId: string; userId: string
   /**
@@ -86,6 +88,14 @@ export function JournalsClient({
    */
   canManage: boolean
   solutions: Solution[]; tasks: Task[]; cycles: Cycle[]
+  /**
+   * Сколько записей в каждом журнале ВСЕГО. Считает база (`count: 'exact'`),
+   * потому что сами списки обрезаны тридцатью строками: карточка журнала
+   * на десктопе называет число, и оно обязано быть настоящим.
+   */
+  totals: { cleaning: number; solutions: number; cycles: number }
+  /** Последняя отметка прибирання за всё время — `entries` даёт только сегодня. */
+  cleaningLastAt: string | null
 }) {
   const t = useT()
   const supabase = useMemo(() => createClient(), [])
@@ -313,44 +323,163 @@ export function JournalsClient({
     router.refresh()
   }
 
+  // ── Вкладки — ОДИН список на обе раскладки ───────────────────────────────
+  // На телефоне это чипы, на lg — `.wtab` с чертой. Имена и порядок живут
+  // здесь один раз: два списка разъехались бы на первой новой вкладке.
+  const tabItems = [
+    ['cleaning', t('journals.tab.cleaning')],
+    ['solutions', t('journals.tab.solutions')],
+    ['sterilization', t('journals.tab.sterilization')],
+    ['actions', t('journals.tab.actions')],
+  ] as const
+
+  // ── Карточки журналов (только lg) ────────────────────────────────────────
+  // Три САНИТАРНЫХ журнала — ровно те, что требует Техрегламент №65.
+  // «Дії» сюда не входят: это аудит изменений данных, а не журнал уборки,
+  // и число строк в нём ничего не говорит о готовности к проверке.
+  //
+  // Тон плашки здесь — ОПОЗНАВАТЕЛЬНЫЙ знак журнала, а не состояние: три
+  // одинаковых серых кружка читались бы как один пункт, разбитый переносом.
+  // Состояние показывают бейджи в таблицах ниже.
+  const journalCards = [
+    {
+      key: 'cleaning' as const, icon: IconClipboard, tone: 'blue' as const,
+      title: t('journals.tab.cleaning'), n: totals.cleaning, last: cleaningLastAt,
+    },
+    {
+      key: 'solutions' as const, icon: IconBeaker, tone: 'violet' as const,
+      title: t('journals.tab.solutions'), n: totals.solutions,
+      // Список уже отсортирован базой по убыванию — первая строка и есть
+      // последняя запись. Второй сортировки на клиенте быть не должно.
+      last: solutions[0]?.prepared_at ?? null,
+    },
+    {
+      key: 'sterilization' as const, icon: IconCheck, tone: 'emerald' as const,
+      title: t('journals.tab.sterilization'), n: totals.cycles,
+      last: cycles[0]?.performed_at ?? null,
+    },
+  ]
+
+  // Колонки таблиц CRESKO Web. Единственное место, где размер задаётся
+  // строкой, — так велит `.wtable`: сетку задаёт экран, а не класс.
+  const GRID_CLEANING = '2.2fr 1fr 1.2fr 1.1fr 150px'
+  const GRID_SOLUTIONS = '1.9fr .8fr 1.2fr 1.1fr 1fr'
+  const GRID_CYCLES = '1.7fr .9fr 1.2fr 1.1fr .8fr'
+  const GRID_AUDIT = '1.5fr 1.4fr 1.4fr 1fr'
+
   return (
     <div className="flex flex-col gap-5">
-      {/* ⚠️ ВКЛАДКИ ПОКАЗЫВАЮТСЯ НА ВСЕХ ЭКРАНАХ. Раньше на них висело
-          `hidden lg:inline-flex` с объяснением «на телефоне эти же вкладки
-          живут в нижней панели приложения» — и объяснение устарело
-          15.08.2026, когда панель перестала держать экраны раздела
-          и стала держать сами разделы (CLAUDE.md → «Мобильная версия»).
-          С того дня с телефона нельзя было открыть ни «Розчини»,
-          ні «Стерилізацію», ні «Дії»: человек видел первую вкладку
-          и считал, что других журналов в продукте нет.
+      {/* ⚠️ ВКЛАДКИ ДОСТУПНЫ НА ВСЕХ ЭКРАНАХ, и это условие сильнее вида.
+          Раньше на них висело `hidden lg:inline-flex` с объяснением
+          «на телефоне эти же вкладки живут в нижней панели приложения» —
+          объяснение устарело 15.08.2026, когда панель перестала держать
+          экраны раздела и стала держать сами разделы (CLAUDE.md →
+          «Мобильная версия»). С того дня с телефона нельзя было открыть
+          ни «Розчини», ні «Стерилізацію», ні «Дії»: человек видел первую
+          вкладку и считал, что других журналов в продукте нет.
+
+          Ниже они разведены по РАСКЛАДКАМ, а не спрятаны: чипы под палец
+          на узком экране, `.wtab` с чертой на широком. Оба списка строятся
+          из одного `tabItems` и зовут один `setTab` — иначе новая вкладка
+          появилась бы ровно в одной раскладке, и мы вернулись бы сюда же.
 
           Правило шире одного экрана: спрятанное «потому что оно есть
           в другом месте» стареет молча — другое место меняется, а класс
           остаётся. Ровно так же было с `.apphead-back` (CLAUDE.md). */}
-      <div className="scroll-x rise -mx-4 flex items-center gap-2 px-4 pb-1 sm:mx-0 sm:px-0">
-        <button onClick={() => setTab('cleaning')}
-                className={`${tab === 'cleaning' ? 'chip-active' : 'chip'} shrink-0`}>
-          {t('journals.tab.cleaning')}
-        </button>
-        <button onClick={() => setTab('solutions')}
-                className={`${tab === 'solutions' ? 'chip-active' : 'chip'} shrink-0`}>
-          {t('journals.tab.solutions')}
-        </button>
-        <button onClick={() => setTab('sterilization')}
-                className={`${tab === 'sterilization' ? 'chip-active' : 'chip'} shrink-0`}>
-          {t('journals.tab.sterilization')}
-        </button>
-        <button onClick={() => setTab('actions')}
-                className={`${tab === 'actions' ? 'chip-active' : 'chip'} shrink-0`}>
-          {t('journals.tab.actions')}
-        </button>
+      {/* ── CRESKO Web: хедер экрана (только lg) ─────────────────
+          Слева имя экрана тем же ключом, которым его называет панель
+          и вкладка браузера; справа — единственное действие уровня
+          экрана, отчёт для проверки. Второй кнопки «Новий запис» здесь
+          нет намеренно: запись в каждый журнал своя и делается формой
+          внутри вкладки, а кнопка, ведущая «куда-то в журналы», была бы
+          третьим входом в то же самое. */}
+      <div className="hidden items-center justify-between lg:flex">
+        <h1 className="webh1">{t('app.screen.journals.title')}</h1>
+        <a href="/app/journals/report" target="_blank" rel="noreferrer"
+           className="btn-primary">
+          {t('journals.report.open')}
+        </a>
+      </div>
+
+      {/* ── CRESKO Web: карточки трёх журналов (только lg) ────────
+          Число записей и дата последней — то, ради чего на этот экран
+          заходят перед проверкой: «чи ведеться журнал і коли востаннє».
+          Нажатие переключает вкладку ниже, то есть карточки и вкладки —
+          один орган управления, а не два входа в одно место: карточка
+          несёт величины, которых у вкладки нет. */}
+      <section className="rise hidden lg:grid lg:grid-cols-3" style={{ gap: 14 }}>
+        {journalCards.map((c) => (
+          <button key={c.key} type="button" aria-pressed={tab === c.key}
+                  onClick={() => setTab(c.key)}
+                  className="webcard text-left"
+                  style={{
+                    minHeight: 'var(--tap-min)',
+                    borderColor: tab === c.key ? 'var(--color-accent)' : undefined,
+                  }}>
+            <span className="flex items-start justify-between gap-3">
+              <span className="wmetric-icon" data-tone={c.tone}><c.icon size={19} /></span>
+              {/* `aria-hidden` иконки ставит сам компонент — здесь только
+                  цвет, иначе шеврон спорит по весу с числом. */}
+              <span className="shrink-0" style={{ color: 'var(--color-faint)' }}>
+                <IconChevronRight size={18} />
+              </span>
+            </span>
+            <span className="mt-3 block"
+                  style={{ fontSize: 13, fontWeight: 650, color: 'var(--color-text)' }}>
+              {c.title}
+            </span>
+            <span className="tabular mt-1 flex items-baseline gap-1.5">
+              <span style={{ fontSize: 21, fontWeight: 800, color: 'var(--color-text)' }}>
+                {t.number(c.n)}
+              </span>
+              <span style={{ fontSize: 12, color: 'var(--color-muted)' }}>
+                {t('journals.web.card.records')}
+              </span>
+            </span>
+            {/* Пунктирная черта и строка под ней — из README карточки.
+                Пустой журнал говорит об этом словом, а не прочерком:
+                «—» рядом с подписью «Останній» читается как сбой. */}
+            <span className="mt-3.5 block pt-3"
+                  style={{
+                    borderTop: '1px dashed var(--web-border-dash, var(--color-border))',
+                    fontSize: 12, color: 'var(--color-muted)',
+                  }}>
+              {c.last
+                ? t('journals.web.card.last', { date: t.dateTime(c.last, AT) })
+                : t('journals.web.card.never')}
+            </span>
+          </button>
+        ))}
+      </section>
+
+      <div className="scroll-x rise -mx-4 flex items-center gap-2 px-4 pb-1 lg:hidden sm:mx-0 sm:px-0">
+        {tabItems.map(([key, label]) => (
+          <button key={key} onClick={() => setTab(key)}
+                  className={`${tab === key ? 'chip-active' : 'chip'} shrink-0`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── CRESKO Web: вкладки чертой (только lg) ───────────────
+          Тот же `tabItems` и тот же `setTab`, что и у чипов, —
+          отличается только вид. */}
+      <div className="wtabs hidden lg:flex">
+        {tabItems.map(([key, label]) => (
+          <button key={key} type="button" onClick={() => setTab(key)}
+                  className="wtab" data-active={tab === key}>
+            {label}
+          </button>
+        ))}
       </div>
 
       {/* Подпись кнопки — интерфейс и переводится. САМ отчёт по этой ссылке
           собирается всегда по-украински и от языка кабинета не зависит:
-          это документ для Держпродспоживслужби (lib/report/sanitation-report.ts). */}
+          это документ для Держпродспоживслужби (lib/report/sanitation-report.ts).
+          На lg та же ссылка стоит в хедере экрана, поэтому здесь её нет:
+          два входа в одно действие — то, что разбор склада велел убирать. */}
       <a href="/app/journals/report" target="_blank" rel="noreferrer"
-         className="btn-secondary rise-1 self-start">
+         className="btn-secondary rise-1 self-start lg:hidden">
         {t('journals.report.open')}
       </a>
 
@@ -358,7 +487,7 @@ export function JournalsClient({
 
       {tab === 'cleaning' && (
         <section className="flex flex-col gap-4">
-          <div className="card rise-1 !p-0">
+          <div className="card rise-1 !p-0 lg:hidden">
             {tasks.length === 0 ? (
               <div className="empty">
                 {canManage
@@ -397,6 +526,79 @@ export function JournalsClient({
               </div>
             ))}
           </div>
+
+          {/* ── CRESKO Web: чек-лист таблицей (только lg) ──────────
+              Те же самые `tasks` и те же два действия, что у карточек
+              выше: открыть историю отметок и отметить выполнение.
+              Второй логики здесь нет — иначе на широком экране
+              показывалось бы не то же самое, что на узком.
+
+              Строка — НЕ одна большая ссылка: внутри неё живёт кнопка
+              «Виконано», а вложенная кнопка внутри кнопки недопустима.
+              Поэтому целью нажатия остаётся первая ячейка — ровно как
+              на телефоне, где нажимается название пункта. Ей задан
+              `--tap-min`: 44px по HIG держатся и на десктопе, потому
+              что тем же экраном пользуются с планшета. */}
+          <div className="wtable hidden lg:block">
+            <div className="wtable-head" style={{ gridTemplateColumns: GRID_CLEANING }}>
+              <span>{t('journals.web.table.task')}</span>
+              <span>{t('journals.web.table.schedule')}</span>
+              <span>{t('journals.web.table.today')}</span>
+              <span>{t('journals.web.table.performer')}</span>
+              <span>{t('journals.web.table.status')}</span>
+            </div>
+            {tasks.length === 0 ? (
+              <div className="empty">
+                {canManage
+                  ? t('journals.cleaning.empty.manage')
+                  : t('journals.cleaning.empty.read')}
+              </div>
+            ) : tasks.map((task) => (
+              <div key={task.id} className="wtable-row"
+                   style={{ gridTemplateColumns: GRID_CLEANING }}>
+                <button type="button"
+                        className="flex min-w-0 items-center text-left"
+                        style={{ minHeight: 'var(--tap-min)' }}
+                        onClick={() => void openHistory(task)}>
+                  {/* Название пункта — данные заклада, не переводится. */}
+                  <span className="truncate font-semibold"
+                        style={{ color: 'var(--color-text)' }}>{task.name}</span>
+                </button>
+                {/* Периодичность — тоже данные заклада. */}
+                <span className="truncate">{task.schedule || t('common.noValue')}</span>
+                <span className="tabular">
+                  {task.doneToday && task.doneAt
+                    ? t.dateTime(task.doneAt, AT)
+                    : t('common.noValue')}
+                </span>
+                <span className="truncate">
+                  {task.doneToday
+                    ? <Performer name={task.donePerformer} />
+                    : t('common.noValue')}
+                </span>
+                <span>
+                  {task.doneToday || offDone.has(task.id) ? (
+                    <span className="badge-success">{t('journals.cleaning.doneToday')}</span>
+                  ) : canWrite ? (
+                    <button className="btn-secondary t-sm" disabled={busy === task.id}
+                            onClick={() => void markTask(task.id)}>
+                      {t('journals.cleaning.mark')}
+                    </button>
+                  ) : (
+                    <span className="badge">{t('journals.cleaning.notMarked')}</span>
+                  )}
+                </span>
+              </div>
+            ))}
+            {tasks.length > 0 && (
+              <div className="wtable-foot">
+                <span className="tabular">
+                  {t('journals.web.table.total', { n: t.number(tasks.length) })}
+                </span>
+              </div>
+            )}
+          </div>
+
           {canManage && (
             <form onSubmit={addTask} className="rise-2 flex gap-2">
               <input className="input" placeholder={t('journals.cleaning.newTask.placeholder')}
@@ -440,7 +642,65 @@ export function JournalsClient({
           </form>
           )}
 
-          <div className="card rise-2 !p-0">
+          {/* ── CRESKO Web: журнал розчинів таблицей (только lg) ────
+              Ни одного действия у строки нет и на телефоне — розчин
+              записывают формой выше, а запись журнала неизменяема.
+              Поэтому строки здесь не нажимаются: нажатие, которое
+              ничего не открывает, читается как поломка. */}
+          <div className="wtable hidden lg:block">
+            <div className="wtable-head" style={{ gridTemplateColumns: GRID_SOLUTIONS }}>
+              <span>{t('journals.web.table.agent')}</span>
+              <span>{t('journals.web.table.volume')}</span>
+              <span>{t('journals.web.table.prepared')}</span>
+              <span>{t('journals.web.table.performer')}</span>
+              <span>{t('journals.web.table.validity')}</span>
+            </div>
+            {solutions.length === 0 ? (
+              <div className="empty">{t('journals.solutions.empty')}</div>
+            ) : solutions.map((s) => {
+              const active = new Date(s.expires_at) > new Date()
+              return (
+                <div key={s.id} className="wtable-row"
+                     style={{ gridTemplateColumns: GRID_SOLUTIONS }}>
+                  <span className="min-w-0">
+                    {/* Назва засобу и концентрация — данные записи журнала. */}
+                    <span className="block truncate font-semibold"
+                          style={{ color: 'var(--color-text)' }}>{s.agent_name}</span>
+                    <span className="block truncate" style={{ color: 'var(--color-faint)' }}>
+                      {s.concentration}
+                    </span>
+                  </span>
+                  <span className="tabular">{t.number(Number(s.volume))} {s.unit}</span>
+                  <span className="tabular">{t.dateTime(s.prepared_at, AT)}</span>
+                  <span className="truncate"><Performer name={s.performer} /></span>
+                  <span>
+                    <span className={active ? 'badge-success tabular' : 'badge tabular'}>
+                      {active
+                        ? t('journals.solution.until', { date: t.dateTime(s.expires_at, AT) })
+                        : t('journals.solution.expired')}
+                    </span>
+                  </span>
+                </div>
+              )
+            })}
+            {solutions.length > 0 && (
+              <div className="wtable-foot">
+                {/* Показано последние 30, а всего их `totals.solutions` —
+                    подвал называет обе величины, иначе «Разом» спорил бы
+                    с числом на карточке журнала выше. */}
+                <span className="tabular">
+                  {t('journals.web.table.total', { n: t.number(totals.solutions) })}
+                </span>
+                {totals.solutions > solutions.length && (
+                  <span className="tabular">
+                    {t('journals.web.table.shown', { n: t.number(solutions.length) })}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="card rise-2 !p-0 lg:hidden">
             {solutions.length === 0 ? (
               <div className="empty">{t('journals.solutions.empty')}</div>
             ) : solutions.map((s) => {
@@ -498,7 +758,53 @@ export function JournalsClient({
           </form>
           )}
 
-          <div className="card rise-2 !p-0">
+          {/* ── CRESKO Web: журнал стерилізації таблицей (только lg) ── */}
+          <div className="wtable hidden lg:block">
+            <div className="wtable-head" style={{ gridTemplateColumns: GRID_CYCLES }}>
+              <span>{t('journals.web.table.device')}</span>
+              <span>{t('journals.web.table.mode')}</span>
+              <span>{t('journals.web.table.done')}</span>
+              <span>{t('journals.web.table.performer')}</span>
+              <span>{t('journals.web.table.indicator')}</span>
+            </div>
+            {cycles.length === 0 ? (
+              <div className="empty">{t('journals.cycles.empty')}</div>
+            ) : cycles.map((c) => (
+              <div key={c.id} className="wtable-row"
+                   style={{ gridTemplateColumns: GRID_CYCLES }}>
+                {/* Назва пристрою — данные записи журнала. */}
+                <span className="truncate font-semibold"
+                      style={{ color: 'var(--color-text)' }}>{c.device}</span>
+                <span className="tabular">
+                  {t('journals.cycle.line', {
+                    temp: t.number(c.temperature_c),
+                    mins: t.number(c.duration_minutes),
+                  })}
+                </span>
+                <span className="tabular">{t.dateTime(c.performed_at, AT)}</span>
+                <span className="truncate"><Performer name={c.performer} /></span>
+                <span>
+                  <span className={c.indicator_ok ? 'badge-success' : 'badge-danger'}>
+                    {c.indicator_ok ? t('journals.cycle.ok') : t('journals.cycle.fail')}
+                  </span>
+                </span>
+              </div>
+            ))}
+            {cycles.length > 0 && (
+              <div className="wtable-foot">
+                <span className="tabular">
+                  {t('journals.web.table.total', { n: t.number(totals.cycles) })}
+                </span>
+                {totals.cycles > cycles.length && (
+                  <span className="tabular">
+                    {t('journals.web.table.shown', { n: t.number(cycles.length) })}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="card rise-2 !p-0 lg:hidden">
             {cycles.length === 0 ? (
               <div className="empty">{t('journals.cycles.empty')}</div>
             ) : cycles.map((c) => (
@@ -531,7 +837,47 @@ export function JournalsClient({
       {tab === 'actions' && (
         <section className="flex flex-col gap-4">
           <p className="field-hint rise">{t('journals.audit.hint')}</p>
-          <div className="card rise-1 !p-0">
+
+          {/* ── CRESKO Web: журнал дій таблицей (только lg) ─────────
+              Четыре колонки вместо склеенной строки: на широком экране
+              «хто» и «коли» — то, по чему этот журнал читают, и держать
+              их в одном абзаце с названием сущности значит заставлять
+              искать глазами. Строки не нажимаются: аудит неизменяем,
+              открывать в нём нечего. */}
+          <div className="wtable hidden lg:block">
+            <div className="wtable-head" style={{ gridTemplateColumns: GRID_AUDIT }}>
+              <span>{t('journals.web.table.event')}</span>
+              <span>{t('journals.web.table.object')}</span>
+              <span>{t('journals.web.table.who')}</span>
+              <span>{t('journals.web.table.when')}</span>
+            </div>
+            {audit === null ? (
+              <div className="empty">{t('journals.audit.loading')}</div>
+            ) : audit.length === 0 ? (
+              <div className="empty">{t('journals.audit.empty')}</div>
+            ) : audit.map((a) => (
+              <div key={a.id} className="wtable-row"
+                   style={{ gridTemplateColumns: GRID_AUDIT }}>
+                <span className="truncate font-semibold" style={{ color: 'var(--color-text)' }}>
+                  {actionLabel(t, a.action)} {entityLabel(t, a.entity)}
+                </span>
+                {/* `label` — имя изменённой строки (назва засобу, номер
+                    партії): данные арендатора, не переводятся. */}
+                <span className="truncate">{a.label || t('common.noValue')}</span>
+                <span className="truncate">{a.actor_email ?? t('journals.audit.system')}</span>
+                <span className="tabular">{t.dateTime(a.at, AT)}</span>
+              </div>
+            ))}
+            {audit !== null && audit.length > 0 && (
+              <div className="wtable-foot">
+                <span className="tabular">
+                  {t('journals.web.table.total', { n: t.number(audit.length) })}
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div className="card rise-1 !p-0 lg:hidden">
             {audit === null ? (
               <div className="empty">{t('journals.audit.loading')}</div>
             ) : audit.length === 0 ? (

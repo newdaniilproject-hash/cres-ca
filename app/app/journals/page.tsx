@@ -36,11 +36,17 @@ export default async function JournalsPage() {
   const supabase = await createClient()
   const userId = await currentUserId()
 
-  const [{ data: solutions }, { data: tasks }, { data: entries }, { data: cycles },
-         { data: actors }] =
+  const [{ data: solutions, count: solutionsTotal }, { data: tasks }, { data: entries },
+         { data: cycles, count: cyclesTotal }, { data: actors },
+         { data: lastCleaning, count: cleaningTotal }] =
     await Promise.all([
+      // `count: 'exact'` приезжает заголовком ТОГО ЖЕ ответа, отдельного
+      // запроса за числом не нужно. Считать записи по `solutions.length`
+      // нельзя: список обрезан тридцатью строками, и карточка журнала
+      // на десктопе обещала бы «30 записів» салону, у которого их пятьсот.
       supabase.from('sanitation_solutions')
-        .select('id, agent_name, concentration, volume, unit, prepared_at, expires_at, prepared_by')
+        .select('id, agent_name, concentration, volume, unit, prepared_at, expires_at, prepared_by',
+                { count: 'exact' })
         .eq('tenant_id', m.tenantId).order('prepared_at', { ascending: false }).limit(30),
       supabase.from('cleaning_tasks')
         .select('id, name, schedule').eq('tenant_id', m.tenantId)
@@ -49,7 +55,8 @@ export default async function JournalsPage() {
         .select('task_id, performed_at, performed_by').eq('tenant_id', m.tenantId)
         .gte('performed_at', new Date(new Date().setHours(0, 0, 0, 0)).toISOString()),
       supabase.from('sterilization_cycles')
-        .select('id, device, temperature_c, duration_minutes, indicator_ok, performed_at, performed_by')
+        .select('id, device, temperature_c, duration_minutes, indicator_ok, performed_at, performed_by',
+                { count: 'exact' })
         .eq('tenant_id', m.tenantId).order('performed_at', { ascending: false }).limit(30),
       // Имена исполнителей. Отдельным запросом, а не вложенной связью
       // `profiles(full_name)`: `profiles_self_read` (0001) отдаёт профиль
@@ -58,6 +65,15 @@ export default async function JournalsPage() {
       // по тому же `compliance.read`, на котором стоит весь этот экран.
       supabase.from('compliance_actors')
         .select('user_id, full_name').eq('tenant_id', m.tenantId),
+      // Итог и последняя отметка ПО ВСЕМУ журналу прибирання. Запрос
+      // `entries` выше намеренно обрезан сегодняшним днём — по нему видно
+      // состояние чек-листа смены и больше ничего, а карточка журнала
+      // называет число записей и дату последней. Одна строка плюс
+      // заголовок с числом: тянуть весь журнал ради двух величин незачем.
+      supabase.from('cleaning_entries')
+        .select('performed_at', { count: 'exact' })
+        .eq('tenant_id', m.tenantId)
+        .order('performed_at', { ascending: false }).limit(1),
     ])
 
   // Имя исполнителя или null. Null здесь значит «имя не достаётся»,
@@ -77,6 +93,15 @@ export default async function JournalsPage() {
         // нет ни того, ни другого: они журналы читают.
         canWrite={can(m, 'compliance.journal.write') || can(m, 'compliance.write')}
         canManage={can(m, 'compliance.write')}
+        // Итоги журналов для карточек десктопа. Считаны базой, а не длиной
+        // списков: списки обрезаны, и число из них было бы неправдой ровно
+        // у того заклада, который ведёт журналы дольше всех.
+        totals={{
+          cleaning: cleaningTotal ?? 0,
+          solutions: solutionsTotal ?? 0,
+          cycles: cyclesTotal ?? 0,
+        }}
+        cleaningLastAt={lastCleaning?.[0]?.performed_at ?? null}
         solutions={(solutions ?? []).map((s) => ({ ...s, performer: who(s.prepared_by) }))}
         // Параметр назван `task`, а не `t`: `t` в этом файле — переводчик.
         tasks={(tasks ?? []).map((task) => {

@@ -47,7 +47,8 @@ export default async function DocumentsPage() {
   // Представление отдаёт строки всем, у кого есть `compliance.read`,
   // а это ровно те, кого сюда пускает проверка выше. Разбор решения —
   // в `app/app/inventory/materials/[id]/page.tsx`.
-  const [{ data: materials, error: materialsError }, { data: docs, error: docsError }] =
+  const [{ data: materials, error: materialsError }, { data: docs, error: docsError },
+         { data: actors }] =
     await Promise.all([
       supabase.from('compliance_materials')
         .select('id, name, unit, brand, is_cosmetic')
@@ -56,11 +57,23 @@ export default async function DocumentsPage() {
         .order('name')
         .limit(300),
       supabase.from('material_documents')
-        .select('id, material_id, kind, title, path, created_at, size_bytes, mime')
+        .select('id, material_id, kind, title, path, created_at, size_bytes, mime, uploaded_by')
         .eq('tenant_id', m.tenantId)
         .order('created_at', { ascending: false })
         .limit(500),
+      // Кто загрузил документ. Отдельным запросом, а не вложенной связью
+      // `profiles(full_name)`: `profiles_self_read` (0001) отдаёт профиль
+      // ТОЛЬКО про себя, и связь к закрытой таблице вернула бы null всем,
+      // включая владельца, — молча. `compliance_actors` (0083) отдаёт имя
+      // по тому же `compliance.read`, на котором стоит весь этот экран.
+      // Тот же приём и по той же причине, что в `app/app/journals/page.tsx`.
+      supabase.from('compliance_actors')
+        .select('user_id, full_name').eq('tenant_id', m.tenantId),
     ])
+
+  // Имя загрузившего или null. Null значит «имя не достаётся» (человека
+  // вывели из состава команды, оговорка 0083), а не «загрузил никто».
+  const nameOf = new Map((actors ?? []).map((a) => [a.user_id, a.full_name]))
 
   return (
     <AppShell modules={m.modules} perms={m.perms}>
@@ -88,6 +101,7 @@ export default async function DocumentsPage() {
           // экраном — размер файла человек узнавал, только скачав его.
           size: d.size_bytes === null ? null : Number(d.size_bytes),
           mime: d.mime,
+          uploader: d.uploaded_by ? nameOf.get(d.uploaded_by) ?? null : null,
         }))}
       />
     </AppShell>
