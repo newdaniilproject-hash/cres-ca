@@ -1,8 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useMemo, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
 import type { Key } from '@/lib/i18n/dict'
@@ -79,6 +79,23 @@ export function ReceiptsClient({
   const [supplierId, setSupplierId] = useState('')
   const [docNumber, setDocNumber] = useState('')
   const [note, setNote] = useState('')
+
+  // ── `?new=1` ОТКРЫВАЕТ ФОРМУ СРАЗУ ───────────────────────────────────
+  // Кнопка «Приймання» в веб-хедере склада ведёт сюда этим адресом:
+  // человек нажал «завести документ», и заставлять его искать ту же
+  // кнопку второй раз на этом экране — лишний шаг. Приём тот же, что
+  // у `?scan=1` на складе: признак снимается из адреса СРАЗУ, иначе
+  // повторное нажатие кнопки не откроет форму (адрес не меняется,
+  // компонент не перемонтируется). `history.replaceState`, а не
+  // `router.replace`, — серверный рендер ради чистки параметра не нужен.
+  // Без права записи форму не открываем: Sheet и так гейтится canWrite,
+  // но признак из адреса всё равно вычищаем.
+  const sp = useSearchParams()
+  useEffect(() => {
+    if (sp.get('new') !== '1') return
+    if (canWrite) { setOpen(true); setErr('') }
+    window.history.replaceState(null, '', '/app/inventory/receipts')
+  }, [sp, canWrite])
 
   // ── Счётчики, они же фильтр ──────────────────────────────────────────
   // Тон несёт состояние документа, тем же смыслом, что и бейдж строки:
