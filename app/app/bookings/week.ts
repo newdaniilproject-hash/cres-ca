@@ -55,3 +55,25 @@ export function mondayOf(day: string): string {
 /** Семь дней недели от понедельника. */
 export const weekDays = (monday: string): string[] =>
   Array.from({ length: 7 }, (_, i) => shiftDay(monday, i))
+
+/** Адрес недельного вида. Сборщик один: ссылки на неделю теперь строят
+ *  и сетка, и веб-хедер экрана, а разъехавшийся параметр в адресе —
+ *  это две «одинаковые» стрелки, ведущие в разные недели. */
+export const weekHref = (monday: string): string =>
+  `/app/bookings?view=week&week=${monday}`
+
+/**
+ * Подпись недели. `formatRange` сам решает, что вынести за скобки:
+ * «17–23 серпня 2026 р.» в одном месяце и «29 червня – 5 липня 2026 р.»
+ * на стыке. Собирать это подстановкой руками — значит написать правило
+ * склейки для каждого языка заново.
+ *
+ * `T00:00:00` без зоны читается как местная полночь, поэтому и на
+ * сервере, и в браузере это ровно тот же календарный день — подпись
+ * совпадает, гидратация не спорит.
+ */
+export function weekLabel(locale: string, monday: string): string {
+  const at = (day: string) => new Date(`${day}T00:00:00`)
+  return new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'long', year: 'numeric' })
+    .formatRange(at(monday), at(shiftDay(monday, 6)))
+}

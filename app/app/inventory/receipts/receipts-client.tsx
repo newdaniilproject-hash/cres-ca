@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
@@ -10,7 +11,7 @@ import type { T } from '@/lib/i18n/translate'
 import type { RefItem } from '../material-form'
 import { dbErrorText } from '@/lib/errors/db'
 import { Sheet } from '@/components/sheet'
-import { IconInbox } from '@/components/icons'
+import { IconClose, IconInbox } from '@/components/icons'
 
 // Значения enum stock_receipt_status из 0003_inventory.sql — дословно.
 // Четвёртого состояния нет: документ либо готовится, либо уже изменил
@@ -76,6 +77,44 @@ export function ReceiptsClient({
   const [err, setErr] = useState('')
   const [flag, setFlag] = useState<Flag>('all')
 
+  // ── Шторка ИЛИ модалка — по ширине, не по устройству ─────────────────
+  // Ниже lg форма живёт в Sheet, как была; на lg+ вместо неё открывается
+  // центральная модалка 490px (хендофф CRESKO Web, §10). Порог тот же,
+  // что у Tailwind `lg:`, — иначе модалка и веб-каркас кабинета
+  // переключались бы на разных ширинах. Слушатель, а не разовая проверка:
+  // окно сужают с открытой формой, и она обязана перейти в шторку,
+  // а не остаться модалкой шириной с экран.
+  const [isLg, setIsLg] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)')
+    const sync = () => setIsLg(mq.matches)
+    sync()
+    mq.addEventListener('change', sync)
+    return () => mq.removeEventListener('change', sync)
+  }, [])
+
+  // Модалка рисуется В BODY тем же порталом, что и Sheet: любой предок
+  // с backdrop-filter или transform делает position: fixed локальным
+  // (см. components/sheet.tsx, история с колоколом).
+  const [host, setHost] = useState<HTMLElement | null>(null)
+  useEffect(() => { setHost(document.body) }, [])
+
+  // Пока модалка открыта — страница под ней не крутится, Escape закрывает.
+  // Sheet делает то же самое сам; модалке хватает overflow: клавиатурного
+  // сдвига и нативного скролла веб-вью на десктопе нет.
+  const modalOpen = open && canWrite && isLg
+  useEffect(() => {
+    if (!modalOpen) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      document.body.style.overflow = prev
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [modalOpen])
+
   const [supplierId, setSupplierId] = useState('')
   const [docNumber, setDocNumber] = useState('')
   const [note, setNote] = useState('')
@@ -139,6 +178,46 @@ export function ReceiptsClient({
   const fmt = (v: string) => t.dateTime(v, {
     day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
   })
+
+  // ── Поля формы — ОДИН раз на обе обёртки ─────────────────────────────
+  // Шторка и модалка показывают одну и ту же форму с одними обработчиками;
+  // различается только рамка вокруг. Второй набор полей разъехался бы
+  // с первым на первой же правке (правило «один источник правды»).
+  const supplierField = (
+    <div>
+      <label className="field-label">{t('inventory.receipts.form.supplier.label')}</label>
+      <select className="select" value={supplierId}
+              onChange={(e) => setSupplierId(e.target.value)}>
+        <option value="">{t('inventory.common.notSet')}</option>
+        {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+      </select>
+      {suppliers.length === 0 && (
+        <p className="field-hint">{t('inventory.receipts.form.supplier.hint')}</p>
+      )}
+    </div>
+  )
+  const numberField = (
+    <div>
+      <label className="field-label">{t('inventory.receipts.form.number.label')}</label>
+      <input className="input" placeholder={t('inventory.receipts.form.number.placeholder')}
+             value={docNumber} onChange={(e) => setDocNumber(e.target.value)} />
+    </div>
+  )
+  const noteField = (
+    <div>
+      <label className="field-label">{t('inventory.receipts.form.note.label')}</label>
+      <input className="input" placeholder={t('inventory.receipts.form.note.placeholder')}
+             value={note} onChange={(e) => setNote(e.target.value)} />
+      <p className="field-hint">{t('inventory.receipts.form.note.hint')}</p>
+    </div>
+  )
+
+  // Заголовок секции модалки: 14px/700 с номером — из §10 хендоффа.
+  const sectionHead = (n: number, label: string) => (
+    <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text)' }}>
+      {n}. {label}
+    </p>
+  )
 
   return (
     <div className="flex flex-col gap-5">
@@ -233,8 +312,8 @@ export function ReceiptsClient({
 
       <p className="field-hint">{t('inventory.receipts.hint')}</p>
 
-      {/* ── Форма нового приймання ─────────────────────────────── */}
-      <Sheet open={open && canWrite} onClose={() => setOpen(false)}
+      {/* ── Форма нового приймання: шторка ниже lg ─────────────── */}
+      <Sheet open={open && canWrite && !isLg} onClose={() => setOpen(false)}
              title={t('inventory.receipts.form.title')}
              footer={
                <button form="receipt-form" className="btn-primary w-full" disabled={busy}>
@@ -243,34 +322,79 @@ export function ReceiptsClient({
              }>
         {/* id связывает кнопку футера с формой: футер лежит вне <form>. */}
         <form id="receipt-form" onSubmit={create} className="grid gap-3">
-          <div>
-            <label className="field-label">{t('inventory.receipts.form.supplier.label')}</label>
-            <select className="select" value={supplierId}
-                    onChange={(e) => setSupplierId(e.target.value)}>
-              <option value="">{t('inventory.common.notSet')}</option>
-              {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-            {suppliers.length === 0 && (
-              <p className="field-hint">{t('inventory.receipts.form.supplier.hint')}</p>
-            )}
-          </div>
-
-          <div>
-            <label className="field-label">{t('inventory.receipts.form.number.label')}</label>
-            <input className="input" placeholder={t('inventory.receipts.form.number.placeholder')}
-                   value={docNumber} onChange={(e) => setDocNumber(e.target.value)} />
-          </div>
-
-          <div>
-            <label className="field-label">{t('inventory.receipts.form.note.label')}</label>
-            <input className="input" placeholder={t('inventory.receipts.form.note.placeholder')}
-                   value={note} onChange={(e) => setNote(e.target.value)} />
-            <p className="field-hint">{t('inventory.receipts.form.note.hint')}</p>
-          </div>
-
+          {supplierField}
+          {numberField}
+          {noteField}
           {err && <p className="field-error">{err}</p>}
         </form>
       </Sheet>
+
+      {/* ── Та же форма на lg+: центральная модалка 490px ────────
+          Хендофф CRESKO Web, §10: окно 490px, radius 18, заголовок
+          20px/750, нумерованные секции 14px/700, «Скасувати» (flex 1)
+          и синяя кнопка (flex 1.4) — единственное второе место
+          `.btn-blue` в кабинете после кнопки «Приймання» на складе.
+          Логика — та же, что в шторке: создаётся ЧЕРНОВИК документа,
+          и человек уходит на экран позиций. Поэтому секций «Товари»
+          и «Підсумок» из §10 здесь нет: позиции живут в самом
+          документе (`receipts/[id]`), а рисовать грід без данных
+          и обработчиков — фикстура, не форма.
+          Слои и тень — общие с Sheet (.sheet-layer, .sheet-backdrop,
+          var(--shadow-overlay)): второй набор значений затемнения
+          разошёлся бы с первым при правке темы. */}
+      {modalOpen && host && createPortal(
+        <div className="sheet-layer flex items-center justify-center p-6"
+             role="dialog" aria-modal="true"
+             aria-label={t('inventory.receipts.form.title')}>
+          <button type="button" aria-label={t('common.close.aria')}
+                  className="sheet-backdrop" onClick={() => setOpen(false)} />
+          <div className="rise relative flex w-full flex-col"
+               style={{
+                 maxWidth: 490, maxHeight: '100%', borderRadius: 18,
+                 background: 'var(--color-surface)',
+                 boxShadow: 'var(--shadow-overlay)',
+                 padding: '22px 24px 24px',
+               }}>
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h2 style={{ fontSize: 20, fontWeight: 750, color: 'var(--color-text)' }}>
+                {t('inventory.receipts.form.title')}
+              </h2>
+              <button type="button" className="btn-icon shrink-0"
+                      aria-label={t('common.close.aria')}
+                      style={{ color: 'var(--color-faint)' }}
+                      onClick={() => setOpen(false)}>
+                <IconClose size={18} />
+              </button>
+            </div>
+            {/* Один id на обе обёртки не конфликтует: шторка и модалка
+                не существуют одновременно (isLg выбирает одну). */}
+            <form id="receipt-form" onSubmit={create}
+                  className="flex min-h-0 flex-1 flex-col">
+              {/* max-height:100% + внутренний скрол — из §10 дословно. */}
+              <div className="grid min-h-0 flex-1 content-start gap-3 overflow-y-auto">
+                {sectionHead(1, t('inventory.receipts.form.section.doc'))}
+                <div className="grid gap-3 lg:grid-cols-2">
+                  {supplierField}
+                  {numberField}
+                </div>
+                {sectionHead(2, t('inventory.receipts.form.section.extra'))}
+                {noteField}
+                {err && <p className="field-error">{err}</p>}
+              </div>
+              <div className="mt-5 flex gap-3">
+                <button type="button" className="btn-secondary" style={{ flex: 1 }}
+                        onClick={() => setOpen(false)}>
+                  {t('common.cancel')}
+                </button>
+                <button className="btn-blue" style={{ flex: 1.4 }} disabled={busy}>
+                  {t('inventory.receipts.form.submit')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>,
+        host,
+      )}
     </div>
   )
 }

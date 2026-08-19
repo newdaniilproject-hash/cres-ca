@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { enqueue, isNetworkError } from '@/lib/offline/queue'
@@ -395,10 +396,21 @@ export function JournalsClient({
           третьим входом в то же самое. */}
       <div className="hidden items-center justify-between lg:flex">
         <h1 className="webh1">{t('app.screen.journals.title')}</h1>
-        <a href="/app/journals/report" target="_blank" rel="noreferrer"
-           className="btn-primary">
-          {t('journals.report.open')}
-        </a>
+        <div className="flex items-center gap-2">
+          {/* Техкарти — экран ТОГО ЖЕ модуля соответствия (одно право
+              `compliance.read`, той же связки санитарного учёта), но
+              своего пункта в навигации у него нет: реестр модулей ведёт
+              на `/app/journals`, и без этой ссылки раздел недостижим
+              вовсе (аудит 19.08.2026). Это ЕДИНСТВЕННЫЙ вход, а не
+              второй — потому он здесь, а не «заодно». */}
+          <Link href="/app/techcards" className="btn-secondary">
+            {t('journals.links.techcards')}
+          </Link>
+          <a href="/app/journals/report" target="_blank" rel="noreferrer"
+             className="btn-primary">
+            {t('journals.report.open')}
+          </a>
+        </div>
       </div>
 
       {/* ── CRESKO Web: карточки трёх журналов (только lg) ────────
@@ -478,10 +490,18 @@ export function JournalsClient({
           это документ для Держпродспоживслужби (lib/report/sanitation-report.ts).
           На lg та же ссылка стоит в хедере экрана, поэтому здесь её нет:
           два входа в одно действие — то, что разбор склада велел убирать. */}
-      <a href="/app/journals/report" target="_blank" rel="noreferrer"
-         className="btn-secondary rise-1 self-start lg:hidden">
-        {t('journals.report.open')}
-      </a>
+      {/* Тот же единственный вход в техкарты — и на телефоне: без него
+          раздел недостижим и там (в панели и под аватаром его нет —
+          реестр модулей ведёт на /app/journals). */}
+      <div className="rise-1 flex flex-wrap gap-2 lg:hidden">
+        <a href="/app/journals/report" target="_blank" rel="noreferrer"
+           className="btn-secondary">
+          {t('journals.report.open')}
+        </a>
+        <Link href="/app/techcards" className="btn-secondary">
+          {t('journals.links.techcards')}
+        </Link>
+      </div>
 
       {err && <p className="field-error rise">{err}</p>}
 

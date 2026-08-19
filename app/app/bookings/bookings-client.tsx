@@ -5,11 +5,13 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
+import { localeOf } from '@/lib/i18n/format'
 import { dbErrorText } from '@/lib/errors/db'
+import { IconBack, IconCalendar, IconChevronRight } from '@/components/icons'
 import { NEXT, statusLabel, statusTone, type B } from './status'
 import { NewBookingButton } from './new-booking'
 import { WeekGrid } from './week-grid'
-import { dayOf, mondayOf } from './week'
+import { dayOf, mondayOf, shiftDay, weekHref, weekLabel } from './week'
 
 // Записи по дням. Кнопки — только разрешённые переходы; финальный
 // «Виконано» сам спишет расходники по техкарте (это делает база).
@@ -64,9 +66,16 @@ export function BookingsClient({
   // разные `href` и получить предупреждение гидратации на пустом месте.
   const [localWeek, setLocalWeek] = useState<string | null>(null)
   useEffect(() => { setLocalWeek(mondayOf(dayOf())) }, [])
-  const weekHref = localWeek === null
+  const toWeekHref = localWeek === null
     ? '/app/bookings?view=week'
-    : `/app/bookings?view=week&week=${localWeek}`
+    : weekHref(localWeek)
+
+  // Подпись недели — тем же сборщиком, что и в сетке (`./week`): одна
+  // строка стоит и в мобильном ряду навигации, и подзаголовком веб-хедера.
+  const label = useMemo(
+    () => weekLabel(localeOf(t.lang), weekStart),
+    [weekStart, t],
+  )
 
   // Шапка раздела: слева переключатель вида, справа вход в мастеров.
   //
@@ -81,27 +90,81 @@ export function BookingsClient({
   // откуда пришли. Скелетон перехода уже лежит в `loading.tsx`,
   // поэтому нажатие отзывается, не дожидаясь Ирландии.
   const head = (
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <div className="seg">
-        <Link href="/app/bookings" className="seg-item" data-active={view === 'day'}>
-          {t('bookings.view.day')}
-        </Link>
-        <Link href={weekHref} className="seg-item" data-active={view === 'week'}>
-          {t('bookings.view.week')}
-        </Link>
+    <>
+      {/* ═══ CRESKO Web §2 «Календар» — хедер экрана, ТОЛЬКО lg ═════════
+          Плашка со значком, имя экрана тем же ключом, которым его называют
+          панель и вкладка браузера; подзаголовок — неделя словами, когда
+          показана сетка, и обычное описание раздела в списке дня. Справа —
+          две иконки-кнопки навигации недели и «Додати запис», как в
+          хендоффе. Кнопка не дублируется, а ПЕРЕЕЗЖАЕТ: мобильный её
+          экземпляр ниже стоит под `lg:hidden` (шторка формы рисуется
+          только у открытой — двух форм в документе не бывает). */}
+      <div className="mb-1 hidden items-center gap-3 lg:flex">
+        <span aria-hidden className="flex shrink-0 items-center justify-center"
+              style={{
+                width: 44, height: 44,
+                borderRadius: 'var(--radius-plate)',
+                background: 'var(--color-accent-soft)',
+                color: 'var(--color-accent-ink)',
+              }}>
+          <IconCalendar size={22} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h1 className="webh1" data-size="27">{t('app.screen.bookings.title')}</h1>
+          <p style={{ fontSize: 14, color: 'var(--color-muted)' }}>
+            {view === 'week'
+              ? t('bookings.web.subtitle', { range: label })
+              : t('app.screen.bookings.desc')}
+          </p>
+        </div>
+        {view === 'week' && (
+          <div className="flex shrink-0 items-center gap-1">
+            {/* «Поточний тиждень» — сверх README: на телефоне он есть,
+                и десктоп, листнувший на месяц вперёд, без него остался бы
+                со стрелками наперевес. Рисуется после гидратации — текущую
+                неделю ЧЕЛОВЕКА знает только браузер (см. `localWeek`). */}
+            {localWeek !== null && localWeek !== weekStart && (
+              <Link href={weekHref(localWeek)} className="btn-secondary t-sm mr-1">
+                {t('bookings.week.current')}
+              </Link>
+            )}
+            <Link href={weekHref(shiftDay(weekStart, -7))} className="btn-icon"
+                  aria-label={t('bookings.week.prev.aria')}>
+              <IconBack size={20} />
+            </Link>
+            <Link href={weekHref(shiftDay(weekStart, 7))} className="btn-icon"
+                  aria-label={t('bookings.week.next.aria')}>
+              <IconChevronRight size={20} />
+            </Link>
+          </div>
+        )}
+        {canWrite && <NewBookingButton tenantId={tenantId} className="btn-primary shrink-0" />}
       </div>
-      <div className="flex items-center gap-2">
-        <Link href="/app/bookings/staff" className="btn-secondary t-sm">
-          {t('bookings.toStaff')}
-        </Link>
-        {/* Единственный вход в создание записи из кабинета — и он один
-            на оба вида: сетка и список показывают одни и те же записи,
-            и вторая кнопка внутри сетки была бы вторым входом в одно
-            действие (та же ошибка, что разбиралась на складе, М31).
-            Разбор самой формы — в шапке `new-booking.tsx`. */}
-        {canWrite && <NewBookingButton tenantId={tenantId} className="btn-primary t-sm" />}
+
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="seg">
+          <Link href="/app/bookings" className="seg-item" data-active={view === 'day'}>
+            {t('bookings.view.day')}
+          </Link>
+          <Link href={toWeekHref} className="seg-item" data-active={view === 'week'}>
+            {t('bookings.view.week')}
+          </Link>
+        </div>
+        <div className="flex items-center gap-2">
+          <Link href="/app/bookings/staff" className="btn-secondary t-sm">
+            {t('bookings.toStaff')}
+          </Link>
+          {/* Единственный вход в создание записи из кабинета — и он один
+              на оба вида: сетка и список показывают одни и те же записи,
+              и вторая кнопка внутри сетки была бы вторым входом в одно
+              действие (та же ошибка, что разбиралась на складе, М31).
+              На lg кнопка живёт в веб-хедере выше — этот экземпляр
+              прячется, а не дублируется. Разбор самой формы — в шапке
+              `new-booking.tsx`. */}
+          {canWrite && <NewBookingButton tenantId={tenantId} className="btn-primary t-sm lg:hidden" />}
+        </div>
       </div>
-    </div>
+    </>
   )
 
   if (view === 'week') {

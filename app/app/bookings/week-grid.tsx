@@ -10,7 +10,7 @@ import { dbErrorText } from '@/lib/errors/db'
 import { Sheet } from '@/components/sheet'
 import { IconBack, IconCalendar, IconChevronRight } from '@/components/icons'
 import { NEXT, eventTone, isVoid, statusLabel, type B } from './status'
-import { dayOf, mondayOf, shiftDay, weekDays } from './week'
+import { dayOf, mondayOf, shiftDay, weekDays, weekHref, weekLabel } from './week'
 
 // ── Недельная сетка записей (хендофф CRESKO Web §2) ─────────────────────────
 //
@@ -141,17 +141,10 @@ export function WeekGrid({ bookings, weekStart }: { bookings: B[]; weekStart: st
     [hourFrom, hourTo],
   )
 
-  // Подпись недели. `formatRange` сам решает, что вынести за скобки:
-  // «17–23 серпня 2026 р.» в одном месяце и «29 червня – 5 липня 2026 р.»
-  // на стыке. Собирать это подстановкой руками — значит написать правило
-  // склейки для каждого языка заново.
-  const label = useMemo(
-    () => new Intl.DateTimeFormat(localeOf(t.lang), { day: 'numeric', month: 'long', year: 'numeric' })
-      .formatRange(dayDate(days[0]), dayDate(days[6])),
-    [days, t],
-  )
+  // Подпись недели — общим сборщиком из `./week`: та же строка стоит
+  // подзаголовком веб-хедера, и двух правил склейки быть не должно.
+  const label = useMemo(() => weekLabel(localeOf(t.lang), weekStart), [weekStart, t])
 
-  const href = (monday: string) => `/app/bookings?view=week&week=${monday}`
   const atCurrent = today !== null && mondayOf(today) === weekStart
 
   async function move(id: string, to: string) {
@@ -172,23 +165,26 @@ export function WeekGrid({ bookings, weekStart }: { bookings: B[]; weekStart: st
       {/* Навигация по неделям. Ссылки, а не кнопки с состоянием: неделя
           живёт в адресе, поэтому «назад» браузера возвращает предыдущую,
           а перезагрузка не сбрасывает на текущую. Зона нажатия — 44px
-          от `.btn-icon`, а не от размера стрелки. */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
+          от `.btn-icon`, а не от размера стрелки.
+          Ряд — ТОЛЬКО до lg: на десктопе стрелки и подпись недели живут
+          в веб-хедере экрана (CRESKO Web §2, bookings-client), и вторая
+          пара стрелок под ним была бы вторым входом в одно действие. */}
+      <div className="flex flex-wrap items-center justify-between gap-2 lg:hidden">
         <div className="flex items-center gap-1">
-          <Link href={href(shiftDay(weekStart, -7))} className="btn-icon"
+          <Link href={weekHref(shiftDay(weekStart, -7))} className="btn-icon"
                 aria-label={t('bookings.week.prev.aria')}>
             <IconBack size={20} />
           </Link>
           <span className="tabular" style={{ minWidth: 168, textAlign: 'center', fontSize: 14, fontWeight: 650 }}>
             {label}
           </span>
-          <Link href={href(shiftDay(weekStart, 7))} className="btn-icon"
+          <Link href={weekHref(shiftDay(weekStart, 7))} className="btn-icon"
                 aria-label={t('bookings.week.next.aria')}>
             <IconChevronRight size={20} />
           </Link>
         </div>
         {!atCurrent && (
-          <Link href={href(mondayOf(today ?? weekStart))} className="btn-secondary t-sm">
+          <Link href={weekHref(mondayOf(today ?? weekStart))} className="btn-secondary t-sm">
             {t('bookings.week.current')}
           </Link>
         )}
@@ -249,7 +245,11 @@ export function WeekGrid({ bookings, weekStart }: { bookings: B[]; weekStart: st
               <div style={{ position: 'sticky', left: 0, zIndex: 1, background: 'var(--color-surface)' }}>
                 {hours.map((h) => (
                   <div key={h} style={{ height: HOUR, paddingRight: 10, textAlign: 'right' }}>
-                    <span className="tabular" style={{ fontSize: 11, color: 'var(--color-faint)' }}>
+                    {/* Кегль 12 — из README §2 (підпис години 12px faint);
+                        на телефоне 11: колонка часов там делит 390px
+                        с семью днями, и лишний пиксель кегля — это
+                        лишние пиксели самой колонки. */}
+                    <span className="tabular text-[11px] lg:text-[12px]" style={{ color: 'var(--color-faint)' }}>
                       {t.dateTime(new Date(2000, 0, 1, h), { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>

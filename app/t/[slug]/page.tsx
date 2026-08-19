@@ -13,6 +13,8 @@ type Offering = {
   id: string; slug: string; title: string; subtitle: string | null
   kind: 'product' | 'service'; price: number | null; currency: string
   rating_avg: number; rating_count: number
+  /** Первый кадр из `offering_media` — отдаёт сама `storefront()`. */
+  image: string | null
 }
 type Staff = { id: string; name: string; title: string | null }
 type VariantRow = {
@@ -22,6 +24,7 @@ type VariantRow = {
 type Shop = {
   id: string; name: string; tagline: string | null; description: string | null
   city: string | null; address: string | null; kind: string
+  logo_path: string | null; cover_path: string | null
 }
 type Storefront = { shop: Shop; offerings: Offering[] | null; staff: Staff[] | null }
 
@@ -70,6 +73,16 @@ export default async function ShopPage({
   const staff = data.staff ?? []
   const services = offerings.filter((o) => o.kind === 'service')
   const products = offerings.filter((o) => o.kind === 'product')
+
+  // Файлы витрины лежат в публичном бакете `media` и раздаются с CDN без
+  // подписи (CLAUDE.md → «Файлы»). `getPublicUrl` — чистая склейка строки,
+  // в сеть она не ходит. Обложка и логотип рисуются ТОЛЬКО когда продавец
+  // их загрузил: плейсхолдер-«фикстура» вместо настоящей обложки — обман,
+  // а буква-заглушка логотипа собрана из настоящего имени заведения.
+  const mediaUrl = (p: string) =>
+    supabase.storage.from('media').getPublicUrl(p).data.publicUrl
+  const coverUrl = shop.cover_path ? mediaUrl(shop.cover_path) : null
+  const logoUrl = shop.logo_path ? mediaUrl(shop.logo_path) : null
 
   // ── Варианты товаров: второй запрос, и он объяснён ─────────────────────
   //
@@ -139,39 +152,95 @@ export default async function ShopPage({
           клиентский, содержимое внутри него остаётся серверным. Полосу
           корзины он дорисовывает сам, после содержимого и до подвала. */}
       <CartProvider slug={slug} tenantId={shop.id} variants={cartVariants}>
-      <main className="mx-auto max-w-4xl px-4 sm:px-6">
-        {/* Шапка заведения */}
-        <section className="rise pt-12 pb-8 text-center">
-          <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center"
-               style={{ borderRadius: '50%', background: 'var(--color-accent-soft)' }}>
-            <span className="display t-3xl" style={{ color: 'var(--color-accent)' }}>
-              {shop.name.slice(0, 1)}
-            </span>
-          </div>
-          <h1 className="display t-3xl sm:t-4xl">{shop.name}</h1>
-          {shop.tagline && <p className="t-md mt-2 prose-muted">{shop.tagline}</p>}
-          {/* Имя, подзаголовок, описание, адрес и город заведения —
-              данные продавца: не переводятся ни в каком языке. В словарь
-              уезжают только подписи вокруг них. */}
-          {(shop.city || shop.address) && (
-            <p className="t-sm mt-3 prose-muted">
-              {[shop.address, shop.city].filter(Boolean).join(', ')}
-              {' · '}
-              <Link href="/map" className="underline underline-offset-2">
-                {t('public.storefront.onMap')}
-              </Link>
-            </p>
+      {/* Ширина — как у остальной публичной поверхности (шапка, подвал,
+          главная): max-w-6xl. Витрина живёт и на десктопе, а не только
+          в телефонном столбце. */}
+      <main className="mx-auto max-w-6xl px-4 sm:px-6">
+        {/* Шапка заведения. Обложка и логотип-файл появляются только когда
+            они есть у продавца; без обложки шапка остаётся прежним
+            центрированным столбцом на телефоне и строкой на десктопе. */}
+        <section className="rise pt-8 pb-8 sm:pt-10">
+          {coverUrl && (
+            <div className="overflow-hidden"
+                 style={{ borderRadius: 'var(--radius-calendar)', background: 'var(--color-surface-2)' }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={coverUrl} alt="" className="h-44 w-full object-cover sm:h-60 lg:h-72" />
+            </div>
           )}
+          <div
+            className={
+              coverUrl
+                ? 'relative -mt-10 flex flex-col items-center gap-4 px-4 text-center sm:px-8 lg:-mt-12 lg:flex-row lg:items-end lg:gap-6 lg:text-left'
+                : 'flex flex-col items-center gap-4 pt-4 text-center lg:flex-row lg:items-center lg:gap-6 lg:text-left'
+            }
+          >
+            <div
+              className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden lg:h-28 lg:w-28"
+              style={{
+                borderRadius: '50%',
+                background: 'var(--color-accent-soft)',
+                // Поверх обложки логотип обводится цветом поверхности —
+                // токеном, а не белым: в тёмной теме белое кольцо кричало бы.
+                ...(coverUrl
+                  ? { border: '3px solid var(--color-surface)', boxShadow: 'var(--shadow-card)' }
+                  : null),
+              }}
+            >
+              {logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={logoUrl} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <span className="display t-3xl" style={{ color: 'var(--color-accent)' }}>
+                  {shop.name.slice(0, 1)}
+                </span>
+              )}
+            </div>
+            <div className="min-w-0">
+              <h1 className="display t-3xl sm:t-4xl">{shop.name}</h1>
+              {shop.tagline && <p className="t-md mt-2 prose-muted">{shop.tagline}</p>}
+              {/* Имя, подзаголовок, описание, адрес и город заведения —
+                  данные продавца: не переводятся ни в каком языке. В словарь
+                  уезжают только подписи вокруг них. */}
+              {(shop.city || shop.address) && (
+                <p className="t-sm mt-3 prose-muted">
+                  {[shop.address, shop.city].filter(Boolean).join(', ')}
+                  {' · '}
+                  <Link href="/map" className="underline underline-offset-2">
+                    {t('public.storefront.onMap')}
+                  </Link>
+                </p>
+              )}
+            </div>
+            {/* Главное действие витрины услуг — запись. Якорь, а не второй
+                поток: кнопки «Записатися» с датой и мастером живут у самих
+                услуг ниже, шапка лишь доводит до них. */}
+            {services.length > 0 && (
+              <div className="shrink-0 lg:ml-auto lg:pb-2">
+                <a href="#services" className="btn-primary">
+                  {t('public.storefront.book')}
+                </a>
+              </div>
+            )}
+          </div>
         </section>
 
-        {/* Услуги: главный сценарий — записаться */}
+        {/* Услуги: главный сценарий — записаться. На десктопе — сетка
+            в две колонки, на телефоне те же карточки столбцом. */}
         {services.length > 0 && (
-          <section className="rise-1 pb-8">
+          <section id="services" className="rise-1 pb-8">
             <h2 className="display mb-4 t-xl">{t('public.storefront.services.title')}</h2>
-            <div className="card !p-0">
+            <div className="grid gap-3 lg:grid-cols-2 lg:gap-4">
               {services.map((o) => (
-                <div key={o.id} id={o.slug} className="row px-5">
-                  <div className="min-w-0">
+                <div key={o.id} id={o.slug} className="card flex items-center gap-4">
+                  {o.image && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={mediaUrl(o.image)} alt=""
+                      className="h-14 w-14 shrink-0 object-cover"
+                      style={{ borderRadius: 'var(--radius-plate)', background: 'var(--color-surface-2)' }}
+                    />
+                  )}
+                  <div className="min-w-0 flex-1">
                     <p className="t-lg">{o.title}</p>
                     {o.subtitle && <p className="t-sm mt-0.5 prose-muted">{o.subtitle}</p>}
                     {rating(o)}
@@ -216,11 +285,16 @@ export default async function ShopPage({
                   : mine.length > 0 ? Math.min(...mine.map((v) => v.price)) : null
                 return (
                   <div key={o.id} id={o.slug} className="card-link">
-                    <div className="mb-3 flex h-32 items-center justify-center"
+                    <div className="mb-3 flex h-32 items-center justify-center overflow-hidden lg:h-40"
                          style={{ borderRadius: 'var(--radius-control)', background: 'var(--color-surface-2)' }}>
-                      <span className="display t-2xl" style={{ color: 'var(--color-faint)' }}>
-                        {o.title.slice(0, 1)}
-                      </span>
+                      {o.image ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={mediaUrl(o.image)} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        <span className="display t-2xl" style={{ color: 'var(--color-faint)' }}>
+                          {o.title.slice(0, 1)}
+                        </span>
+                      )}
                     </div>
                     <p className="t-lg truncate">{o.title}</p>
                     {rating(o)}
