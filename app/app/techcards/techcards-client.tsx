@@ -108,7 +108,11 @@ function VersionList({ t, group, openVersion, setOpenVersion }: {
         return (
           <div key={v.id}>
             <div className="row">
-              <button className="btn-ghost tabular !px-0"
+              {/* Влево, а не по центру: строка версии длинная («Версія 3 ·
+                  14 серп. 2026 р. · кроків: 3») и на 390px переносится —
+                  по центру перенос давал лесенку, у которой не найти
+                  начала. */}
+              <button className="btn-ghost tabular min-w-0 flex-1 justify-start text-left !px-0"
                       style={{ minHeight: 'var(--tap-min)' }}
                       onClick={() => setOpenVersion(open ? null : v.id)}>
                 <span aria-hidden>{open ? '▾' : '▸'}</span>
@@ -191,6 +195,18 @@ export function TechCardsClient({
   // Ключ — НАЗВАНИЕ группы, а не id версии: карта это стопка версий,
   // и после выпуска новой версии карточка обязана остаться открытой.
   const [webCard, setWebCard] = useState<string | null>(null)
+  // Раскрытая карта НА ТЕЛЕФОНЕ. Отдельно от `webCard`, а не тем же
+  // состоянием: на lg открытая карточка ЗАМЕНЯЕТ список (§6 README),
+  // а на телефоне список остаётся и раскрывается одна строка. Одно
+  // состояние на два разных поведения — это ветвление по ширине экрана
+  // внутри логики, а не в раскладке.
+  //
+  // До 19.08.2026 раскрытия не было вовсе: история версий висела
+  // развёрнутой под КАЖДОЙ картой, и три карты по две-три версии давали
+  // девять строк с треугольниками там, где в макете три строки списка.
+  // Ключ — НАЗВАНИЕ группы: карта это стопка версий, и после выпуска
+  // новой версии строка обязана остаться раскрытой.
+  const [openCard, setOpenCard] = useState<string | null>(null)
   const [cardTab, setCardTab] = useState<'steps' | 'history'>('steps')
   // README §7 (`techNew`): шаг визарда. Из пяти шагов макета данными
   // существуют три: Основне · Етапи · Перевірка. «Матеріали» — это
@@ -1038,41 +1054,67 @@ export function TechCardsClient({
         </>
         )}
 
-        <div className="flex flex-col gap-4 lg:hidden">
-          {groups.map((g) => (
-            <section key={g.title} className="card rise-2 flex flex-col gap-3">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  {/* Назва техкарти і назва послуги — данные заклада. */}
-                  <h2 className="display t-lg">{g.title}</h2>
-                  {/* «Загальна для салону» — только когда услуги и правда
-                      нет. Название приходит из `compliance_offerings`
-                      (0083) и есть у всех, кто видит карту, включая
-                      инспектора; подпись «привʼязана до послуги» без
-                      названия осталась как последняя защита: подписать
-                      привязанную карту «загальною» значит соврать
-                      про регламент. */}
-                  <p className="tabular t-xs prose-muted">
-                    {g.latest.offeringTitle
-                      ?? (g.latest.offeringId
-                        ? t('techcards.card.linked')
-                        : t('techcards.field.service.general'))}
-                    {' · '}
-                    {t('techcards.card.versions', { n: t.number(g.versions.length) })}
-                  </p>
-                </div>
-                {canWrite && (
-                  <button className="btn-secondary t-sm" disabled={draft !== null}
-                          onClick={() => startNextVersion(g)}>
-                    {t('techcards.card.newVersion')}
-                  </button>
+        {/* ── Список техкарт (телефон) ────────────────────────────
+            Хендофф, раздел G: плашка, назва, «версія N», статус. Строка
+            и есть вход в карту — вторая кнопка «Створити нову версію»
+            в каждой строке была ТРЕТЬИМ входом в выпуск версии рядом
+            с «Нова техкарта» сверху, и на 390px занимала полстроки.
+            Теперь она внутри раскрытой карты, там, где видно, ЧТО
+            именно продолжают версией. */}
+        <div className="rise-2 flex flex-col gap-2 lg:hidden">
+          {groups.map((g) => {
+            const open = openCard === g.title
+            // «Загальна для салону» — только когда услуги и правда нет.
+            // Название приходит из `compliance_offerings` (0083) и есть
+            // у всех, кто видит карту, включая инспектора; подпись
+            // «привʼязана до послуги» без названия осталась как последняя
+            // защита: подписать привязанную карту «загальною» значит
+            // соврать про регламент.
+            const service = g.latest.offeringTitle
+              ?? (g.latest.offeringId
+                ? t('techcards.card.linked')
+                : t('techcards.field.service.general'))
+            return (
+              <div key={g.title} className="flex flex-col gap-2">
+                <button type="button" className="list-card" aria-expanded={open}
+                        onClick={() => setOpenCard(open ? null : g.title)}>
+                  {/* Плашка вместо мініатюри из макета: у регламента нет
+                      ни фото, ни чего-либо, что можно показать картинкой,
+                      а пустой серый прямоугольник читается как «картинка
+                      не загрузилась», то есть как поломка. */}
+                  <span className="list-card-thumb"><IconClipboard size={22} /></span>
+                  <span className="min-w-0 flex-1">
+                    {/* Назва техкарти і назва послуги — данные заклада. */}
+                    <span className="t-md clamp-2 block">{g.title}</span>
+                    <span className="tabular t-sm prose-muted mt-0.5 block truncate">
+                      {t('techcards.webitem.meta.version', {
+                        n: t.number(g.versions[0]?.version ?? 0),
+                      })}
+                      {' · '}{service}
+                    </span>
+                  </span>
+                  <span className={`shrink-0 ${g.currentId ? 'badge-success' : 'badge'}`}>
+                    {g.currentId
+                      ? t('techcards.version.current')
+                      : t('techcards.version.archived')}
+                  </span>
+                </button>
+
+                {open && (
+                  <div className="card flex flex-col gap-3">
+                    <VersionList t={t} group={g}
+                                 openVersion={openVersion} setOpenVersion={setOpenVersion} />
+                    {canWrite && (
+                      <button className="btn-secondary self-start" disabled={draft !== null}
+                              onClick={() => startNextVersion(g)}>
+                        {t('techcards.card.newVersion')}
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
-
-              <VersionList t={t} group={g}
-                           openVersion={openVersion} setOpenVersion={setOpenVersion} />
-            </section>
-          ))}
+            )
+          })}
         </div>
         </>
       )}

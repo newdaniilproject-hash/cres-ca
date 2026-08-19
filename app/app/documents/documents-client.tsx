@@ -299,13 +299,6 @@ export function DocumentsClient({
         )}
       </div>
 
-      {canWrite && (
-        <button type="button" className="btn-primary rise lg:hidden"
-                onClick={() => { setErr(''); setUploading(true) }}>
-          {t('documents.upload.submit')}
-        </button>
-      )}
-
       {loadError && <p className="field-error rise">{loadError}</p>}
       {err && <p className="field-error rise">{err}</p>}
 
@@ -331,14 +324,14 @@ export function DocumentsClient({
         ))}
       </section>
 
-      {missing.length > 0 && (
-        <div className="card-flat rise-1 flex flex-wrap items-center gap-3">
-          <span className="badge-warn tabular">
-            {t('documents.missing.badge', { n: t.number(missing.length) })}
-          </span>
-          <p className="t-md prose-muted">{t('documents.missing.desc')}</p>
-        </div>
-      )}
+      {/* ⚠️ ПОЛОСЫ «без документів: N» здесь БОЛЬШЕ НЕТ, и это не потеря.
+          Она говорила ровно то, что уже сказано дважды: на lg — плиткой
+          «Косметика без документів», на телефоне — жёлтой меткой у самого
+          засоба, которому документов не хватает. Три места об одном
+          и том же, причём полоса единственная из трёх НЕ показывала,
+          О КАКОМ засобе речь: прочитав её, всё равно надо было идти
+          глазами по списку. Тот же разбор, что и на складе: сколько раз
+          на экране лежит одно и то же и есть ли выход у каждого числа. */}
 
       {materials.length === 0 ? (
         <div className="card rise-2">
@@ -463,63 +456,82 @@ export function DocumentsClient({
                           className="display t-lg block">
                       {m.name}
                     </Link>
-                    <p className="t-xs prose-muted">
-                      {/* Бренд і одиниця виміру — данные засоба; переводится
-                          только слово «одиниця». */}
-                      {m.brand ? `${m.brand} · ` : ''}
-                      {t('documents.material.unit', { unit: m.unit })}
-                    </p>
+                    {/* Бренд — данные засоба. Одиниці виміру здесь больше
+                        нет: «шт» или «л» не говорит о документах ничего,
+                        а строку под названием занимала на каждом засобе. */}
+                    {m.brand && <p className="t-xs prose-muted">{m.brand}</p>}
                   </div>
-                  <span className="flex flex-wrap items-center gap-2">
-                    {m.isCosmetic && (
-                      <span className="badge-accent">{t('documents.badge.cosmetic')}</span>
-                    )}
-                    {m.isCosmetic && docs.length === 0 ? (
-                      <span className="badge-warn">{t('documents.badge.needDocs')}</span>
-                    ) : (
-                      <span className="badge tabular">
-                        {t('documents.badge.count', { n: t.number(docs.length) })}
-                      </span>
-                    )}
-                  </span>
+                  {/* ⚠️ МЕТКА ОСТАЛАСЬ ОДНА, И ТОЛЬКО КОГДА ЕЙ ЕСТЬ ЧТО
+                      СКАЗАТЬ. Было три сообщения об одном: бейдж
+                      «косметика» (он объяснял, почему нужны документы),
+                      бейдж «документів: N» (их и так видно списком ниже)
+                      и жёлтое «потрібні документи». На 390px эта пара
+                      переносилась под название и съедала строку у каждого
+                      засоба. Остался жёлтый — единственный, который зовёт
+                      что-то сделать. */}
+                  {m.isCosmetic && docs.length === 0 && (
+                    <span className="badge-warn shrink-0">
+                      {t('documents.badge.needDocs')}
+                    </span>
+                  )}
                 </div>
 
                 {docs.length === 0 ? (
-                  <div className="empty !py-6">{t('documents.docs.empty')}</div>
+                  // У косметики про это уже сказала жёлтая метка выше —
+                  // второй раз то же самое не пишем.
+                  m.isCosmetic ? null : (
+                    <p className="t-sm prose-muted">{t('documents.docs.empty')}</p>
+                  )
                 ) : (
                   <div className="flex flex-col">
+                    {/* ⚠️ У СТРОКИ ОДНО ДЕЙСТВИЕ, А НЕ ТРИ.
+                        Было: «Переглянути» · «Завантажити» · «✕» рядом
+                        с плашкой и двумя строками текста. На 390px это
+                        оставляло названию документа около ста пикселей,
+                        и «Висновок СЕС · 793 КБ · 14 бер. 2026 р.» вставало
+                        в ШЕСТЬ строк — то есть кнопки вытеснили то, ради
+                        чего строка нужна.
+
+                        Осталось открытие: на телефоне «переглянути»
+                        и «завантажити» — одно и то же действие, ссылка
+                        всё равно уходит в системный просмотрщик, откуда
+                        файл и сохраняют. Кнопка «Завантажити» осталась
+                        на широком экране, где для неё есть колонка и где
+                        сохранение в папку — это правда отдельный шаг.
+
+                        Строка НЕ одна большая кнопка: справа живёт
+                        удаление, а кнопка внутри кнопки недопустима. */}
                     {docs.map((d) => (
                       <div key={d.id} className="row">
-                        {/* README: плашка расширения слева — по ней строка
-                            читается как файл, а не как ещё один пункт
-                            списка. Тон `danger` у PDF из макета сохранён:
-                            это его цвет во всех файловых менеджерах. */}
-                        <span aria-hidden className="doc-ext"
-                              data-tone={extOf(d.mime) === 'PDF' ? 'danger' : undefined}>
-                          {extOf(d.mime)}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          {/* Назва документа — данные заклада. */}
-                          <p className="t-md truncate">{d.title}</p>
-                          <p className="tabular t-xs prose-muted">
-                            {kindShort(t, d.kind)}
-                            {d.size !== null ? ` · ${fmtSize(t, d.size)}` : ''}
-                            {' · '}{t.date(d.createdAt, DAY)}
-                          </p>
-                        </div>
-                        <span className="flex shrink-0 items-center gap-1">
-                          <button className="btn-ghost" disabled={busy === d.id}
-                                  onClick={() => void view(d)}>{t('documents.doc.view')}</button>
-                          <button className="btn-ghost" disabled={busy === d.id}
-                                  onClick={() => void download(d)}>{t('documents.doc.download')}</button>
-                          {canWrite && (
-                            // Подпись для скринридера — из словаря, как
-                            // и всё остальное: «✕» он не прочтёт.
-                            <button className="btn-icon" aria-label={t('common.delete')}
-                                    disabled={busy === d.id}
-                                    onClick={() => void remove(d)}>✕</button>
-                          )}
-                        </span>
+                        <button type="button" disabled={busy === d.id}
+                                onClick={() => void view(d)}
+                                className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                                style={{ minHeight: 'var(--tap-min)' }}>
+                          {/* README: плашка расширения слева — по ней строка
+                              читается как файл, а не как ещё один пункт
+                              списка. Тон `danger` у PDF из макета сохранён:
+                              это его цвет во всех файловых менеджерах. */}
+                          <span aria-hidden className="doc-ext"
+                                data-tone={extOf(d.mime) === 'PDF' ? 'danger' : undefined}>
+                            {extOf(d.mime)}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            {/* Назва документа — данные заклада. */}
+                            <span className="t-md clamp-2 block">{d.title}</span>
+                            <span className="tabular t-xs prose-muted mt-0.5 block truncate">
+                              {kindShort(t, d.kind)}
+                              {d.size !== null ? ` · ${fmtSize(t, d.size)}` : ''}
+                              {' · '}{t.date(d.createdAt, DAY)}
+                            </span>
+                          </span>
+                        </button>
+                        {canWrite && (
+                          // Подпись для скринридера — из словаря, как
+                          // и всё остальное: «✕» он не прочтёт.
+                          <button className="btn-icon shrink-0" aria-label={t('common.delete')}
+                                  disabled={busy === d.id}
+                                  onClick={() => void remove(d)}>✕</button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -527,6 +539,23 @@ export function DocumentsClient({
               </section>
             )
           })}
+
+          {/* Кнопка ПОСЛЕ списка, как в хендоффе, и обводкой, а не
+              заливкой. Причина названа в шапке файла: документы
+              загружают раз в месяц, а смотрят на каждой проверке —
+              значит первый экран принадлежит документам. Сплошной
+              кобальт во всю ширину над списком забирал этот экран
+              себе и кричал громче того, ради чего сюда заходят. */}
+          {canWrite && (
+            <button type="button" className="btn-secondary"
+                    style={{
+                      borderColor: 'var(--color-accent)',
+                      color: 'var(--color-accent-ink)',
+                    }}
+                    onClick={() => { setErr(''); setUploading(true) }}>
+              {t('documents.upload.submit')}
+            </button>
+          )}
         </div>
         </>
       )}
