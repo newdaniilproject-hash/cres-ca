@@ -19,7 +19,11 @@ export async function generateMetadata() {
 // расходника бывает несколько: один на коробке, другой на банке внутри.
 // Сканер (scan_lookup из 0009_warehouse_plus.sql) ищет расходник именно
 // по этой таблице, поэтому незаписанный код на экране сканера не находится.
-export default async function BarcodesPage() {
+export default async function BarcodesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ code?: string }>
+}) {
   const m = await currentMembership()
   if (!m) redirect('/register/seller')
   // `material_barcodes_read` и `materials_member_read` — обе на
@@ -52,10 +56,15 @@ export default async function BarcodesPage() {
   // печатает значения полей (М25), человеку уходит только своя подпись.
   const t = await getT()
 
+  // Код из промаха сканера: экран склада на «код не знайдено» ведёт сюда
+  // с `?code=…`, чтобы привязка началась с уже прочитанного кода.
+  const { code } = await searchParams
+
   return (
     <AppShell>
       <BarcodesClient
         tenantId={m.tenantId}
+        initialCode={typeof code === 'string' ? code.slice(0, 64) : ''}
         canWrite={can(m, 'stock.write')}
         error={error ? dbErrorText(t, error) : ''}
         loadError={codesError ? dbErrorText(t, codesError) : ''}

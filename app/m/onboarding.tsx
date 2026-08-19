@@ -221,11 +221,12 @@ async function askPush(): Promise<PermState> {
       const receive = (r as { receive?: string } | undefined)?.receive
       return receive === 'granted' ? 'granted' : 'denied'
     }
-    const android = bridge().AndroidOneSignal
-    if (android?.requestPermission) {
-      await Promise.resolve(android.requestPermission())
-      return 'granted'
-    }
+    // На Android разрешение POST_NOTIFICATIONS запрашивает сам
+    // MainActivity при старте (patch-android.sh) — у моста метода
+    // requestPermission нет и не было: прежний вызов молча проваливался
+    // в веб-ветку Notification, которая в веб-вью отвечает «denied»,
+    // и онбординг врал про запрет, которого не было.
+    if (bridge().AndroidOneSignal) return 'granted'
     if (typeof Notification === 'undefined') return 'unavailable'
     const res = await Promise.resolve(Notification.requestPermission())
     return res === 'granted' ? 'granted' : 'denied'

@@ -74,6 +74,18 @@ export function Scanner({ open, onClose, onResult, onManual }: Props) {
   const stopRef = useRef<(() => void) | null>(null)
   const [phase, setPhase] = useState<Phase>('starting')
   const [torch, setTorch] = useState<boolean | null>(null)
+  // Подсказка «введіть код вручну», когда код долго не читается:
+  // стёртая наклейка или блик иначе выглядят как вечное молчание.
+  const [slow, setSlow] = useState(false)
+
+  // Колбэки — в ref, а не в зависимостях эффекта. Все экраны передают
+  // инлайн-стрелки, новые на каждом рендере, и с ними в зависимостях
+  // ЛЮБОЕ обновление родителя (приход офлайн-очереди, refresh) глушило
+  // поток и запрашивало камеру заново — а повторный getUserMedia может
+  // устройство и не получить (см. шапку файла). Камера обязана жить,
+  // пока open === true, и не дольше.
+  const cbRef = useRef({ onClose, onResult })
+  cbRef.current = { onClose, onResult }
 
   // Глушение потока вынесено отдельно и зовётся из трёх мест: иначе камера
   // остаётся включённой после закрытия шторки.
@@ -115,7 +127,9 @@ export function Scanner({ open, onClose, onResult, onManual }: Props) {
       streamRef.current = stream
 
       const video = videoRef.current
-      if (!video) { stopAll(); return }
+      // Видео может не быть в DOM (шторка порталится эффектом): молчаливый
+      // выход оставлял «Вмикаємо камеру…» навсегда. Отказ обязан быть виден.
+      if (!video) { stopAll(); setPhase('failed'); return }
       video.srcObject = stream
       try { await video.play() } catch { /* автовоспроизведение может отказать — не смертельно */ }
 
@@ -156,13 +170,18 @@ export function Scanner({ open, onClose, onResult, onManual }: Props) {
         alive = false
         haptic.success()
         stopAll()
-        onResult(text)
-        onClose()
+        cbRef.current.onResult(text)
+        cbRef.current.onClose()
       }).catch(() => { if (alive) setPhase('failed') })
     })()
 
-    return () => { alive = false; stopAll() }
-  }, [open, onClose, onResult, stopAll])
+    // Пятнадцать секунд без распознавания — показываем подсказку про
+    // ручной ввод. Сканер продолжает работать: подсказка — не отказ.
+    const slowTimer = setTimeout(() => { if (alive) setSlow(true) }, 15000)
+    setSlow(false)
+
+    return () => { alive = false; clearTimeout(slowTimer); stopAll() }
+  }, [open, stopAll])
 
   async function toggleTorch() {
     const track = streamRef.current?.getVideoTracks()[0]
@@ -212,7 +231,9 @@ export function Scanner({ open, onClose, onResult, onManual }: Props) {
         </div>
 
         {phase === 'scanning' && (
-          <p className="t-sm text-center prose-muted">{t('scan.hint')}</p>
+          <p className="t-sm text-center prose-muted">
+            {slow ? t('scan.slow') : t('scan.hint')}
+          </p>
         )}
         {phase === 'denied' && <p className="field-error">{t('scan.denied')}</p>}
         {phase === 'nocamera' && <p className="field-error">{t('scan.nocamera')}</p>}

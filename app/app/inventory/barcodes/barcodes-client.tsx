@@ -37,13 +37,15 @@ function humanize(t: T, message: string, code?: string): string {
 }
 
 export function BarcodesClient({
-  tenantId, materials, canWrite, error, loadError,
+  tenantId, materials, canWrite, error, loadError, initialCode = '',
 }: {
   tenantId: string
   materials: MaterialCodes[]
   canWrite: boolean
   error: string
   loadError: string
+  /** Код из промаха сканера (`?code=`): привязка начинается с него. */
+  initialCode?: string
 }) {
   const t = useT()
   const supabase = useMemo(() => createClient(), [])
@@ -54,7 +56,7 @@ export function BarcodesClient({
   const [err, setErr] = useState('')
   // Поле ввода одно на экран: оно относится к раскрытому засобу, и второго
   // раскрытого одновременно быть не может.
-  const [code, setCode] = useState('')
+  const [code, setCode] = useState(initialCode)
 
   // Своего поля поиска на экране НЕТ (решение владельца 19.08.2026): поиск
   // один на весь кабинет и живёт в шапке. Поле здесь искало только по этому
@@ -63,7 +65,11 @@ export function BarcodesClient({
 
   function toggle(id: string) {
     setOpenId(openId === id ? null : id)
-    setCode(''); setErr('')
+    // Код из промаха сканера переживает выбор засоба: человек пришёл
+    // привязать именно его, и стирать код при раскрытии значило бы
+    // заставить сканировать заново.
+    setCode(code === initialCode ? code : '')
+    setErr('')
   }
 
   async function add(e: React.FormEvent, materialId: string) {
