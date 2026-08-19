@@ -56,7 +56,7 @@ export default async function DocumentsPage() {
         .order('name')
         .limit(300),
       supabase.from('material_documents')
-        .select('id, material_id, kind, title, path, created_at')
+        .select('id, material_id, kind, title, path, created_at, size_bytes, mime')
         .eq('tenant_id', m.tenantId)
         .order('created_at', { ascending: false })
         .limit(500),
@@ -68,7 +68,6 @@ export default async function DocumentsPage() {
         tenantId={m.tenantId}
         userId={userId ?? ''}
         canWrite={can(m, 'compliance.write')}
-        canStock={can(m, 'stock.read')}
         loadError={materialsError?.message ?? docsError?.message ?? ''}
         materials={(materials ?? []).map((mt) => ({
           id: mt.id,
@@ -84,6 +83,11 @@ export default async function DocumentsPage() {
           title: d.title,
           path: d.path,
           createdAt: d.created_at,
+          // README: у строки документа стоит «{розмір} · додано {дата}».
+          // Колонки заведены ещё 0059 и до сих пор не читались ни одним
+          // экраном — размер файла человек узнавал, только скачав его.
+          size: d.size_bytes === null ? null : Number(d.size_bytes),
+          mime: d.mime,
         }))}
       />
     </AppShell>

@@ -885,6 +885,26 @@ html.dark {
     background: var(--color-surface-2); display: grid; place-items: center;
     flex-shrink: 0; font-size: 14px; color: var(--color-muted); overflow: hidden;
   }
+  /* Плашка расширения файла в строке документа. README: 38px,
+     10px/800, `danger` на `dangerSoft` у PDF. Тон атрибутом, а не
+     цветом по месту: у остальных типов он нейтральный, и разводить
+     их по цветам значило бы завести палитру форматов. */
+  .doc-ext {
+    width: 38px; height: 38px;
+    border-radius: var(--radius-plate);
+    display: grid; place-items: center;
+    flex-shrink: 0;
+    font-size: calc(10px * var(--type-scale));
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    background: var(--color-surface-2);
+    color: var(--color-muted);
+  }
+  .doc-ext[data-tone='danger'] {
+    background: var(--color-danger-soft);
+    color: var(--color-danger);
+  }
+
   /* Тон значка-якоря. README задаёт цветную плашку у навигационных строк
      («Документи» на accentSoft, «Контроль відкриття» на violetSoft):
      две строки подряд с одинаковым серым кружком читаются как один

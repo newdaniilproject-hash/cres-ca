@@ -40,31 +40,56 @@ export default async function OrdersPage({
 
   const supabase = await createClient()
 
+  // ⚠️ `contact_phone` ЗДЕСЬ НЕ ЗАПРАШИВАЕТСЯ, и это то же решение, что
+  // на экране клиентов. Телефон покупателя в СПИСКЕ читается глазами
+  // и не оставляет следа; в карточке заказа он открывается осознанно.
+  // Список, отдающий контакты сотне строк за раз, — это выгрузка базы
+  // без кнопки «выгрузить». Разбор — notes/pii-leaks.md.
   let query = supabase
     .from('v_orders')
     .select(
-      'id, number, status, contact_name, contact_phone, buyer_user_id, total, source, created_at',
+      'id, number, status, contact_name, buyer_user_id, total, source, created_at',
       { count: 'exact' },
     )
     .eq('tenant_id', m.tenantId)
   if (active !== 'all') query = query.eq('status', active)
 
-  const { data, error, count } = await query
-    .order('created_at', { ascending: false })
-    .limit(100)
+  // Счётчики шапки — тремя запросами БЕЗ строк (`head: true`): считать их
+  // из выданной сотни значило бы показывать «усього 100» у заведения
+  // с тысячей заказов. README, розділ G: «Статистика (усього / нові /
+  // виконані)» — три величины и ровно они, потому что отвечают на
+  // «сколько всего», «что требует меня» и «что закрыто».
+  const countOf = (status?: string) => {
+    let q = supabase.from('v_orders')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', m.tenantId)
+    if (status) q = q.eq('status', status)
+    return q
+  }
+
+  const [{ data, error, count }, all, fresh, done] = await Promise.all([
+    query.order('created_at', { ascending: false }).limit(100),
+    countOf(),
+    countOf('new'),
+    countOf('completed'),
+  ])
 
   return (
     <AppShell modules={m.modules} perms={m.perms}>
       <OrdersClient
         active={active}
         total={count ?? 0}
+        stats={{
+          all: all.count ?? 0,
+          fresh: fresh.count ?? 0,
+          done: done.count ?? 0,
+        }}
         error={error?.message ?? ''}
         orders={(data ?? []).map((o) => ({
           id: o.id,
           number: Number(o.number),
           status: o.status,
           name: o.contact_name,
-          phone: o.contact_phone,
           guest: o.buyer_user_id === null,
           total: Number(o.total),
           source: o.source,

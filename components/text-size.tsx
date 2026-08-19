@@ -20,25 +20,14 @@ import { useT } from '@/lib/i18n/client'
 // и остаются как заданы. Растянуть заодно раскладку значит проверять
 // заново каждый экран, а `--tap-min` и так 44px — крупному тексту
 // есть где стоять.
-const KEY = 'text-scale'
-
-// Границы выбраны по тому, что видно на экране, а не «покрасивее».
-// 0.9 — нижняя: мельче поля упираются в порог 16px (ниже него iOS зумит
-// страницу и обратно не отъезжает), и дальнейшее уменьшение перестало бы
-// что-либо менять в формах. 1.4 — верхняя: на 390px заголовок раздела
-// в две строки ещё читается, дальше начинает рвать строки списка.
-const MIN = 0.9
-const MAX = 1.4
-const STEP = 0.05
+// Значения и загрузочный скрипт — в модуле БЕЗ `'use client'`: скрипт
+// отдаёт разметкой корневой макет, то есть сервер. Разбор правила —
+// в шапке `lib/text-scale.ts` и `lib/theme-script.ts`.
+import {
+  SCALE_KEY as KEY, SCALE_MAX as MAX, SCALE_MIN as MIN, SCALE_STEP as STEP,
+} from '@/lib/text-scale'
 
 const clamp = (v: number) => Math.min(MAX, Math.max(MIN, v))
-
-// Загрузочный скрипт — синхронно в <head>, ДО первой отрисовки, ровно как
-// у темы. Иначе первый кадр рисуется прежним размером, и человек с крупным
-// шрифтом видит, как страница дёргается и переверстывается у него на глазах.
-export const textScaleBootScript =
-  `(function(){try{var v=parseFloat(localStorage.getItem('${KEY}'));` +
-  `if(v&&v>=${MIN}&&v<=${MAX}&&v!==1){document.documentElement.style.setProperty('--type-scale',String(v))}}catch(e){}})()`
 
 function apply(v: number) {
   const root = document.documentElement
