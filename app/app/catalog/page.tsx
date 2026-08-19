@@ -19,6 +19,8 @@ type MediaRow = { path: string; position: number }
 type VariantRow = {
   id: string; price: number | null; duration_minutes: number | null
   track_stock: boolean; stock_qty: number | null
+  /** Строки рецептуры варианта. Нужен только их СЧЁТ — см. ниже. */
+  variant_materials: { id: string }[] | null
 }
 
 // Название категории приезжает вложенной выборкой. PostgREST на связи
@@ -59,7 +61,8 @@ export default async function CatalogPage() {
       `id, kind, status, title, subtitle, price, currency, slug, listed,
        categories(name),
        offering_media(path, position),
-       offering_variants(id, price, duration_minutes, track_stock, stock_qty)`,
+       offering_variants(id, price, duration_minutes, track_stock, stock_qty,
+                         variant_materials(id))`,
     )
     .eq('tenant_id', m.tenantId)
     .order('updated_at', { ascending: false })
@@ -93,6 +96,17 @@ export default async function CatalogPage() {
             .map((v) => v.duration_minutes)
             .filter((d): d is number => d != null)
 
+          // Витратники — число строк рецептуры по всем вариантам позиции.
+          // Приезжает ТОЙ ЖЕ вложенной выборкой, а не отдельной поездкой
+          // (правило 6): список каталога открывают чаще любого другого
+          // экрана кабинета. Прав это не расширяет — `variant_materials`
+          // читается по `catalog.read` (0075), то есть по тому же праву,
+          // которым закрыт сам экран.
+          //
+          // У товара величины нет вовсе (null), а не ноль: рецептуры
+          // у товара не бывает, и «Витратники: 0» на карточке пальто
+          // сообщало бы об отсутствии того, чего там и не должно быть.
+
           // Залишок — сумма по вариантам, У КОТОРЫХ он ведётся. Вариант
           // без учёта (`track_stock = false`) не «ноль на складе», а
           // «остаток не считаем»: сложить его с остальными значило бы
@@ -121,6 +135,9 @@ export default async function CatalogPage() {
             // и триггер каталога держит `track_stock = false` на её
             // вариантах; спрашивать здесь `kind` — вторая защита от
             // строки-исключения, заведённой в обход формы.
+            materials: o.kind === 'service'
+              ? variants.reduce((n, v) => n + (v.variant_materials?.length ?? 0), 0)
+              : null,
             stock: o.kind === 'product' && tracked.length > 0
               ? tracked.reduce((s, v) => s + (v.stock_qty ?? 0), 0)
               : null,

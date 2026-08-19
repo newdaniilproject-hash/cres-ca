@@ -5,7 +5,10 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
 import type { T } from '@/lib/i18n/translate'
-import { IconBox, IconCheck, IconClock, IconGrid } from '@/components/icons'
+import { Sheet } from '@/components/sheet'
+import {
+  IconBox, IconCheck, IconChevronRight, IconClock, IconFilter, IconGrid, IconTag,
+} from '@/components/icons'
 
 export type CatalogItem = {
   id: string
@@ -30,6 +33,13 @@ export type CatalogItem = {
    * тільки на першому.
    */
   stock: number | null
+  /**
+   * Скільки витратників у рецептурі позиції (`variant_materials` по всіх
+   * варіантах). `null` — величини нема: це товар, у нього рецептури
+   * не буває. Нуль у послуги — НЕ порожнє місце, а факт: коли запис
+   * переведуть у «Виконано», зі складу не спишеться нічого.
+   */
+  materials: number | null
 }
 
 // Подписи к состояниям позиции. Само значение (`draft`, `hidden`) —
@@ -42,6 +52,17 @@ const statusLabel = (t: T, s: string): string =>
   ((STATUSES as readonly string[]).includes(s) ? t(`catalog.status.${s as Status}`) : s)
 
 type Filter = 'all' | 'product' | 'service' | 'draft'
+
+// Порядок списка. Из макета: кнопка «Фільтри» открывает шторку
+// сортировки — не второй фильтр, а именно порядок.
+//
+// Умолчание `recent` — это порядок, в котором список пришёл с сервера
+// (`updated_at desc`), а не своя сортировка по дате: даты правки в
+// карточке нет вовсе, и сортировать по величине, которой нет на экране,
+// нечем. Поэтому `recent` ничего не трогает, а остальные три
+// переупорядочивают уже полученное.
+const SORTS = ['recent', 'name', 'priceAsc', 'priceDesc'] as const
+type Sort = (typeof SORTS)[number]
 
 // Бейдж состояния — один и тот же на карточке и в списке: цвет несёт
 // смысл (опубликовано — зелёное, чернетка — жёлтое), и вторая таблица
@@ -181,12 +202,32 @@ export function CatalogClient({ items, error, canWrite, hasStorefront = false }:
   const t = useT()
   const supabase = useMemo(() => createClient(), [])
   const [filter, setFilter] = useState<Filter>('all')
+  const [sort, setSort] = useState<Sort>('recent')
+  const [sortOpen, setSortOpen] = useState(false)
 
-  const shown = useMemo(() => items.filter((i) => {
-    if (filter === 'draft' && i.status !== 'draft') return false
-    if ((filter === 'product' || filter === 'service') && i.kind !== filter) return false
-    return true
-  }), [items, filter])
+  const shown = useMemo(() => {
+    const list = items.filter((i) => {
+      if (filter === 'draft' && i.status !== 'draft') return false
+      if ((filter === 'product' || filter === 'service') && i.kind !== filter) return false
+      return true
+    })
+    if (sort === 'recent') return list
+    // Позиция без цены уезжает в конец при ЛЮБОМ направлении: «немає ціни»
+    // — это не «нуль», и поставить её первой в порядке «від меншої»
+    // значило бы соврать о самой дешёвой позиции каталога.
+    const byPrice = (dir: 1 | -1) => (a: CatalogItem, b: CatalogItem) => {
+      if (a.price == null || b.price == null) return (a.price == null ? 1 : 0) - (b.price == null ? 1 : 0)
+      return (a.price - b.price) * dir
+    }
+    // Сравнение имён — `localeCompare` по языку интерфейса, а не по кодам
+    // символов: иначе «Ялинка» встанет перед «Їжак», а «Є» уедет в хвост
+    // за латиницу.
+    return [...list].sort(
+      sort === 'name'
+        ? (a, b) => a.title.localeCompare(b.title, t.lang)
+        : byPrice(sort === 'priceAsc' ? 1 : -1),
+    )
+  }, [items, filter, sort, t])
 
   const counts = useMemo(() => ({
     product: items.filter((i) => i.kind === 'product').length,
@@ -314,11 +355,27 @@ export function CatalogClient({ items, error, canWrite, hasStorefront = false }:
                 className={`${filter === 'draft' ? 'chip-active' : 'chip'} shrink-0`}>
           {t('catalog.filter.drafts')} {counts.draft > 0 && `· ${counts.draft}`}
         </button>
-        {canWrite && (
-          <Link href="/app/catalog/new" className="btn-primary ml-auto shrink-0 t-sm">
-            {t('catalog.add')}
-          </Link>
-        )}
+      </div>
+
+      {/* «Фільтри» из макета — это ПОРЯДОК списка, и открывает он шторку
+          сортировки, а не второй набор чипов. Поля поиска рядом с ним
+          в макете нет и не будет: поиск в кабинете один и живёт в шапке
+          (CLAUDE.md → «Мобильная версия»), а поле на экране требует
+          сначала угадать раздел.
+
+          Кнопка «Додати» из этого ряда УБРАНА и переехала вниз, под
+          список, как в макете. Два входа в одно действие — та же ошибка,
+          что разбиралась на складе (М31); здесь она была бы ещё и на
+          расстоянии экрана друг от друга. */}
+      <div className="flex items-center justify-between gap-2 lg:hidden">
+        <span className="t-sm" style={{ color: 'var(--color-muted)' }}>
+          {t('catalog.sort.title')}: {t(`catalog.sort.${sort}`)}
+        </span>
+        <button type="button" onClick={() => setSortOpen(true)}
+                className="btn-secondary t-sm flex items-center gap-2">
+          <IconFilter size={16} />
+          {t('catalog.filters')}
+        </button>
       </div>
 
       {error && <p className="field-error rise">{error}</p>}
@@ -392,62 +449,115 @@ export function CatalogClient({ items, error, canWrite, hasStorefront = false }:
           )}
         </div>
 
-        {/* Один столбец карточек, а не сетка 2×N: у позиции есть строка
-            тривалості (для послуг) вдобавок к бейджам, и в узкой колонке
-            сетки 390px она переносится и делает половину карточек выше
-            другой половины. Список ровный — карточки ровные (М31/М32). */}
+        {/* ── Карточка позиции на телефоне (хендофф CRESKO, раздел E) ──
+            Один столбец карточек, а не сетка 2×N: у позиции есть строка
+            метрик и строка витратників вдобавок к бейджу, и в узкой
+            колонке сетки 390px они переносятся и делают половину карточек
+            выше другой половины. Список ровный — карточки ровные (М31/М32).
+
+            Состав из README дословно: фото 56 (радиус 12) → назва 14/650 →
+            строка метрик со значками 13 (часы + тривалість `muted`,
+            цінник + ціна `text`/650) → «Витратники: N» 12 `muted` со
+            значком куба → бейдж состояния + шеврон.
+
+            ЦЕНА ПЕРЕЕХАЛА ВЛЕВО, в строку метрик, и это не косметика:
+            в прежней раскладке она стояла отдельным столбцом справа,
+            то есть длинное имя позиции отжимало её к краю и рядом с ней
+            оказывался бейдж состояния — два несвязанных числа-слова
+            в одной точке. В макете справа стоит ровно один указатель
+            («тут есть ещё»), а всё, что описывает позицию, читается
+            одной колонкой сверху вниз. */}
         <div className="flex flex-col gap-2 lg:hidden">
           {shown.map((i) => (
             <Link key={i.id} href={`/app/catalog/${i.id}`} className="list-card !items-start">
               {i.cover ? (
-                // next/image здесь не нужен: это миниатюра 64×64 с CDN,
+                // next/image здесь не нужен: это миниатюра с CDN,
                 // размеры оригинала мы не храним.
-                <img src={cover(i.cover)} alt="" className="list-card-thumb object-cover" />
+                <img src={cover(i.cover)} alt="" className="list-card-thumb object-cover"
+                     style={{ width: 56, height: 56 }} />
               ) : (
                 // Значок, не символ: текстовые глифы вроде «◷ ◫» на части
                 // телефонов рисуются квадратами (М31 — та же грабля,
                 // уже пойманная на складе).
-                <span className="list-card-thumb">
-                  {i.kind === 'service' ? <IconClock size={20} /> : <IconBox size={20} />}
+                <span className="list-card-thumb" style={{ width: 56, height: 56 }}>
+                  {i.kind === 'service' ? <IconClock size={22} /> : <IconBox size={22} />}
                 </span>
               )}
 
               <span className="min-w-0 flex-1">
-                <span className="t-md clamp-2 block">{i.title}</span>
-                {i.subtitle && (
-                  <span className="t-xs mt-0.5 block truncate" style={{ color: 'var(--color-faint)' }}>
-                    {i.subtitle}
+                {/* Название и бейдж состояния — ОДНОЙ строкой, как в макете.
+                    Бейдж не вынесен в отдельный правый столбец намеренно:
+                    украинское «опубліковано» вдвое длиннее макетного
+                    «Активна», и своим столбцом он сжимал бы строку метрик
+                    до переноса — «60 хв» и цена уезжали бы на разные
+                    строки на КАЖДОЙ карточке. */}
+                <span className="flex items-start justify-between gap-2">
+                  <span className="clamp-2 min-w-0"
+                        style={{ fontSize: 14, fontWeight: 650, color: 'var(--color-text)' }}>
+                    {i.title}
                   </span>
-                )}
-                {/* Тривалість — тільки в послуг, і тільки коли задана.
-                    Формат «60 хв», а не «1 год»: варіанти рідко переходять
-                    годинну позначку, а секунди читача не цікавлять. */}
-                {i.durationMinutes != null && (
-                  <span className="tabular t-xs mt-0.5 block" style={{ color: 'var(--color-faint)' }}>
-                    {t('catalog.duration', { n: t.number(i.durationMinutes) })}
+                  <span className={`${statusBadge(i.status)} shrink-0`}>
+                    {statusLabel(t, i.status)}
                   </span>
-                )}
-                <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                  <span className={statusBadge(i.status)}>{statusLabel(t, i.status)}</span>
-                  {i.variants > 1 && (
-                    <span className="badge">{t.plural('catalog.variants.count', i.variants)}</span>
-                  )}
-                  {/* «Поза каталогом» — про общий каталог маркетплейса,
-                      то есть про витрину. Без модуля отметка сообщала бы
-                      об отсутствии в списке, которого у заведения нет. */}
-                  {hasStorefront && !i.listed && (
-                    <span className="badge">{t('catalog.badge.unlisted')}</span>
-                  )}
                 </span>
+
+                <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1"
+                      style={{ fontSize: 13 }}>
+                  {/* Тривалість — тільки в послуг, і тільки коли задана.
+                      Формат «60 хв», а не «1 год»: варіанти рідко переходять
+                      годинну позначку, а секунди читача не цікавлять. */}
+                  {i.durationMinutes != null && (
+                    <span className="tabular flex items-center gap-1"
+                          style={{ color: 'var(--color-muted)' }}>
+                      <IconClock size={13} />
+                      {t('catalog.duration', { n: t.number(i.durationMinutes) })}
+                    </span>
+                  )}
+                  <span className="tabular flex items-center gap-1"
+                        style={{ fontWeight: 650, color: 'var(--color-text)' }}>
+                    <IconTag size={13} />
+                    {/* Символ валюты ставит Intl (`t.money`), а не мы:
+                        ручная подстановка «₴» ломается на второй валюте
+                        и ставит символ не с той стороны в английской. */}
+                    {i.price != null ? t.money(i.price, i.currency) : t('common.noValue')}
+                  </span>
+                </span>
+
+                {/* Витратники — только у послуги: у товара рецептуры не
+                    бывает вовсе. Ноль ПОКАЗЫВАЕТСЯ, а не прячется: это
+                    и есть ответ на вопрос, спишется ли что-нибудь со
+                    склада, когда запись переведут в «Виконано». */}
+                {i.materials != null && (
+                  <span className="tabular mt-1 flex items-center gap-1"
+                        style={{ fontSize: 12, color: 'var(--color-muted)' }}>
+                    <IconBox size={13} />
+                    {t('catalog.materials', { n: t.number(i.materials) })}
+                  </span>
+                )}
+
+                {/* Отметки, которых в макете нет, потому что в прототипе
+                    нет и самих величин: число вариантов и «поза каталогом».
+                    Стоят ПОД метриками, а не в углу с бейджем состояния:
+                    в углу помещается ровно одна плашка, и вторая
+                    выталкивала бы первую на следующую строку. */}
+                {(i.variants > 1 || (hasStorefront && !i.listed)) && (
+                  <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    {i.variants > 1 && (
+                      <span className="badge">{t.plural('catalog.variants.count', i.variants)}</span>
+                    )}
+                    {hasStorefront && !i.listed && (
+                      <span className="badge">{t('catalog.badge.unlisted')}</span>
+                    )}
+                  </span>
+                )}
               </span>
 
-              <span className="shrink-0 text-right">
-                <span className="tabular t-md block">
-                  {/* Символ валюты ставит Intl (`t.money`), а не мы:
-                      ручная подстановка «₴» ломается на второй валюте
-                      и ставит символ не с той стороны в английской. */}
-                  {i.price != null ? t.money(i.price, i.currency) : '—'}
-                </span>
+              {/* Шеврон — указатель, а не кнопка: нажимается вся карточка.
+                  Стоит по центру строки, потому что говорит о карточке
+                  целиком, а не о верхней её строке. */}
+              <span aria-hidden className="shrink-0 self-center"
+                    style={{ color: 'var(--color-faint)' }}>
+                <IconChevronRight size={18} />
               </span>
             </Link>
           ))}
@@ -455,7 +565,47 @@ export function CatalogClient({ items, error, canWrite, hasStorefront = false }:
         </>
       )}
 
+      {/* Главная кнопка — ПОД СПИСКОМ, в потоке, а не плавающая.
+          Из макета дословно, и это осознанно не FAB: плавающая кнопка
+          накрывает последнюю карточку списка, а над ней уже висит
+          нижняя панель разделов — два плавающих слоя на одном экране
+          дерутся за один и тот же угол экрана.
+
+          На lg она не рисуется: там та же единственная кнопка живёт
+          в правом углу веб-хедера выше. */}
+      {canWrite && shown.length > 0 && (
+        <Link href="/app/catalog/new" className="btn-primary lg:hidden">
+          {t('catalog.add.cta')}
+        </Link>
+      )}
+
       <p className="field-hint">{t('catalog.hint.published')}</p>
+
+      {/* Шторка сортировки. Список вариантов, а не набор переключателей:
+          порядок ровно один, и два выбранных сразу — это состояние,
+          которого не бывает. Выбор закрывает шторку сам: подтверждать
+          нечего, результат виден в списке за ней. */}
+      <Sheet open={sortOpen} onClose={() => setSortOpen(false)} title={t('catalog.sort.title')}>
+        <div className="flex flex-col gap-1">
+          {SORTS.map((s) => (
+            <button key={s} type="button"
+                    onClick={() => { setSort(s); setSortOpen(false) }}
+                    className="flex items-center justify-between gap-3 text-left"
+                    style={{
+                      minHeight: 'var(--tap-min)',
+                      padding: '0 12px',
+                      borderRadius: 'var(--radius-control)',
+                      fontSize: 14,
+                      fontWeight: sort === s ? 650 : 500,
+                      background: sort === s ? 'var(--color-accent-soft)' : undefined,
+                      color: sort === s ? 'var(--color-accent-ink)' : 'var(--color-text)',
+                    }}>
+              {t(`catalog.sort.${s}`)}
+              {sort === s && <IconCheck size={18} />}
+            </button>
+          ))}
+        </div>
+      </Sheet>
     </div>
   )
 }

@@ -3,31 +3,30 @@
 // загрузки уже стоят на экране. Раньше здесь была своя AppShell —
 // и при каждом переходе на экране оказывались две нижние панели
 // одна поверх другой. Не возвращать.
-// BookingsClient групує записи підписами днів, під кожним — card
-// зі списком .row (час+ім'я зліва, бейдж+кнопки справа).
 //
-// Форма скелетона — денна, хоча у екрана з 19.08.2026 два види.
-// Причина не в лінощах: loading.tsx не бачить ?view=week (це не
-// сторінка, а заглушка сегмента), тобто вгадати вид звідси нічим.
-// Показуємо УМОЛЧАННЯ — денний список; тижнева сітка приходить
-// зі своїм каркасом одразу, чекати їй нічого.
+// Форма скелетона — ДЕННА, хоча у екрана три види. Причина не в лінощах:
+// loading.tsx не бачить `?view=` (це не сторінка, а заглушка сегмента),
+// тобто вгадати вид звідси нічим. Показуємо УМОЛЧАННЯ — таймлайн дня;
+// місячна сітка й тижнева приходять зі своїм каркасом одразу, чекати
+// їм нічого.
+//
+// Повторює саме таймлайн: перемикач вида, підпис дня, а далі рядки
+// «вузька колонка години + широка плашка». Скелетон іншої форми гірший
+// за його відсутність — на місці сірих смуг з'являється щось інше,
+// і перехід читається як стрибок.
 export default function Loading() {
   return (
-    <>
-      <div className="flex flex-col gap-6">
-        {Array.from({ length: 2 }).map((_, di) => (
-          <section key={di}>
-            <span className="skeleton mb-2 block h-4 w-40" />
-            <div className="card !p-0">
-              {Array.from({ length: di === 0 ? 4 : 2 }).map((_, i) => (
-                <div key={i} className="skeleton-row px-5">
-                  <span /><span /><span /><span />
-                </div>
-              ))}
-            </div>
-          </section>
+    <div className="flex flex-col gap-4">
+      <span className="skeleton block h-[52px] w-full rounded-[var(--radius-card)]" />
+      <span className="skeleton block h-5 w-48" />
+      <div className="flex flex-col gap-2">
+        {Array.from({ length: 7 }).map((_, i) => (
+          <div key={i} className="flex items-start gap-2">
+            <span className="skeleton mt-2 block h-3 w-[42px] shrink-0" />
+            <span className="skeleton block h-14 flex-1 rounded-[var(--radius-control)]" />
+          </div>
         ))}
       </div>
-    </>
+    </div>
   )
 }

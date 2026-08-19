@@ -2,15 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
 import { localeOf } from '@/lib/i18n/format'
-import { dbErrorText } from '@/lib/errors/db'
-import { Sheet } from '@/components/sheet'
 import { IconBack, IconCalendar, IconChevronRight } from '@/components/icons'
-import { NEXT, eventTone, isVoid, statusLabel, type B } from './status'
+import { eventTone, isVoid, type B } from './status'
 import { dayOf, mondayOf, shiftDay, weekDays, weekHref, weekLabel } from './week'
+import { BookingSheet } from './booking-sheet'
 
 // ── Недельная сетка записей (хендофф CRESKO Web §2) ─────────────────────────
 //
@@ -45,10 +42,6 @@ type Slot = {
 
 export function WeekGrid({ bookings, weekStart }: { bookings: B[]; weekStart: string }) {
   const t = useT()
-  const supabase = useMemo(() => createClient(), [])
-  const router = useRouter()
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState('')
   const [open, setOpen] = useState<B | null>(null)
 
   // ЧАСЫ БРАУЗЕРА — ТОЛЬКО ПОСЛЕ ГИДРАТАЦИИ, и это не перестраховка.
@@ -147,17 +140,6 @@ export function WeekGrid({ bookings, weekStart }: { bookings: B[]; weekStart: st
 
   const atCurrent = today !== null && mondayOf(today) === weekStart
 
-  async function move(id: string, to: string) {
-    setBusy(true); setErr('')
-    const { error } = await supabase.rpc('set_booking_status', {
-      p_booking_id: id, p_status: to,
-    })
-    setBusy(false)
-    if (error) { setErr(dbErrorText(t, error)); return }
-    setOpen(null)
-    router.refresh()
-  }
-
   const empty = ready ? slots.length === 0 : bookings.length === 0
 
   return (
@@ -189,8 +171,6 @@ export function WeekGrid({ bookings, weekStart }: { bookings: B[]; weekStart: st
           </Link>
         )}
       </div>
-
-      {err && <p className="field-error rise">{err}</p>}
 
       {empty ? (
         <div className="empty card rise">
@@ -350,56 +330,13 @@ export function WeekGrid({ bookings, weekStart }: { bookings: B[]; weekStart: st
         </div>
       )}
 
-      {/* Карточка записи. Отдельного экрана записи в продукте нет вовсе —
-          в списке дня действия лежат прямо в строке. Поэтому нажатие
-          на плашку открывает шторку с тем же составом и с теми же
-          разрешёнными переходами: карта переходов одна на оба вида
-          (`./status.ts`), второй её копии не заведено. */}
-      <Sheet open={open !== null} onClose={() => setOpen(null)}
-             title={open ? t('bookings.card.title', { number: open.number }) : undefined}>
-        {open && (
-          <div className="flex flex-col gap-3">
-            <p className="tabular t-lg" style={{ color: 'var(--color-accent-ink)' }}>
-              {t.dateTime(open.start, {
-                weekday: 'long', day: 'numeric', month: 'long',
-                hour: '2-digit', minute: '2-digit',
-              })}
-            </p>
-            <p className="t-md">
-              {open.name}
-              {open.phone && <a href={`tel:${open.phone}`} className="prose-muted"> · {open.phone}</a>}
-            </p>
-            <p className="t-sm" style={{ color: 'var(--color-faint)' }}>
-              {open.title} · {open.variant} · {open.staff}
-            </p>
-            <p className="flex items-center gap-2">
-              <span className={
-                open.status === 'completed' ? 'badge-success'
-                : isVoid(open.status) ? 'badge'
-                : 'badge-accent'
-              }>
-                {statusLabel(t, open.status)}
-              </span>
-              <span className="tabular t-sm" style={{ color: 'var(--color-faint)' }}>
-                {t.money(open.price)}
-                {open.deposit > 0 && ` · ${t('bookings.deposit', { sum: t.money(open.deposit) })}`}
-              </span>
-            </p>
-            {(NEXT[open.status] ?? []).length > 0 && (
-              <div className="flex flex-wrap items-center gap-2 pt-1">
-                {(NEXT[open.status] ?? []).map((a) => (
-                  <button key={a.to} type="button"
-                          className={a.kind === 'primary' ? 'btn-primary t-sm' : 'btn-secondary t-sm'}
-                          disabled={busy}
-                          onClick={() => void move(open.id, a.to)}>
-                    {t(`bookings.action.${a.to}`)}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </Sheet>
+      {/* Карточка записи — общая с таймлайном дня (`./booking-sheet`).
+          Отдельного экрана записи в продукте нет вовсе: в плашку не
+          помещается ни одна кнопка, поэтому нажатие открывает шторку
+          с разрешёнными переходами. Вторая её копия разъехалась бы
+          с первой ровно так же, как разъехалась бы карта переходов, —
+          и по той же причине вынесена в свой файл. */}
+      <BookingSheet booking={open} onClose={() => setOpen(null)} />
     </div>
   )
 }

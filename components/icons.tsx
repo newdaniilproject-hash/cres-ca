@@ -391,3 +391,23 @@ export function IconChevronRight({ size = 18, className }: P) {
     </svg>
   )
 }
+
+/** Цінник — ціна позиції в каталозі. Не «наклейка» (`IconLabel`): та
+ *  говорит о коде на банке, эта — о деньгах, и путать их нельзя. */
+export function IconTag({ size = 20, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M11.6 3.5H5a1.5 1.5 0 0 0-1.5 1.5v6.6a1.5 1.5 0 0 0 .44 1.06l7 7a1.5 1.5 0 0 0 2.12 0l6.6-6.6a1.5 1.5 0 0 0 0-2.12l-7-7a1.5 1.5 0 0 0-1.06-.44Z" />
+      <circle cx="8" cy="8" r="1.1" />
+    </svg>
+  )
+}
+
+/** Лійка — фільтри та сортування списку. */
+export function IconFilter({ size = 20, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M4 6.5h16M7 12h10M10 17.5h4" />
+    </svg>
+  )
+}

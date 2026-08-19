@@ -1,8 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { useMemo, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { enqueue, isNetworkError } from '@/lib/offline/queue'
 import { useToast } from '@/components/toast'
@@ -132,6 +132,24 @@ export function MovementsClient({
   const [itemId, setItemId] = useState('')
   const [qty, setQty] = useState('')
   const [note, setNote] = useState('')
+
+  // ── `?new=1` ОТКРЫВАЕТ ФОРМУ СРАЗУ ───────────────────────────────────
+  // Плитка «Списання» в быстрых действиях склада ведёт сюда этим адресом:
+  // человек нажал «списати», и заставлять его искать ту же кнопку второй
+  // раз на этом экране — лишний шаг. Приём и порядок те же, что у
+  // `?new=1` на приёмке и `?scan=1` на складе: признак снимается из адреса
+  // СРАЗУ, иначе повторное нажатие плитки формы не откроет (адрес не
+  // меняется, компонент не перемонтируется). `history.replaceState`,
+  // а не `router.replace`, — серверный рендер ради чистки параметра не
+  // нужен. Без права записи форму не открываем: Sheet и так гейтится
+  // canWrite, но признак из адреса всё равно вычищаем.
+  const sp = useSearchParams()
+  useEffect(() => {
+    if (sp.get('new') !== '1') return
+    if (canWrite) { setOpen(true); setErr('') }
+    window.history.replaceState(null, '',
+      active === 'all' ? '/app/inventory/movements' : `/app/inventory/movements?type=${active}`)
+  }, [sp, canWrite, active])
 
   // Ключ идемпотентности живёт до успеха: двойное нажатие по кнопке
   // (обычное дело на телефоне) не спишет остаток дважды, а неудачная

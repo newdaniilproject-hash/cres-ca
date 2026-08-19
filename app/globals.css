@@ -1370,12 +1370,16 @@ html.dark {
   .fab:hover, .fab-wide:hover { background: var(--color-accent-hover); }
   .fab:active, .fab-wide:active { transform: scale(0.95); }
 
-  /* Надзаголовок секции: капслок, разрядка, акцент. Дёшево даёт
-     редакционный вид там, где иначе была бы просто вторая строка. */
+  /* Надзаголовок секции: капслок, разрядка, ПРИГЛУШЁННЫЙ.
+     Акцентным он был до сверки с прототипом (19.08.2026, снимок
+     кадр-в-кадр): в макете «ШВИДКІ ДІЇ» и «РЕЄСТР · 6 ПОЗИЦІЙ» серые,
+     а акцентом набрана только ссылка справа от них («Всі», «Всі записи»).
+     Акцент — дефицитный ресурс: когда им набран и заголовок секции,
+     и действие рядом, действие перестаёт быть заметным. */
   .eyebrow {
     @apply text-xs font-bold uppercase;
     letter-spacing: 0.1em;
-    color: var(--color-accent-ink);
+    color: var(--color-muted);
   }
 }
 
@@ -2211,6 +2215,53 @@ body.kb-open .m-actionbar {
   font-weight: 650;
 }
 
+/* ── Строка шторки профиля ────────────────────────────────────
+   Геометрия из хендоффа CRESKO: плашка значка 36px, название
+   14px/650, подпись 12px `muted`, шеврон справа. Отдельно от
+   `.drawer-item`: та — одна строка с одним значком, а здесь под
+   названием стоит вторая строка, и вертикальное выравнивание
+   у них разное. Подпись приходит ДАННЫМИ из реестра модулей
+   (`modules.description`), а не строкой словаря. */
+.menu-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: var(--tap-min);
+  padding: 8px 4px;
+  border-radius: var(--radius-control);
+  color: var(--color-text);
+}
+.menu-row-plate {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-plate);
+  background: var(--color-surface-2);
+  color: var(--color-accent-ink);
+}
+.menu-row-title {
+  display: block;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.3;
+}
+.menu-row-caption {
+  display: block;
+  margin-top: 1px;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--color-muted);
+}
+.menu-row[data-active='true'] .menu-row-plate {
+  background: var(--color-accent-soft);
+}
+.menu-row[data-active='true'] .menu-row-title {
+  color: var(--color-accent-ink);
+}
+
 /* ── Переходы между экранами ──────────────────────────────────
    Вне @layer по тому же принципу, что drawer/sheet-layer выше:
    правила хрома приложения обязаны выигрывать у утилит Tailwind.
@@ -2665,23 +2716,6 @@ body.kb-open .m-actionbar {
   display: flex;
   align-items: center;
 }
-.websearch {
-  height: 44px;
-  max-width: 540px;
-  width: 100%;
-  border-radius: 12px;
-  background: #F7F7FB;
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 14px;
-  color: var(--color-faint);
-  font-size: 14px;
-  cursor: pointer;
-  text-align: left;
-}
 .webside {
   width: 232px;
   flex-shrink: 0;
@@ -2711,13 +2745,13 @@ body.kb-open .m-actionbar {
   background: var(--color-accent-soft);
   color: var(--color-accent-ink);
 }
-.webhelp {
-  border: 1px solid var(--color-border);
-  border-radius: 14px;
-  background: var(--web-surface-tint, var(--color-surface-2));
-  padding: 16px;
-  margin-top: auto;
-}
+/* `.websearch` и `.webhelp` из хендоффа здесь БЫЛИ и удалены 19.08.2026
+   (правило 8: выключено — значит удалено). Поиск в шапке рисует
+   `components/global-search.tsx` своими `.searchfield`/`.iconbtn` — один
+   поиск на весь кабинет, и второй его вид завёл бы второй источник правды.
+   Блока помощи в сайдбаре у нас нет: вести из него некуда. Не возвращать
+   «по README» — сначала должен появиться экран, который он открывает. */
+
 /* Дропдаун профиля: 262px, из правого верхнего угла. */
 .webdrop {
   position: fixed;
