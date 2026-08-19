@@ -5,6 +5,7 @@ import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { ReceiptDetail } from './receipt-detail'
 import { getT } from '@/lib/i18n/server'
+import { dbErrorText } from '@/lib/errors/db'
 
 export const dynamic = 'force-dynamic'
 // Заголовок вкладки — тем же ключом, что и заголовок экрана
@@ -42,9 +43,10 @@ export default async function ReceiptPage({
   if (error) {
     return (
       <AppShell>
-        {/* Текст отказа базы — её слова, а не наши: в словарь он не едет. */}
+        {/* Сырой текст отказа человеку не показывается: в нём бывает
+            значение поля. Обезличенный ответ — `lib/errors/db.ts`. */}
         <p className="field-error rise">
-          {t('inventory.receipt.openError')}: {error.message}
+          {t('inventory.receipt.openError')}: {dbErrorText(t, error)}
         </p>
       </AppShell>
     )
@@ -80,7 +82,7 @@ export default async function ReceiptPage({
     <AppShell>
       <ReceiptDetail
         canWrite={can(m, 'stock.write')}
-        loadError={linesError?.message ?? ''}
+        loadError={linesError ? dbErrorText(t, linesError) : ''}
         receipt={{
           id: receipt.id as string,
           number: (receipt.document_number as string | null) ?? null,

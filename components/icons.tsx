@@ -343,3 +343,51 @@ export function IconList({ size = 22, className }: P) {
     </svg>
   )
 }
+
+/** Стрелка вниз в лоток — скачать файл. */
+export function IconDownload({ size = 20, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M12 4v10" />
+      <path d="M8 10.5l4 4 4-4" />
+      <path d="M4.5 19.5h15" />
+    </svg>
+  )
+}
+
+/** Плюс — добавить, развернуть. */
+export function IconPlus({ size = 20, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  )
+}
+
+/** Минус — свернуть. */
+export function IconMinus({ size = 20, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M5 12h14" />
+    </svg>
+  )
+}
+
+/** Наклейка с кодом — этикетка ёмкости. */
+export function IconLabel({ size = 20, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M4 5.5h16v13H4z" />
+      <path d="M7.5 9v6M10.5 9v6M13.5 9v3.5M16.5 9v6" />
+    </svg>
+  )
+}
+
+/** Шеврон вправо — «внутри есть ещё». Только указатель, не кнопка. */
+export function IconChevronRight({ size = 18, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M9 6l6 6-6 6" />
+    </svg>
+  )
+}

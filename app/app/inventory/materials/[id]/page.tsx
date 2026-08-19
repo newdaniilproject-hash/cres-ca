@@ -5,6 +5,7 @@ import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { MaterialCard } from './material-card'
 import { getT } from '@/lib/i18n/server'
+import { dbErrorText } from '@/lib/errors/db'
 
 export const dynamic = 'force-dynamic'
 // Заголовок вкладки — тем же ключом, что и заголовок экрана
@@ -100,9 +101,10 @@ export default async function MaterialPage({
   if (error) {
     return (
       <AppShell>
-        {/* Текст отказа базы — её слова, а не наши: в словарь он не едет. */}
+        {/* Отказ базы — через общий разбор (М25): сырой текст Postgres
+            может нести значение поля, человеку показывается подпись. */}
         <p className="field-error rise">
-          {t('inventory.material.openError')}: {error.message}
+          {t('inventory.material.openError')}: {dbErrorText(t, error)}
         </p>
       </AppShell>
     )

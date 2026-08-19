@@ -1,8 +1,8 @@
 'use client'
 
-import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { useT } from '@/lib/i18n/client'
+import { IconCheck } from '@/components/icons'
 
 export type LowItem = {
   kind: string
@@ -79,32 +79,67 @@ export function ReorderClient({ items, error }: { items: LowItem[]; error: strin
 
   const allText = groups.map((g) => textFor(g.supplier, g.list)).join('\n\n')
 
+  // Счётчики читаются слева направо как убывание надежды: сколько всего
+  // в списке → сколько уже НА НУЛЕ (не «мало», а нечем работать) → скольким
+  // некому написать. Последнее — отдельная работа: сначала приписать
+  // поставщика в довіднику, потом заказывать.
+  const stats = useMemo(() => ({
+    total: items.length,
+    zero: items.filter((it) => it.stock <= 0).length,
+    noSupplier: items.filter((it) => !it.supplier?.trim()).length,
+  }), [items])
+
   return (
     <div className="flex flex-col gap-5">
-      <div className="rise flex flex-wrap items-center gap-2">
-        <Link href="/app/inventory" className="btn-ghost">← {t('inventory.link.stock')}</Link>
-        {groups.length > 1 && (
-          <button type="button" className="btn-secondary ml-auto t-md"
-                  onClick={() => void copy('all', allText)}>
-            {copied === 'all' ? t('common.copied') : t('inventory.reorder.copyAll')}
-          </button>
-        )}
-      </div>
-
-      {/* Текст отказа базы показывается как есть — это её слова, не наши. */}
+      {/* Отказ загрузки приезжает с сервера уже переведённым (`dbErrorText`
+          в page.tsx): сырой текст Postgres печатает значения полей (М25). */}
       {error && (
         <p className="field-error rise">{t('inventory.reorder.loadError')}: {error}</p>
       )}
       {copyError && <p className="field-error rise">{copyError}</p>}
 
       {items.length === 0 ? (
+        // Пустой список здесь — ХОРОШАЯ новость, поэтому галочка, а не
+        // коробка: ничего не опустилось до минимума.
         <section className="card rise-1">
           <div className="empty">
-            {t('inventory.reorder.empty.title')}
-            <span className="prose-muted">{t('inventory.reorder.empty.desc')}</span>
+            <span className="empty-icon"><IconCheck size={24} /></span>
+            <p className="empty-title">{t('inventory.reorder.empty.title')}</p>
+            <p className="empty-desc">{t('inventory.reorder.empty.desc')}</p>
           </div>
         </section>
-      ) : groups.map((g, i) => (
+      ) : (
+        <>
+          {/* Счётчики — как на складе: крупное число, мелкая подпись.
+              Это не фильтры (списку из пары групп фильтр не нужен),
+              поэтому не кнопки — нажимать тут нечего. */}
+          <section className="rise grid grid-cols-3 gap-2">
+            <div className="metric" data-tone="blue">
+              <span className="metric-value">{t.number(stats.total)}</span>
+              <span className="metric-label">{t('inventory.reorder.stats.total')}</span>
+            </div>
+            <div className="metric" data-tone="rose">
+              <span className="metric-value">{t.number(stats.zero)}</span>
+              <span className="metric-label">{t('inventory.reorder.stats.zero')}</span>
+            </div>
+            <div className="metric" data-tone="amber">
+              <span className="metric-value">{t.number(stats.noSupplier)}</span>
+              <span className="metric-label">{t('inventory.reorder.stats.noSupplier')}</span>
+            </div>
+          </section>
+
+          {/* «Скопіювати все» — всегда и над списками, а не в шапке:
+              кнопка относится к спискам, а не к экрану. При единственной
+              группе групповая кнопка не рисуется — она копировала бы
+              то же самое, а два входа в одно действие — дубляж. */}
+          <button type="button" className="btn-secondary rise-1 w-full"
+                  onClick={() => void copy('all', allText)}>
+            {copied === 'all' ? t('common.copied') : t('inventory.reorder.copyAll')}
+          </button>
+        </>
+      )}
+
+      {items.length > 0 && groups.map((g, i) => (
         <section key={g.supplier || 'no-supplier'}
                  className={`card !p-0 ${i === 0 ? 'rise-1' : 'rise-2'}`}>
           <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-5">
@@ -117,13 +152,15 @@ export function ReorderClient({ items, error }: { items: LowItem[]; error: strin
                 {t('inventory.reorder.group.count', { n: t.number(g.list.length) })}
               </p>
             </div>
-            <button type="button" className="btn-secondary t-md"
-                    onClick={() => void copy(g.supplier, textFor(g.supplier, g.list))}>
-              {copied === g.supplier ? t('common.copied') : t('inventory.reorder.copyList')}
-            </button>
+            {groups.length > 1 && (
+              <button type="button" className="btn-secondary t-md"
+                      onClick={() => void copy(g.supplier, textFor(g.supplier, g.list))}>
+                {copied === g.supplier ? t('common.copied') : t('inventory.reorder.copyList')}
+              </button>
+            )}
           </div>
 
-          <div className="px-5">
+          <div className="px-5 pb-3">
             {g.list.map((it) => (
               <div key={`${it.kind}:${it.id}`} className="row">
                 <div className="min-w-0">
@@ -147,8 +184,6 @@ export function ReorderClient({ items, error }: { items: LowItem[]; error: strin
               </div>
             ))}
           </div>
-
-          <div className="px-5 pb-5" />
         </section>
       ))}
 

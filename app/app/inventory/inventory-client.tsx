@@ -11,6 +11,7 @@ import { Sheet } from '@/components/sheet'
 import { enqueue, isNetworkError } from '@/lib/offline/queue'
 import { useToast } from '@/components/toast'
 import { useT } from '@/lib/i18n/client'
+import { dbErrorText } from '@/lib/errors/db'
 import type { Key } from '@/lib/i18n/dict'
 import { EXPIRY_BADGE, type ExpiryState, expiryState } from '@/lib/expiry'
 import { Scanner } from '@/components/scanner'
@@ -300,7 +301,8 @@ export function InventoryClient({
         toast.info(t('inventory.offline.saved'), t('inventory.offline.desc'))
         return true
       }
-      toast.error(t('inventory.container.saveError'), e instanceof Error ? e.message : String(e))
+      // Отказ базы — обезличенной подписью, не сырым текстом Postgres (М25).
+      toast.error(t('inventory.container.saveError'), dbErrorText(t, e))
       return false
     }
     setBusy(null)

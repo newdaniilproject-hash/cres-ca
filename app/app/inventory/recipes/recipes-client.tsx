@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
 import type { T } from '@/lib/i18n/translate'
 import { dbErrorText } from '@/lib/errors/db'
+import { IconBeaker, IconChevronRight, IconClose } from '@/components/icons'
 
 export type RecipeLine = {
   variantId: string
@@ -116,11 +117,8 @@ export function RecipesClient({
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="rise flex flex-wrap items-center gap-2">
-        <Link href="/app/inventory" className="btn-ghost">← {t('inventory.link.stock')}</Link>
-      </div>
-
-      {/* Текст отказа базы показывается как есть — это её слова, не наши. */}
+      {/* Отказ загрузки приезжает с сервера уже переведённым (`dbErrorText`
+          в page.tsx): сырой текст Postgres печатает значения полей (М25). */}
       {error && (
         <p className="field-error rise">{t('inventory.recipes.error.variants')}: {error}</p>
       )}
@@ -129,28 +127,36 @@ export function RecipesClient({
       )}
       {err && <p className="field-error rise">{err}</p>}
 
-      <section className="card rise">
-        <p className="eyebrow">{t('inventory.recipes.about.eyebrow')}</p>
-        <p className="t-md mt-2 prose-muted">{t('inventory.recipes.about.desc')}</p>
-      </section>
-
-      <div className="rise-1 flex flex-wrap items-center gap-2">
+      {/* Вкладки — уезжающей вбок строкой, как на складе: перенос на вторую
+          строку смешал бы их с тем, что стоит ниже. */}
+      <div className="scroll-x rise -mx-4 flex gap-2 px-4 pb-1 sm:mx-0 sm:px-0">
         <button type="button" onClick={() => { setTab('services'); setOpenId(null) }}
-                className={tab === 'services' ? 'chip-active' : 'chip'}>
+                className={`${tab === 'services' ? 'chip-active' : 'chip'} shrink-0`}>
           {t('inventory.recipes.tab.services')}
         </button>
         <button type="button" onClick={() => { setTab('goods'); setOpenId(null) }}
-                className={tab === 'goods' ? 'chip-active' : 'chip'}>
+                className={`${tab === 'goods' ? 'chip-active' : 'chip'} shrink-0`}>
           {t('inventory.recipes.tab.goods')}
         </button>
       </div>
 
       <section className="card rise-2 !p-0">
         {shown.length === 0 ? (
+          // Позиции заводятся в каталоге, а не здесь: этот экран — обратный
+          // взгляд «куди йде засіб», второй формы заведения быть не должно.
           <div className="empty">
-            {tab === 'services'
-              ? t('inventory.recipes.empty.services')
-              : t('inventory.recipes.empty.goods')}
+            <span className="empty-icon"><IconBeaker size={24} /></span>
+            <p className="empty-title">{t('inventory.recipes.empty.title')}</p>
+            <p className="empty-desc">
+              {tab === 'services'
+                ? t('inventory.recipes.empty.services')
+                : t('inventory.recipes.empty.goods')}
+            </p>
+            <div className="empty-actions">
+              <Link href="/app/catalog" className="btn-primary">
+                {t('inventory.action.addInCatalog')}
+              </Link>
+            </div>
           </div>
         ) : shown.map((v) => {
           const open = openId === v.id
@@ -158,13 +164,19 @@ export function RecipesClient({
           const partial = v.lines.some((l) => l.cost == null)
           return (
             <div key={v.id} className="px-5">
-              <div className="row">
-                <button type="button" className="min-w-0 flex-1 text-left"
-                        onClick={() => toggle(v.id)}>
-                  <p className="t-md truncate">
+              {/* Вся строка — ОДНА кнопка. Раньше тело строки и «+» справа
+                  звали один и тот же toggle — два входа в одно действие,
+                  тот самый дубляж, из-за которого переделывался склад.
+                  Шеврон — указатель, а не кнопка: нажимается строка. */}
+              <button type="button" className="row w-full text-left"
+                      style={{ minHeight: 'var(--tap-min)' }}
+                      aria-expanded={open}
+                      onClick={() => toggle(v.id)}>
+                <span className="min-w-0 flex-1">
+                  <span className="t-md block truncate">
                     {v.title}<span className="prose-muted"> · {v.name}</span>
-                  </p>
-                  <p className="tabular t-xs mt-0.5 prose-muted">
+                  </span>
+                  <span className="tabular t-xs mt-0.5 block prose-muted">
                     {v.lines.length === 0
                       ? t('inventory.recipes.noComposition')
                       : t('inventory.recipes.lines', { n: t.number(v.lines.length) })}
@@ -173,18 +185,16 @@ export function RecipesClient({
                         ? t('inventory.recipes.costFrom', { money: t.money(total), unit: v.unit })
                         : t('inventory.recipes.cost', { money: t.money(total), unit: v.unit })}`
                       : ''}
-                  </p>
-                </button>
-                <div className="flex shrink-0 items-center gap-2">
+                  </span>
+                </span>
+                <span className="flex shrink-0 items-center gap-2">
                   {v.lines.length > 0 && (
                     <span className="badge-accent tabular">{t.number(v.lines.length)}</span>
                   )}
-                  <button type="button" className="btn-icon" onClick={() => toggle(v.id)}
-                          title={open ? t('inventory.collapse') : t('inventory.recipes.expand')}>
-                    {open ? '−' : '+'}
-                  </button>
-                </div>
-              </div>
+                  <IconChevronRight
+                    className={`prose-muted shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} />
+                </span>
+              </button>
 
               {open && (
                 <div className="pb-5">
@@ -213,7 +223,9 @@ export function RecipesClient({
                                       aria-label={t('inventory.recipes.remove.aria')}
                                       disabled={busy !== null}
                                       onClick={() => void removeLine(l)}>
-                                ✕
+                                {/* Значок, а не глиф «✕»: текстовые символы
+                                    рисуются каждой прошивкой по-своему. */}
+                                <IconClose size={18} />
                               </button>
                             )}
                           </div>

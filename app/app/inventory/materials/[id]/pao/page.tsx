@@ -5,6 +5,7 @@ import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { PaoControl } from './pao-control'
 import { getT } from '@/lib/i18n/server'
+import { dbErrorText } from '@/lib/errors/db'
 
 export const dynamic = 'force-dynamic'
 // Заголовок вкладки — тем же ключом, что и заголовок экрана
@@ -43,6 +44,7 @@ export default async function PaoPage({
 
   const { id } = await params
   const supabase = await createClient()
+  const t = await getT()
 
   const { data: material } = await supabase
     .from('compliance_materials')
@@ -96,7 +98,8 @@ export default async function PaoPage({
         batches={(batches ?? []).map((b) => ({
           id: b.id, number: b.batch_number, expiry: b.expiry_date,
         }))}
-        loadError={error?.message ?? ''}
+        // Отказ базы — через общий разбор (М25), а не сырым текстом.
+        loadError={error ? dbErrorText(t, error) : ''}
       />
     </AppShell>
   )

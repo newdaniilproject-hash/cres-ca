@@ -10,6 +10,7 @@ import { useT } from '@/lib/i18n/client'
 import type { Key } from '@/lib/i18n/dict'
 import type { T } from '@/lib/i18n/translate'
 import { dbErrorText } from '@/lib/errors/db'
+import { IconClipboard } from '@/components/icons'
 
 // Значения enum stock_count_status из 0003_inventory.sql — дословно.
 // Четвёртого состояния нет: документ либо считается, либо уже изменил
@@ -57,7 +58,13 @@ export function qty(t: T, n: number): string {
 // Подстроки, по которым разбирается отказ, В СЛОВАРЬ НЕ ЕДУТ: это текст
 // миграции, и переписать его здесь значит завести второй источник правды.
 // Переводится только наш ответ.
-export function humanizeCount(t: T, message: string): string {
+//
+// Принимает САМУ ошибку, а не только message: запасной путь — общий разбор
+// `dbErrorText`, а тому нужен код SQLSTATE. Обёртка `new Error(message)`
+// код теряла, и незнакомый отказ показывался без кода в скобках —
+// поддержке было не о чем спросить.
+export function humanizeCount(t: T, e: { message?: string | null; code?: string | null } | string): string {
+  const message = (typeof e === 'string' ? e : e.message) ?? ''
   if (message.includes('не идёт пересчёт') || message.includes('не идет пересчёт')) {
     return t('inventory.count.error.notCounting')
   }
@@ -87,7 +94,7 @@ export function humanizeCount(t: T, message: string): string {
   }
   // Незнакомое базе-специфичное сюда не доходит: общий разбор
   // (`lib/errors/db.ts`) не отдаёт человеку сырой текст Postgres.
-  return dbErrorText(t, { message })
+  return dbErrorText(t, typeof e === 'string' ? { message } : e)
 }
 
 export type CountRow = {
@@ -139,6 +146,10 @@ export function CountsClient({
   )
   const [pickedM, setPickedM] = useState<string[]>([])
   const [pickedV, setPickedV] = useState<string[]>([])
+  // Фильтр списка документов. Задаётся плиткой-счётчиком сверху: раньше
+  // «Розбіжностей: 3» было мёртвым числом — экран сообщал беду и не давал
+  // способа её увидеть (тот же урок, что и на экране склада).
+  const [flag, setFlag] = useState<'all' | 'counting' | 'open' | 'diff' | 'applied'>('all')
 
   const pool = kind === 'materials' ? materials : variants
   const picked = kind === 'materials' ? pickedM : pickedV
@@ -166,6 +177,20 @@ export function CountsClient({
       .reduce((s, c) => s + c.mismatches, 0),
   }), [counts])
 
+  // Список под фильтром. «Не пораховані» и «Розбіжності» считают ПОЗИЦИИ,
+  // а список состоит из ДОКУМЕНТОВ — поэтому фильтр оставляет документы,
+  // в которых такие позиции есть, а не пытается показать сами позиции:
+  // они живут внутри карточки документа.
+  const shownCounts = useMemo(() => counts.filter((c) => {
+    switch (flag) {
+      case 'counting': return c.status === 'counting'
+      case 'open': return c.status === 'counting' && c.total - c.filled > 0
+      case 'diff': return c.status === 'counting' && c.mismatches > 0
+      case 'applied': return c.status === 'applied'
+      default: return true
+    }
+  }), [counts, flag])
+
   async function start() {
     setBusy(true); setErr('')
     // Снимок остатка в expected_qty снимает база в этой же транзакции.
@@ -183,7 +208,8 @@ export function CountsClient({
     setBusy(false)
     const row = data as { id?: string } | null
     if (rpcError || !row?.id) {
-      setErr(rpcError ? humanizeCount(t, rpcError.message) : t('inventory.counts.startFailed'))
+      // Ошибка передаётся целиком, а не `.message`: разбору нужен код.
+      setErr(rpcError ? humanizeCount(t, rpcError) : t('inventory.counts.startFailed'))
       return
     }
     // Пустой документ бесполезен — сразу уводим туда, где вписывают факт.
@@ -202,46 +228,54 @@ export function CountsClient({
   return (
     <div className="flex flex-col gap-5">
 
-      {/* ── Счётчики: что не закрыто ─────────────────────────── */}
+      {/* ── Счётчики, они же фильтр ──────────────────────────────
+          Разметка — как на экране склада (`.metric`, тон в data-tone):
+          крупное цветное число и мелкая подпись, без самодельных плиток
+          с инлайновыми цветами. Тон несёт смысл: rose — расхождения,
+          amber — недосчитанное, emerald — проведённое, blue — идущее.
+
+          Нажатие фильтрует список документов, повторное — снимает.
+          Плитка с нулём не нажимается: фильтр, дающий пустой список, —
+          это обещание показать то, чего нет.
+
+          Сетка 2×2 на телефоне, а не 4 в ряд: подписи здесь длиннее
+          складских («Не порахованих»), и в четыре колонки на 390px
+          они ломают ровный ряд переносом. */}
       <section className="rise-1 grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {[
-          { n: stats.counting, label: t('inventory.counts.stats.counting'), warn: stats.counting > 0, danger: false },
-          { n: stats.open, label: t('inventory.counts.stats.open'), warn: stats.open > 0, danger: false },
-          { n: stats.mismatches, label: t('inventory.counts.stats.mismatches'), warn: false, danger: stats.mismatches > 0 },
-          { n: stats.applied, label: t('inventory.counts.stats.applied'), warn: false, danger: false },
-        ].map((s) => (
-          <div key={s.label} className="card-flat !p-3 text-center">
-            <p className="tabular t-xl"
-               style={s.danger ? { color: 'var(--color-danger)' }
-                 : s.warn ? { color: 'var(--color-warn)' } : undefined}>
-              {t.number(s.n)}
-            </p>
-            <p className="t-xs mt-0.5" style={{ color: 'var(--color-faint)' }}>{s.label}</p>
-          </div>
-        ))}
+        {([
+          { key: 'counting', n: stats.counting, label: t('inventory.counts.stats.counting'), tone: 'blue' },
+          { key: 'open', n: stats.open, label: t('inventory.counts.stats.open'), tone: 'amber' },
+          { key: 'diff', n: stats.mismatches, label: t('inventory.counts.stats.mismatches'), tone: 'rose' },
+          { key: 'applied', n: stats.applied, label: t('inventory.counts.stats.applied'), tone: 'emerald' },
+        ] as const).map((s) => {
+          const on = flag === s.key
+          const dead = s.n === 0
+          return (
+            <button key={s.key} type="button" disabled={dead} aria-pressed={on}
+                    data-tone={s.tone}
+                    onClick={() => setFlag(on ? 'all' : s.key)}
+                    className="metric"
+                    style={{ cursor: dead ? 'default' : 'pointer' }}>
+              <span className="metric-value">{t.number(s.n)}</span>
+              <span className="metric-label">{s.label}</span>
+            </button>
+          )
+        })}
       </section>
 
+      {/* Одна кнопка на действие. Вторая («Усі засоби · N») открывала ту же
+          шторку с предвыбором — дубль входа; предвыбор переехал в шторку. */}
       {canWrite && !nothingToCount && (
         <div className="rise-1 flex flex-wrap gap-2">
           <button type="button" className="btn-primary"
                   onClick={() => { setOpen(true); setErr('') }}>
             {t('inventory.counts.start')}
           </button>
-          {materials.length > 0 && (
-            <button type="button" className="btn-secondary"
-                    onClick={() => {
-                      setKind('materials')
-                      setPickedM(materials.map((m) => m.id))
-                      setPickedV([])
-                      setOpen(true); setErr('')
-                    }}>
-              {t('inventory.counts.allMaterials', { n: t.number(materials.length) })}
-            </button>
-          )}
         </div>
       )}
 
-      {/* Текст отказа базы показывается как есть — это её слова, не наши. */}
+      {/* Текст уже переведён общим разбором (`dbErrorText`) на сервере —
+          сырые слова Postgres человеку не показываются. */}
       {error && (
         <p className="field-error rise">{t('inventory.counts.loadError')}: {error}</p>
       )}
@@ -249,8 +283,54 @@ export function CountsClient({
       {/* ── Список документов ────────────────────────────────── */}
       <section className="card rise-2 !p-0">
         {counts.length === 0 ? (
-          <div className="empty">{t('inventory.counts.empty')}</div>
-        ) : counts.map((c) => (
+          // Одно полное пустое состояние вместо голой строки: заголовок,
+          // объяснение и действие. Когда перераховувати нечего вовсе,
+          // действие ведёт туда, где заводятся позиции, — кнопка «почати»
+          // открыла бы шторку с двумя пустыми списками.
+          <div className="empty">
+            <span className="empty-icon"><IconClipboard size={24} /></span>
+            <p className="empty-title">
+              {nothingToCount
+                ? t('inventory.counts.nothing.title')
+                : t('inventory.counts.empty.title')}
+            </p>
+            <p className="empty-desc">
+              {nothingToCount
+                ? t('inventory.counts.nothingToCount')
+                : t('inventory.counts.empty.desc')}
+            </p>
+            <div className="empty-actions">
+              {nothingToCount ? (
+                <>
+                  <Link href="/app/inventory" className="btn-primary">
+                    {t('inventory.counts.nothing.toInventory')}
+                  </Link>
+                  <Link href="/app/catalog" className="btn-secondary">
+                    {t('inventory.counts.nothing.toCatalog')}
+                  </Link>
+                </>
+              ) : canWrite && (
+                <button type="button" className="btn-primary"
+                        onClick={() => { setOpen(true); setErr('') }}>
+                  {t('inventory.counts.start')}
+                </button>
+              )}
+            </div>
+          </div>
+        ) : shownCounts.length === 0 ? (
+          // Пусто ПОД ФИЛЬТРОМ — отдельный случай: документы есть, их
+          // спрятала плитка. Без объяснения это читается как пропажа данных.
+          <div className="empty">
+            <span className="empty-icon"><IconClipboard size={24} /></span>
+            <p className="empty-title">{t('inventory.empty.filteredTitle')}</p>
+            <p className="empty-desc">{t('inventory.counts.filterEmpty.desc')}</p>
+            <div className="empty-actions">
+              <button type="button" className="btn-secondary" onClick={() => setFlag('all')}>
+                {t('inventory.filter.reset')}
+              </button>
+            </div>
+          </div>
+        ) : shownCounts.map((c) => (
           <Link key={c.id} href={`/app/inventory/counts/${c.id}`} className="row px-5">
             <div className="min-w-0">
               <p className="tabular t-md truncate">
@@ -286,10 +366,9 @@ export function CountsClient({
         ))}
       </section>
 
-      {nothingToCount && (
-        <p className="field-hint">{t('inventory.counts.nothingToCount')}</p>
-      )}
-
+      {/* Прежняя подсказка «немає що перераховувати» уехала в пустое
+          состояние списка выше — два field-hint подряд читались как один
+          серый абзац без выхода. */}
       <p className="field-hint">{t('inventory.counts.hint')}</p>
 
       {/* ── Выбор позиций ────────────────────────────────────── */}
@@ -342,6 +421,19 @@ export function CountsClient({
                  value={query} onChange={(e) => setQuery(e.target.value)} />
 
           <div className="flex flex-wrap items-center gap-2">
+            {/* Пресет «усі засоби» живёт здесь, а не кнопкой на экране:
+                там он был вторым входом в эту же шторку. Он шире «Обрати
+                все»: переключает на засоби и выбирает их независимо от
+                открытой вкладки и набранного запроса. */}
+            {materials.length > 0 && (
+              <button type="button" className="chip"
+                      onClick={() => {
+                        setKind('materials')
+                        setPickedM(materials.map((m) => m.id))
+                      }}>
+                {t('inventory.counts.allMaterials', { n: t.number(materials.length) })}
+              </button>
+            )}
             <button type="button" className="chip"
                     onClick={() => setPicked(shown.map((v) => v.id))}>
               {query.trim()
@@ -358,13 +450,43 @@ export function CountsClient({
 
           <div className="card-flat !p-0 px-5">
             {pool.length === 0 ? (
+              // Полное пустое состояние с выходом: позиции заводятся не здесь,
+              // и голая строка оставляла человека в шторке без дороги дальше.
               <div className="empty">
-                {kind === 'materials'
-                  ? t('inventory.counts.pick.noMaterials')
-                  : t('inventory.counts.pick.noGoods')}
+                <span className="empty-icon"><IconClipboard size={24} /></span>
+                <p className="empty-title">
+                  {kind === 'materials'
+                    ? t('inventory.counts.pick.emptyMaterials.title')
+                    : t('inventory.counts.pick.emptyGoods.title')}
+                </p>
+                <p className="empty-desc">
+                  {kind === 'materials'
+                    ? t('inventory.counts.pick.noMaterials')
+                    : t('inventory.counts.pick.noGoods')}
+                </p>
+                <div className="empty-actions">
+                  {kind === 'materials' ? (
+                    <Link href="/app/inventory" className="btn-secondary">
+                      {t('inventory.counts.nothing.toInventory')}
+                    </Link>
+                  ) : (
+                    <Link href="/app/catalog" className="btn-secondary">
+                      {t('inventory.counts.nothing.toCatalog')}
+                    </Link>
+                  )}
+                </div>
               </div>
             ) : shown.length === 0 ? (
-              <div className="empty">{t('inventory.counts.pick.searchEmpty')}</div>
+              <div className="empty">
+                <span className="empty-icon"><IconClipboard size={24} /></span>
+                <p className="empty-title">{t('inventory.counts.pick.searchEmpty')}</p>
+                <p className="empty-desc">{t('inventory.counts.pick.searchMiss.desc')}</p>
+                <div className="empty-actions">
+                  <button type="button" className="btn-secondary" onClick={() => setQuery('')}>
+                    {t('inventory.filter.reset')}
+                  </button>
+                </div>
+              </div>
             ) : shown.map((v) => (
               <label key={v.id} className="row cursor-pointer">
                 <div className="min-w-0">

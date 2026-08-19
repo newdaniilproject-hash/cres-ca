@@ -1,9 +1,13 @@
+import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { currentMembership, can, hasModule } from '@/lib/tenant'
 import { ModuleOff } from '@/components/module-gate'
+import { AppShell } from '@/components/shell'
 import { CountDetail } from './count-detail'
 import { getT } from '@/lib/i18n/server'
+import { dbErrorText } from '@/lib/errors/db'
+import { IconClipboard } from '@/components/icons'
 
 export const dynamic = 'force-dynamic'
 // Заголовок вкладки — тем же ключом, что и заголовок экрана
@@ -40,11 +44,24 @@ export default async function CountPage({
     .maybeSingle()
 
   if (error) {
-    // Текст отказа базы — её слова, а не наши: в словарь он не едет.
+    // Полная карточка внутри оболочки, а не голый абзац: без AppShell
+    // человек оставался на белом листе без навигации, а сырой текст
+    // Postgres ему ничего не объяснял (М25 — общий разбор `dbErrorText`).
     return (
-      <p className="field-error rise">
-        {t('inventory.count.openError')}: {error.message}
-      </p>
+      <AppShell>
+        <section className="card rise">
+          <div className="empty" data-tone="danger">
+            <span className="empty-icon"><IconClipboard size={24} /></span>
+            <p className="empty-title">{t('inventory.count.openError')}</p>
+            <p className="empty-desc">{dbErrorText(t, error)}</p>
+            <div className="empty-actions">
+              <Link href="/app/inventory/counts" className="btn-secondary">
+                {t('inventory.count.backToCounts')}
+              </Link>
+            </div>
+          </div>
+        </section>
+      </AppShell>
     )
   }
   if (!count) notFound()
@@ -61,45 +78,49 @@ export default async function CountPage({
     .eq('count_id', count.id)
 
   return (
-    <CountDetail
-      tenantId={m.tenantId}
-      canWrite={can(m, 'stock.write')}
-      loadError={linesError?.message ?? ''}
-      count={{
-        id: count.id as string,
-        status: count.status as string,
-        note: (count.note as string | null) ?? null,
-        startedAt: count.started_at as string,
-        appliedAt: (count.applied_at as string | null) ?? null,
-      }}
-      lines={(lines ?? []).map((l) => {
-        const v = l.offering_variants as unknown as
-          { name: string; unit: string; offerings: { title: string } | null } | null
-        const mat = l.materials as unknown as
-          { name: string; unit: string; category: string | null } | null
-        const isMaterial = l.material_id != null
-        return {
-          id: l.id as string,
-          kind: (isMaterial ? 'material' : 'variant') as 'material' | 'variant',
-          // targetId — то, чем строка ищется сканером: у товара это вариант,
-          // у расходника — сам расходник. Одно поле вместо двух развилок.
-          targetId: (isMaterial ? l.material_id : l.variant_id) as string,
-          title: isMaterial
-            ? (mat?.name ?? '')
-            : `${v?.offerings?.title ?? ''} · ${v?.name ?? ''}`,
-          subtitle: isMaterial ? (mat?.category ?? '') : '',
-          unit: (isMaterial ? mat?.unit : v?.unit) ?? '',
-          expected: Number(l.expected_qty),
-          counted: l.counted_qty != null ? Number(l.counted_qty) : null,
-        }
-      })
-        // Порядок строк — как на полке ищут глазами: сначала расходники
-        // (у салона это весь склад), внутри — по названию. База отдаёт их
-        // одной вставкой, то есть с одинаковым created_at, и без явной
-        // сортировки порядок был бы случайным.
-        .sort((a, b) => (a.kind === b.kind
-          ? a.title.localeCompare(b.title, 'uk')
-          : a.kind === 'material' ? -1 : 1))}
-    />
+    <AppShell>
+      <CountDetail
+        tenantId={m.tenantId}
+        canWrite={can(m, 'stock.write')}
+        // Переводится здесь, общим разбором: клиенту едет готовая подпись,
+        // а не сырые слова Postgres (М25).
+        loadError={linesError ? dbErrorText(t, linesError) : ''}
+        count={{
+          id: count.id as string,
+          status: count.status as string,
+          note: (count.note as string | null) ?? null,
+          startedAt: count.started_at as string,
+          appliedAt: (count.applied_at as string | null) ?? null,
+        }}
+        lines={(lines ?? []).map((l) => {
+          const v = l.offering_variants as unknown as
+            { name: string; unit: string; offerings: { title: string } | null } | null
+          const mat = l.materials as unknown as
+            { name: string; unit: string; category: string | null } | null
+          const isMaterial = l.material_id != null
+          return {
+            id: l.id as string,
+            kind: (isMaterial ? 'material' : 'variant') as 'material' | 'variant',
+            // targetId — то, чем строка ищется сканером: у товара это вариант,
+            // у расходника — сам расходник. Одно поле вместо двух развилок.
+            targetId: (isMaterial ? l.material_id : l.variant_id) as string,
+            title: isMaterial
+              ? (mat?.name ?? '')
+              : `${v?.offerings?.title ?? ''} · ${v?.name ?? ''}`,
+            subtitle: isMaterial ? (mat?.category ?? '') : '',
+            unit: (isMaterial ? mat?.unit : v?.unit) ?? '',
+            expected: Number(l.expected_qty),
+            counted: l.counted_qty != null ? Number(l.counted_qty) : null,
+          }
+        })
+          // Порядок строк — как на полке ищут глазами: сначала расходники
+          // (у салона это весь склад), внутри — по названию. База отдаёт их
+          // одной вставкой, то есть с одинаковым created_at, и без явной
+          // сортировки порядок был бы случайным.
+          .sort((a, b) => (a.kind === b.kind
+            ? a.title.localeCompare(b.title, 'uk')
+            : a.kind === 'material' ? -1 : 1))}
+      />
+    </AppShell>
   )
 }

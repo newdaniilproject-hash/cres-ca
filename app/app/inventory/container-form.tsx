@@ -4,6 +4,8 @@ import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
+import { dbErrorText } from '@/lib/errors/db'
+import { IconBox } from '@/components/icons'
 import { UNITS, type RefItem } from './material-form'
 
 export type MaterialOption = { id: string; name: string; unit: string; pao: number | null }
@@ -110,7 +112,8 @@ export function ContainerForm({
     })
     setBusy(false)
     if (error) {
-      setErr(error.code === '23505' ? t('inventory.containerForm.error.code') : error.message)
+      // Экранная подпись для дубля кода; запасной путь — общий разбор (М25).
+      setErr(error.code === '23505' ? t('inventory.containerForm.error.code') : dbErrorText(t, error))
       return
     }
     const created = code.trim()
@@ -141,7 +144,7 @@ export function ContainerForm({
     if (error) {
       setErr(error.code === '23505'
         ? t('inventory.batchForm.error.duplicate')
-        : error.message)
+        : dbErrorText(t, error))
       return
     }
     setBNumber(''); setBMade(''); setBExpiry(''); setBDone(true)
@@ -149,15 +152,26 @@ export function ContainerForm({
   }
 
   if (materials.length === 0) {
+    // Тупика нет: формы заведения засоба в этой шторке не существует,
+    // и честнее сказать, куда идти, чем оставить одну строку текста.
     return (
-      <div className="card rise empty">
-        {t('inventory.containerForm.noMaterials')}
+      <div className="empty">
+        <span className="empty-icon"><IconBox size={24} /></span>
+        <p className="empty-title">{t('inventory.containerForm.empty.title')}</p>
+        <p className="empty-desc">{t('inventory.containerForm.empty.desc')}</p>
+        <div className="empty-actions">
+          <button type="button" className="btn-secondary" onClick={onDone}>
+            {t('inventory.common.close')}
+          </button>
+        </div>
       </div>
     )
   }
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Вкладки без кнопки «Закрити»: закрытие — в нижнем ряду формы,
+          как в material-form; действие в ряду фильтров читалось фильтром. */}
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" onClick={() => { setMode('container'); setErr('') }}
                 className={mode === 'container' ? 'chip-active' : 'chip'}>
@@ -166,9 +180,6 @@ export function ContainerForm({
         <button type="button" onClick={() => { setMode('batch'); setErr('') }}
                 className={mode === 'batch' ? 'chip-active' : 'chip'}>
           {t('inventory.containerForm.tab.batch')}
-        </button>
-        <button type="button" className="btn-ghost ml-auto" onClick={onDone}>
-          {t('inventory.common.close')}
         </button>
       </div>
 
@@ -254,6 +265,9 @@ export function ContainerForm({
             <button className="btn-primary" disabled={busy || !material || !code.trim()}>
               {t('inventory.containerForm.submit')}
             </button>
+            <button type="button" className="btn-ghost" onClick={onDone}>
+              {t('inventory.common.close')}
+            </button>
           </div>
         </form>
       )}
@@ -311,6 +325,9 @@ export function ContainerForm({
           <div className="flex gap-2 sm:col-span-2">
             <button className="btn-primary" disabled={busy || !bMaterial || !bNumber.trim() || !bExpiry}>
               {t('inventory.batchForm.submit')}
+            </button>
+            <button type="button" className="btn-ghost" onClick={onDone}>
+              {t('inventory.common.close')}
             </button>
           </div>
         </form>

@@ -10,7 +10,8 @@ import { useT } from '@/lib/i18n/client'
 import { MaterialForm, type MaterialInit, type RefItem } from '../../material-form'
 import { EXPIRY_KEY } from '../../inventory-client'
 import { EXPIRY_BADGE, expiryState } from '@/lib/expiry'
-import { IconDoc, IconQr } from '@/components/icons'
+import { dbErrorText } from '@/lib/errors/db'
+import { IconBox, IconDoc, IconQr } from '@/components/icons'
 
 export type Batch = {
   id: string; number: string
@@ -63,6 +64,8 @@ export function MaterialCard({
   const [edit, setEdit] = useState(false)
   const [batchEdit, setBatchEdit] = useState<Batch | 'new' | null>(null)
   const [busy, setBusy] = useState(false)
+  const [relocate, setRelocate] = useState(false)
+  const [relocBusy, setRelocBusy] = useState(false)
 
   // Действующая партия — та, что кончится раньше остальных ещё не
   // просроченных. Именно её номер и срок инспектор ждёт в карточке.
@@ -95,13 +98,41 @@ export function MaterialCard({
         })
     setBusy(false)
     if (error) {
+      // Экранный переводчик даёт лучшую подпись для дубля; запасной
+      // путь — общий разбор dbErrorText, а не сырой текст Postgres (М25).
       toast.error(t('inventory.material.batch.saveError'), error.code === '23505'
         ? t('inventory.material.batch.duplicate')
-        : error.message)
+        : dbErrorText(t, error))
       return
     }
     setBatchEdit(null)
     toast.success(t('inventory.material.batch.saved'))
+    router.refresh()
+  }
+
+  // Перемещение — функцией relocate_stock (0113), а не правкой location_id:
+  // функция пишет след в журнал движений («кто, когда, откуда и куда»),
+  // прямой UPDATE переносит банку молча. Форма правки места в карточке
+  // остаётся для заведения; осознанный перенос — только отсюда.
+  async function doRelocate(locationId: string, note: string) {
+    if ((locationId || null) === (material.locationId ?? null)) {
+      toast.error(t('inventory.material.relocate.error'),
+        t('inventory.material.relocate.same'))
+      return
+    }
+    setRelocBusy(true)
+    const { error } = await supabase.rpc('relocate_stock', {
+      p_material_id: material.id,
+      p_location_id: locationId || null,
+      p_note: note.trim() || null,
+    })
+    setRelocBusy(false)
+    if (error) {
+      toast.error(t('inventory.material.relocate.error'), dbErrorText(t, error))
+      return
+    }
+    setRelocate(false)
+    toast.success(t('inventory.material.relocate.done'))
     router.refresh()
   }
 
@@ -125,13 +156,13 @@ export function MaterialCard({
         </div>
         <div className="flex items-start gap-3">
           {material.imagePath && (
-            <span className="list-card-thumb shrink-0" style={{ width: 64, height: 64 }}>
+            <span className="list-card-thumb shrink-0">
               {/* Обычный <img>, а не next/image: файл лежит в публичном
                   бакете Supabase, и оптимизатор Next для него означал бы
                   ещё один прокси на пути картинки без выигрыша. */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={photoUrl(material.imagePath)} alt=""
-                   style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                   className="h-full w-full object-cover" />
             </span>
           )}
           <h2 className="display t-2xl min-w-0 flex-1">{material.name}</h2>
@@ -176,6 +207,38 @@ export function MaterialCard({
         </div>
       </section>
 
+      {/* ── Зберігання і собівартість ──────────────────────────────
+          Коммерческая часть: у инспектора запрос к `materials` вернул
+          пустоту (stock === null), и блок не рисуется вовсе — та же
+          логика, что у строки «В наявності». Перенос места — ТОЛЬКО
+          кнопкой: она зовёт relocate_stock (0113) и оставляет след
+          в журнале движений, чего молчаливый селект формы не делает. */}
+      {stock !== null && (
+        <section className="rise-2">
+          <p className="eyebrow mb-2">{t('inventory.material.storage.title')}</p>
+          <div className="kv">
+            <Row label={t('inventory.material.location.label')}
+                 value={locations.find((l) => l.id === material.locationId)?.name
+                   ?? t('inventory.material.relocate.none')} />
+            {material.cost != null && (
+              <Row label={t('inventory.material.row.cost')}
+                   value={t.money(material.cost)} mono />
+            )}
+          </div>
+          {material.cost != null && (
+            // С 0112 приёмка пересчитывает cost_per_unit сама — без этой
+            // строки владелец «чинит» цифру руками и ломает средневзвешенную.
+            <p className="field-hint mt-1">{t('inventory.material.cost.hint')}</p>
+          )}
+          {canWrite && (
+            <button type="button" className="btn-secondary mt-2"
+                    onClick={() => setRelocate(true)}>
+              {t('inventory.material.relocate.action')}
+            </button>
+          )}
+        </section>
+      )}
+
       {/* ── Своё: заметка и произвольные поля ─────────────────────
           Показывается только тому, кто их видит: инспектору эти колонки
           не приходят вовсе (0111), и блок у него просто не рисуется. */}
@@ -184,12 +247,9 @@ export function MaterialCard({
           <p className="eyebrow mb-2">{t('inventory.material.own.title')}</p>
           {material.note && (
             <div className="card mb-2">
-              <p style={{
-                fontSize: 'calc(13px * var(--type-scale))',
-                lineHeight: 1.6,
-                color: 'var(--color-text)',
-                whiteSpace: 'pre-wrap',
-              }}>
+              {/* Кегль — из шкалы (t-sm), а не ручным calc: свой размер
+                  выпал бы из множителя --type-scale при первой правке. */}
+              <p className="t-sm" style={{ whiteSpace: 'pre-wrap' }}>
                 {material.note}
               </p>
             </div>
@@ -208,7 +268,9 @@ export function MaterialCard({
       <section className="rise-2">
         <div className="section-head">
           <p className="eyebrow">{t('inventory.material.batches.title')}</p>
-          {canWrite && (
+          {/* Кнопка добавления — одна на секцию: при пустом списке она
+              живёт в .empty-actions ниже, и вторая здесь была бы дублем. */}
+          {canWrite && active && (
             <button type="button" className="btn-ghost t-sm"
                     onClick={() => setBatchEdit('new')}>
               {t('inventory.material.batches.add')}
@@ -231,44 +293,57 @@ export function MaterialCard({
               <Row label={t('inventory.material.row.status')}
                    value={<span className={EXPIRY_BADGE[state]}>{t(EXPIRY_KEY[state])}</span>} />
             </div>
-            {canWrite && (
-              <button type="button" className="btn-ghost mt-1 t-sm"
-                      onClick={() => setBatchEdit(active)}>
-                {t('inventory.material.batch.fix', { number: active.number })}
-              </button>
-            )}
           </>
         ) : (
-          <div className="empty !py-6">
-            {t('inventory.material.batch.empty')}
-            {canWrite && (
-              <button type="button" className="btn-primary"
-                      onClick={() => setBatchEdit('new')}>
-                {t('inventory.material.batch.create')}
-              </button>
-            )}
+          <div className="card">
+            <div className="empty">
+              <span className="empty-icon"><IconBox size={24} /></span>
+              <p className="empty-title">{t('inventory.material.batches.emptyTitle')}</p>
+              <p className="empty-desc">{t('inventory.material.batches.emptyDesc')}</p>
+              {canWrite && (
+                <div className="empty-actions">
+                  <button type="button" className="btn-primary"
+                          onClick={() => setBatchEdit('new')}>
+                    {t('inventory.material.batch.create')}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
-        {batches.length > 1 && (
+        {/* Список — от ПЕРВОЙ партии, а не от второй: строка списка —
+            единственный вход в правку (кнопка «Виправити партію N» снята
+            как дубль), и при одной партии он обязан существовать. */}
+        {batches.length > 0 && (
           <div className="mt-3 border-t pt-2" style={{ borderColor: 'var(--color-border)' }}>
             <p className="t-xs mb-1" style={{ color: 'var(--color-faint)' }}>
               {t('inventory.material.batches.all', { n: t.number(batches.length) })}
             </p>
             {batches.map((b) => {
               const s = expiryState(b.expiry)
-              return (
-                <button key={b.id} type="button" disabled={!canWrite}
-                        onClick={() => canWrite && setBatchEdit(b)}
-                        className="row w-full text-left"
-                        style={{ minHeight: 'var(--tap-min)' }}>
+              const inner = (
+                <>
                   <span className="tabular t-md">{b.number}</span>
                   <span className={`tabular ${EXPIRY_BADGE[s]}`}>
                     {t('inventory.material.batch.until', {
                       date: t.date(b.expiry, { day: 'numeric', month: 'short' }),
                     })}
                   </span>
+                </>
+              )
+              // Читателю — div, а не выключенная кнопка: disabled-кнопка
+              // обещает действие, которого нет, и глушит прокрутку с фокусом.
+              return canWrite ? (
+                <button key={b.id} type="button" onClick={() => setBatchEdit(b)}
+                        className="row w-full text-left"
+                        style={{ minHeight: 'var(--tap-min)' }}>
+                  {inner}
                 </button>
+              ) : (
+                <div key={b.id} className="row" style={{ minHeight: 'var(--tap-min)' }}>
+                  {inner}
+                </div>
               )
             })}
           </div>
@@ -336,68 +411,29 @@ export function MaterialCard({
         <section className="rise-3">
           <p className="eyebrow mb-2">{t('inventory.material.inci.title')}</p>
           <div className="card">
-            <p style={{
-              fontSize: 'calc(12px * var(--type-scale))',
-              lineHeight: 1.6,
-              color: 'var(--color-muted)',
-            }}>
-              {material.inci}
-            </p>
+            {/* Кегль и цвет — классами шкалы, а не ручным calc. */}
+            <p className="t-xs prose-muted">{material.inci}</p>
           </div>
         </section>
       )}
 
-      {/* ── Нотификация МОЗ (ТЗ 3.1: посилання/код) ────────────────
-          README: инфо-блок на `accentSoft`. Это не украшение: блок
-          несёт код и дату регистрации — то, что проверка спрашивает
-          первым, — и на общем фоне он терялся между карточками. */}
+      {/* ── Нотификация МОЗ: одна строка-ссылка ────────────────────
+          Полный блок с кодом, датой и подтверждением живёт на экране
+          документов — там ему место, потому что подтверждение ЕСТЬ
+          документ и принимается там же. Здесь тот же блок почти
+          дублировался (два источника одной правды на соседних экранах),
+          поэтому на карточке — только статус и вход на «Документи». */}
       {material.isCosmetic && (
-        <section className="rise-3" style={{
-          background: 'var(--color-accent-soft)',
-          borderRadius: 'var(--radius-card)',
-          padding: '14px 16px',
-        }}>
-          <h3 className="t-sm mb-1" style={{ color: 'var(--color-accent-ink)' }}>
-            {t('inventory.material.moz.title')}
-          </h3>
-          {material.notificationCode ? (
-            <>
-              <Row label={t('inventory.material.row.mozCode')}
-                   value={material.notificationCode} mono />
-              <Row label={t('inventory.material.row.mozDate')}
-                   value={t.date(material.notificationDate)} mono />
-              {material.notificationUrl ? (
-                <a href={material.notificationUrl} target="_blank" rel="noreferrer noopener"
-                   className="btn-secondary mt-2 t-sm">
-                  {t('inventory.material.moz.open')}
-                </a>
-              ) : (
-                <p className="field-hint mt-2">{t('inventory.material.moz.noUrl')}</p>
-              )}
-            </>
-          ) : (
-            <p className="field-hint">{t('inventory.material.moz.noCode')}</p>
-          )}
-
-          {/* Код — слова поставщика, подтверждение — документ. Проверка
-              смотрит второе. Автосверки с реестром МОЗ не существует
-              (реестр закрытый), поэтому единственное, что мы можем, —
-              не дать забыть про документ. */}
-          <p className="mt-3">
-            {material.notificationConfirmedAt ? (
-              <span className="badge-success">
-                {t('inventory.material.moz.proof.ok', {
+        <p className="rise-3">
+          <Link href={`/app/inventory/materials/${material.id}/docs`}
+                className={material.notificationConfirmedAt ? 'badge-success' : 'badge-danger'}>
+            {material.notificationConfirmedAt
+              ? t('inventory.material.moz.proof.ok', {
                   date: t.date(material.notificationConfirmedAt),
-                })}
-              </span>
-            ) : (
-              <Link href={`/app/inventory/materials/${material.id}/docs`}
-                    className="badge-danger">
-                {t('inventory.material.moz.proof.missing')} · {t('inventory.material.moz.proof.open')}
-              </Link>
-            )}
-          </p>
-        </section>
+                })
+              : `${t('inventory.material.moz.proof.missing')} · ${t('inventory.material.moz.proof.open')}`}
+          </Link>
+        </p>
       )}
 
       {/* ── Правка карточки ──────────────────────────────────── */}
@@ -407,6 +443,26 @@ export function MaterialCard({
           tenantId={tenantId} suppliers={suppliers} locations={locations}
           material={material} onDone={() => setEdit(false)}
         />
+      </Sheet>
+
+      {/* ── Перемещение в другое место хранения ──────────────── */}
+      <Sheet open={relocate} onClose={() => setRelocate(false)}
+             title={t('inventory.material.relocate.sheet')}
+             footer={
+               // Кнопка в подвале шторки; форма связана атрибутом form —
+               // подвал живёт вне <form>, и без него submit не дошёл бы.
+               <button form="relocate-form" className="btn-primary w-full"
+                       disabled={relocBusy}>
+                 {relocBusy ? t('common.saving') : t('inventory.material.relocate.submit')}
+               </button>
+             }>
+        {relocate && (
+          <RelocateForm
+            current={locations.find((l) => l.id === material.locationId) ?? null}
+            locations={locations}
+            onSave={(loc, note) => void doRelocate(loc, note)}
+          />
+        )}
       </Sheet>
 
       {/* ── Правка партии ────────────────────────────────────── */}
@@ -426,6 +482,48 @@ export function MaterialCard({
         )}
       </Sheet>
     </div>
+  )
+}
+
+// Перемещение — отдельная маленькая форма: текущее место текстом,
+// новое — списком, заметка по желанию. «Без місця» — тоже перенос
+// (снять с полки), поэтому пустой пункт в списке законен.
+function RelocateForm({
+  current, locations, onSave,
+}: {
+  current: RefItem | null
+  locations: RefItem[]
+  onSave: (locationId: string, note: string) => void
+}) {
+  const t = useT()
+  const [locationId, setLocationId] = useState(current?.id ?? '')
+  const [note, setNote] = useState('')
+
+  return (
+    <form id="relocate-form" className="grid gap-3"
+          onSubmit={(e) => { e.preventDefault(); onSave(locationId, note) }}>
+      <div className="card-flat">
+        <p className="t-sm" style={{ color: 'var(--color-muted)' }}>
+          {t('inventory.material.relocate.current')}
+        </p>
+        <p className="t-md">{current?.name ?? t('inventory.material.relocate.none')}</p>
+      </div>
+      <div>
+        <label className="field-label">{t('inventory.material.relocate.to.label')}</label>
+        <select className="select" value={locationId}
+                onChange={(e) => setLocationId(e.target.value)}>
+          <option value="">{t('inventory.material.relocate.none')}</option>
+          {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+        </select>
+      </div>
+      <div>
+        <label className="field-label">{t('inventory.material.relocate.note.label')}</label>
+        <input className="input" maxLength={100}
+               placeholder={t('inventory.material.relocate.note.placeholder')}
+               value={note} onChange={(e) => setNote(e.target.value)} />
+      </div>
+      <p className="field-hint">{t('inventory.material.relocate.hint')}</p>
+    </form>
   )
 }
 

@@ -4,6 +4,9 @@ import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
+import { useConfirm } from '@/components/confirm'
+import { dbErrorText } from '@/lib/errors/db'
+import { IconClose } from '@/components/icons'
 import type { RefItem } from './material-form'
 
 // Справочники поставщиков и мест хранения. Заводятся отсюда, а не
@@ -21,6 +24,7 @@ export function RefsForm({
   const t = useT()
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
+  const confirm = useConfirm()
   const [busy, setBusy] = useState<string | null>(null)
   const [err, setErr] = useState('')
 
@@ -40,7 +44,8 @@ export function RefsForm({
     })
     setBusy(null)
     if (error) {
-      setErr(error.code === '23505' ? t('inventory.refs.supplier.duplicate') : error.message)
+      // Экранная подпись для дубля; запасной путь — общий разбор (М25).
+      setErr(error.code === '23505' ? t('inventory.refs.supplier.duplicate') : dbErrorText(t, error))
       return
     }
     setSName(''); setSPhone(''); setSEmail('')
@@ -58,11 +63,47 @@ export function RefsForm({
     })
     setBusy(null)
     if (error) {
-      setErr(error.code === '23505' ? t('inventory.refs.location.duplicate') : error.message)
+      setErr(error.code === '23505' ? t('inventory.refs.location.duplicate') : dbErrorText(t, error))
       return
     }
     setLName('')
     router.refresh()
+  }
+
+  // Деактивация, а не удаление: на строку справочника ссылаются партии,
+  // приёмки и карточки засобов — удаление порвало бы историю. is_active =
+  // false убирает запись из выбора в формах, история остаётся целой.
+  async function deactivate(kind: 'supplier' | 'location', item: RefItem) {
+    const ok = await confirm({
+      title: t('inventory.refs.deactivate.title'),
+      body: t('inventory.refs.deactivate.body', { name: item.name }),
+      action: t('inventory.refs.deactivate.action'),
+      tone: 'danger',
+    })
+    if (!ok) return
+    setBusy(item.id); setErr('')
+    const { error } = await supabase
+      .from(kind === 'supplier' ? 'suppliers' : 'storage_locations')
+      .update({ is_active: false }).eq('id', item.id)
+    setBusy(null)
+    if (error) { setErr(dbErrorText(t, error)); return }
+    router.refresh()
+  }
+
+  // Строка справочника: имя + кнопка деактивации. Именно строками, а не
+  // бейджами: у кнопки обязана быть зона нажатия 44px, в бейдж она не влезает.
+  function refRow(kind: 'supplier' | 'location', item: RefItem) {
+    return (
+      <div key={item.id} className="row px-4">
+        <span className="t-md min-w-0 flex-1 truncate">{item.name}</span>
+        <button type="button" className="btn-icon shrink-0"
+                aria-label={t('inventory.refs.deactivate.action')}
+                disabled={busy === item.id}
+                onClick={() => void deactivate(kind, item)}>
+          <IconClose size={18} />
+        </button>
+      </div>
+    )
   }
 
   return (
@@ -74,11 +115,16 @@ export function RefsForm({
         <div className="flex flex-col gap-3">
           <p className="t-md">{t('inventory.refs.suppliers.title')}</p>
           {suppliers.length > 0 ? (
-            <div className="flex flex-wrap gap-1.5">
-              {suppliers.map((s) => <span key={s.id} className="badge">{s.name}</span>)}
+            <div className="card !p-0">
+              {suppliers.map((s) => refRow('supplier', s))}
             </div>
           ) : (
-            <p className="t-xs prose-muted">{t('inventory.refs.empty')}</p>
+            // Компактное пустое состояние: заголовок и подпись классами
+            // шаблона, без иконки — в шторке она съедала бы пол-экрана.
+            <div className="empty !py-4">
+              <p className="empty-title">{t('inventory.refs.suppliers.emptyTitle')}</p>
+              <p className="empty-desc">{t('inventory.refs.suppliers.emptyDesc')}</p>
+            </div>
           )}
           <form onSubmit={addSupplier} className="grid gap-2">
             <input required className="input" placeholder={t('inventory.refs.supplier.name.placeholder')}
@@ -96,11 +142,14 @@ export function RefsForm({
         <div className="flex flex-col gap-3">
           <p className="t-md">{t('inventory.refs.locations.title')}</p>
           {locations.length > 0 ? (
-            <div className="flex flex-wrap gap-1.5">
-              {locations.map((l) => <span key={l.id} className="badge">{l.name}</span>)}
+            <div className="card !p-0">
+              {locations.map((l) => refRow('location', l))}
             </div>
           ) : (
-            <p className="t-xs prose-muted">{t('inventory.refs.empty')}</p>
+            <div className="empty !py-4">
+              <p className="empty-title">{t('inventory.refs.locations.emptyTitle')}</p>
+              <p className="empty-desc">{t('inventory.refs.locations.emptyDesc')}</p>
+            </div>
           )}
           <form onSubmit={addLocation} className="grid gap-2">
             <input required className="input" placeholder={t('inventory.refs.location.name.placeholder')}
@@ -112,6 +161,8 @@ export function RefsForm({
           <p className="field-hint">{t('inventory.refs.location.hint')}</p>
         </div>
       </div>
+
+      {confirm.element}
     </div>
   )
 }

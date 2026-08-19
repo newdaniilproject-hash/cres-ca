@@ -306,29 +306,12 @@ export function mailExpiryDigest(items: {
   }
 }
 
-// ── Склад: пора заказать ─────────────────────────────────────────────
-export function mailReorderDigest(items: { title: string; toOrder: string }[]): Mail {
-  const rows = items.map((i) => `<tr>
-    <td style="padding:9px 0;border-bottom:1px solid ${MAIL.line};font:400 14px/1.4 -apple-system,Arial,sans-serif;">
-      ${escapeHtml(i.title)}</td>
-    <td style="padding:9px 0;border-bottom:1px solid ${MAIL.line};text-align:right;
-               font:600 14px/1.4 -apple-system,Arial,sans-serif;white-space:nowrap;">
-      ${escapeHtml(i.toOrder)}</td>
-  </tr>`).join('')
-
-  return {
-    subject: `Пора замовити: ${items.length} ${plural(items.length, 'позиція', 'позиції', 'позицій')}`,
-    html: emailLayout({
-      preheader: 'Залишки нижче порогу.',
-      heading: 'Час поповнити склад',
-      body:
-        P('Ці позиції опустилися нижче вашого порогу:') +
-        `<table role="presentation" width="100%" cellpadding="0" cellspacing="0"
-                style="margin:16px 0;">${rows}</table>`,
-      button: { label: 'Відкрити список', url: abs('/app/inventory/reorder') },
-    }),
-  }
-}
+// «Пора замовити» здесь БОЛЬШЕ НЕ ВЕРСТАЕТСЯ. Дайджест закупки собирает
+// база (0115: reorder_digest_sweep + pg_cron) и шлёт через очередь
+// уведомлений: текст — из notification_templates, каркас — lib/email/queue.ts.
+// Прежний mailReorderDigest лежал тут мёртвым с самого рождения — его
+// не звал никакой код, и удалён он по правилу 8 («выключено — значит
+// удалено»), а не потерян: история в git, а живой путь — в очереди.
 
 // Украинские числительные: 1 позиція, 2 позиції, 5 позицій.
 function plural(n: number, one: string, few: string, many: string): string {
