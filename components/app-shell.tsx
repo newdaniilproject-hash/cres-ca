@@ -16,7 +16,7 @@ import type { T } from '@/lib/i18n/translate'
 import type { TenantModule } from '@/lib/tenant'
 import {
   IconBack, IconBag, IconBox, IconCalendar, IconCheck, IconDoc,
-  IconExit, IconGear, IconHome, IconMoney, IconScan, IconScissors,
+  IconChevronRight, IconExit, IconGear, IconHome, IconMoney, IconScan, IconScissors,
   IconUser, IconUsers,
 } from '@/components/icons'
 
@@ -384,6 +384,11 @@ function AppShellInner({
   // уйти с дороги сама.
   useEffect(() => { setMenu(false) }, [pathname, params])
 
+  // Дропдаун профиля веб-хедера (только lg). Закрывается кликом по
+  // оверлею и сменой экрана — как шторка меню на телефоне.
+  const [drop, setDrop] = useState(false)
+  useEffect(() => { setDrop(false) }, [pathname])
+
   // Буква на аватаре. Имя берём из профиля токена, а не запросом
   // к базе: аватар не стоит похода в сеть на каждом экране.
   useEffect(() => {
@@ -474,6 +479,22 @@ function AppShellInner({
     return () => { clearTimeout(id); document.removeEventListener('visibilitychange', onShow) }
   }, [pathname, router])
 
+  // Порядок сайдбара веб-кабинета — из README хендоффа дословно:
+  // Сьогодні · Календар · Клієнти · Послуги · Техкарти · Склад · Каталог ·
+  // Журнали · Документація · Фінанси · Співробітники · Налаштування.
+  // «Послуги» и «Каталог» у нас один экран; не названные хендоффом
+  // разделы становятся в конец, а не выпадают: пункт, который есть
+  // у человека по правам, обязан остаться достижимым.
+  const webOrder = (items: Item[]): Item[] => {
+    const rank = ['/app', '/app/bookings', '/app/customers', '/app/catalog',
+      '/app/techcards', '/app/inventory', '/app/journals', '/app/documents',
+      '/app/finance', '/app/team', '/app/settings']
+    return [...items].sort((a, b) => {
+      const ra = rank.indexOf(a.href); const rb = rank.indexOf(b.href)
+      return (ra < 0 ? 99 : ra) - (rb < 0 ? 99 : rb)
+    })
+  }
+
   const active = (i: Item) => {
     if (going !== null) return i.exact ? going === i.href : going.startsWith(i.href)
     return i.exact ? pathname === i.href : pathname.startsWith(i.href)
@@ -494,17 +515,79 @@ function AppShellInner({
     // Владелец назвал это 19.08.2026 («пустые пространства сверху и снизу
     // на экранах убери»), и он прав — два запаса складывались, потому что
     // ставились в разное время и в разных файлах.
-    <div className="appshell min-h-dvh pb-24 lg:pb-6">
-      <div className="mx-auto flex max-w-6xl gap-8 px-4 sm:px-6">
-
-        {/* ── Десктоп: постоянный сайдбар ─────────────────────── */}
-        <aside className="hidden w-52 shrink-0 lg:block">
-          <Link href="/app" className="display mb-8 block t-xl">
+    // data-webapp: на широком экране внутри этого поддерева включается
+    // палитра CRESKO Web (см. globals.css, блок «CRESKO WEB») — отдельный
+    // визуальный язык десктопного кабинета, решение владельца 19.08.2026.
+    <div className="appshell min-h-dvh pb-24 lg:pb-0" data-webapp>
+      {/* ── Веб-хедер: 72px во всю ширину (только lg) ──────────────
+          Хендофф: логотип в колонке 232, пошук по центру (max 540),
+          дзвіночок, профільний кластер із дропдауном. */}
+      <header className="webtop hidden lg:flex">
+        <div className="webtop-logo">
+          <Link href="/app" className="display t-xl">
             CRES<span style={{ color: 'var(--color-accent)' }}>KO</span>
           </Link>
-          <nav className="flex flex-col gap-1">
-            {[...menuItems.slice(0, 1), ...tabs, ...menuItems.slice(1)].map((s) => (
-              <Link key={s.href + s.label} href={s.href} className="sidebar-item"
+        </div>
+        <div className="flex min-w-0 flex-1 justify-center px-6">
+          <GlobalSearch modules={modules} perms={perms} />
+        </div>
+        <div className="flex items-center gap-2 pr-7">
+          <NotifyBell tenantPerms={perms ?? []} />
+          <button type="button" onClick={() => setDrop((v) => !v)}
+                  className="flex items-center gap-2.5 rounded-xl px-2 py-1.5"
+                  aria-expanded={drop} aria-label={t('app.chrome.avatar.aria')}>
+            <span className="avatarbtn pointer-events-none">{initial || <IconUser size={18} />}</span>
+            <span className="hidden min-w-0 text-left xl:block">
+              <span className="block truncate" style={{ fontSize: 14, fontWeight: 700 }}>{shopName}</span>
+            </span>
+            <IconChevronRight size={16} className="rotate-90" />
+          </button>
+        </div>
+      </header>
+      {drop && (
+        <>
+          {/* Клик по оверлею закрывает; по панели — нет (README). */}
+          <button type="button" aria-label={t('common.close.aria')}
+                  className="fixed inset-0 z-50 hidden cursor-default lg:block"
+                  onClick={() => setDrop(false)} />
+          <div className="webdrop hidden lg:block">
+            <div className="mb-1 flex items-center gap-2.5 border-b px-2.5 pb-2.5 pt-1"
+                 style={{ borderColor: 'var(--color-border)' }}>
+              <span className="avatarbtn pointer-events-none">{initial || <IconUser size={18} />}</span>
+              <span className="min-w-0">
+                <span className="block truncate" style={{ fontSize: 14, fontWeight: 700 }}>{shopName}</span>
+              </span>
+            </div>
+            {([
+              ['/app/settings', t('app.nav.settings')],
+              ['/app/profile', t('app.nav.profile')],
+              ['/app/team', t('app.nav.team')],
+              ['/app/orders', t('app.nav.orders')],
+            ] as const).filter(([href]) => openable(href)).map(([href, label]) => (
+              <Link key={href} href={href} className="webdrop-item"
+                    onClick={() => setDrop(false)}>
+                {label}
+              </Link>
+            ))}
+            <div className="my-1 border-t" style={{ borderColor: 'var(--color-border)' }} />
+            <button type="button" className="webdrop-item" data-tone="danger"
+                    onClick={() => void signOut()}>
+              <IconExit size={16} />
+              {t('app.chrome.signOut')}
+            </button>
+          </div>
+        </>
+      )}
+      <div className="mx-auto flex w-full max-w-6xl gap-8 px-4 sm:px-6 lg:mx-0 lg:max-w-none lg:items-start lg:gap-0 lg:px-0">
+
+        {/* ── Десктоп: сайдбар CRESKO Web (232px) ─────────────────
+            Порядок пунктов — из README хендоффа. Наполнение — тот же
+            реестр модулей, что и у мобильной панели: два представления
+            одного источника, а не два списка. */}
+        <aside className="webside hidden lg:flex">
+          <nav className="flex flex-col">
+            {webOrder([...menuItems.slice(0, 1), ...tabs, ...menuItems.slice(1)]).map((s) => (
+              <Link key={s.href + s.label} href={s.href} className="webside-item"
                     // Тот же полный запрос — но только у четырёх разделов
                     // панели, не у всего сайдбара (см. нижнюю панель).
                     prefetch={tabs.some((x) => x.href === s.href) ? true : undefined}
@@ -533,7 +616,7 @@ function AppShellInner({
           </div>
         </aside>
 
-        <main className="min-w-0 flex-1">
+        <main className="webmain min-w-0 flex-1">
 
           {/* ── Верхняя строка: назад, имя экрана, четыре значка ──
               ЗАГОЛОВОК ЭКРАНА ЖИВЁТ ЗДЕСЬ, а не блоком под шапкой
@@ -559,7 +642,7 @@ function AppShellInner({
               рядком посередині · QR · аватар. Календарь ВЕРНУЛСЯ — уже
               не как второй вход в «Записи» ради входа, а как левый якорь
               шапки по заданной владельцем последовательности. */}
-          <div className="apphead flex items-center gap-2">
+          <div className="apphead flex items-center gap-2 lg:hidden">
             {heading.back ? (
               <Link href={heading.back} aria-label={t('app.chrome.back.aria')}
                     className="apphead-back flex shrink-0 items-center justify-center">

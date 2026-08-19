@@ -45,14 +45,32 @@ export function Sheet({
   // Пока шторка открыта — страница под ней неподвижна. Иначе палец,
   // не попавший в шторку, прокручивает список за ней, и это выглядит
   // как поломка.
+  //
+  // Лок — position: fixed, а не только overflow: hidden. В веб-вью iOS
+  // overflow не запирает НАТИВНЫЙ скролл документа: жест всё равно
+  // дёргает UIScrollView, а у того скролл сбрасывает клавиатуру —
+  // владелец 19.08.2026: «когда я скроллю, клава закрывается». Фиксация
+  // body вынимает документ из нативного скролла целиком; позиция
+  // сохраняется и возвращается на закрытии.
   useEffect(() => {
     if (!open) return
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    const y = window.scrollY
+    const b = document.body.style
+    const prev = { position: b.position, top: b.top, left: b.left, right: b.right, overflow: b.overflow }
+    b.position = 'fixed'
+    b.top = `-${y}px`
+    b.left = '0'
+    b.right = '0'
+    b.overflow = 'hidden'
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKey)
     return () => {
-      document.body.style.overflow = prev
+      b.position = prev.position
+      b.top = prev.top
+      b.left = prev.left
+      b.right = prev.right
+      b.overflow = prev.overflow
+      window.scrollTo(0, y)
       window.removeEventListener('keydown', onKey)
     }
   }, [open, onClose])
