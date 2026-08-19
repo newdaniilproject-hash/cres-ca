@@ -33,10 +33,10 @@ reset role;
 -- и склада в нём не было. Продукт продаётся как «склад для майстрів»,
 -- а первый же зарегистрированный владелец раздела «Склад» не видел.
 select (modules @> array['inventory','compliance','bookings',
-                         'catalog','orders','customers','storefront']::public.tenant_module[])
+                         'catalog','orders','customers','storefront']::text[])
          as повний_набір_ожид_t,
-       not (modules @> array['finance']::public.tenant_module[])   as фінансів_немає_ожид_t,
-       not (modules @> array['marketing']::public.tenant_module[]) as маркетингу_немає_ожид_t
+       not (modules @> array['finance']::text[])   as фінансів_немає_ожид_t,
+       not (modules @> array['marketing']::text[]) as маркетингу_немає_ожид_t
   from public.tenants where name = 'Майстерня Модулів';
 
 \echo '--- 0020: токен несёт модули, и tenant_has_module читает их, а не таблицу'
@@ -57,7 +57,7 @@ select public.tenant_has_module(t.id, 'inventory') as склад_ожид_t,
 -- ответ остался бы «да».
 set role authenticated;
 update public.tenants
-   set modules = array_remove(modules, 'inventory'::public.tenant_module)
+   set modules = array_remove(modules, 'inventory')
  where name = 'Майстерня Модулів';
 reset role;
 \set QUIET on
@@ -76,7 +76,7 @@ select test.login('aa150000-0000-0000-0000-000000000001');
 \set QUIET off
 set role authenticated;
 update public.tenants
-   set modules = modules || 'inventory'::public.tenant_module
+   set modules = modules || 'inventory'::text
  where name = 'Майстерня Модулів';
 reset role;
 \set QUIET on
@@ -102,7 +102,9 @@ select public.tenant_has_module('aaaaaaaa-0000-0000-0000-000000000001','storefro
 reset role;
 
 \echo '--- 0020: модуля вне перечня не существует'
--- Набор закрыт типом, а не строкой: «купили crm» нельзя вписать
+-- Набор закрыт РЕЕСТРОМ (0110), а не типом: до этой миграции роль
+-- сторожа играл сам enum, теперь — триггер `tenants_modules_guard`.
+-- Проверка та же и по той же причине: «купили crm» нельзя вписать
 -- в арендатора мимо решения о том, что такой модуль вообще есть.
 \set QUIET on
 select test.login('aa150000-0000-0000-0000-000000000001');
@@ -110,7 +112,7 @@ select test.login('aa150000-0000-0000-0000-000000000001');
 set role authenticated;
 do $$
 begin
-  update public.tenants set modules = modules || 'crm'::public.tenant_module
+  update public.tenants set modules = modules || 'crm'::text
    where name = 'Майстерня Модулів';
   raise exception 'ПРОВАЛ: закладу видано неіснуючий модуль';
 exception when others then
@@ -121,7 +123,7 @@ end $$;
 \echo '--- 0020: чужие модули не переключишь'
 do $$
 begin
-  update public.tenants set modules = array['finance']::public.tenant_module[]
+  update public.tenants set modules = array['finance']::text[]
    where id = 'aaaaaaaa-0000-0000-0000-000000000001';
   if not found then
     raise notice 'ok — чужий заклад не знайдено під політикою';
@@ -134,5 +136,5 @@ exception when others then
 end $$;
 reset role;
 
-select (modules @> array['inventory']::public.tenant_module[]) as магазин1_склад_на_місці_ожид_t
+select (modules @> array['inventory']::text[]) as магазин1_склад_на_місці_ожид_t
   from public.tenants where id = 'aaaaaaaa-0000-0000-0000-000000000001';

@@ -65,47 +65,82 @@ import {
 // Граница доверия при этом по-прежнему RLS и редиректы страниц, а не
 // этот список: скрытый пункт не запрещает прямой адрес и не должен.
 //
-// Подпись пункта — КЛЮЧ СЛОВАРЯ, а не строка. Тип `Key` выведен из
-// `lib/i18n/locales/uk.json`, поэтому опечатка в ключе останавливает сборку,
-// а не появляется пустым пунктом в панели.
+// ── Откуда берутся разделы ──────────────────────────────────────────────
+//
+// РАЗДЕЛЫ-МОДУЛИ приходят из РЕЕСТРА (`public.modules`, миграция 0110):
+// код, подпись, значок, адрес, право и место в нижней панели лежат
+// строками в базе. Массивов `TABS` и `MENU` здесь больше нет — они были
+// двумя из восьми мест, которые приходилось править ради одного нового
+// модуля, и правились они молча: забыл пункт — раздел просто не появился.
+//
+// В КОДЕ ОСТАЛИСЬ ровно те пункты, которые модулями НЕ ЯВЛЯЮТСЯ, потому
+// что их нельзя купить и нельзя отключить заведению:
+//
+//   «Сьогодні» — сводка кабинета, есть у всех;
+//   «Профіль»  — личный кабинет самого человека, права заведения его
+//                не касаются;
+//   «Команда» и «Налаштування» — управление самим заведением; они не
+//                покупаются, а стоят на праве (`team.read`,
+//                `settings.read`).
+//
+// Признак принадлежности к панели снизу — `in_tabs` в реестре, и панель
+// берёт из него первые три плюс «Профіль»: больше четырёх на 390px
+// не помещается так, чтобы подпись читалась, а зона нажатия осталась 44px.
 type Item = {
   href: string
-  label: Key
+  /** Подпись: либо ключ словаря (для пунктов кода), либо готовая строка. */
+  label: Key | { text: string }
   icon: (p: { size?: number }) => React.ReactElement
   module?: TenantModule
-  /** Право из `role_grants`. Нет права — пункта нет в меню. */
   perm?: string
-  /** exact: пункт активен только при точном совпадении пути. */
   exact?: boolean
 }
 
-// ── Нижняя панель: четыре пункта ────────────────────────────────
-// Больше четырёх сюда не поместится так, чтобы подпись читалась
-// на 390px и зона нажатия осталась 44px.
-const TABS: Item[] = [
-  // Записи закрыты `orders.read`, а не своим правом: отдельного
-  // `bookings.*` в базе нет — политики `bookings_read`, `slots_read`
-  // и `booking_events_read` в 0010 стоят на `orders.read`.
-  { href: '/app/inventory', label: 'app.nav.inventory', icon: IconBox, module: 'inventory', perm: 'stock.read' },
-  { href: '/app/bookings', label: 'app.nav.bookings', icon: IconCalendar, module: 'bookings', perm: 'orders.read' },
-  { href: '/app/catalog', label: 'app.nav.catalog', icon: IconScissors, module: 'catalog', perm: 'catalog.read' },
-  // Профиль — личный кабинет самого человека, права заведения его не
-  // касаются: он есть у любого, кто вошёл.
-  { href: '/app/profile', label: 'app.nav.profile', icon: IconUser },
-]
-
-// ── Под аватаром: всё остальное ─────────────────────────────────
-const MENU: Item[] = [
+/** Пункты, которые не являются модулями, — они в коде и это решение. */
+const FIXED_TOP: Item[] = [
   { href: '/app', label: 'app.nav.today', icon: IconHome, exact: true },
-  { href: '/app/journals', label: 'app.nav.journals', icon: IconCheck, module: 'compliance', perm: 'compliance.read' },
-  { href: '/app/documents', label: 'app.nav.documents', icon: IconDoc, module: 'compliance', perm: 'compliance.read' },
-  { href: '/app/techcards', label: 'app.nav.techcards', icon: IconDoc, module: 'compliance', perm: 'compliance.read' },
-  { href: '/app/orders', label: 'app.nav.orders', icon: IconBag, module: 'orders', perm: 'orders.read' },
-  { href: '/app/customers', label: 'app.nav.customers', icon: IconUsers, module: 'customers', perm: 'customers.read' },
-  { href: '/app/finance', label: 'app.nav.finance', icon: IconMoney, module: 'finance', perm: 'finances.read' },
+]
+const FIXED_BOTTOM: Item[] = [
   { href: '/app/team', label: 'app.nav.team', icon: IconUsers, perm: 'team.read' },
   { href: '/app/settings', label: 'app.nav.settings', icon: IconGear, perm: 'settings.read' },
 ]
+/** Профиль — в нижней панели, последним и всегда. */
+const PROFILE: Item = { href: '/app/profile', label: 'app.nav.profile', icon: IconUser }
+
+// Значок по ИМЕНИ из реестра. Реестр знает имя, сами значки живут здесь
+// инлайновым SVG (не шрифт и не пакет). Имя без значка рисуется
+// нейтральным: пустое место в навигации хуже неточного значка.
+const ICONS: Record<string, (p: { size?: number }) => React.ReactElement> = {
+  IconBox, IconCalendar, IconScissors, IconCheck, IconBag,
+  IconUsers, IconMoney, IconDoc, IconGear, IconHome, IconUser,
+}
+
+/** Строка реестра, как её отдаёт `lib/modules.ts`. */
+export type NavModule = {
+  code: string
+  title: string
+  icon: string | null
+  route: string | null
+  perm: string | null
+  inTabs: boolean
+}
+
+/**
+ * Подпись пункта. Пункты кода несут КЛЮЧ словаря (опечатка останавливает
+ * сборку — тип `Key` выведен из `uk.json`), пункты реестра — готовую
+ * строку из `modules.title`. Название раздела продукта — справочник,
+ * и переводится оно данными, как названия специальностей.
+ */
+const labelOf = (t: T, label: Item['label']) =>
+  (typeof label === 'string' ? t(label) : label.text)
+
+const itemOf = (m: NavModule): Item => ({
+  href: m.route ?? '',
+  label: { text: m.title },
+  icon: ICONS[m.icon ?? ''] ?? IconGear,
+  module: m.code,
+  perm: m.perm ?? undefined,
+})
 
 // ── Подписи экранов ─────────────────────────────────────────────
 //
@@ -202,7 +237,10 @@ function backOf(pathname: string, openable: (href: string) => boolean): string {
 
 /** Заголовок, подпись и адрес «назад» — из адреса, а не из страницы. */
 function headingOf(
-  t: T, pathname: string, shopName: string, openable: (href: string) => boolean,
+  t: T, pathname: string, shopName: string,
+  openable: (href: string) => boolean,
+  /** Адреса корней разделов — из реестра плюс пункты кода. */
+  roots: string[],
 ) {
   if (pathname === '/app') {
     // Имя заведения не переводится: это данные арендатора, а не строка
@@ -217,7 +255,7 @@ function headingOf(
   // выиграть у «/app/catalog/*», иначе новая позиция назовётся карточкой.
   const hit = HEADINGS.find(([p]) => p === pathname)
     ?? HEADINGS.find(([p]) => p.includes('*') && matches(p, pathname))
-  const root = [...TABS, ...MENU].some((i) => i.href === pathname)
+  const root = roots.includes(pathname)
   const back = root ? '' : backOf(pathname, openable)
   return {
     title: hit ? t(hit[1]) : '',
@@ -239,6 +277,12 @@ const InsideShell = createContext(false)
 // один и из словаря.
 export function AppShell(props: {
   modules?: TenantModule[]
+  /**
+   * Реестр модулей продукта (`public.modules`). Передаёт ТОЛЬКО макет
+   * кабинета: страницы зовут AppShell внутри уже отрисованной оболочки
+   * и своей навигации не строят.
+   */
+  registry?: NavModule[]
   /**
    * Готовый набор прав из токена (`Membership.perms`). Владельцу приходит
    * `['*']`. Не передан — фильтра по праву нет, как и с модулями: так
@@ -268,9 +312,10 @@ export function AppShell(props: {
 }
 
 function AppShellInner({
-  modules, perms, shopName = '', action, children,
+  modules, registry, perms, shopName = '', action, children,
 }: {
   modules?: TenantModule[]
+  registry?: NavModule[]
   perms?: string[]
   shopName?: string
   action?: React.ReactNode
@@ -292,24 +337,40 @@ function AppShellInner({
   const can = (i: Item) =>
     !i.perm || !perms || perms.includes('*') || perms.includes(i.perm)
   const allowed = (i: Item) => hasModule(i) && can(i)
-  const tabs = TABS.filter(allowed)
-  const menuItems = MENU.filter(allowed)
+  // Разделы-модули из реестра плюс пункты кода. Порядок: «Сьогодні»,
+  // затем модули по `position`, затем управление заведением.
+  // Реестр, оставленный по набору заведения. Модуль без адреса
+  // (`storefront`, `marketing`) своего раздела в кабинете не имеет
+  // и в навигацию не попадает — это не пропуск, а свойство модуля.
+  const owned = (registry ?? []).filter(
+    (r) => !modules || modules.includes(r.code),
+  )
+  const fromRegistry = owned.map(itemOf).filter((i) => i.href !== '')
+  const all: Item[] = [...FIXED_TOP, ...fromRegistry, ...FIXED_BOTTOM]
+
+  // Нижняя панель: помеченные `in_tabs` (первые три) плюс «Профіль».
+  const tabs = [
+    ...fromRegistry.filter((i) => owned.find((m) => m.code === i.module)?.inTabs),
+    PROFILE,
+  ].filter(allowed)
+  // Под аватаром — всё остальное, чего нет в панели.
+  const menuItems = all.filter((i) => !tabs.some((x) => x.href === i.href)).filter(allowed)
 
   // Открыт ли КОРЕНЬ раздела. Адрес, которого нет в навигации, эта
   // функция не запрещает: про экраны внутри раздела список ничего
   // не знает (см. комментарий у `backOf`).
   const openable = (href: string) => {
-    const item = [...TABS, ...MENU].find((i) => i.href === href)
+    const item = [...all, PROFILE].find((i) => i.href === href)
     return !item || allowed(item)
   }
-  const heading = headingOf(t, pathname, shopName, openable)
+  const heading = headingOf(t, pathname, shopName, openable, all.map((i) => i.href))
 
   // Сканер — это вход в склад (`?scan=1`). Значит и фильтруется он как
   // вкладка «Склад»: модуль `inventory` у заведения И право `stock.read`
   // у человека. У `inspector` права нет (0035), и `/app/inventory`
   // разворачивал его на «Сьогодні»: человек нажимал значок и оказывался
   // на чужом экране, решив, что сканер сломан.
-  const stockTab = TABS.find((i) => i.href === '/app/inventory')
+  const stockTab = tabs.find((i) => i.href === '/app/inventory')
   const canScan = stockTab !== undefined && allowed(stockTab)
 
   // Называет ли экран нижняя панель. Если да — имени в шапке не нужно:
@@ -317,7 +378,7 @@ function AppShellInner({
   // 19.08.2026). Сравнение точное, а не по префиксу: «Склад» подписан
   // в панели, а «Приймання» внутри склада — нет, и оно обязано
   // назваться в шапке.
-  const inNav = TABS.some((i) => i.href === pathname) || pathname === '/app'
+  const inNav = tabs.some((i) => i.href === pathname) || pathname === '/app'
 
   // Смена экрана закрывает меню: навигация произошла — мебель обязана
   // уйти с дороги сама.
@@ -443,13 +504,13 @@ function AppShellInner({
               <Link key={s.href + s.label} href={s.href} className="sidebar-item"
                     // Тот же полный запрос — но только у четырёх разделов
                     // панели, не у всего сайдбара (см. нижнюю панель).
-                    prefetch={TABS.some((x) => x.href === s.href) ? true : undefined}
+                    prefetch={tabs.some((x) => x.href === s.href) ? true : undefined}
                     onClick={() => setGoing(s.href)}
                     data-active={active(s)}>
                 <span aria-hidden className="flex w-5 justify-center">
                   <s.icon size={18} />
                 </span>
-                {t(s.label)}
+                {labelOf(t, s.label)}
               </Link>
             ))}
           </nav>
@@ -580,7 +641,7 @@ function AppShellInner({
                   data-active={active(tab)}>
               {/* 26px — размер из README; было 22. */}
               <span aria-hidden><tab.icon size={26} /></span>
-              {t(tab.label)}
+              {labelOf(t, tab.label)}
             </Link>
           ))}
         </nav>
@@ -596,7 +657,7 @@ function AppShellInner({
               <span aria-hidden className="flex w-6 justify-center">
                 <s.icon size={20} />
               </span>
-              {t(s.label)}
+              {labelOf(t, s.label)}
             </Link>
           ))}
         </div>

@@ -37,10 +37,10 @@ insert into public.tenants (id, slug, name, kind, status, storefront_enabled, li
                             city, lat, lng, legal_name, tax_id, contact_email, contact_phone, modules)
 values ('a6a6a6a6-0000-0000-0000-000000000001','iso-a','ІЗОЛЯЦІЯ А','both','active',true,true,
         'ІЗОМІСТО',50.0,36.0,'ТОВ ІЗО А','1111111111','a@iso.test','+380990000001',
-        enum_range(null::public.tenant_module)),
+        (select array_agg(code) from public.modules where is_active)),
        ('b6b6b6b6-0000-0000-0000-000000000002','iso-b','ІЗОЛЯЦІЯ Б','both','draft',false,false,
         'ІЗОМІСТО',50.1,36.1,'ТОВ ІЗО Б','2222222222','b@iso.test','+380990000002',
-        enum_range(null::public.tenant_module));
+        (select array_agg(code) from public.modules where is_active));
 
 insert into public.tenant_members (tenant_id, user_id, role) values
   ('a6a6a6a6-0000-0000-0000-000000000001','16161616-0000-0000-0000-000000000001','owner'),
@@ -288,7 +288,7 @@ end $$;
 select test.iso_login('16161616-0000-0000-0000-000000000001');
 \set QUIET off
 
-\echo '--- политик using(true) ровно три, и это общие справочники'
+\echo '--- политики using(true) — только общие справочники, список закрытый'
 select tablename || '.' || policyname as политика
   from pg_policies where schemaname = 'public' and qual = 'true' order by 1;
 
@@ -304,13 +304,21 @@ do $$ declare лишние text; пропали text; with_check_true text; begi
       -- те же данные для всех заведений, ни одной строки арендатора.
       -- Фильтровать здесь не по чему, и это не нарушение правила 1,
       -- а признак справочника.
-      'role_discount_caps.role_discount_caps_read'])) q;
+      'role_discount_caps.role_discount_caps_read',
+      -- Пятый справочник, добавлен 0110. Реестр модулей продукта:
+      -- «Склад», «Записи», «Фінанси» — это список того, что вообще
+      -- существует в приложении, один на всех, как список валют.
+      -- Строки арендатора в нём нет, фильтровать не по чему. Писать
+      -- в реестр из кабинета нельзя вовсе: политик INSERT/UPDATE/DELETE
+      -- у таблицы нет.
+      'modules.modules_read'])) q;
   select string_agg(x, ', ') into пропали from (
     select unnest(array[
       'role_grants.role_grants_read',
       'order_status_transitions.order_status_transitions_read',
       'booking_status_transitions.booking_status_transitions_read',
-      'role_discount_caps.role_discount_caps_read']) as x
+      'role_discount_caps.role_discount_caps_read',
+      'modules.modules_read']) as x
     except select tablename || '.' || policyname from pg_policies
      where schemaname = 'public' and qual = 'true') q;
   -- with_check(true) на INSERT — та же дыра с другой стороны: строку с чужим
@@ -327,7 +335,7 @@ do $$ declare лишние text; пропали text; with_check_true text; begi
   if with_check_true is not null then
     raise exception 'ПРОВАЛ: политика INSERT с with_check(true) — %', with_check_true;
   end if;
-  raise notice 'ok — using(true) только на четырёх общих справочниках, with_check(true) нет';
+  raise notice 'ok — using(true) только на пяти общих справочниках, with_check(true) нет';
 end $$;
 
 \echo '--- список функций, доступных анониму, закрыт: девятнадцать и ни одной больше'

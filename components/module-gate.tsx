@@ -1,5 +1,6 @@
 import Link from 'next/link'
-import { MODULE_LABELS, type Membership, type TenantModule } from '@/lib/tenant'
+import { moduleTitle } from '@/lib/modules'
+import type { Membership, TenantModule } from '@/lib/tenant'
 
 // Экран «розділ не підключено» — отказ по ВТОРОЙ оси доступа (модули).
 // Первая ось — права человека, и она отказывает иначе: `redirect('/app')`,
@@ -14,16 +15,22 @@ import { MODULE_LABELS, type Membership, type TenantModule } from '@/lib/tenant'
 // Оболочку экран не рисует: её ставит `app/app/layout.tsx` один раз
 // на весь кабинет, заголовок раздела он же берёт из адреса. Отсюда —
 // только содержимое.
-export function ModuleOff({ m, module }: { m: Membership; module: TenantModule }) {
+// Подпись раздела берётся из РЕЕСТРА (`public.modules`), а не из карты
+// в коде: карта была захардкожена по-украински и разъезжалась со списком
+// модулей первой. Отсюда `async` — экран серверный, и один запрос
+// к девяти строкам справочника здесь дешевле копии, которая устареет.
+export async function ModuleOff({ m, module }: { m: Membership; module: TenantModule }) {
+  const title = await moduleTitle(module)
   return (
     <div className="card rise-1">
       <div className="empty">
         <span className="empty-icon" aria-hidden>◌</span>
         <p className="empty-title">Розділ не підключено</p>
         <p className="empty-desc">
-          «{MODULE_LABELS[module]}» — окремий модуль, і заклад його не
-          підключав. Це не про ваші права: модуль відповідає за те, що
-          придбав бізнес, тож розділу немає ні в кого, включно з власником.
+          {title ? `«${title}» — окремий модуль, ` : 'Це окремий модуль, '}
+          і заклад його не підключав. Це не про ваші права: модуль
+          відповідає за те, що придбав бізнес, тож розділу немає ні в кого,
+          включно з власником.
         </p>
         {/* Набор модулей подставлен умолчанием — значит клейма в токене
             нет, и раздел мог быть закрыт по протухшему токену, а не по
