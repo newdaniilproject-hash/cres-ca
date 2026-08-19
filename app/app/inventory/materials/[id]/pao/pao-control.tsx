@@ -267,7 +267,12 @@ export function PaoControl({
         ))}
       </div>
 
-      {/* ── Банки: учёт PAO по каждой ────────────────────────── */}
+      {/* ── Банки: учёт PAO по каждой ──────────────────────────
+          README, розділ C (`stockPao`): секция «Облік PAO (після
+          відкриття)». Надзаголовка здесь не было вовсе — карточки банок
+          начинались сразу после переключателя, и две группы («банки»
+          и «історія розливів») читались одним потоком. */}
+      <p className="eyebrow rise-1">{t('inventory.pao.jars.title')}</p>
       {shownJars.length === 0 ? (
         <div className="card rise-1">
           <div className="empty">
@@ -360,50 +365,64 @@ export function PaoControl({
         )
       })}
 
-      {/* ── История розливов ─────────────────────────────────── */}
-      <section className="card rise-2 !p-0">
-        <div className="flex items-center justify-between gap-3 px-5 pt-4">
-          <h3 className="t-sm" style={{ color: 'var(--color-faint)' }}>
-            {t('inventory.pao.decants.title')}
-          </h3>
-          <span className="badge tabular">{t.number(decants.length)}</span>
-        </div>
-        {decants.length === 0 ? (
+      {/* ── История розливов ───────────────────────────────────
+          README, розділ C: «ІСТОРІЯ РОЗЛИВІВ» — надзаголовок секции
+          такой же, как у остальных разделов приложения (`.eyebrow`
+          над карточкой), а не мелкая серая строка внутри неё. Значок
+          с числом снят: количество розливов уже названо плиткой
+          «розливів сьогодні» и самим списком, а число в кружке
+          у заголовка не отвечало ни на один вопрос смены. */}
+      <p className="eyebrow rise-2">{t('inventory.pao.decants.title')}</p>
+      {decants.length === 0 ? (
+        <section className="card rise-2">
           <div className="empty">
             <span className="empty-icon"><IconLabel size={24} /></span>
             <p className="empty-title">{t('inventory.pao.decants.emptyTitle')}</p>
             <p className="empty-desc">{t('inventory.pao.decants.emptyDesc')}</p>
           </div>
-        ) : decants.map((d) => {
-          const state = expiryState(d.useBy)
-          return (
-            <div key={d.id} className="row px-5">
-              <div className="min-w-0">
-                <p className="tabular t-md">{d.code}
-                  <span style={{ color: 'var(--color-faint)' }}>
-                    {' '}· {d.volume != null ? t.number(d.volume) : '—'} {d.unit ?? material.unit}
+        </section>
+      ) : (
+        // ОТДЕЛЬНЫЕ карточки с зазором, как в хендоффе (`stockPao`,
+        // «Історія розливів») и как реестр склада (`.list-card`).
+        <div className="rise-2 flex flex-col gap-2">
+          {decants.map((d) => {
+            const state = expiryState(d.useBy)
+            return (
+              <div key={d.id} className="list-card">
+                <div className="min-w-0 flex-1">
+                  {/* Код наліпки — данные арендатора. */}
+                  <p className="tabular t-lg">{d.code}</p>
+                  <p className="tabular t-xs" style={{ color: 'var(--color-faint)' }}>
+                    {t.date(d.decantedAt ?? d.openedAt)}
+                    {d.note ? ` · ${d.note}` : ''}
+                    {d.status !== 'opened' ? ` · ${statusLabel(d.status)}` : ''}
+                  </p>
+                </div>
+                {/* Объём — справа и крупно (README): в списке розливов
+                    спрашивают «скільки відлито», а не «як називається».
+                    Раньше он висел приклеенным к коду серым хвостом
+                    «QR-25-05-001 · 100 мл» и на 390px переносился
+                    отдельной строкой посреди названия. */}
+                <span className="flex shrink-0 items-center gap-2">
+                  <span className="text-right">
+                    <span className="tabular t-md block">
+                      {d.volume != null ? t.number(d.volume) : '—'} {d.unit ?? material.unit}
+                    </span>
+                    <span className={`tabular ${EXPIRY_BADGE[state]}`}>
+                      {t('inventory.pao.decant.until', { date: t.date(d.useBy) })}
+                    </span>
                   </span>
-                </p>
-                <p className="tabular t-xs" style={{ color: 'var(--color-faint)' }}>
-                  {t.date(d.decantedAt ?? d.openedAt)}
-                  {d.note ? ` · ${d.note}` : ''}
-                  {d.status !== 'opened' ? ` · ${statusLabel(d.status)}` : ''}
-                </p>
-              </div>
-              <span className="flex shrink-0 items-center gap-2">
-                <span className={`tabular ${EXPIRY_BADGE[state]}`}>
-                  {t('inventory.pao.decant.until', { date: t.date(d.useBy) })}
+                  <button className="btn-icon" aria-label={t('inventory.pao.label.aria')}
+                          disabled={busy === d.id}
+                          onClick={() => void showLabel(d)}>
+                    <IconLabel size={18} />
+                  </button>
                 </span>
-                <button className="btn-icon" aria-label={t('inventory.pao.label.aria')}
-                        disabled={busy === d.id}
-                        onClick={() => void showLabel(d)}>
-                  <IconLabel size={18} />
-                </button>
-              </span>
-            </div>
-          )
-        })}
-      </section>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       {/* ── Розлив ───────────────────────────────────────────── */}
       <Sheet open={decantOf !== null} onClose={() => setDecantOf(null)}
