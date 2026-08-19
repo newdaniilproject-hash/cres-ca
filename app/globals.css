@@ -1929,14 +1929,19 @@ html[data-native] body:has(input:focus, textarea:focus) .bottomnav { display: no
 .sheet-layer .sheet {
   position: absolute;
   inset-inline: 0;
-  /* Над клавиатурой, а не под ней. Клавиатура ложится ПОВЕРХ страницы
-     (resize: 'none', keyboard-fit.tsx), и «bottom: 0» оставлял нижнюю
-     часть шторки — поля и кнопку — физически закрытой. Скрин владельца
-     19.08.2026: «клавиатура всё закрыла и не видно форму». */
-  bottom: var(--kb, 0px);
+  /* Клавиатура ложится ПОВЕРХ страницы (resize: 'none'), и «bottom: 0»
+     без поправки оставлял поля и кнопку физически закрытыми (скрин
+     владельца 19.08.2026). Первая починка ПОДНИМАЛА шторку целиком
+     (bottom: var(--kb)) — и открыла ЩЕЛЬ: между низом шторки и
+     клавиатурой просвечивало затемнение, «чёрный слой под клавой»
+     (второй скрин того же дня). Поэтому низ шторки остаётся на нуле,
+     а над клавиатуру поднимается СОДЕРЖИМОЕ — нижним отступом. Фон
+     шторки при этом закрывает зону за клавиатурой сам собой. */
+  bottom: 0;
+  padding-bottom: var(--kb, 0px);
   display: flex;
   flex-direction: column;
-  max-height: calc(92dvh - var(--kb, 0px));
+  max-height: 92dvh;
   padding: 8px 20px 0;
   border-top: 1px solid var(--color-border);
   border-radius: var(--radius-hero) var(--radius-hero) 0 0;
@@ -2547,4 +2552,174 @@ body.kb-open .m-actionbar {
   line-height: var(--lh-sm);
   color: var(--color-muted);
   font-variant-numeric: tabular-nums;
+}
+
+/* ═══ CRESKO WEB — десктопный кабинет (хендофф 19.08.2026) ═══════════════
+   Отдельный ВИЗУАЛЬНЫЙ ЯЗЫК десктопа — решение владельца 19.08.2026,
+   и оно ОТМЕНЯЕТ для десктопного кабинета прежнее «второго языка не
+   заводить»: у мобильного своя пара тем (кобальт), у веб-версии своя
+   светлая с фиолетовым акцентом. Хендофф прямо запрещает смешивать
+   палитры; общими остаются данные и экраны.
+
+   Механика — переопределение НАШИХ токенов внутри кабинета на широком
+   экране: все существующие компоненты (карточки, кнопки, бейджи)
+   перекрашиваются сами, без второй копии разметки. Тёмной темы у
+   веб-версии в хендоффе НЕТ, поэтому блок действует только вне .dark:
+   выбранная человеком тёмная тема остаётся прежней тёмной.
+
+   Значения — из README хендоффа ДОСЛОВНО. Подбирать похожее нельзя. */
+@media (min-width: 1024px) {
+  html:not(.dark) [data-webapp] {
+    --color-bg: #F7F7FB;            /* appBg */
+    --color-surface: #ffffff;
+    --color-surface-2: #FCFCFD;     /* surfaceMuted */
+    --color-border: #EEEFF3;
+    --color-border-strong: #E4E6EC; /* borderInput */
+    --color-text: #171A22;
+    --color-muted: #7A8090;
+    --color-faint: #A0A5B1;
+
+    --color-accent: #7C3AED;        /* primary */
+    --color-accent-hover: #6D28D9;
+    --color-accent-ink: #6D28D9;
+    --color-accent-soft: #F3F0FF;   /* primarySoft */
+
+    --color-danger: #C0342E;  --color-danger-soft: #FEECEC;
+    --color-success: #12805C; --color-success-soft: #EAF7F1;
+    --color-warn: #B25E09;    --color-warn-soft: #FFF4E5;
+
+    --tone-blue: #3E63DD;    --tone-blue-soft: #EEF4FF;    /* info    */
+    --tone-amber: #B25E09;   --tone-amber-soft: #FFF4E5;   /* warning */
+    --tone-rose: #C0342E;    --tone-rose-soft: #FEECEC;    /* danger  */
+    --tone-emerald: #12805C; --tone-emerald-soft: #EAF7F1; /* success */
+    --tone-violet: #7C3AED;  --tone-violet-soft: #F3F0FF;  /* accent  */
+
+    /* Токены, которых у мобильной темы нет вовсе, — с префиксом web. */
+    --web-surface-tint: #FBFAFF;
+    --web-hover-row: #FAFAFC;
+    --web-hover-soft: #F7F7FB;
+    --web-border-row: #F4F5F8;
+    --web-border-dash: #F1F2F6;
+    --web-text-body: #2B303C;
+    --web-text-secondary: #4B5160;
+    --web-muted-soft: #8A909E;
+    --web-faintest: #C3C7D1;
+    --web-primary-deep: #6D28D9;
+    --web-primary-deep-hover: #5B21B6;
+    --web-primary-border: #D9D2FB;
+    --web-primary-text-deep: #5B21B6;
+    /* Синяя кнопка живёт ТОЛЬКО на складе («Приймання») и в его модалке. */
+    --web-blue-action: #2563EB;
+    --web-blue-action-hover: #1D4FD8;
+    --web-pink: #B4416F;      --web-pink-soft: #FCE7F0;
+    --web-teal: #0E7490;      --web-teal-soft: #EEF9FF;
+  }
+}
+
+/* Каркас веб-кабинета: хедер 72px во всю ширину, сайдбар 232px, контент —
+   единственная скролл-область по смыслу (хедер и сайдбар липкие).
+   Размеры из README дословно. Классы живут только на lg+ — разметка
+   их носит, медиа-запросов внутри не нужно: блок скрыт utility-классами. */
+.webtop {
+  position: sticky;
+  top: 0;
+  z-index: 45;
+  height: 72px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+}
+.webtop-logo {
+  width: 232px;
+  flex-shrink: 0;
+  padding-left: 28px;
+  display: flex;
+  align-items: center;
+}
+.websearch {
+  height: 44px;
+  max-width: 540px;
+  width: 100%;
+  border-radius: 12px;
+  background: #F7F7FB;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  color: var(--color-faint);
+  font-size: 14px;
+  cursor: pointer;
+  text-align: left;
+}
+.webside {
+  width: 232px;
+  flex-shrink: 0;
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+  padding: 16px 16px 18px;
+  position: sticky;
+  top: 72px;
+  height: calc(100dvh - 72px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.webside-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--web-text-secondary, var(--color-muted));
+  margin-bottom: 2px;
+}
+.webside-item:hover { background: var(--web-hover-soft, var(--color-surface-2)); }
+.webside-item[data-active='true'] {
+  background: var(--color-accent-soft);
+  color: var(--color-accent-ink);
+}
+.webhelp {
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--web-surface-tint, var(--color-surface-2));
+  padding: 16px;
+  margin-top: auto;
+}
+/* Дропдаун профиля: 262px, из правого верхнего угла. */
+.webdrop {
+  position: fixed;
+  top: 78px;
+  right: 28px;
+  width: 262px;
+  border-radius: 14px;
+  background: var(--color-surface);
+  box-shadow: 0 16px 40px rgba(23, 26, 34, 0.14);
+  border: 1px solid var(--color-border);
+  padding: 8px;
+  z-index: 60;
+}
+.webdrop-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border-radius: 8px;
+  padding: 9px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--web-text-body, var(--color-text));
+  text-align: left;
+}
+.webdrop-item:hover { background: var(--web-hover-row, var(--color-surface-2)); }
+.webdrop-item[data-tone='danger'] { color: var(--color-danger); }
+.webdrop-item[data-tone='danger']:hover { background: var(--color-danger-soft); }
+/* Контент веб-кабинета: паддинги из README. Только на широком экране —
+   класс висит на main всегда, а мобильные отступы задаёт контейнер. */
+@media (min-width: 1024px) {
+  .webmain { padding: 28px 32px 40px; }
 }
