@@ -114,6 +114,7 @@ export default async function InventoryPage({
     <AppShell modules={m.modules} perms={m.perms}>
       <InventoryClient
         initialScan={sp.scan === '1'}
+        hasCatalog={hasModule(m, 'catalog')}
         tenantId={m.tenantId}
         userId={userId ?? ''}
         containers={(containers ?? []).map((c) => ({

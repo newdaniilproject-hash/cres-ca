@@ -161,10 +161,20 @@ export const EXPIRY_KEY: Record<ExpiryState, Key> = {
 // первый экран тому, кто заходит сюда раз в неделю.
 export function InventoryClient({
   tenantId, userId, containers, materials, variants, totals,
-  suppliers, locations, batches, initialScan, movements,
+  suppliers, locations, batches, initialScan, movements, hasCatalog,
 }: {
   /** Пришло с кнопки сканера в шапке (?scan=1). */
   initialScan: boolean
+  /**
+   * Есть ли у заведения модуль «Послуги і товари».
+   *
+   * Вкладка «Товари» и кнопка «Додати в каталог» ведут в ЧУЖОЙ модуль.
+   * У заведения, которое купило только склад, они открывали экран
+   * «модуль вимкнено» — человек читает это как поломку, а не как
+   * «мне сюда нельзя» (то же правило, что и с пунктами панели:
+   * нет модуля — нет кнопки, а не кнопка с отказом).
+   */
+  hasCatalog: boolean
   tenantId: string
   userId: string
   containers: Container[]
@@ -428,12 +438,14 @@ export function InventoryClient({
   // ── Вкладки — ОДИН список на обе раскладки ───────────────────────────
   // На телефоне они чипы, на lg — .wtab с чертой. Имена и порядок живут
   // здесь один раз: два списка разъехались бы на первой новой вкладке.
-  const tabItems = [
+  const tabItems = ([
     ['all', t('inventory.tab.all')],
     ['materials', t('inventory.tab.materials')],
     ['containers', `${t('inventory.tab.containers')}${containers.length ? ` · ${t.number(containers.length)}` : ''}`],
-    ['goods', t('inventory.tab.goods')],
-  ] as const
+    // Без модуля каталога товаров не существует вовсе: вкладка отдала бы
+    // пустой список и кнопку в отключённый модуль.
+    ...(hasCatalog ? [['goods', t('inventory.tab.goods')] as const] : []),
+  ] as const).filter(Boolean) as readonly (readonly [Tab, string])[]
 
   // Колонки таблицы CRESKO Web (экран «Склад»): единственное место,
   // где размеры задаются строкой, — так велит .wtable (грид задаёт экран).
