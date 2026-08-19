@@ -39,8 +39,10 @@ type Variant = {
   offeringId: string
 }
 type ScanHit = {
-  kind: string; title: string; subtitle: string | null; stock_qty: number
-  location: string | null; low_stock: boolean
+  kind: string; id: string; title: string; subtitle: string | null
+  stock_qty: number; location: string | null; low_stock: boolean
+  /** У варианта — карточка каталога; у засоба null (0117). */
+  offering_id: string | null
 }
 type ContainerHit = {
   id: string; material: string; code: string; status: string
@@ -243,12 +245,18 @@ export function InventoryClient({
     if (!s) return
     setManual(false)
     setCode('')
-    const [{ data: cont }, { data: items }] = await Promise.all([
+    const [contRes, itemsRes] = await Promise.all([
       supabase.rpc('scan_container', { p_tenant_id: tenantId, p_code: s }),
       supabase.rpc('scan_lookup', { p_tenant_id: tenantId, p_code: s }),
     ])
-    const c = (cont ?? [])[0] as ContainerHit | undefined
-    const i = (items ?? [])[0] as ScanHit | undefined
+    // Отказ базы — не «код не найдено». Раньше error игнорировался, и
+    // пропавшая сеть или отобранное право выглядели как незнакомый код.
+    if (contRes.error && itemsRes.error) {
+      toast.error(t('inventory.scan.lookupError'), dbErrorText(t, contRes.error))
+      return
+    }
+    const c = (contRes.data ?? [])[0] as ContainerHit | undefined
+    const i = (itemsRes.data ?? [])[0] as ScanHit | undefined
     setScan(c ? { container: c } : i ? { item: i } : { miss: s })
   }
 
@@ -402,10 +410,29 @@ export function InventoryClient({
                     {scan.item.location ? ` · ${scan.item.location}` : ''}
                     {scan.item.low_stock ? ` · ${t('inventory.scan.item.low')}` : ''}
                   </p>
+                  {/* Скан обязан вести к действию, а не быть справкой:
+                      засіб — на карточку, товар — в каталог (0117 даёт
+                      offering_id). Тупик «прочитал и закрой» владелец
+                      прочитал как «сканер не работает». */}
+                  <Link className="btn-secondary mt-2 inline-flex"
+                        href={scan.item.kind === 'material'
+                          ? `/app/inventory/materials/${scan.item.id}`
+                          : `/app/catalog/${scan.item.offering_id ?? ''}`}>
+                    {t('inventory.scan.item.open')}
+                  </Link>
                 </>
               )}
               {scan.miss && (
-                <p className="field-error">{t('inventory.scan.notFound', { code: scan.miss })}</p>
+                <>
+                  <p className="field-error">{t('inventory.scan.notFound', { code: scan.miss })}</p>
+                  {/* Незнакомый заводской штрихкод — это чаще всего ещё
+                      не привязанный код засоба. Выход — экран привязки
+                      с уже подставленным кодом, а не тупик. */}
+                  <Link className="btn-secondary mt-2 inline-flex"
+                        href={`/app/inventory/barcodes?code=${encodeURIComponent(scan.miss)}`}>
+                    {t('inventory.scan.bind')}
+                  </Link>
+                </>
               )}
             </div>
             <button type="button" onClick={() => setScan(null)}

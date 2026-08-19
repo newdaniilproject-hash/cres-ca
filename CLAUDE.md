@@ -987,7 +987,11 @@ Supabase отдают `{{ .Token }}`, ссылки в письме нет вов
    платится на каждый запрос, а выигрыш один. Разбор — `docs/PERFORMANCE.md`.
 6. Переменные окружения на хостинге: `SUPABASE_SERVICE_ROLE_KEY`,
    `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `CRON_SECRET` (должен совпадать
-   с зашитым в расписании `pg_cron`), `ONESIGNAL_APP_ID`, `ONESIGNAL_API_KEY`.
+   с зашитым в расписании `pg_cron`), `ONESIGNAL_APP_ID`, `ONESIGNAL_API_KEY`
+   и `NEXT_PUBLIC_ONESIGNAL_APP_ID` — последний ВШИВАЕТСЯ в бандл при
+   сборке: задать до деплоя, иначе iOS-обёртка не инициализирует пуши.
+   Тот же `ONESIGNAL_APP_ID` обязан лежать и в группе `push` Codemagic —
+   без него patch-android.sh молча пропускает инициализацию OneSignal.
 7. OneSignal — приложение создаётся только через их дашборд, API этого не умеет.
 8. **Секреты GitHub Actions** — Settings → Secrets and variables → Actions.
 

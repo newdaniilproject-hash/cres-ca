@@ -174,19 +174,28 @@ export function NativeProvider() {
   // поэтому после входа устройство обязано представиться этим id —
   // иначе уведомления о заказах и сроках летят в пустоту.
   useEffect(() => {
-    // isNative() читает мост — под try, как и всё остальное.
-    try { if (!isNative()) return } catch { return }
+    // ⚠️ НЕ isNative(): на Android при удалённом server.url моста Capacitor
+    // НЕТ ВОВСЕ (та же грабля, что у откликов и статус-бара — М6), и ранний
+    // выход по мосту означал, что OneSignal.login не вызывался НИКОГДА:
+    // устройство не представлялось external_id, и каждый пуш продавцу
+    // уходил в failed. Найдено аудитом пушей 19.08.2026 — весь нативный
+    // слой был написан, а сломан был ровно этот выход.
+    if (!nativeish()) return
     const supabase = createClient()
 
     const bind = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
-      const p = platform()
-      if (p === 'android') {
-        const w = window as unknown as { AndroidOneSignal?: { setUser: (u: string, t: string) => void } }
-        w.AndroidOneSignal?.setUser(user.id, '')
-      } else if (p === 'ios') {
-        const w = window as unknown as { plugins?: { OneSignal?: OneSignalWeb } }
+      // Платформа — по мостам, которые реально есть: AndroidOneSignal
+      // инжектится нашим patch-android.sh, а platform() читает мост
+      // Capacitor и на Android вернул бы 'web'.
+      const w = window as unknown as {
+        AndroidOneSignal?: { setUser: (u: string, t: string) => void }
+        plugins?: { OneSignal?: OneSignalWeb }
+      }
+      if (w.AndroidOneSignal) {
+        w.AndroidOneSignal.setUser(user.id, '')
+      } else if (platform() === 'ios') {
         const os = w.plugins?.OneSignal
         const appId = process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID
         if (os && appId) {
