@@ -90,7 +90,7 @@ export function NotifyBell({ tenantPerms }: { tenantPerms: string[] }) {
             style={{
               top: -4, right: -4, minWidth: 18, height: 18, padding: '0 5px',
               borderRadius: 999, fontSize: 11, fontWeight: 700, lineHeight: 1,
-              background: 'var(--color-danger)', color: '#fff',
+              background: 'var(--color-danger)', color: 'var(--color-accent-text)',
               border: '2px solid var(--color-bg)',
             }}
           >

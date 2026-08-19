@@ -2,6 +2,8 @@ import type { Key, Lang } from '@/lib/i18n/dict'
 import { createT, type T } from '@/lib/i18n/translate'
 import type { Denial } from './check'
 import type { Scope } from './rules'
+// Цвета — из общего источника: экран отказа тоже поверхность продукта.
+import { LIGHT } from '@/lib/design/tokens'
 
 // Что человек видит при превышении.
 //
@@ -53,12 +55,12 @@ function page(t: T, lang: Lang, title: string, desc: string): string {
     + '<style>'
     + 'html{color-scheme:dark light}'
     + 'body{margin:0;min-height:100dvh;display:flex;align-items:center;justify-content:center;'
-    + 'padding:24px;background:#0f0f11;color:#f3f1ee;'
+    + 'padding:24px;background:${LIGHT.text};color:${LIGHT.bg};'
     + 'font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}'
     + 'main{max-width:34rem;text-align:center}'
     + 'h1{margin:0 0 12px;font-size:1.5rem;font-weight:600}'
     + 'p{margin:0 0 20px;opacity:.8}'
-    + 'a{color:#d8b26a}'
+    + 'a{color:${LIGHT.accent}}'
     + '</style></head><body><main>'
     + `<h1>${escape(title)}</h1>`
     + `<p>${escape(desc)}</p>`

@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "check:tokens": "node scripts/check-tokens.mjs"
   },
   "dependencies": {
     "@capacitor/android": "6.2.1",

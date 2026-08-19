@@ -39,6 +39,13 @@
 // Проверка при ревью одна: в этом файле не должно появиться ни импорта
 // из `lib/i18n`, ни строки `lang`.
 
+// Цвета и геометрия печати — из общего источника (`lib/design/tokens.ts`).
+// До 19.08.2026 здесь жила СВОЯ палитра — сепия первого оформления
+// (#16150f, #22443a, #6a6355). Тема продукта менялась дважды, отчёт для
+// проверки не менялся ни разу: клиент нёс в Держпродспоживслужбу документ
+// в цветах, которых в приложении нет.
+import { PRINT as P, RADIUS as R } from '@/lib/design/tokens'
+
 type Named = { name: string } | null
 type Person = { full_name: string | null } | null
 
@@ -299,32 +306,32 @@ export function reportHtml(x: ReportData): string {
 <style>
   @page { size: A4; margin: 14mm 12mm; }
   * { box-sizing: border-box; }
-  body { font: 11px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif;
-         color: #16150f; background: #fff; margin: 0; padding: 24px; max-width: 1000px; }
-  header { border-bottom: 2px solid #22443a; padding-bottom: 14px; margin-bottom: 20px; }
-  h1 { font-size: 19px; margin: 0 0 4px; }
-  h2 { font-size: 13px; margin: 26px 0 6px; padding-top: 12px;
-       border-top: 1px solid #ddd7cb; page-break-after: avoid; }
+  body { font: ${P.size.base}px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif;
+         color: ${P.ink}; background: ${P.paper}; margin: 0; padding: 24px; max-width: 1000px; }
+  header { border-bottom: 2px solid ${P.head}; padding-bottom: 14px; margin-bottom: 20px; }
+  h1 { font-size: ${P.size.h1}px; margin: 0 0 4px; }
+  h2 { font-size: ${P.size.h2}px; margin: 26px 0 6px; padding-top: 12px;
+       border-top: 1px solid ${P.line}; page-break-after: avoid; }
   h3 { font-size: 12px; margin: 10px 0 4px; }
-  .meta { color: #6a6355; font-size: 10.5px; }
-  .meta b { color: #16150f; }
-  .note { color: #6a6355; font-size: 10px; margin: 0 0 8px; font-style: italic; }
-  table { width: 100%; border-collapse: collapse; margin: 6px 0 4px; font-size: 10px;
+  .meta { color: ${P.muted}; font-size: 10.5px; }
+  .meta b { color: ${P.ink}; }
+  .note { color: ${P.muted}; font-size: ${P.size.small}px; margin: 0 0 8px; font-style: italic; }
+  table { width: 100%; border-collapse: collapse; margin: 6px 0 4px; font-size: ${P.size.small}px;
           page-break-inside: auto; }
-  th { text-align: left; background: #f3f0ea; font-weight: 600; }
-  th, td { border: 1px solid #ddd7cb; padding: 4px 6px; vertical-align: top; }
+  th { text-align: left; background: ${P.tint}; font-weight: 600; }
+  th, td { border: 1px solid ${P.line}; padding: 4px 6px; vertical-align: top; }
   tr { page-break-inside: avoid; }
-  .warn { color: #a83a32; font-weight: 600; }
-  .tag { display: inline-block; font-size: 9px; padding: 1px 6px; border-radius: 99px;
-         background: #e8efe9; color: #22443a; vertical-align: middle; }
-  .empty { color: #6a6355; font-style: italic; margin: 6px 0 12px; }
-  .card { border: 1px solid #ddd7cb; border-radius: 6px; padding: 8px 12px; margin: 8px 0;
+  .warn { color: ${P.danger}; font-weight: 600; }
+  .tag { display: inline-block; font-size: ${P.size.tiny}px; padding: 1px 6px; border-radius: 99px;
+         background: ${P.tagBg}; color: ${P.head}; vertical-align: middle; }
+  .empty { color: ${P.muted}; font-style: italic; margin: 6px 0 12px; }
+  .card { border: 1px solid ${P.line}; border-radius: ${R.plate}px; padding: 8px 12px; margin: 8px 0;
           page-break-inside: avoid; }
-  footer { margin-top: 28px; padding-top: 10px; border-top: 1px solid #ddd7cb;
-           color: #6a6355; font-size: 10px; }
+  footer { margin-top: 28px; padding-top: 10px; border-top: 1px solid ${P.line};
+           color: ${P.muted}; font-size: ${P.size.small}px; }
   .actions { margin-bottom: 18px; }
-  button { font: inherit; padding: 9px 16px; border-radius: 8px; border: 0;
-           background: #22443a; color: #f6f4ef; cursor: pointer; }
+  button { font: inherit; padding: 9px 16px; border-radius: ${R.control}px; border: 0;
+           background: ${P.head}; color: ${P.paper}; cursor: pointer; }
   @media print { .actions { display: none; } body { padding: 0; } }
 </style>
 </head><body>

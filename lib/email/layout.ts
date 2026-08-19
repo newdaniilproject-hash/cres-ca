@@ -11,13 +11,23 @@
 // лучше всего.
 
 import { SITE_URL } from '@/lib/site'
+import { MAIL } from '@/lib/design/tokens'
 
-const BRAND = '#141417'
-const ACCENT = '#2563eb'
-const TEXT = '#141417'
-const MUTED = '#5b5b66'
-const LINE = '#e6e6ea'
-const BG = '#f4f4f6'
+// Цвета письма — из общего источника (`lib/design/tokens.ts`).
+//
+// Своими константами они были до 19.08.2026, и это давало четвёртую
+// палитру в продукте: тему меняли дважды, письма не менялись ни разу.
+// Инлайновая подстановка остаётся — почтовые клиенты вырезают `<style>`
+// из `<head>` и переменных CSS не понимают вовсе; меняется только то,
+// ОТКУДА берётся значение.
+const BRAND = MAIL.ink
+const ACCENT = MAIL.accent
+const TEXT = MAIL.ink
+const MUTED = MAIL.muted
+const LINE = MAIL.line
+const BG = MAIL.page
+const PAPER = MAIL.paper
+const ON_ACCENT = MAIL.accentText
 
 // Подпись в подвале. Адрес берётся из lib/site.ts, а не пишется строкой:
 // иначе письмо с превью-деплоя зовёт на прод, и проверить правку письма
@@ -68,14 +78,14 @@ export function emailLayout(opts: {
 <tr><td align="center">
 
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
-         style="max-width:520px;background:#ffffff;border-radius:16px;border:1px solid ${LINE};overflow:hidden;">
+         style="max-width:520px;background:${PAPER};border-radius:16px;border:1px solid ${LINE};overflow:hidden;">
 
     <!-- Шапка: знак на тёмном. Картинок нет намеренно — они блокируются
          до нажатия «показать изображения», и письмо приезжает пустым. -->
     <tr><td style="background:${BRAND};padding:22px 28px;">
       <span style="font:700 19px/1 -apple-system,'Segoe UI',Roboto,Arial,sans-serif;
-                   letter-spacing:-0.02em;color:#ffffff;">CRES-CA</span><span
-            style="color:#d9b262;font:700 19px/1 -apple-system,Arial,sans-serif;">.</span>
+                   letter-spacing:-0.02em;color:${ON_ACCENT};">CRES-CA</span><span
+            style="color:${MAIL.warn};font:700 19px/1 -apple-system,Arial,sans-serif;">.</span>
     </td></tr>
 
     <tr><td style="padding:32px 28px 8px;">
@@ -91,7 +101,7 @@ export function emailLayout(opts: {
       <table role="presentation" cellpadding="0" cellspacing="0"><tr>
         <td style="background:${ACCENT};border-radius:12px;">
           <a href="${escapeAttr(button.url)}"
-             style="display:inline-block;padding:13px 26px;color:#ffffff;text-decoration:none;
+             style="display:inline-block;padding:13px 26px;color:${ON_ACCENT};text-decoration:none;
                     font:600 15px/1 -apple-system,'Segoe UI',Roboto,Arial,sans-serif;">${escapeHtml(button.label)}</a>
         </td>
       </tr></table>
@@ -123,7 +133,7 @@ export function emailLayout(opts: {
 // переписывают глазами с экрана на экран, и слипшиеся цифры путают.
 export function codeBlock(code: string): string {
   return `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:22px 0;">
-  <tr><td style="background:#f4f4f6;border:1px solid ${LINE};border-radius:12px;padding:16px 24px;">
+  <tr><td style="background:${BG};border:1px solid ${LINE};border-radius:12px;padding:16px 24px;">
     <span style="font:700 30px/1 ui-monospace,'SF Mono',Menlo,Consolas,monospace;
                  letter-spacing:0.22em;color:${TEXT};">${escapeHtml(code)}</span>
   </td></tr></table>`

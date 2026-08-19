@@ -13,6 +13,11 @@
 // Отсюда: ни импорта из `lib/i18n`, ни параметра `lang`. Дата — через
 // `DOC_LOCALE`, а не через `t.date`. Разбор решения целиком —
 // в шапке `lib/report/sanitation-report.ts`.
+// Цвета печати — из общего источника. Своя палитра здесь жила до
+// 19.08.2026 и была сепией первого оформления: наклейка на банке
+// печаталась в цветах, которых в продукте нет.
+import { PRINT as P } from '@/lib/design/tokens'
+
 const DOC_LOCALE = 'uk-UA'
 
 export type Label = {
@@ -57,11 +62,11 @@ export function labelsHtml(shop: string, labels: Label[]): string {
   @page { size: A4; margin: 8mm 5mm; }
   * { box-sizing: border-box; }
   body { font: 8pt/1.35 -apple-system, "Segoe UI", Roboto, sans-serif;
-         margin: 0; padding: 12px; background: #f3f0ea; color: #16150f; }
+         margin: 0; padding: 12px; background: ${P.tint}; color: ${P.ink}; }
   .sheet { display: grid; grid-template-columns: repeat(3, 65mm);
            grid-auto-rows: 37mm; gap: 2mm; justify-content: center; }
-  .label { border: 1px dashed #b9b2a3; border-radius: 2mm; padding: 2mm;
-           display: flex; gap: 2mm; align-items: center; background: #fff;
+  .label { border: 1px dashed ${P.lineStrong}; border-radius: 2mm; padding: 2mm;
+           display: flex; gap: 2mm; align-items: center; background: ${P.paper};
            overflow: hidden; page-break-inside: avoid; }
   .qr { width: 24mm; height: 24mm; flex: 0 0 24mm; }
   .qr canvas { width: 100% !important; height: 100% !important; }
@@ -69,18 +74,18 @@ export function labelsHtml(shop: string, labels: Label[]): string {
   .name { font-weight: 700; font-size: 8.5pt; line-height: 1.2;
           overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2;
           -webkit-box-orient: vertical; }
-  .code { font-family: ui-monospace, monospace; font-size: 7.5pt; color: #6a6355; }
-  .row { font-size: 7pt; color: #4a453b; }
-  .useby { margin-top: 0.5mm; font-size: 7.5pt; color: #22443a; }
+  .code { font-family: ui-monospace, monospace; font-size: 7.5pt; color: ${P.muted}; }
+  .row { font-size: 7pt; color: ${P.ink}; }
+  .useby { margin-top: 0.5mm; font-size: 7.5pt; color: ${P.head}; }
   .actions { max-width: 205mm; margin: 0 auto 12px; display: flex;
              align-items: center; gap: 12px; }
   button { font: inherit; font-size: 10pt; padding: 9px 16px; border-radius: 8px;
-           border: 0; background: #22443a; color: #f6f4ef; cursor: pointer; }
-  .hint { color: #6a6355; font-size: 9pt; }
-  .empty { max-width: 205mm; margin: 40px auto; text-align: center; color: #6a6355; }
+           border: 0; background: ${P.head}; color: ${P.paper}; cursor: pointer; }
+  .hint { color: ${P.muted}; font-size: 9pt; }
+  .empty { max-width: 205mm; margin: 40px auto; text-align: center; color: ${P.muted}; }
   @media print {
     .actions { display: none; }
-    body { background: #fff; padding: 0; }
+    body { background: ${P.paper}; padding: 0; }
     .label { border-color: transparent; }
   }
 </style>
@@ -100,7 +105,7 @@ ${labels.length === 0
     var c = document.createElement('canvas');
     el.appendChild(c);
     QRCode.toCanvas(c, el.dataset.code, { margin: 0, width: 200,
-      color: { dark: '#16150f', light: '#ffffff' } });
+      color: { dark: '${P.ink}', light: '${P.paper}' } });
   });
 </script>
 

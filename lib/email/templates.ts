@@ -1,5 +1,8 @@
 import { emailLayout, codeBlock, escapeHtml, escapeAttr } from './layout'
 import { abs } from '@/lib/site'
+// Цвета — из общего источника: письмо это четвёртая поверхность продукта,
+// и своей палитры у неё быть не должно (разбор — в lib/email/layout.ts).
+import { MAIL } from '@/lib/design/tokens'
 
 // Письма продукта. Каждое возвращает тему и HTML.
 //
@@ -131,7 +134,7 @@ export function mailWelcome(shopName: string, shopUrl: string): Mail {
       heading: 'Сторінка готова',
       body:
         P(`Заклад <b>${escapeHtml(shopName)}</b> створено. Ось ваше посилання:`) +
-        P(`<a href="${escapeAttr(shopUrl)}" style="color:#2563eb;">${escapeHtml(shopUrl)}</a>`) +
+        P(`<a href="${escapeAttr(shopUrl)}" style="color:${MAIL.accent};">${escapeHtml(shopUrl)}</a>`) +
         P('Додайте його в шапку Instagram — клієнти зможуть дивитися послуги ' +
           'і записуватися самі, навіть коли ви зайняті або спите.'),
       button: { label: 'Відкрити кабінет', url: abs('/app') },
@@ -275,13 +278,13 @@ export function mailExpiryDigest(items: {
   const rows = items.map((i) => {
     const soon = i.daysLeft <= 7
     return `<tr>
-      <td style="padding:9px 0;border-bottom:1px solid #e6e6ea;font:400 14px/1.4 -apple-system,Arial,sans-serif;">
+      <td style="padding:9px 0;border-bottom:1px solid ${MAIL.line};font:400 14px/1.4 -apple-system,Arial,sans-serif;">
         <b>${escapeHtml(i.material)}</b><br>
-        <span style="color:#5b5b66;font-size:13px;">${escapeHtml(i.code)}</span>
+        <span style="color:${MAIL.muted};font-size:13px;">${escapeHtml(i.code)}</span>
       </td>
-      <td style="padding:9px 0;border-bottom:1px solid #e6e6ea;text-align:right;
+      <td style="padding:9px 0;border-bottom:1px solid ${MAIL.line};text-align:right;
                  font:600 14px/1.4 -apple-system,Arial,sans-serif;
-                 color:${soon ? '#b91c1c' : '#b45309'};white-space:nowrap;">
+                 color:${soon ? MAIL.danger : MAIL.warn};white-space:nowrap;">
         ${escapeHtml(i.useBy)}<br>
         <span style="font-weight:400;font-size:12px;">${i.daysLeft} дн</span>
       </td>
@@ -306,9 +309,9 @@ export function mailExpiryDigest(items: {
 // ── Склад: пора заказать ─────────────────────────────────────────────
 export function mailReorderDigest(items: { title: string; toOrder: string }[]): Mail {
   const rows = items.map((i) => `<tr>
-    <td style="padding:9px 0;border-bottom:1px solid #e6e6ea;font:400 14px/1.4 -apple-system,Arial,sans-serif;">
+    <td style="padding:9px 0;border-bottom:1px solid ${MAIL.line};font:400 14px/1.4 -apple-system,Arial,sans-serif;">
       ${escapeHtml(i.title)}</td>
-    <td style="padding:9px 0;border-bottom:1px solid #e6e6ea;text-align:right;
+    <td style="padding:9px 0;border-bottom:1px solid ${MAIL.line};text-align:right;
                font:600 14px/1.4 -apple-system,Arial,sans-serif;white-space:nowrap;">
       ${escapeHtml(i.toOrder)}</td>
   </tr>`).join('')
