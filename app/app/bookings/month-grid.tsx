@@ -74,7 +74,11 @@ export function MonthGrid({ bookings, month }: { bookings: B[]; month: string })
 
   return (
     <>
-      <div className="card rise" style={{ borderRadius: 'var(--radius-calendar)' }}>
+      {/* Ширина на десктопе ограничена: клетка дня — 29px по README,
+          и растянутая на 1200px сетка превращается в семь колонок с
+          ладонью пустоты между числами. Ограничение стоит на карточке,
+          а не на клетке: сама сетка обязана остаться квадратной. */}
+      <div className="card rise lg:max-w-[520px]" style={{ borderRadius: 'var(--radius-calendar)' }}>
         {/* Шапка месяца. Стрелки — ССЫЛКИ, а не кнопки с состоянием:
             месяц живёт в адресе, поэтому «назад» браузера возвращает
             предыдущий, а перезагрузка не сбрасывает на текущий. Зона
