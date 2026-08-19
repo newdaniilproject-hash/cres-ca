@@ -480,7 +480,10 @@ function AppShellInner({
   }
 
   async function signOut() {
-    await createClient().auth.signOut()
+    // scope: 'local' — по умолчанию supabase-js гасит сессии ГЛОБАЛЬНО,
+    // и «Вийти» на ноутбуке разлогинивал телефон. Выход со всех
+    // устройств — отдельное действие в профиле, с подтверждением.
+    await createClient().auth.signOut({ scope: 'local' })
     window.location.href = '/'
   }
 

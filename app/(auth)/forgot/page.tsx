@@ -1,9 +1,11 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { codeErrorText, humanAuthError } from '@/lib/auth-errors'
+import { nextRoute } from '@/lib/where'
 import { guardSignIn } from '@/lib/ratelimit/guard'
 import { AuthShell } from '../auth-shell'
 import { useT } from '@/lib/i18n/client'
@@ -18,6 +20,7 @@ import {
 // «посилання на пошту» и вёл на /reset, а шаблон Reset password
 // в Supabase отдаёт {{ .Token }} — код. Ссылки в письме не было,
 // /reset был недостижим, и восстановить пароль было нельзя вовсе.
+// Сам /reset удалён 19.08.2026 (правило 8): попасть на него было нечем.
 //
 // Теперь поток такой же, как в приложении (/m/login, режим reset):
 // почта → код → сразу новый пароль → успех. Человек не уходит
@@ -28,12 +31,20 @@ const RESEND_SECONDS = 60
 
 type Step = 'form' | 'sent' | 'code' | 'newpass' | 'done'
 
-export default function ForgotPage() {
+function ForgotInner() {
   const t = useT()
   const supabase = createClient()
 
+  // Почта приходит из адреса (`/forgot?email=…`) — её несут «Забули?»
+  // на входе и карточка «пошта вже зареєстрована» на регистрации.
+  // Предзаполняем, а не подставляем молча: человек видит и правит поле.
+  const params = useSearchParams()
+
   const [step, setStep] = useState<Step>('form')
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState(params.get('email') ?? '')
+  // Куда уходим после смены пароля. Считается в момент успеха:
+  // сессия после verifyOtp уже есть, и членства читаемы.
+  const [target, setTarget] = useState('/app')
   const [code, setCode] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -90,21 +101,30 @@ export default function ForgotPage() {
     if (busy || password.length < 8 || password !== confirm) return
     setBusy(true); setError('')
     const { error } = await supabase.auth.updateUser({ password })
+    if (error) { setBusy(false); setError(humanAuthError(t, error.message)); return }
+    // Сессия после verifyOtp уже есть — «Увійти» человеку не нужно.
+    // Куда вести, решает lib/where.ts: владелец салона обязан попасть
+    // в /app, а не в покупательский /account, куда экран вёл раньше.
+    // 'web' обязателен: умолчание у nextRoute — поверхность приложения.
+    setTarget(await nextRoute(supabase, 'web'))
     setBusy(false)
-    if (error) { setError(humanAuthError(t, error.message)); return }
     setStep('done')
   }
 
   // ── Успех ────────────────────────────────────────────────────
+  // Кнопка «До кабінету», а не «Увійти»: вход уже состоялся, обещать
+  // его второй раз значит врать. И уходим сами через пару секунд —
+  // тем же приёмом Redirect, что на входе и регистрации.
   if (step === 'done') {
     return (
       <AuthShell>
         <SuccessScreen
           title={t('auth.done.password.title')}
-          subtitle={t('auth.done.password.desc')}
-          actionLabel={t('auth.done.password.action')}
-          onAction={() => { window.location.href = '/account' }}
+          subtitle={t('auth.done.password.descSession')}
+          actionLabel={t('auth.done.password.go')}
+          onAction={() => { window.location.href = target }}
         />
+        <Redirect to={target} />
       </AuthShell>
     )
   }
@@ -233,4 +253,21 @@ export default function ForgotPage() {
       </p>
     </AuthShell>
   )
+}
+
+// Экран успеха живёт пару секунд и уходит сам — тот же приём, что на
+// входе и регистрации. Отдельным компонентом, чтобы эффект не висел
+// на всём экране восстановления и не срабатывал раньше времени.
+function Redirect({ to }: { to: string }) {
+  useEffect(() => {
+    const id = setTimeout(() => { window.location.href = to }, 2000)
+    return () => clearTimeout(id)
+  }, [to])
+  return null
+}
+
+export default function ForgotPage() {
+  // useSearchParams требует границы Suspense, иначе прод-сборка Next
+  // падает на пререндере. В этом проекте уже ловилось — см. /login.
+  return <Suspense><ForgotInner /></Suspense>
 }

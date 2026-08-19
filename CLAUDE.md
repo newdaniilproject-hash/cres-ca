@@ -974,6 +974,12 @@ Supabase отдают `{{ .Token }}`, ссылки в письме нет вов
    возвращать всё, что перечислено в КОНСПЕКТЫ.md, М4.
 4. Supabase → Project Settings → Authentication → SMTP — Resend, см. раздел
    «Почта». Без этого письма при регистрации не доходят.
+   Отдельно там же: Authentication → URL Configuration → Redirect URLs —
+   добавить `https://cres-ca.com/auth/confirm`; Authentication → Emails →
+   Change Email Address — вставить вёрстку `mailEmailChange` из
+   `lib/email/templates.ts` (ссылка `{{ .ConfirmationURL }}`, НЕ код:
+   у смены почты два подтверждения — старый и новый адрес, — и это
+   единственное письмо, где ссылка остаётся намеренно).
 5. **Vercel → Settings → Functions → Function Region — должен быть
    Dublin (`dub1`)**, потому что база Supabase в `eu-west-1` (Ирландия).
    Проверено 18.08.2026: уже стоит. Не менять на Франкфурт «потому что

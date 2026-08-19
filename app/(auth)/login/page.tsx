@@ -84,7 +84,9 @@ function LoginInner() {
   // (пароль и код) заканчиваются здесь, чтобы решение о том, куда вести,
   // жило в одном месте, а не в двух обработчиках.
   async function done() {
-    setTarget(next ?? await nextRoute(supabase))
+    // 'web' обязателен: умолчание у nextRoute — поверхность приложения,
+    // и без него вошедшего с ВЕБА без заведения уносило на /m/shop.
+    setTarget(next ?? await nextRoute(supabase, 'web'))
     setStep('done')
   }
 
@@ -200,10 +202,12 @@ function LoginInner() {
   async function resend() {
     if (left > 0 || busy) return
     setBusy(true); setCodeError('')
-    // Повтор письма тратит ту же попытку входа: иначе предел обходится
-    // одной отправкой формы и дальше кнопкой «надіслати ще раз».
-    const gate = await guardSignIn()
-    if (!gate.ok) { setBusy(false); setCodeError(gate.message); return }
+    // Счётчик guardSignIn повтор НЕ тратит — так же, как на регистрации.
+    // Первичная отправка формы его уже потратила, а второй вызов молча
+    // превращал предел 5 попыток в 2–3: человек с медленной почтой
+    // запирался за то, что дважды нажал «надіслати ще раз». Повтор и так
+    // ограничен дважды: отсчётом 60 секунд на этом экране и собственным
+    // пределом Supabase на повторную отправку письма.
     const { error } = await supabase.auth.signInWithOtp({
       email: email.trim(), options: { shouldCreateUser: false },
     })
@@ -236,7 +240,12 @@ function LoginInner() {
         <BlockedScreen
           waitText={lockWait}
           note={lockNote || undefined}
-          onReset={() => { window.location.href = '/forgot' }}
+          // Почту несём и отсюда: заблокированный идёт менять пароль
+          // с тем же адресом, который только что набирал.
+          onReset={() => {
+            window.location.href = email.trim()
+              ? `/forgot?email=${encodeURIComponent(email.trim())}` : '/forgot'
+          }}
           onBack={() => { setStep('form'); setError(''); setPassword('') }}
         />
       </AuthShell>
@@ -320,7 +329,10 @@ function LoginInner() {
           <div>
             <div className="flex items-baseline justify-between">
               <label className="field-label" htmlFor="pass">{t('auth.field.password')}</label>
-              <Link href="/forgot" className="t-xs underline underline-offset-2 prose-muted">
+              {/* Введённую почту несём с собой: /forgot её предзаполнит,
+                  и человеку не придётся набирать адрес второй раз. */}
+              <Link href={`/forgot${email.trim() ? `?email=${encodeURIComponent(email.trim())}` : ''}`}
+                    className="t-xs underline underline-offset-2 prose-muted">
                 {t('auth.login.forgot')}
               </Link>
             </div>

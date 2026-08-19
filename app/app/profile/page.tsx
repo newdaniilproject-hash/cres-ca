@@ -32,15 +32,25 @@ export default async function ProfilePage() {
   const { data: tenant } = await supabase
     .from('tenants').select('name, status').eq('id', m.tenantId).maybeSingle()
 
+  // Имя и телефон — из profiles: шторка «Особисті дані» правит именно
+  // эту строку, и после `router.refresh()` экран обязан показать новое
+  // значение. Метаданные токена — запасной путь для старых акаунтов,
+  // у которых профиль ещё пустой.
+  const { data: profile } = await supabase
+    .from('profiles').select('full_name, phone').eq('id', user.id).maybeSingle()
+
   const meta = user.user_metadata ?? {}
-  const name = ((meta.full_name as string | undefined)
+  const metaName = ((meta.full_name as string | undefined)
     ?? [meta.first_name, meta.last_name].filter(Boolean).join(' ')).trim()
+  const name = (profile?.full_name ?? '').trim() || metaName
 
   return (
     <AppShell modules={m.modules} perms={m.perms}>
       <ProfileClient
+        userId={user.id}
         email={user.email ?? ''}
         name={name}
+        phone={profile?.phone ?? ''}
         role={m.role}
         tenantName={tenant?.name ?? ''}
         tenantDraft={tenant?.status === 'draft'}

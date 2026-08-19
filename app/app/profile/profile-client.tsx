@@ -2,12 +2,17 @@
 
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Sheet } from '@/components/sheet'
 import { ThemeToggle } from '@/components/theme'
 import { TextSize } from '@/components/text-size'
 import { useToast } from '@/components/toast'
+import { useConfirm } from '@/components/confirm'
+import { PasswordInput, PasswordStrength } from '@/components/auth-ui'
 import { IconExit, IconGear, IconLock, IconMail, IconUser } from '@/components/icons'
+import { humanAuthError } from '@/lib/auth-errors'
+import { dbErrorText } from '@/lib/errors/db'
 import { useT } from '@/lib/i18n/client'
 import type { T } from '@/lib/i18n/translate'
 
@@ -26,21 +31,46 @@ type Role = (typeof ROLES)[number]
 const roleLabel = (t: T, r: string): string =>
   ((ROLES as readonly string[]).includes(r) ? t(`role.${r as Role}`) : r)
 
-function Row({ label, value }: { label: string; value: React.ReactNode }) {
+// `onClick` превращает строку в кнопку с шевроном: имя и телефон теперь
+// правятся прямо отсюда, и строка обязана выглядеть нажимаемой — иначе
+// подсказка «имя печатается на наліпках» остаётся упрёком без выхода.
+function Row({ label, value, onClick }: {
+  label: string; value: React.ReactNode; onClick?: () => void
+}) {
+  const inner = (
+    <>
+      <span className="t-sm shrink-0" style={{ color: 'var(--color-muted)' }}>{label}</span>
+      <span className="t-md min-w-0 text-right">
+        {value}
+        {onClick && <span aria-hidden className="ml-2" style={{ color: 'var(--color-faint)' }}>›</span>}
+      </span>
+    </>
+  )
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick}
+              className="flex w-full items-start justify-between gap-4 text-left"
+              style={{ paddingBlock: 'var(--space-2)', minHeight: 'var(--tap-min)' }}>
+        {inner}
+      </button>
+    )
+  }
   return (
     <div className="flex items-start justify-between gap-4"
          style={{ paddingBlock: 'var(--space-2)' }}>
-      <span className="t-sm shrink-0" style={{ color: 'var(--color-muted)' }}>{label}</span>
-      <span className="t-md min-w-0 text-right">{value}</span>
+      {inner}
     </div>
   )
 }
 
 export function ProfileClient({
-  email, name, role, tenantName, tenantDraft, canSettings,
+  userId, email, name, phone, role, tenantName, tenantDraft, canSettings,
 }: {
+  userId: string
   email: string
   name: string
+  /** Телефон из `profiles.phone` — правится здесь же, шторкой. */
+  phone: string
   role: string
   tenantName: string
   tenantDraft: boolean
@@ -48,11 +78,14 @@ export function ProfileClient({
   canSettings: boolean
 }) {
   const t = useT()
+  const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
   const toast = useToast()
+  const confirmAsk = useConfirm()
 
   const [pass, setPass] = useState(false)
   const [mail, setMail] = useState(false)
+  const [person, setPerson] = useState(false)
   const [kill, setKill] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
 
@@ -60,6 +93,8 @@ export function ProfileClient({
   const [password2, setPassword2] = useState('')
   const [newEmail, setNewEmail] = useState('')
   const [confirm, setConfirm] = useState('')
+  const [fullName, setFullName] = useState(name)
+  const [phoneVal, setPhoneVal] = useState(phone)
 
   const initial = (name || email).trim().charAt(0).toUpperCase()
 
@@ -72,8 +107,10 @@ export function ProfileClient({
     setBusy('pass')
     const { error } = await supabase.auth.updateUser({ password })
     setBusy(null)
-    // Вторая строка тоста — текст отказа Supabase, он показывается как есть.
-    if (error) { toast.error(t('profile.pass.error.failed'), error.message); return }
+    // Вторая строка тоста — отказ GoTrue через общий переводчик: сырой
+    // английский текст человеку не показываем (М25), в том числе просьбу
+    // reauthentication — у неё своя ветка в `humanAuthError`.
+    if (error) { toast.error(t('profile.pass.error.failed'), humanAuthError(t, error.message)); return }
     setPassword(''); setPassword2(''); setPass(false)
     toast.success(t('profile.pass.ok'))
   }
@@ -81,15 +118,55 @@ export function ProfileClient({
   async function changeEmail(e: React.FormEvent) {
     e.preventDefault()
     setBusy('mail')
-    const { error } = await supabase.auth.updateUser({ email: newEmail.trim() })
+    // emailRedirectTo: обе ссылки подтверждения приземляются на страницу
+    // с объяснением «подтвердите и второе письмо», а не на корень сайта.
+    const { error } = await supabase.auth.updateUser(
+      { email: newEmail.trim() },
+      { emailRedirectTo: `${window.location.origin}/auth/confirm` },
+    )
     setBusy(null)
-    if (error) { toast.error(t('profile.mail.error.failed'), error.message); return }
+    if (error) { toast.error(t('profile.mail.error.failed'), humanAuthError(t, error.message)); return }
     setNewEmail(''); setMail(false)
     toast.info(t('profile.mail.sent.title'), t('profile.mail.sent.desc'))
   }
 
+  // Имя и телефон — прямой UPDATE в profiles: RLS на самоправку уже
+  // разрешает. Почту так менять НЕЛЬЗЯ — её отбивает сторож базы (0116):
+  // она меняется только процедурой GoTrue с подтверждением обеих адресов.
+  async function savePerson(e: React.FormEvent) {
+    e.preventDefault()
+    setBusy('person')
+    const { error } = await supabase.from('profiles')
+      .update({ full_name: fullName.trim(), phone: phoneVal.trim() || null })
+      .eq('id', userId)
+    setBusy(null)
+    if (error) { toast.error(dbErrorText(t, error)); return }
+    setPerson(false)
+    toast.success(t('profile.person.ok'))
+    // Экран серверный: новое имя приезжает перечитыванием, а не своим стейтом.
+    router.refresh()
+  }
+
   async function signOut() {
-    await supabase.auth.signOut()
+    // scope: 'local' — по умолчанию supabase-js гасит сессии ГЛОБАЛЬНО,
+    // и «Вийти» на ноутбуке разлогинивал телефон. Выход со всех устройств —
+    // отдельная кнопка ниже, с подтверждением.
+    await supabase.auth.signOut({ scope: 'local' })
+    window.location.href = '/'
+  }
+
+  // Выход со всех устройств — глобальный signOut, ровно то поведение,
+  // которое у обычного «Вийти» было по ошибке. С подтверждением: действие
+  // рвёт сеансы на чужих по ощущению устройствах, молча так не делают.
+  async function signOutEverywhere() {
+    const ok = await confirmAsk({
+      title: t('profile.signOutAll.confirm.title'),
+      body: t('profile.signOutAll.confirm.body'),
+      action: t('profile.signOutAll.confirm.action'),
+      tone: 'danger',
+    })
+    if (!ok) return
+    await supabase.auth.signOut({ scope: 'global' })
     window.location.href = '/'
   }
 
@@ -113,7 +190,9 @@ export function ProfileClient({
     const { data: files, error: countError } = await supabase.rpc('my_account_files_count')
     if (countError) {
       setBusy(null)
-      toast.error(t('profile.delete.error.check'), countError.message)
+      // Ответ базы — через dbErrorText: Postgres в сыром тексте печатает
+      // значения полей, и показывать его как есть нельзя (М25).
+      toast.error(t('profile.delete.error.check'), dbErrorText(t, countError))
       return
     }
     const left = Number(files ?? 0)
@@ -125,8 +204,11 @@ export function ProfileClient({
     }
     const { error } = await supabase.rpc('delete_my_account')
     setBusy(null)
-    if (error) { toast.error(t('profile.delete.error.failed'), error.message); return }
-    await supabase.auth.signOut()
+    if (error) { toast.error(t('profile.delete.error.failed'), dbErrorText(t, error)); return }
+    // Акаунт уже удалён — глобальный signOut пошёл бы на сервер с мёртвой
+    // сессией; локально чистим токены этого устройства, остальные сеансы
+    // умерли вместе с пользователем.
+    await supabase.auth.signOut({ scope: 'local' })
     window.location.href = '/'
   }
 
@@ -156,7 +238,13 @@ export function ProfileClient({
         <h2 className="t-sm mb-1" style={{ color: 'var(--color-faint)' }}>
           {t('profile.account.title')}
         </h2>
-        <Row label={t('profile.account.name')} value={name || '—'} />
+        {/* Имя и телефон нажимаемы: открывают шторку «Особисті дані».
+            Почта — нет: она меняется только процедурой GoTrue (строка
+            «Змінити пошту» ниже), прямую правку отбивает сторож 0116. */}
+        <Row label={t('profile.account.name')} value={name || '—'}
+             onClick={() => { setFullName(name); setPhoneVal(phone); setPerson(true) }} />
+        <Row label={t('profile.account.phone')} value={phone || '—'}
+             onClick={() => { setFullName(name); setPhoneVal(phone); setPerson(true) }} />
         <Row label={t('profile.account.email')} value={email} />
         <Row label={t('common.role')} value={roleLabel(t, role)} />
         <p className="field-hint mt-2">{t('profile.account.hint')}</p>
@@ -238,6 +326,10 @@ export function ProfileClient({
                 className="btn-secondary flex items-center justify-center gap-2">
           <IconExit size={18} /> {t('profile.signOut')}
         </button>
+        <button type="button" onClick={() => void signOutEverywhere()}
+                className="btn-ghost">
+          {t('profile.signOutAll')}
+        </button>
         <button type="button" onClick={() => setKill(true)} className="btn-ghost"
                 style={{ color: 'var(--color-danger)' }}>
           {t('profile.delete.open')}
@@ -248,17 +340,18 @@ export function ProfileClient({
       <Sheet open={pass} onClose={() => setPass(false)} title={t('profile.pass.sheet.title')}>
         <form onSubmit={changePassword} className="grid gap-3">
           <div>
-            <label className="field-label">{t('profile.pass.new.label')}</label>
-            <input required autoFocus type="password" minLength={8} className="input"
-                   autoComplete="new-password"
-                   value={password} onChange={(e) => setPassword(e.target.value)} />
-            <p className="field-hint">{t('profile.pass.new.hint')}</p>
+            <label className="field-label" htmlFor="pf-pass">{t('profile.pass.new.label')}</label>
+            {/* Общее поле с «глазиком» и мерой надёжности — те же, что на
+                входе и регистрации: два вида поля пароля разъезжаются. */}
+            <PasswordInput id="pf-pass" value={password} onChange={setPassword}
+                           autoComplete="new-password" autoFocus />
+            <PasswordStrength value={password} />
           </div>
           <div>
-            <label className="field-label">{t('profile.pass.repeat.label')}</label>
-            <input required type="password" minLength={8} className="input"
-                   autoComplete="new-password"
-                   value={password2} onChange={(e) => setPassword2(e.target.value)} />
+            <label className="field-label" htmlFor="pf-pass2">{t('profile.pass.repeat.label')}</label>
+            <PasswordInput id="pf-pass2" value={password2} onChange={setPassword2}
+                           autoComplete="new-password"
+                           invalid={password2.length > 0 && password2 !== password} />
           </div>
           <div className="flex gap-2">
             <button className="btn-primary" disabled={busy === 'pass' || !password}>
@@ -293,6 +386,35 @@ export function ProfileClient({
         </form>
       </Sheet>
 
+      {/* ── Особисті дані: имя и телефон ─────────────────────── */}
+      <Sheet open={person} onClose={() => setPerson(false)} title={t('profile.person.sheet.title')}>
+        <form onSubmit={savePerson} className="grid gap-3">
+          <div>
+            <label className="field-label" htmlFor="pf-name">{t('profile.person.name.label')}</label>
+            <input id="pf-name" required autoFocus className="input"
+                   autoComplete="name" autoCapitalize="words"
+                   value={fullName} onChange={(e) => setFullName(e.target.value)} />
+            {/* Та же подсказка, что под списком: имя печатается на наліпках
+                розливу — теперь его отсюда МОЖНО исправить. */}
+            <p className="field-hint">{t('profile.account.hint')}</p>
+          </div>
+          <div>
+            <label className="field-label" htmlFor="pf-phone">{t('profile.person.phone.label')}</label>
+            <input id="pf-phone" type="tel" inputMode="tel" className="input"
+                   autoComplete="tel"
+                   value={phoneVal} onChange={(e) => setPhoneVal(e.target.value)} />
+          </div>
+          <div className="flex gap-2">
+            <button className="btn-primary" disabled={busy === 'person' || !fullName.trim()}>
+              {busy === 'person' ? t('common.saving') : t('common.save')}
+            </button>
+            <button type="button" className="btn-ghost" onClick={() => setPerson(false)}>
+              {t('common.cancel')}
+            </button>
+          </div>
+        </form>
+      </Sheet>
+
       {/* ── Удаление ─────────────────────────────────────────── */}
       <Sheet open={kill} onClose={() => setKill(false)} title={t('profile.delete.sheet.title')}>
         <form onSubmit={deleteAccount} className="grid gap-3">
@@ -316,6 +438,9 @@ export function ProfileClient({
           </div>
         </form>
       </Sheet>
+
+      {/* Шторка подтверждения «Вийти на всіх пристроях» — один раз в конце. */}
+      {confirmAsk.element}
     </div>
   )
 }

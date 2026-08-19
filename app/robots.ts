@@ -27,7 +27,6 @@ export default function robots(): MetadataRoute.Robots {
           '/auth/',
           '/login',
           '/register',
-          '/reset',
           '/forgot',
           '/m',
           // Служебная страница офлайна: её показывает service worker,

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { keepVisible } from '../ui'
+import { dbErrorText } from '@/lib/errors/db'
 import { useT } from '@/lib/i18n/client'
 
 type Kind = 'services' | 'goods' | 'both'
@@ -43,7 +44,9 @@ export default function MobileShopPage() {
   // Экран не должен быть ловушкой: человек мог попасть сюда сразу после
   // запуска, потому что вход уже был. Он видит, под кем зашёл, и может выйти.
   async function signOut() {
-    await supabase.auth.signOut()
+    // scope: 'local' — по умолчанию supabase-js гасит сессии ГЛОБАЛЬНО,
+    // и выход в приложении разлогинивал бы и веб на компьютере.
+    await supabase.auth.signOut({ scope: 'local' })
     window.location.href = '/m'
   }
 
@@ -55,7 +58,9 @@ export default function MobileShopPage() {
       p_kind: kind,
       p_city: city.trim() || null,
     })
-    if (error) { setBusy(false); setError(error.message); return }
+    // `register_tenant` — Postgres: ответ через dbErrorText, а не как есть.
+    // Сырой текст базы печатает значения полей на экран (М25).
+    if (error) { setBusy(false); setError(dbErrorText(t, error)); return }
 
     // ГРАБЛИ, из-за которых человека выбрасывало на вебовую форму «Крок 2 із 2»
     // и просило ввести всё заново: заклад создавался, но членство живёт
