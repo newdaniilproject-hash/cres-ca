@@ -593,7 +593,19 @@ html.dark [data-brand] {
      касательных устройствах — на столе зума по фокусу нет,
      и там мелкое поле это просто мелкое поле.                    */
   @media (hover: none) and (pointer: coarse) {
-    .input, .select, textarea { font-size: max(16px, var(--text-base)); }
+    /* ⚠️ `.textarea` и `.search-hero` В СПИСКЕ ОБЯЗАТЕЛЬНЫ, и это не
+       перестраховка (найдено проходом 20.08.2026). Элементный селектор
+       `textarea` имеет специфичность 0-0-1, а компонент объявлен КЛАССОМ
+       `.textarea` (0-1-0) с `text-base sm:text-sm` — класс выигрывал,
+       и поле оставалось 14px. Замерено на 390px: `.input` давал 16,
+       `.textarea` давал 14. Практический итог — поле «Коментар»
+       в оформлении заказа на витрине зумило страницу на фокусе и обратно
+       не отъезжало, ровно тот отказ, ради которого пол и заведён.
+       `.search-hero` не было вовсе, а это два самых частых поля продукта:
+       крупный поиск главной и экрана поиска. */
+    .input, .select, .textarea, textarea, .search-hero {
+      font-size: max(16px, var(--text-base));
+    }
   }
 
   /* Шеврон селекта. `appearance-none` снимает СИСТЕМНУЮ стрелку, а `pr-9`
@@ -630,7 +642,15 @@ html.dark [data-brand] {
   .input:disabled, .select:disabled, .textarea:disabled {
     opacity: 0.5; background: var(--color-surface-2); cursor: not-allowed;
   }
-  .input:read-only, .select:read-only, .textarea:read-only {
+  /* ⚠️ СЕЛЕКТОР ЭЛЕМЕНТНЫЙ, и это починка 20.08.2026. `:read-only`
+     по спецификации совпадает с ЛЮБЫМ нередактируемым элементом, а не
+     только с полем: `<div class="input">` попадает под него ВСЕГДА.
+     Составное поле, у которого класс висит на обёртке (рамка плюс
+     приписка «+380» слева), красилось как ВЫКЛЮЧЕННОЕ — второй
+     поверхностью с пунктирной границей, и `.input:focus` не срабатывал
+     вовсе. Единственное обязательное поле анкеты регистрации стояло
+     серым среди белых. */
+  input.input:read-only, select.select:read-only, textarea.textarea:read-only {
     background: var(--color-surface-2); border-style: dashed;
   }
   /* Специфичность поднята составным селектором (.input.input-error), а не
@@ -1496,7 +1516,13 @@ html.dark [data-brand] {
 
   /* ── Вход и регистрация ──────────────────────────────────── */
 
-  .auth-page { @apply flex min-h-dvh flex-col; }
+  /* Запас под клавиатуру. В браузере хватило бы одного `dvh` — он при
+     выезде клавиатуры уменьшается сам. В ОБЁРТКЕ не хватает: там
+     `Keyboard.resize: 'none'`, веб-вью не ужимается, `dvh` остаётся
+     прежним, и кнопка «Увійти» с полем пароля уезжают ПОД клавиатуру,
+     а прокрутить к ним нечего — страница ровно в экран. Без клавиатуры
+     `--kb` равен нулю и правило не меняет ничего. */
+  .auth-page { @apply flex min-h-dvh flex-col; padding-bottom: var(--kb, 0px); }
 
   .auth-topbar {
     @apply flex items-center justify-between gap-4 px-4 sm:px-6;
@@ -1534,7 +1560,7 @@ html.dark [data-brand] {
   }
   .auth-panel-title {
     @apply flex items-center gap-2.5 font-bold;
-    font-size: 26px;
+    font-size: calc(24px * var(--type-scale));
     letter-spacing: -0.02em;
   }
   .auth-panel-tagline {
@@ -1556,7 +1582,7 @@ html.dark [data-brand] {
     height: 20px;
     border-radius: 999px;
     background: rgb(255 255 255 / 0.2);
-    font-size: 11px;
+    font-size: calc(12px * var(--type-scale));
   }
   .auth-panel-foot { @apply text-center; font-size: 13px; opacity: 0.72; }
 
@@ -1628,7 +1654,7 @@ html.dark [data-brand] {
     @apply grid place-items-center;
     width: 40px;
     height: 40px;
-    font-size: 18px;
+    font-size: calc(17px * var(--type-scale));
     border-radius: var(--radius-control);
     background: var(--color-accent-soft);
     color: var(--color-accent-ink);
@@ -1725,7 +1751,14 @@ html[data-native] .web-only { display: none; }
    надо помнить ставить, а правило работает и на том, что допишут
    завтра. Содержимое страниц остаётся — оно и есть приложение. */
 html[data-native] .topbar { display: none; }
-html[data-native] .topbar + * { padding-top: env(safe-area-inset-top); }
+/* ⚠️ `margin-top`, А НЕ `padding-top` — это ПОЧИНКА того же дня.
+   Правило незаслоённое и выигрывает у любой утилиты Tailwind, поэтому
+   `padding-top` ЗАТИРАЛ собственный отступ элемента целиком: в обёртке
+   `/search` терял свои 40px, `/privacy` — 48px, и заголовок вставал
+   вплотную к краю экрана. На Android, где выреза нет, `env()` равен нулю
+   и потеря была полной. `margin-top` складывается с собственным
+   отступом элемента, а не заменяет его. */
+html[data-native] .topbar + * { margin-top: env(safe-area-inset-top); }
 html[data-native] footer.divider { display: none; }
 
 /* Обратное правило: разметка, которая существует только в обёртке.
@@ -1982,8 +2015,8 @@ html[data-native] body:has(input:focus, textarea:focus) .bottomnav { display: no
 .legal h2 {
   margin-top: 32px;
   margin-bottom: 10px;
-  font-size: 19px;
-  line-height: 24px;
+  font-size: calc(17px * var(--type-scale));
+  line-height: calc(22px * var(--type-scale));
   font-weight: 650;
   letter-spacing: -0.015em;
   color: var(--color-text);
@@ -2425,6 +2458,12 @@ body.kb-open .m-actionbar {
   color: var(--color-accent-ink);
 }
 /* В верхней полосе веба марка мельче — там это ссылка, а не герой. */
+/* Знак — ССЫЛКА, и её зона нажатия равна высоте строки: замерено
+   77×15 на 390px, втрое ниже порога 44px. Запас невидимый, кегль
+   и отступы полосы не меняются — тот же приём, что у `.btn-ghost`. */
+.brand-topbar {
+  display: inline-flex; align-items: center; min-height: var(--tap-min);
+}
 .brand-topbar .brand-word { font-size: var(--text-lg); }
 
 /* ── Высокая кнопка ─────────────────────────────────────────────
