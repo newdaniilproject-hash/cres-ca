@@ -125,11 +125,16 @@ export function BookingsClient({
                 {t('bookings.week.current')}
               </Link>
             )}
-            <Link href={weekHref(shiftDay(weekStart, -7))} className="btn-icon"
+            {/* Стрелки — обведённые квадраты 44px, как в §2, а не голые
+                значки: на белой карточке-шапке `.btn-icon` без рамки
+                не читается кнопкой вовсе. Ширина утилитой поверх
+                `.btn-secondary` — её горизонтальный отступ рассчитан
+                на подпись, которой здесь нет. */}
+            <Link href={weekHref(shiftDay(weekStart, -7))} className="btn-secondary w-11 !px-0"
                   aria-label={t('bookings.week.prev.aria')}>
               <IconBack size={20} />
             </Link>
-            <Link href={weekHref(shiftDay(weekStart, 7))} className="btn-icon"
+            <Link href={weekHref(shiftDay(weekStart, 7))} className="btn-secondary w-11 !px-0"
                   aria-label={t('bookings.week.next.aria')}>
               <IconChevronRight size={20} />
             </Link>
@@ -138,40 +143,50 @@ export function BookingsClient({
         {canWrite && <NewBookingButton tenantId={tenantId} className="btn-primary shrink-0" />}
       </div>
 
-      <div style={{
-        display: 'flex', gap: 4, padding: 4,
-        borderRadius: 'var(--radius-card)',
-        border: '1px solid var(--color-border)',
-        background: 'var(--color-surface)',
-      }}>
-        {seg.map(([href, text, active, Icon]) => (
-          <Link key={href} href={href}
-                style={{
-                  flex: 1, minHeight: 'var(--tap-min)',
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  gap: 6,
-                  borderRadius: 'var(--radius-plate)',
-                  fontSize: 13, fontWeight: 650,
-                  background: active ? 'var(--color-accent-soft)' : undefined,
-                  color: active ? 'var(--color-accent-ink)' : 'var(--color-muted)',
-                }}>
-            <Icon size={16} />
-            {text}
-          </Link>
-        ))}
-      </div>
+      {/* Переключатель вида и вход в карточки мастеров — ОДНОЙ строкой
+          на широком экране и двумя на телефоне.
 
-      <div className="flex items-center justify-between gap-2">
-        <Link href="/app/bookings/staff" className="btn-secondary t-sm">
-          {t('bookings.toStaff')}
-        </Link>
-        {/* Единственный вход в создание записи из кабинета — и он один
-            на все три вида: они показывают одни и те же записи, и вторая
-            кнопка внутри вида была бы вторым входом в одно действие (та же
-            ошибка, что разбиралась на складе, М31). На lg кнопка живёт
-            в веб-хедере выше — этот экземпляр прячется, а не дублируется.
-            Разбор самой формы — в шапке `new-booking.tsx`. */}
-        {canWrite && <NewBookingButton tenantId={tenantId} className="btn-primary t-sm lg:hidden" />}
+          На lg переключатель перестаёт тянуться во всю ширину: три подписи,
+          растянутые на 1140px, читаются не переключателем, а тремя
+          вкладками страницы, и между «Календар» и «Тиждень» получается
+          пол-экрана пустоты. Ширина по содержимому плюс «Майстри» справа
+          снимают с экрана целый ряд — тот самый, которого в макете нет. */}
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex lg:flex-none" style={{
+          gap: 4, padding: 4,
+          borderRadius: 'var(--radius-card)',
+          border: '1px solid var(--color-border)',
+          background: 'var(--color-surface)',
+        }}>
+          {seg.map(([href, text, active, Icon]) => (
+            <Link key={href} href={href} className="flex-1 lg:flex-none lg:px-5"
+                  style={{
+                    minHeight: 'var(--tap-min)',
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    gap: 6,
+                    borderRadius: 'var(--radius-plate)',
+                    fontSize: 13, fontWeight: 650,
+                    background: active ? 'var(--color-accent-soft)' : undefined,
+                    color: active ? 'var(--color-accent-ink)' : 'var(--color-muted)',
+                  }}>
+              <Icon size={16} />
+              {text}
+            </Link>
+          ))}
+        </div>
+
+        <div className="flex items-center justify-between gap-2">
+          <Link href="/app/bookings/staff" className="btn-secondary t-sm">
+            {t('bookings.toStaff')}
+          </Link>
+          {/* Единственный вход в создание записи из кабинета — и он один
+              на все три вида: они показывают одни и те же записи, и вторая
+              кнопка внутри вида была бы вторым входом в одно действие (та же
+              ошибка, что разбиралась на складе, М31). На lg кнопка живёт
+              в веб-хедере выше — этот экземпляр прячется, а не дублируется.
+              Разбор самой формы — в шапке `new-booking.tsx`. */}
+          {canWrite && <NewBookingButton tenantId={tenantId} className="btn-primary t-sm lg:hidden" />}
+        </div>
       </div>
     </>
   )

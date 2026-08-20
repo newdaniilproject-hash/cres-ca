@@ -4,6 +4,11 @@ import { currentMembership, can, hasModule } from '@/lib/tenant'
 import { ModuleOff } from '@/components/module-gate'
 import { AppShell } from '@/components/shell'
 import { OrdersClient } from './orders-client'
+// Список статусов — из общего модуля, а не своей копией. Копия здесь
+// была вынужденной, пока перечисление жило в клиентском `orders-client`;
+// теперь оно в `./status` (без `'use client'`), и вторая копия молча
+// разошлась бы с первой на первой же миграции.
+import { ORDER_STATUSES } from './status'
 import { getT } from '@/lib/i18n/server'
 
 export const dynamic = 'force-dynamic'
@@ -14,14 +19,6 @@ export async function generateMetadata() {
   const t = await getT()
   return { title: t('orders.meta.title') }
 }
-
-// Значения enum order_status. Список повторяет тот, что в orders-client:
-// импортировать его оттуда нельзя — серверный компонент получил бы
-// не массив, а ссылку на клиентский модуль, и упал бы на первом же .includes.
-const ORDER_STATUSES = [
-  'new', 'confirmed', 'awaiting_payment', 'paid', 'packing',
-  'shipped', 'delivered', 'completed', 'cancelled', 'returned',
-]
 
 export default async function OrdersPage({
   searchParams,
@@ -36,9 +33,26 @@ export default async function OrdersPage({
   const { status } = await searchParams
   // Чужое значение в адресе не должно уходить в запрос: незнакомый статус
   // не enum, и база ответила бы ошибкой вместо пустого списка.
-  const active = status && ORDER_STATUSES.includes(status) ? status : 'all'
+  //
+  // `working` — единственное значение, которого в перечислении НЕТ, и оно
+  // здесь не «ещё один статус», а починка плитки. Плитка «В роботі» знает
+  // своё число, но вела на «Усі» — то есть говорила «дев'ять» и открывала
+  // сто двадцать восемь. Число, которое нельзя открыть, заставляет искать
+  // эти девять глазами по списку, а два разных числа на одну дверь читаются
+  // как ошибка счёта.
+  const active = status === 'working' || (status && ORDER_STATUSES.includes(status))
+    ? status
+    : 'all'
 
   const supabase = await createClient()
+
+  // «В роботі» — не отдельный статус, а всё, что уже принято и ещё
+  // не закрыто: от `confirmed` до `delivered`. `new` из него исключён
+  // намеренно — у него своя плитка, и заказ, посчитанный дважды, делает
+  // сумму плиток больше «усього». Один список и на счётчик, и на отбор:
+  // две копии разошлись бы, и плитка показывала бы одно число, а список
+  // под ней — другое.
+  const IN_WORK = ['confirmed', 'awaiting_payment', 'paid', 'packing', 'shipped', 'delivered']
 
   // ⚠️ `contact_phone` ЗДЕСЬ НЕ ЗАПРАШИВАЕТСЯ, и это то же решение, что
   // на экране клиентов. Телефон покупателя в СПИСКЕ читается глазами
@@ -56,7 +70,8 @@ export default async function OrdersPage({
       { count: 'exact' },
     )
     .eq('tenant_id', m.tenantId)
-  if (active !== 'all') query = query.eq('status', active)
+  if (active === 'working') query = query.in('status', IN_WORK)
+  else if (active !== 'all') query = query.eq('status', active)
 
   // Счётчики шапки — тремя запросами БЕЗ строк (`head: true`): считать их
   // из выданной сотни значило бы показывать «усього 100» у заведения
@@ -64,11 +79,8 @@ export default async function OrdersPage({
   // виконані)» — три величины и ровно они, потому что отвечают на
   // «сколько всего», «что требует меня» и «что закрыто».
   //
-  // Четвёртая величина «в роботі» (§19) — это не отдельный статус, а всё,
-  // что уже принято и ещё не закрыто: от `confirmed` до `delivered`.
-  // `new` из него исключён намеренно — у него своя плитка, и заказ,
-  // посчитанный дважды, делает сумму плиток больше «усього».
-  const IN_WORK = ['confirmed', 'awaiting_payment', 'paid', 'packing', 'shipped', 'delivered']
+  // Четвёртая величина «в роботі» (§19) считается по тому же `IN_WORK`,
+  // по которому идёт её отбор, — разбор выше.
   const countOf = (status?: string | string[]) => {
     let q = supabase.from('v_orders')
       .select('id', { count: 'exact', head: true })

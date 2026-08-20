@@ -277,6 +277,36 @@ export function CustomersClient({
         </div>
       </div>
 
+      {/* ── CRESKO Web §3: смуга вкладок відбору (тільки lg) ──────────
+          У хендоффі тут «Всі клієнти / Нові / Постійні / VIP / Неактивні».
+          Наші три — це ті самі відбори, які РЕАЛЬНО вміє сторінка
+          (`?filter=`): вся база, були цього місяця, без жодного
+          замовлення. «Постійні» і «VIP» — теги, а не стани, і вкладка
+          під них показувала б порожньо тому, хто тегів не веде.
+
+          Без цієї смуги десктоп лишався без жодних дверей до відбору:
+          на телефоні три плитки-лічильники, а тут — нічого. Число поруч
+          з підписом стоїть з тієї ж причини, з якої воно стоїть у плитці:
+          вкладка «Без замовлень» без цифри не каже, чи є кого дивитись. */}
+      {customers.length > 0 && (
+        <div className="wtabs mb-4 hidden lg:flex">
+          {([
+            ['all', '/app/customers', stats.all],
+            ['month', '/app/customers?filter=month', stats.month],
+            ['idle', '/app/customers?filter=idle', stats.idle],
+          ] as const).map(([key, href, n]) => (
+            <button key={key} type="button" className="wtab"
+                    data-active={active === key ? 'true' : undefined}
+                    onClick={() => router.push(href)}>
+              {t(`customers.stats.${key}`)}
+              <span className="tabular ml-1.5" style={{ color: 'var(--color-faint)' }}>
+                {t.number(n)}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* README, розділ G: рядок клієнта — аватар, ім'я, бейдж категорії,
           останній візит, статистика. Телефона в этой строке НЕТ и быть
           не может: контакт отдаёт `customer_card` с проверкой права
@@ -454,17 +484,17 @@ export function CustomersClient({
                           style={{ width: 36, height: 36, fontWeight: 650 }}>
                       {c.name.trim().charAt(0).toUpperCase()}
                     </span>
-                    <span className="min-w-0">
+                    {/* Имя и метка — ОДНОЙ строкой, как в §3. Меткой под
+                        именем строка становилась двухъярусной у одних
+                        клиентов и одноярусной у других, и таблица шла
+                        рваным шагом: 48px, 64px, 48px. */}
+                    <span className="flex min-w-0 items-center gap-2">
                       {/* Имя клиента — данные заклада, не переводится. */}
-                      <span className="block truncate font-semibold"
+                      <span className="truncate font-semibold"
                             style={{ color: 'var(--color-text)' }}>{c.name}</span>
-                      {(c.tags ?? []).length > 0 && (
-                        <span className="mt-0.5 flex flex-wrap gap-1">
-                          {(c.tags ?? []).slice(0, 2).map((tag) => (
-                            <span key={tag} className="badge">{tag}</span>
-                          ))}
-                        </span>
-                      )}
+                      {(c.tags ?? []).slice(0, 1).map((tag) => (
+                        <span key={tag} className="badge shrink-0">{tag}</span>
+                      ))}
                     </span>
                   </span>
                   <span>
@@ -486,9 +516,20 @@ export function CustomersClient({
                   </span>
                 </button>
               ))}
+              {/* Подвал §3 говорит «Всього клієнтів: 248», и наш обязан
+                  говорить то же — но ЧЕСТНО: список обрезан сотней строк,
+                  а счётчик приходит по всей базе и по текущему отбору
+                  (см. `page.tsx`). «Разом: 7» под семью видимыми строками
+                  у заведения с двумя сотнями клиентов — не подвал, а
+                  повтор того, что и так на экране. */}
               <div className="wtable-foot">
                 <span className="tabular">
-                  {t('customers.web.table.total', { n: t.number(customers.length) })}
+                  {t('customers.web.table.shown', {
+                    shown: t.number(customers.length),
+                    total: t.number(
+                      active === 'month' ? stats.month : active === 'idle' ? stats.idle : stats.all,
+                    ),
+                  })}
                 </span>
               </div>
             </div>

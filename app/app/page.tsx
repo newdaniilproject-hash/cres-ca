@@ -4,8 +4,8 @@ import { createClient } from '@/lib/supabase/server'
 import { currentMembership, currentUserId, can, hasModule } from '@/lib/tenant'
 import { AppShell } from '@/components/shell'
 import { getT } from '@/lib/i18n/server'
-import { IconBox, IconCalendar, IconClock } from '@/components/icons'
 import { TodayMobile, type TodayAttention } from './today-mobile'
+import { TodayWeb } from './today-web'
 
 export const dynamic = 'force-dynamic'
 
@@ -250,190 +250,53 @@ export default async function AppHome() {
 
       {/* ── CRESKO Web: дашборд «Сьогодні» (только lg) ─────────────
           README §1: H1 29px с датой, два ряда по три карточки.
-          Данные ТЕ ЖЕ, что у мобильных секций ниже, — разметка своя,
-          источник один (правило «общий слой вместо паритета»). */}
-      <div className="mb-5 hidden items-center justify-between lg:flex">
-        <div className="flex items-baseline gap-3">
-          <h1 className="webh1">{t('home.web.title')}</h1>
-          <span className="flex items-center gap-1.5" style={{ fontSize: 14, color: 'var(--web-muted-soft, var(--color-muted))' }}>
-            <IconCalendar size={15} />
-            {t.date(new Date(), { day: 'numeric', month: 'long', weekday: 'long' })}
-          </span>
-        </div>
-        {seeBookings && (
-          <div className="flex gap-2">
-            <Link href="/app/bookings" className="btn-secondary">{t('home.web.calendar')}</Link>
-            <Link href="/app/bookings" className="btn-primary">{t('home.web.addBooking')}</Link>
-          </div>
-        )}
-      </div>
-      <div className="hidden gap-5 lg:grid lg:grid-cols-3">
-        {seeBookings && (
-          <section className="webcard">
-            <div className="mb-3 flex items-center justify-between">
-              <p className="webh2" style={{ fontSize: 15 }}>{t('home.bookings.title')}</p>
-              {todays.length > 0 && <span className="badge tabular">{t.number(todays.length)}</span>}
-            </div>
-            {todays.length === 0
-              ? <p className="t-sm prose-muted">{t('home.bookings.empty')}</p>
-              : todays.slice(0, 4).map((b) => {
-                  const start = new Date(String(b.period).match(/"([^"]+)"/)?.[1] ?? '')
-                  return (
-                    <div key={b.id} className="flex items-center gap-3 py-2"
-                         style={{ borderBottom: '1px dashed var(--web-border-dash, var(--color-border))' }}>
-                      <span className="list-anchor shrink-0"
-                            style={{ width: 36, height: 36, background: 'var(--color-accent-soft)', color: 'var(--color-accent-ink)' }}>
-                        {(b.contact_name || '?').trim().charAt(0).toUpperCase()}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate" style={{ fontSize: 14, fontWeight: 650 }}>{b.contact_name}</span>
-                        <span className="block truncate" style={{ fontSize: 12, color: 'var(--color-muted)' }}>
-                          {b.title} · {b.variant_name}
-                        </span>
-                      </span>
-                      <span className="tabular shrink-0" style={{ fontSize: 13, fontWeight: 650 }}>
-                        {t.dateTime(start, { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    </div>
-                  )
-                })}
-            <Link href="/app/bookings" className="webcard-link">{t('home.web.allBookings')}</Link>
-          </section>
-        )}
-        {seeContainers && (
-          <section className="webcard">
-            <div className="mb-3 flex items-center justify-between">
-              <p className="webh2" style={{ fontSize: 15 }}>{t('home.expiring.title')}</p>
-              {(expiring ?? []).length > 0 && <span className="badge-danger tabular">{t.number((expiring ?? []).length)}</span>}
-            </div>
-            {(expiring ?? []).length === 0
-              ? <p className="t-sm prose-muted">{t('home.expiring.empty')}</p>
-              : (expiring ?? []).slice(0, 4).map((c) => {
-                  const days = Math.ceil((new Date(c.use_by as string).getTime() - Date.now()) / 864e5)
-                  const toneVar = days <= 1 ? '--color-danger' : days <= 5 ? '--color-warn' : '--color-success'
-                  return (
-                    <div key={c.code} className="flex items-center gap-3 py-2"
-                         style={{ borderBottom: '1px dashed var(--web-border-dash, var(--color-border))' }}>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate" style={{ fontSize: 14, fontWeight: 650 }}>{c.material_name}</span>
-                        <span className="block truncate" style={{ fontSize: 12, color: 'var(--color-muted)' }}>
-                          {t('home.expiring.container', { code: c.code })}
-                        </span>
-                      </span>
-                      <span className="tabular shrink-0 text-right">
-                        <span className="block" style={{ fontSize: 13, fontWeight: 650, color: `var(${toneVar})` }}>
-                          {t.date(c.use_by)}
-                        </span>
-                        <span className="block" style={{ fontSize: 11, color: 'var(--color-muted)' }}>
-                          {t.plural('inventory.days', Math.max(days, 0))}
-                        </span>
-                      </span>
-                    </div>
-                  )
-                })}
-            {seeStock && <Link href="/app/inventory" className="webcard-link">{t('home.web.allExpiry')}</Link>}
-          </section>
-        )}
-        {seeStock && (
-          <section className="webcard">
-            <div className="mb-3 flex items-center justify-between">
-              <p className="webh2" style={{ fontSize: 15 }}>{t('home.reorder.title')}</p>
-              {(low ?? []).length > 0 && <span className="badge-warn tabular">{t.number((low ?? []).length)}</span>}
-            </div>
-            {(low ?? []).length === 0
-              ? <p className="t-sm prose-muted">{t('home.reorder.empty')}</p>
-              : (low ?? []).slice(0, 6).map((r, i) => (
-                  <div key={i} className="flex items-center gap-3 py-2"
-                       style={{ borderBottom: '1px dashed var(--web-border-dash, var(--color-border))' }}>
-                    <span className="wmetric-icon shrink-0" data-tone={i % 2 ? 'violet' : 'blue'}
-                          style={{ width: 34, height: 34 }}>
-                      <IconBox size={17} />
-                    </span>
-                    <span className="min-w-0 flex-1 truncate" style={{ fontSize: 14, fontWeight: 650 }}>{r.title}</span>
-                    <span className="tabular shrink-0" style={{ fontSize: 12, color: 'var(--color-muted)' }}>
-                      {t('home.reorder.item', { n: t.number(Number(r.to_order)) })}
-                    </span>
-                  </div>
-                ))}
-            <Link href="/app/inventory/reorder" className="webcard-link">{t('home.web.makeOrder')}</Link>
-          </section>
-        )}
-        {seeFinance && (
-          <section className="webcard">
-            <p className="webh2 mb-3" style={{ fontSize: 15 }}>{t('home.web.finance')}</p>
-            <div className="mb-3 grid grid-cols-2 gap-3">
-              <div className="rounded-xl p-3" style={{ background: 'var(--color-success-soft)' }}>
-                <p style={{ fontSize: 12, color: 'var(--color-muted)' }}>{t('finance.form.income')}</p>
-                <p className="tabular" style={{ fontSize: 19, fontWeight: 800, color: 'var(--color-success)' }}>
-                  {t.money(monthIncome)}
-                </p>
-              </div>
-              <div className="rounded-xl p-3" style={{ background: 'var(--color-danger-soft)' }}>
-                <p style={{ fontSize: 12, color: 'var(--color-muted)' }}>{t('finance.form.expense')}</p>
-                <p className="tabular" style={{ fontSize: 19, fontWeight: 800, color: 'var(--color-danger)' }}>
-                  {t.money(monthExpense)}
-                </p>
-              </div>
-            </div>
-            {/* Спарклайн дохода по дням: кривая через средние точки (README),
-                заливка 10% тона, точки на узлах. Пусто — не рисуем осей в никуда. */}
-            {sparkPath && (
-              <svg viewBox="0 0 300 104" className="w-full" style={{ height: 104 }} aria-hidden>
-                <path d={`${sparkPath} L 300 104 L 0 104 Z`} fill="var(--tone-blue-soft)" stroke="none" />
-                <path d={sparkPath} fill="none" stroke="var(--tone-blue)" strokeWidth="2.4" />
-                {sparkPts.map((p, i) => (
-                  <circle key={i} cx={p[0]} cy={p[1]} r="3.4" fill="var(--tone-blue)" />
-                ))}
-              </svg>
-            )}
-            <Link href="/app/finance" className="webcard-link">{t('home.web.allFinance')}</Link>
-          </section>
-        )}
-        {seeOrders && (
-          <section className="webcard">
-            <p className="webh2 mb-3" style={{ fontSize: 15 }}>{t('home.web.orders')}</p>
-            {lastOrders.length === 0
-              ? <p className="t-sm prose-muted">{t('home.web.orders.empty')}</p>
-              : lastOrders.map((o) => (
-                  <div key={o.id} className="flex items-center gap-3 py-2"
-                       style={{ borderBottom: '1px dashed var(--web-border-dash, var(--color-border))' }}>
-                    <span className="tabular shrink-0" style={{ fontSize: 13, fontWeight: 650 }}>№ {o.number}</span>
-                    <span className="min-w-0 flex-1 truncate" style={{ fontSize: 13, color: 'var(--web-text-secondary, var(--color-muted))' }}>
-                      {o.contact_name}
-                    </span>
-                    <span className="tabular shrink-0" style={{ fontSize: 13, fontWeight: 700 }}>{t.money(Number(o.total))}</span>
-                  </div>
-                ))}
-            <Link href="/app/orders" className="webcard-link">{t('home.web.allOrders')}</Link>
-          </section>
-        )}
-        {seeReminders && (
-          <section className="webcard">
-            <p className="webh2 mb-3" style={{ fontSize: 15 }}>{t('home.web.reminders')}</p>
-            {reminders.length === 0
-              ? <p className="t-sm prose-muted">{t('home.web.reminders.empty')}</p>
-              : reminders.map((r, i) => (
-                  <div key={i} className="flex items-center gap-3 py-2"
-                       style={{ borderBottom: '1px dashed var(--web-border-dash, var(--color-border))' }}>
-                    <span className="wmetric-icon shrink-0" data-tone="amber" style={{ width: 34, height: 34 }}>
-                      <IconClock size={17} />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      {/* Событие очереди — служебный код; человеку — подпись. */}
-                      <span className="block truncate" style={{ fontSize: 14, fontWeight: 650 }}>
-                        {String(r.event).startsWith('booking')
-                          ? t('home.web.reminder.booking')
-                          : t('home.web.reminder.other')}
-                      </span>
-                      <span className="block truncate" style={{ fontSize: 12, color: 'var(--color-muted)' }}>
-                        {t.dateTime(r.send_after)}
-                      </span>
-                    </span>
-                  </div>
-                ))}
-          </section>
-        )}
-      </div>
+          Данные ТЕ ЖЕ, что у мобильных секций выше, — разметка своя,
+          источник один (правило «общий слой вместо паритета»).
+          Сама разметка — в `today-web.tsx`, разбор выноса в его шапке. */}
+      <TodayWeb
+        t={t}
+        tenantId={m.tenantId}
+        // Кнопка «Додати запис» рисуется по тому же праву, которое
+        // проверяет внутри себя сам `create_booking` (0105).
+        canBook={can(m, 'orders.write')}
+        showBookings={seeBookings}
+        showExpiring={seeContainers}
+        showStock={seeStock}
+        showFinance={seeFinance}
+        showOrders={seeOrders}
+        showReminders={seeReminders}
+        bookings={todays.map((b) => ({
+          id: b.id as string,
+          startISO: String(b.period).match(/"([^"]+)"/)?.[1] ?? '',
+          name: (b.contact_name as string) ?? '',
+          service: [b.title, b.variant_name].filter(Boolean).join(' · '),
+        }))}
+        expiring={(expiring ?? []).map((c) => ({
+          code: c.code as string,
+          useBy: c.use_by as string,
+          title: c.material_name as string,
+        }))}
+        low={(low ?? []).map((r) => ({
+          title: r.title as string,
+          toOrder: Number(r.to_order),
+        }))}
+        orders={lastOrders.map((o) => ({
+          id: o.id as string,
+          number: Number(o.number),
+          name: (o.contact_name as string) ?? '',
+          total: Number(o.total),
+          status: o.status as string,
+          createdAt: o.created_at as string,
+        }))}
+        reminders={reminders.map((r) => ({
+          event: String(r.event),
+          sendAfter: String(r.send_after),
+        }))}
+        income={monthIncome}
+        expense={monthExpense}
+        sparkPath={sparkPath}
+        sparkPts={sparkPts}
+      />
     </AppShell>
   )
 }

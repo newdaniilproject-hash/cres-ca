@@ -9,49 +9,10 @@ import {
   IconBag, IconCheck, IconChevronRight, IconClock, IconInbox, IconPlus,
 } from '@/components/icons'
 import { NewOrderSheet } from './new-order'
-
-// Значения enum order_status из 0006_customers_orders.sql, в том же порядке.
-// Порядок здесь несёт смысл: по нему сортируются кнопки переходов
-// в карточке заказа, чтобы «вперёд по процессу» шло слева направо.
-const STATUSES = [
-  'new', 'confirmed', 'awaiting_payment', 'paid', 'packing',
-  'shipped', 'delivered', 'completed', 'cancelled', 'returned',
-] as const
-type OrderStatus = (typeof STATUSES)[number]
-export const ORDER_STATUSES: string[] = [...STATUSES]
-
-// Подпись к статусу. Само значение (`awaiting_payment`) не переводится:
-// это значение перечисления базы, по нему идут запрос и матрица переходов.
-// Переводится ПОДПИСЬ. Неизвестный статус выводится как есть — новый
-// появится миграцией раньше, чем в словаре.
-export const orderLabel = (t: T, status: string): string =>
-  ((STATUSES as readonly string[]).includes(status)
-    ? t(`orders.status.${status as OrderStatus}`)
-    : status)
-
-// Цвет значка — по смыслу для продавца, а не по месту в цепочке:
-// акцент — «требует моего действия», жёлтый — «ждём покупателя»,
-// зелёный — «деньги/товар дошли», красный — «сделка не состоялась».
-export function orderBadge(status: string): string {
-  switch (status) {
-    case 'new':
-    case 'confirmed':
-    case 'packing':
-    case 'shipped':
-      return 'badge-accent'
-    case 'awaiting_payment':
-    case 'returned':
-      return 'badge-warn'
-    case 'paid':
-    case 'delivered':
-    case 'completed':
-      return 'badge-success'
-    case 'cancelled':
-      return 'badge-danger'
-    default:
-      return 'badge'
-  }
-}
+// Перечисление статусов, подпись и цвет значка переехали в `./status` —
+// модуль БЕЗ `'use client'`, потому что их читает и серверная карточка
+// «Останні замовлення» на «Сьогодні». Разбор — в шапке того файла.
+import { ORDER_STATUSES, orderBadge, orderLabel } from './status'
 
 // Откуда пришёл заказ. То же правило: значение `storefront` — служебное,
 // переводится подпись. Неизвестный источник не подписывается вовсе —
@@ -181,50 +142,37 @@ export function OrdersClient({
           в page.tsx), а не отдельный статус. Числа кликабельные по той же
           причине, что и на телефоне: плитка, сообщающая «нових: 4» и не
           дающая их увидеть, заставляет искать их фильтром руками.
-          «Усього» и «В роботі» ведут на «Усі»: одного адреса под набор
-          из шести статусов у списка нет, и врать переходом хуже, чем
-          показать всё. */}
+
+          Каждая плитка ведёт в СВОЙ отбор, включая «В роботі»: под её
+          набор из шести статусов у списка теперь есть адрес
+          (`?status=working`, разбор — в `page.tsx`). Раньше она вела
+          на «Усі», то есть говорила «дев'ять» и открывала сто
+          двадцать восемь. Выбранная подсвечивается (`aria-pressed`) —
+          без этого после нажатия непонятно, что сейчас показано. */}
       <section className="hidden gap-4 lg:grid lg:grid-cols-4">
-        <button type="button" className="wmetric" onClick={() => go('all')}
-                style={{ minHeight: 'var(--tap-min)', textAlign: 'left' }}>
-          <span className="min-w-0">
-            <span className="wmetric-label block">{t('orders.stats.all')}</span>
-            <span className="wmetric-value tabular block">{t.number(stats.all)}</span>
-          </span>
-          <span aria-hidden className="wmetric-icon" data-tone="violet">
-            <IconBag size={18} />
-          </span>
-        </button>
-        <button type="button" className="wmetric" onClick={() => go('new')}
-                style={{ minHeight: 'var(--tap-min)', textAlign: 'left' }}>
-          <span className="min-w-0">
-            <span className="wmetric-label block">{t('orders.stats.new')}</span>
-            <span className="wmetric-value tabular block">{t.number(stats.fresh)}</span>
-          </span>
-          <span aria-hidden className="wmetric-icon" data-tone="blue">
-            <IconInbox size={18} />
-          </span>
-        </button>
-        <button type="button" className="wmetric" onClick={() => go('all')}
-                style={{ minHeight: 'var(--tap-min)', textAlign: 'left' }}>
-          <span className="min-w-0">
-            <span className="wmetric-label block">{t('orders.stats.inWork')}</span>
-            <span className="wmetric-value tabular block">{t.number(stats.working)}</span>
-          </span>
-          <span aria-hidden className="wmetric-icon" data-tone="amber">
-            <IconClock size={18} />
-          </span>
-        </button>
-        <button type="button" className="wmetric" onClick={() => go('completed')}
-                style={{ minHeight: 'var(--tap-min)', textAlign: 'left' }}>
-          <span className="min-w-0">
-            <span className="wmetric-label block">{t('orders.stats.done')}</span>
-            <span className="wmetric-value tabular block">{t.number(stats.done)}</span>
-          </span>
-          <span aria-hidden className="wmetric-icon" data-tone="emerald">
-            <IconCheck size={18} />
-          </span>
-        </button>
+        {([
+          ['all', t('orders.stats.all'), stats.all, 'violet', IconBag],
+          ['new', t('orders.stats.new'), stats.fresh, 'blue', IconInbox],
+          ['working', t('orders.stats.inWork'), stats.working, 'amber', IconClock],
+          ['completed', t('orders.stats.done'), stats.done, 'emerald', IconCheck],
+        ] as const).map(([target, label, n, tone, Icon]) => (
+          <button key={target} type="button" className="wmetric"
+                  aria-pressed={active === target}
+                  onClick={() => go(target)}
+                  style={{
+                    minHeight: 'var(--tap-min)', textAlign: 'left',
+                    borderColor: active === target ? 'var(--color-accent)' : undefined,
+                    background: active === target ? 'var(--color-accent-soft)' : undefined,
+                  }}>
+            <span className="min-w-0">
+              <span className="wmetric-label block">{label}</span>
+              <span className="wmetric-value tabular block">{t.number(n)}</span>
+            </span>
+            <span aria-hidden className="wmetric-icon" data-tone={tone}>
+              <Icon size={18} />
+            </span>
+          </button>
+        ))}
       </section>
 
       {/* README, розділ G: «Статистика (усього / нові / виконані)».
@@ -250,35 +198,26 @@ export function OrdersClient({
         </button>
       </section>
 
-      {/* ⚠️ ЧИПОВ «Усі», «нове» и «завершено» ЗДЕСЬ БОЛЬШЕ НЕТ, И ЭТО
-          НЕ ПОТЕРЯ ФИЛЬТРА. Ровно эти три отбора уже стоят выше плитками,
-          и плитка при этом ещё и называет число — то есть чип был вторым
-          входом в то же самое, только беднее. Заодно ушли три из
-          одиннадцати позиций уезжающей вбок ленты, а плитка получила
-          состояние нажатости (`aria-pressed`), которого ей не хватало:
-          раньше выбранный отбор подсвечивался чипом, и снятая плитка
-          оставила бы человека без ответа на «а что сейчас показано».
+      {/* ⚠️ ЧИПОВ «Усі», «нове» и «завершено» ЗДЕСЬ НЕТ, И ЭТО НЕ ПОТЕРЯ
+          ФИЛЬТРА. Ровно эти три отбора уже стоят выше плитками, и плитка
+          при этом ещё и называет число — то есть чип был вторым входом
+          в то же самое, только беднее.
+
+          ⚠️ И ЛЕНТА ЗДЕСЬ ТЕПЕРЬ ОДНА НА ОБЕ РАСКЛАДКИ. До 20.08.2026 их
+          было две: узкая без трёх чипов и широкая ПОЛНАЯ — «на широком
+          экране плиток-фильтров нет». Это перестало быть правдой в тот
+          день, когда §19 принёс на десктоп четыре плитки: на широком
+          экране «Усі», «нове» и «завершено» лежали ДВАЖДЫ — плиткой
+          с числом и чипом без него, — а «Усього» и «В роботі» вели
+          в один и тот же адрес двумя разными числами. Плитка «В роботі»
+          теперь открывает свой настоящий отбор (`?status=working`),
+          и лента осталась одна.
 
           Остальные восемь статусов остаются лентой: их не назвать
           числами (плиток стало бы одиннадцать), а перенос на вторую
           строку смешал бы их со списком. */}
-      <div className="scroll-x rise-1 -mx-4 flex items-center gap-2 px-4 pb-1 sm:mx-0 sm:px-0 lg:hidden">
+      <div className="scroll-x rise-1 -mx-4 flex items-center gap-2 px-4 pb-1 sm:mx-0 sm:px-0">
         {ORDER_STATUSES.filter((s) => s !== 'new' && s !== 'completed').map((s) => (
-          <button key={s} onClick={() => go(s)}
-                  className={`${active === s ? 'chip-active' : 'chip'} shrink-0`}>
-            {orderLabel(t, s)}
-          </button>
-        ))}
-      </div>
-
-      {/* На широком экране плиток-фильтров нет (там метрики §19 ведут
-          на «Усі»), поэтому лента статусов остаётся полной. */}
-      <div className="scroll-x rise-1 hidden items-center gap-2 pb-1 lg:flex">
-        <button onClick={() => go('all')}
-                className={`${active === 'all' ? 'chip-active' : 'chip'} shrink-0`}>
-          {t('orders.filter.all')}
-        </button>
-        {ORDER_STATUSES.map((s) => (
           <button key={s} onClick={() => go(s)}
                   className={`${active === s ? 'chip-active' : 'chip'} shrink-0`}>
             {orderLabel(t, s)}
