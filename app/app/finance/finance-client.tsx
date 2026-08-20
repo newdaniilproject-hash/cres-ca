@@ -9,7 +9,9 @@ import { noteIfImmutable } from '@/lib/security-log'
 import type { T } from '@/lib/i18n/translate'
 import { dbErrorText } from '@/lib/errors/db'
 import { Sheet } from '@/components/sheet'
-import { IconList, IconMinus, IconMoney, IconPlus } from '@/components/icons'
+import {
+  IconCalendar, IconChevronRight, IconList, IconMinus, IconMoney, IconPlus,
+} from '@/components/icons'
 
 export type FinanceKind = 'income' | 'expense'
 
@@ -88,6 +90,89 @@ const PLOT_H = CH.h - CH.top - CH.bottom
 const BASE_Y = CH.top + PLOT_H
 
 /**
+ * Тренд-стрелка плитки (§15: рост — `success`, спад — `danger`,
+ * «без змін» — риска).
+ *
+ * Рисуется здесь, а не берётся из `components/icons.tsx`, по той же
+ * причине, по которой там нет и кривой дохода: это не значок навигации,
+ * а элемент ГРАФИКИ этого экрана — три состояния одной величины, у которых
+ * общий размер и общая геометрия с кривой ниже. Значок в общем наборе
+ * обязан читаться в любом разделе; этот без числа рядом не значит ничего.
+ */
+function Trend({ dir, color }: { dir: 'up' | 'down' | 'flat'; color: string }) {
+  return (
+    <svg aria-hidden width="20" height="20" viewBox="0 0 20 20" fill="none"
+         stroke={color} strokeWidth="1.9"
+         strokeLinecap="round" strokeLinejoin="round">
+      {dir === 'flat'
+        ? <path d="M4 10h12" />
+        : dir === 'up'
+        ? <><path d="M3.5 13.5L8 9l3 3 4.5-4.5" /><path d="M11.5 7.5h4v4" /></>
+        : <><path d="M3.5 6.5L8 11l3-3 4.5 4.5" /><path d="M11.5 12.5h4v-4" /></>}
+    </svg>
+  )
+}
+
+/**
+ * Одна плитка метрики §15: сверху плашка 44px и тренд-стрелка справа,
+ * ниже подпись, число 25/800 и дельта.
+ *
+ * Собственная раскладка, а не общий `.wmetric`: тот ставит значок СПРАВА
+ * от числа и живёт так на четырёх других экранах. Хендофф просит для
+ * финансов другой порядок, и переписать общий класс значило бы сдвинуть
+ * четыре чужих экрана ради одного.
+ */
+function Metric({ label, value, note, tone, icon, trend, good, danger }: {
+  label: string; value: string; note?: string
+  tone: 'blue' | 'amber' | 'rose' | 'emerald' | 'violet'
+  icon: React.ReactNode
+  /** Направление изменения — форма стрелки. */
+  trend: 'up' | 'down' | 'flat'
+  /**
+   * Хорошо ли это ДЛЯ ЭТОЙ величины — цвет стрелки и дельты.
+   * Разведено с направлением намеренно: выросшие расходы это стрелка
+   * вверх и красный, а не зелёный рост.
+   */
+  good?: boolean
+  danger?: boolean
+}) {
+  const color = trend === 'flat'
+    ? 'var(--web-faintest, var(--color-border-strong))'
+    : good ? 'var(--color-success)' : 'var(--color-danger)'
+  return (
+    <div style={{
+      background: 'var(--color-surface)',
+      border: '1px solid var(--color-border)',
+      borderRadius: 12,
+      padding: '16px 18px',
+    }}>
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <span aria-hidden className="wmetric-icon" data-tone={tone}
+              style={{ width: 44, height: 44, borderRadius: 12 }}>
+          {icon}
+        </span>
+        <Trend dir={trend} color={color} />
+      </div>
+      <p className="wmetric-label">{label}</p>
+      {/* Минус — единственное место, где цвет числа обязателен:
+          «−12 000» нейтральным цветом читается как сумма, а не как убыток. */}
+      <p className="wmetric-value tabular"
+         style={danger ? { color: 'var(--color-danger)' } : undefined}>
+        {value}
+      </p>
+      {/* Дельта цветом направления, а не серым: в хендоффе смысл несёт
+          именно она, а серая строка под числом читается как сноска. */}
+      {note && (
+        <p className="wmetric-note"
+           style={{ color: trend === 'flat' ? undefined : color }}>
+          {note}
+        </p>
+      )}
+    </div>
+  )
+}
+
+/**
  * Кривая дохода по дням. Сглаживание — кубическими Безье через средние
  * точки (тот же приём, что у спарклайна на «Сьогодні»): ломаная из
  * тридцати отрезков читается как шум, а не как динамика.
@@ -97,7 +182,12 @@ const BASE_Y = CH.top + PLOT_H
  */
 function IncomeChart({ t, series }: { t: T; series: { day: string; value: number }[] }) {
   const values = series.map((s) => s.value)
-  const max = Math.max(1, ...values)
+  // Потолок шкалы округляется ВВЕРХ до круглого числа (§15: 30k / 20k /
+  // 10k / 0). По сырому максимуму подписи выходили вида «13 744» — такую
+  // ось не читают, по ней сверяют, а сверять с 13 744 нечего.
+  const raw = Math.max(1, ...values)
+  const pow = 10 ** Math.floor(Math.log10(raw))
+  const max = Math.ceil(raw / pow) * pow
   const pts = series.map((s, i) => [
     CH.left + (series.length > 1 ? (i / (series.length - 1)) * PLOT_W : PLOT_W / 2),
     BASE_Y - (s.value / max) * PLOT_H,
@@ -124,27 +214,32 @@ function IncomeChart({ t, series }: { t: T; series: { day: string; value: number
                   stroke="var(--web-border-dash, var(--color-border))"
                   strokeWidth="1" strokeDasharray="4 5" />
             <text x={CH.left - 8} y={y + 4} textAnchor="end"
-                  style={{ fontSize: 11, fill: 'var(--color-muted)' }}>
+                  style={{ fontSize: 12, fill: 'var(--color-faint)' }}>
               {t.number(Math.round((max / 4) * (4 - i)), { maximumFractionDigits: 0 })}
             </text>
           </g>
         )
       })}
-      {/* Заливка — ровно 10% цвета линии: второй токен ради тени под
-          кривой развёл бы палитру на цвет и его призрак. */}
+      {/* Цвет кривой — `primaryDeep` из хендоффа (§15), а не зелёный «доход»:
+          на этом экране зелёное и красное уже заняты видом записи, и третья
+          зелёная сущность рядом с плиткой «Дохід» читается как её продолжение.
+          Заливка — ровно 10% того же цвета: второй токен ради тени под кривой
+          развёл бы палитру на цвет и его призрак. */}
       {series.length > 1 && (
         <path d={`${path} L ${CH.w - CH.right} ${BASE_Y} L ${CH.left} ${BASE_Y} Z`}
-              fill="var(--tone-emerald)" fillOpacity={0.1} />
+              fill="var(--web-primary-deep, var(--color-accent))" fillOpacity={0.1} />
       )}
-      <path d={path} fill="none" stroke="var(--tone-emerald)" strokeWidth="2.4"
+      <path d={path} fill="none"
+            stroke="var(--web-primary-deep, var(--color-accent))" strokeWidth="3"
             strokeLinecap="round" strokeLinejoin="round" />
       {pts.map((p, i) => (
-        <circle key={i} cx={p[0]} cy={p[1]} r="3.2" fill="var(--tone-emerald)" />
+        <circle key={i} cx={p[0]} cy={p[1]} r="4.6"
+                fill="var(--web-primary-deep, var(--color-accent))" />
       ))}
       {series.map((s, i) => (
         i % step === 0 || i === series.length - 1 ? (
-          <text key={s.day} x={pts[i][0]} y={CH.h - 8} textAnchor="middle"
-                style={{ fontSize: 11, fill: 'var(--color-muted)' }}>
+          <text key={s.day} x={pts[i][0]} y={CH.h - 6} textAnchor="middle"
+                style={{ fontSize: 12, fill: 'var(--color-faint)' }}>
             {t.date(`${s.day}T00:00:00`, { day: 'numeric', month: 'short' })}
           </text>
         ) : null
@@ -340,13 +435,18 @@ export function FinanceClient({
   const dIncome = delta(income, prevIncome)
   const dExpense = delta(expense, prevExpense)
   const dBalance = delta(balance, prevIncome - prevExpense)
+  // Форма стрелки: сравнивать не с чем — риска, а не выдуманный рост.
+  const dir = (d: { up: boolean } | null): 'up' | 'down' | 'flat' =>
+    d === null ? 'flat' : d.up ? 'up' : 'down'
 
   // Что показывает таблица десктопа: вкладка сужает уже загруженное окно.
   const shown = view === 'all' ? records : records.filter((r) => r.kind === view)
-  // Колонки таблицы транзакций. Пятая — действия, и она есть только
-  // у того, кто имеет право писать: строка с пустой колонкой под кнопки
-  // выглядит как отобранная функция, а не как её отсутствие.
-  const TGRID = canWrite ? '1.7fr .9fr .9fr .8fr auto' : '1.7fr .9fr .9fr .8fr'
+  // Колонки таблицы транзакций — из хендоффа §15 дословно. Пятая, шеврон
+  // 18px, есть только у того, кто имеет право писать: строка со стрелкой,
+  // которая ничего не открывает, — сломанная навигация.
+  const TGRID = canWrite ? '2fr 1fr .9fr 1.2fr 18px' : '2fr 1fr .9fr 1.2fr'
+  // Строка таблицы кнопка ровно тогда, когда есть что открыть.
+  const RowTag: React.ElementType = canWrite ? 'button' : 'div'
 
   return (
     <div className="flex flex-col gap-4">
@@ -390,16 +490,37 @@ export function FinanceClient({
       {/* Период — одной строкой с прокруткой, дата подписью под ней:
           три чипа и диапазон в одной строке на 390px не помещались,
           и диапазон переносился под чип, читаясь как его подпись. */}
-      <div className="scroll-x rise -mx-4 flex items-center gap-2 px-4 pb-1 sm:mx-0 sm:px-0">
-        {PERIODS.map((p: Period) => (
-          <button key={p}
-                  className={`${period === p ? 'chip-active' : 'chip'} shrink-0`}
-                  onClick={() => router.push(`/app/finance?period=${p}`)}>
-            {t(`finance.period.${p}`)}
-          </button>
-        ))}
+      {/* На широком экране диапазон переезжает В СТРОКУ пилюлей со значком
+          календаря (§15) — вместо отдельной серой строчки под чипами.
+          Это не второй переключатель: пилюля ничего не открывает, она
+          подписывает выбранное. Своя строка под чипами занимала высоту
+          и повторяла то, что уже сказал активный чип. */}
+      <div className="rise flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-3">
+        <span className="tabular hidden shrink-0 items-center gap-2 lg:inline-flex"
+              style={{
+                height: 42, padding: '0 16px', borderRadius: 99,
+                border: '1px solid var(--color-border-strong)',
+                background: 'var(--color-surface)',
+                fontSize: 14, fontWeight: 650, color: 'var(--color-text)',
+              }}>
+          <span aria-hidden style={{ color: 'var(--color-accent-ink)' }}>
+            <IconCalendar size={17} />
+          </span>
+          {day(t, from)} — {day(t, to)}
+        </span>
+        <div className="scroll-x -mx-4 flex items-center gap-2 px-4 pb-1 sm:mx-0 sm:px-0">
+          {PERIODS.map((p: Period) => (
+            <button key={p}
+                    className={`${period === p ? 'chip-active' : 'chip'} shrink-0`}
+                    onClick={() => router.push(`/app/finance?period=${p}`)}>
+              {t(`finance.period.${p}`)}
+            </button>
+          ))}
+        </div>
       </div>
-      <p className="tabular t-xs rise -mt-2 prose-muted">{day(t, from)} — {day(t, to)}</p>
+      <p className="tabular t-xs rise -mt-2 prose-muted lg:hidden">
+        {day(t, from)} — {day(t, to)}
+      </p>
 
       {/* Вкладки вида — только lg. На телефоне их нет намеренно: полоса
           периода уже стоит выше, и вторая полоса чипов рядом с ней
@@ -420,51 +541,20 @@ export function FinanceClient({
           Подпись под числом — дельта к прошлому периоду, и она стоит
           только там, где есть с чем сравнивать (см. `delta` выше). */}
       <section className="hidden gap-4 lg:grid lg:grid-cols-4">
-        <div className="wmetric">
-          <div className="min-w-0">
-            <p className="wmetric-label">{t('finance.total.income')}</p>
-            <p className="wmetric-value tabular">{t.money(income)}</p>
-            {dIncome && <p className="wmetric-note">{dIncome.text}</p>}
-          </div>
-          <span aria-hidden className="wmetric-icon" data-tone="emerald">
-            <IconPlus size={18} />
-          </span>
-        </div>
-        <div className="wmetric">
-          <div className="min-w-0">
-            <p className="wmetric-label">{t('finance.total.expense')}</p>
-            <p className="wmetric-value tabular">{t.money(expense)}</p>
-            {dExpense && <p className="wmetric-note">{dExpense.text}</p>}
-          </div>
-          <span aria-hidden className="wmetric-icon" data-tone="rose">
-            <IconMinus size={18} />
-          </span>
-        </div>
-        <div className="wmetric">
-          <div className="min-w-0">
-            <p className="wmetric-label">{t('finance.web.metric.profit')}</p>
-            {/* Минус — единственное место, где цвет числа обязателен:
-                «−12 000» нейтральным цветом читается как сумма, а не
-                как убыток. */}
-            <p className="wmetric-value tabular"
-               style={balance < 0 ? { color: 'var(--color-danger)' } : undefined}>
-              {t.money(balance)}
-            </p>
-            {dBalance && <p className="wmetric-note">{dBalance.text}</p>}
-          </div>
-          <span aria-hidden className="wmetric-icon" data-tone={balance < 0 ? 'rose' : 'blue'}>
-            <IconMoney size={18} />
-          </span>
-        </div>
-        <div className="wmetric">
-          <div className="min-w-0">
-            <p className="wmetric-label">{t('finance.web.metric.operations')}</p>
-            <p className="wmetric-value tabular">{t.number(operations)}</p>
-          </div>
-          <span aria-hidden className="wmetric-icon" data-tone="violet">
-            <IconList size={18} />
-          </span>
-        </div>
+        <Metric label={t('finance.total.income')} value={t.money(income)}
+                note={dIncome?.text} tone="emerald" icon={<IconPlus size={20} />}
+                trend={dir(dIncome)} good={dIncome?.up} />
+        {/* Выросшие расходы — стрелка ВВЕРХ и красная: направление
+            и оценка это разные величины, и склеивать их нельзя. */}
+        <Metric label={t('finance.total.expense')} value={t.money(expense)}
+                note={dExpense?.text} tone="rose" icon={<IconMinus size={20} />}
+                trend={dir(dExpense)} good={dExpense ? !dExpense.up : undefined} />
+        <Metric label={t('finance.web.metric.profit')} value={t.money(balance)}
+                note={dBalance?.text} tone={balance < 0 ? 'rose' : 'blue'}
+                icon={<IconMoney size={20} />}
+                trend={dir(dBalance)} good={dBalance?.up} danger={balance < 0} />
+        <Metric label={t('finance.web.metric.operations')} value={t.number(operations)}
+                tone="violet" icon={<IconList size={20} />} trend="flat" />
       </section>
 
       {/* README, розділ G: «Метрики доходів/витрат». Плитками, а не тремя
@@ -594,13 +684,14 @@ export function FinanceClient({
           был за день», а строки без графика не показывают форму месяца. */}
       {view !== 'analytics' && (
       <div className="hidden gap-5 lg:grid" style={{ gridTemplateColumns: '1.05fr 1fr' }}>
-        {/* Подпись НАД карточкой, а не внутри: справа такая же подпись
-            стоит над таблицей, у которой своя рамка, — внутри карточки
-            они встали бы на разной высоте и ряд перестал бы читаться
-            как ряд. */}
+        {/* Подпись ВНУТРИ карточки, как в хендоффе: обе карточки ряда
+            начинаются на одной высоте, поэтому и заголовки в них встают
+            на одной. Прежде подпись стояла НАД карточкой — и ряд из двух
+            белых прямоугольников с серыми надписями сверху читался как
+            четыре блока, а не как два. */}
         <section className="min-w-0">
-          <p className="webh2 mb-3">{t('finance.web.chart.title')}</p>
           <div className="webcard">
+            <p className="webh2 mb-4">{t('finance.web.chart.title')}</p>
             {series.some((s) => s.value > 0)
               ? <IncomeChart t={t} series={series} />
               : <p className="t-sm prose-muted">{t('finance.web.chart.empty')}</p>}
@@ -608,8 +699,10 @@ export function FinanceClient({
         </section>
 
         <section className="min-w-0">
-          <p className="webh2 mb-3">{t('finance.web.table.title')}</p>
           <div className="wtable">
+            <p className="webh2" style={{ padding: '20px 18px 14px' }}>
+              {t('finance.web.table.title')}
+            </p>
             <div className="wtable-head" style={{ gridTemplateColumns: TGRID }}>
               <span>{t('finance.web.table.operation')}</span>
               <span>{t('finance.web.table.category')}</span>
@@ -633,7 +726,21 @@ export function FinanceClient({
                 // правка нотатки, и она обязана держаться своей записи при
                 // любом отборе вкладкой.
                 <div key={r.id}>
-                  <div className="wtable-row"
+                  {/* Строка целиком — кнопка, а не полоса с двумя текстовыми
+                      кнопками справа. Так требует §15 (последняя колонка —
+                      шеврон 18px), и так честнее: «Нотатка» открывала ровно
+                      то же, что теперь открывает нажатие на строку, то есть
+                      дверь в правку лежала на строке дважды. Второе действие,
+                      «Зворотний запис», переехало ВНУТРЬ раскрытой правки —
+                      к остальным действиям над этой записью. */}
+                  <RowTag className="wtable-row"
+                       {...(canWrite
+                         ? {
+                             type: 'button' as const,
+                             'aria-expanded': editing === r.id,
+                             onClick: () => (editing === r.id ? setEditing(null) : startEdit(r)),
+                           }
+                         : {})}
                        style={{
                          gridTemplateColumns: TGRID,
                          minHeight: 'var(--tap-min)',
@@ -653,19 +760,33 @@ export function FinanceClient({
                               style={{ color: 'var(--color-text)' }}>
                           {category?.name ?? (r.note ? r.note : t('finance.form.category.none'))}
                         </span>
-                        <span className="block truncate" style={{ fontSize: 12, color: 'var(--color-muted)' }}>
-                          {r.orderId
-                            ? (r.orderNumber !== null
-                                ? t('finance.record.orderNumber', { number: r.orderNumber })
-                                : t('finance.record.orderLink'))
-                            : (category && r.note ? r.note : t(`finance.form.${r.kind}`))}
-                        </span>
+                        {/* Подзаголовок — только то, чего НЕТ в строке
+                            больше нигде: ссылка на заказ или нотатка.
+                            Вид записи отсюда снят: он стоит чипом
+                            в соседней колонке. */}
+                        {(r.orderId || (category && r.note)) && (
+                          <span className="block truncate"
+                                style={{ fontSize: 12, color: 'var(--color-muted)' }}>
+                            {r.orderId
+                              ? (r.orderNumber !== null
+                                  ? t('finance.record.orderNumber', { number: r.orderNumber })
+                                  : t('finance.record.orderLink'))
+                              : r.note}
+                          </span>
+                        )}
                       </span>
                     </span>
+                    {/* ⚠️ ЗДЕСЬ СТОЯЛО НАЗВАНИЕ КАТЕГОРИИ — ВТОРЫМ РАЗОМ.
+                        Оно уже напечатано слева заголовком операции, и
+                        строка сообщала «Оренда приміщення · Оренда
+                        приміщення». В хендоффе (§15) эта колонка несёт
+                        ВИД записи — «Дохід» или «Витрати», — то есть
+                        отвечает на другой вопрос, а не повторяет ответ
+                        на предыдущий. */}
                     <span className="min-w-0">
-                      {category
-                        ? <span className="badge">{category.name}</span>
-                        : <span style={{ color: 'var(--color-faint)' }}>{t('common.noValue')}</span>}
+                      <span className={positive ? 'badge-success' : 'badge-danger'}>
+                        {t(`finance.form.${r.kind}`)}
+                      </span>
                     </span>
                     <span className="tabular font-semibold"
                           style={{ color: positive ? 'var(--color-success)' : 'var(--color-danger)' }}>
@@ -673,14 +794,12 @@ export function FinanceClient({
                     </span>
                     <span className="tabular">{t.date(`${r.occurredOn}T00:00:00`)}</span>
                     {canWrite && (
-                      <span className="flex justify-end gap-1">
-                        <button type="button" className="btn-ghost t-sm"
-                                onClick={() => startEdit(r)}>{t('finance.record.editNote')}</button>
-                        <button type="button" className="btn-ghost t-sm"
-                                onClick={() => startReverse(r)}>{t('finance.record.reverse')}</button>
+                      <span aria-hidden className="flex justify-end"
+                            style={{ color: 'var(--color-faint)' }}>
+                        <IconChevronRight size={18} />
                       </span>
                     )}
-                  </div>
+                  </RowTag>
 
                   {editing === r.id && (
                     <div className="grid gap-3 px-4 py-3 sm:grid-cols-3"
@@ -714,6 +833,13 @@ export function FinanceClient({
                                 onClick={() => void saveEdit(r.id)}>{t('common.save')}</button>
                         <button type="button" className="btn-secondary t-md"
                                 onClick={() => setEditing(null)}>{t('common.cancel')}</button>
+                        {/* Встречная запись — здесь, а не в строке таблицы:
+                            это действие НАД записью, и стоять оно обязано
+                            рядом с остальными действиями над ней. */}
+                        <button type="button" className="btn-ghost t-md"
+                                onClick={() => startReverse(r)}>
+                          {t('finance.record.reverse')}
+                        </button>
                         <span className="t-xs self-center prose-muted">
                           {t('finance.record.edit.hint')}
                         </span>

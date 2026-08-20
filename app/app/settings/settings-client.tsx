@@ -189,6 +189,14 @@ export function SettingsClient({
                 }}>
           {copied ? t('common.copied') : t('common.copy')}
         </button>
+        {/* «Переглянути сторінку» из §18. Не дубль копирования: адрес
+            рядом лежит ТЕКСТОМ и не открывается нажатием, то есть
+            посмотреть на свою витрину отсюда было нельзя вовсе —
+            приходилось копировать и вставлять в адресную строку. */}
+        <a href={publicUrl} target="_blank" rel="noreferrer"
+           className="btn-secondary t-sm">
+          {t('settings.public.open')}
+        </a>
         {withState && (shop.storefront_enabled ? (
           <span className="badge-success">{t('settings.public.published')}</span>
         ) : (
@@ -209,6 +217,12 @@ export function SettingsClient({
 
     return (
       <form onSubmit={save} className={wrap}>
+        {/* Подзаголовки групп — из §18 «Публічна сторінка бізнесу»:
+            семь полей подряд без разделения читаются как анкета, а не
+            как «вот это про заклад, а вот это его контакты». Отдельного
+            экрана витрины у нас нет и заводить его не надо: те же три
+            группы хендоффа лежат здесь. */}
+        <p className={`t-lg webh2 ${full}`}>{t('settings.shop.group.main')}</p>
         <div className={full}>
           <label className="field-label">{t('settings.shop.name.label')}</label>
           <input required className="input" value={name} disabled={!canWrite}
@@ -220,6 +234,13 @@ export function SettingsClient({
                  onChange={(e) => setTagline(e.target.value)}
                  placeholder={t('settings.shop.tagline.placeholder')} />
         </div>
+        <div className={full}>
+          <label className="field-label">{t('settings.shop.about.label')}</label>
+          <textarea className="textarea" value={description} disabled={!canWrite}
+                    onChange={(e) => setDescription(e.target.value)} />
+        </div>
+
+        <p className={`t-lg webh2 mt-1 ${full}`}>{t('settings.shop.group.contacts')}</p>
         <div>
           <label className="field-label">{t('settings.shop.city.label')}</label>
           <input className="input" value={city} disabled={!canWrite}
@@ -235,11 +256,6 @@ export function SettingsClient({
           <label className="field-label">{t('settings.shop.phone.label')}</label>
           <input type="tel" className="input" value={phone} disabled={!canWrite}
                  onChange={(e) => setPhone(e.target.value)} />
-        </div>
-        <div className={full}>
-          <label className="field-label">{t('settings.shop.about.label')}</label>
-          <textarea className="textarea" value={description} disabled={!canWrite}
-                    onChange={(e) => setDescription(e.target.value)} />
         </div>
 
         {/* Отказ базы показывается как есть: это её текст, а не наш.
@@ -352,6 +368,10 @@ export function SettingsClient({
   function brandBody() {
     return (
       <div className="flex flex-col gap-3">
+        {/* §18 «Оформлення сторінки». У нас настраивается ОДНА величина —
+            оттенок; шрифтов в хендоффе два селекта, и их здесь нет
+            намеренно: шрифт кабинета один на весь продукт. */}
+        <p className="t-lg webh2">{t('settings.brand.title')}</p>
         <span className="t-sm" style={{ color: 'var(--color-muted)' }}>
           {t('settings.brand.desc')}
         </span>
@@ -727,7 +747,13 @@ export function SettingsClient({
           всю ширину — пустая колонка 420px справа сообщала бы, что
           «здесь что-то не загрузилось». */}
       <div className="hidden items-start gap-5 lg:flex">
-        <div className="flex min-w-0 flex-1 flex-col gap-2">
+        {/* Потолок ширины — не украшение. Пока панель закрыта, ряд тянулся
+            на всю контентную область (1146px на 1440), и шеврон уезжал
+            от подписи на метр: строка переставала читаться как строка.
+            В хендоффе (§17) колонка разделов держит примерно эту ширину
+            и с панелью, и без неё — то есть открытие панели ряды
+            не переставляет. */}
+        <div className="flex min-w-0 flex-1 flex-col gap-2" style={{ maxWidth: 700 }}>
           {sections.map((s) => {
             const active = picked === s.key
             return (
