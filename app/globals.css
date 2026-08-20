@@ -917,18 +917,29 @@ html.dark [data-brand] {
   .sidebar-item:hover { color: var(--color-text); background: var(--color-surface-2); }
   .sidebar-item[data-active="true"] { color: var(--color-accent-ink); background: var(--color-accent-soft); }
 
-  /* Шторка снизу. Высота в dvh, а не vh: при открытии клавиатуры
-     dvh уменьшается сам, и кнопка «Зберегти» остаётся на экране —
-     на vh она уезжает под клавиатуру. */
+  /* Шторка снизу.
+     ⚠️ ЧТО ЗДЕСЬ БЫЛО СЛОМАНО (найдено 20.08.2026 на живом телефоне).
+     Высота считалась ТОЛЬКО в `dvh`, и шапка `components/sheet.tsx`
+     обещала «запас под клавиатуру (--kb)», которого в правиле не было.
+     Обещание не сбывалось: iOS `dvh` о клавиатуре не знает — она
+     накрывает окно, а не уменьшает его. Практический итог: открываешь
+     поиск, набираешь два знака, и выдача рисуется ПОД клавиатурой.
+     Человек читает это как «поиск ничего не находит», хотя находит.
+
+     Поэтому обе величины считаются с `--kb` (его меряет
+     `components/keyboard-fit.tsx` по visualViewport): потолок высоты
+     уменьшается, отступ снизу растёт, содержимое прокручивается
+     над клавиатурой. Без клавиатуры `--kb` равен нулю и правило
+     ведёт себя ровно как прежнее. */
   .sheet {
     @apply fixed inset-x-0 bottom-0 z-50 border-t p-5;
-    max-height: 90dvh;
+    max-height: calc(90dvh - var(--kb, 0px));
     overflow-y: auto;
     border-radius: var(--radius-hero) var(--radius-hero) 0 0;
     border-color: var(--color-border);
     background: var(--color-surface);
     box-shadow: var(--shadow-overlay);
-    padding-bottom: calc(1.25rem + env(safe-area-inset-bottom));
+    padding-bottom: calc(1.25rem + env(safe-area-inset-bottom) + var(--kb, 0px));
     animation: sheet-up var(--dur-base) var(--ease-out-soft) both;
   }
   .sheet-grip {

@@ -391,7 +391,13 @@ function AppShellInner({
     const item = [...all, PROFILE].find((i) => i.href === href)
     return !item || allowed(item)
   }
-  const heading = headingOf(t, pathname, shopName, openable, all.map((i) => i.href))
+  // ⚠️ `PROFILE` в `all` НЕ входит (он только в нижней панели), поэтому
+  // список корней собирается с ним явно — ровно как в `openable` выше.
+  // Без этого `/app/profile` считался экраном ВНУТРИ раздела, и вместо
+  // календаря в шапке рисовалась стрелка «назад»: человек на вкладке
+  // нижней панели видел кнопку возврата в никуда (найдено 20.08.2026).
+  const heading = headingOf(t, pathname, shopName, openable,
+                            [...all, PROFILE].map((i) => i.href))
 
   // Сканер — это вход в склад (`?scan=1`). Значит и фильтруется он как
   // вкладка «Склад»: модуль `inventory` у заведения И право `stock.read`
