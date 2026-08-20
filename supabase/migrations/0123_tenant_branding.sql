@@ -47,6 +47,11 @@ comment on column public.tenant_branding.brand_color is
   'HEX, вибраний клієнтом. На екрані з нього береться ТІЛЬКИ відтінок: '
   'світлота й насиченість наші, інакше блідий акцент дає нечитабельну кнопку.';
 
+-- `create table if not exists` вище робить файл повторюваним, а `create
+-- trigger` — ні: другий прогін падає на «trigger already exists» і відкочує
+-- усе, що йде НИЖЧЕ, тобто політики й гранти. Знято 20.08.2026, коли файл
+-- запустили вдруге.
+drop trigger if exists tenant_branding_touch on public.tenant_branding;
 create trigger tenant_branding_touch
   before update on public.tenant_branding
   for each row execute function public.touch_updated_at();
