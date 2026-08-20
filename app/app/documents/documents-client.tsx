@@ -645,9 +645,27 @@ export function DocumentsClient({
         </div>
         <div>
           <label className="field-label">{t('documents.upload.file.label')}</label>
-          <input key={fileKey} required type="file" className="input pt-2.5"
-                 accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx"
-                 onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+          {/* ⚠️ ГОЛОЕ `input[type=file]` СЮДА НЕ ВОЗВРАЩАТЬ. Его рисует
+              ОПЕРАЦИОННАЯ СИСТЕМА — своим шрифтом и своим языком:
+              на телефоне владельца посреди украинского кабинета стояло
+              русское «Выбрать файл, файл не выбран» (20.08.2026).
+              Классом это не чинится ни в одном движке.
+
+              Поле в `sr-only`, а не в `hidden`: так оно остаётся
+              доступным с клавиатуры и для чтения с экрана, а нажимают
+              на нашу кнопку — `label` открывает выбор файла и на
+              телефоне тоже. `required` снято намеренно: невидимое
+              обязательное поле Chrome не может подсветить («invalid
+              form control is not focusable»), а без файла кнопка
+              отправки и так заперта. */}
+          <label className="btn-secondary w-fit max-w-full cursor-pointer">
+            <span className="min-w-0 truncate">
+              {file ? file.name : t('inventory.docs.add')}
+            </span>
+            <input key={fileKey} type="file" className="sr-only"
+                   accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx"
+                   onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+          </label>
           <p className="field-hint">{t('documents.upload.file.hint')}</p>
         </div>
         <button className="btn-primary sm:col-span-2 sm:justify-self-start"

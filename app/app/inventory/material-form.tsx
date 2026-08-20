@@ -253,6 +253,7 @@ export function MaterialForm({
   }
 
   return (
+    <>
     <form onSubmit={save} className="grid gap-3 sm:grid-cols-2">
 
       <div className="sm:col-span-2">
@@ -521,5 +522,25 @@ export function MaterialForm({
         <button type="button" className="btn-ghost" onClick={onDone}>{t('common.cancel')}</button>
       </div>
     </form>
+
+    {/* Справочники — ВНЕ <form>, и это не вкусовщина. Шторка уходит
+        порталом в body, но события React всплывают по ДЕРЕВУ, а не по
+        DOM: `submit` внутренней формы «Додати постачальника» дошёл бы
+        до `onSubmit` этой формы и сохранил бы карточку засоба вместо
+        поставщика. Снаружи всплывать некуда.
+
+        Заведённая строка сразу становится выбранной: человек нажал «+»
+        именно затем, чтобы её выбрать, и заставлять его искать её
+        в списке после закрытия — это половина двери. */}
+    <Sheet open={refs} onClose={() => setRefs(false)} title={t('inventory.sheet.refs')}>
+      <RefsForm tenantId={tenantId} suppliers={suppliers} locations={locations}
+                onDone={() => setRefs(false)}
+                onCreated={(kind, item) => {
+                  if (kind === 'supplier') setSupplierId(item.id)
+                  else setLocationId(item.id)
+                  setRefs(false)
+                }} />
+    </Sheet>
+    </>
   )
 }

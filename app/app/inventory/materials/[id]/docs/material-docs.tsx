@@ -480,9 +480,20 @@ export function MaterialDocs({
           </div>
           <div className="sm:col-span-2">
             <label className="field-label">{t('inventory.docs.field.file.label')}</label>
-            <input key={fileKey} required type="file" className="input pt-2.5"
-                   accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx"
-                   onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            {/* ⚠️ ГОЛОЕ `input[type=file]` СЮДА НЕ ВОЗВРАЩАТЬ: его рисует
+                операционная система своим шрифтом и своим языком —
+                «Выбрать файл» по-русски посреди украинского кабинета
+                (найдено на телефоне владельца 20.08.2026). Разбор
+                и те же два условия (`sr-only` вместо `hidden`, снятое
+                `required`) — в `app/app/documents/documents-client.tsx`. */}
+            <label className="btn-secondary w-fit max-w-full cursor-pointer">
+              <span className="min-w-0 truncate">
+                {file ? file.name : t('inventory.docs.add')}
+              </span>
+              <input key={fileKey} type="file" className="sr-only"
+                     accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx"
+                     onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            </label>
             <p className="field-hint">{t('inventory.docs.field.file.hint')}</p>
           </div>
           <div className="flex gap-2 sm:col-span-2">
