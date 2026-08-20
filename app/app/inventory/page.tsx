@@ -60,13 +60,18 @@ export default async function InventoryPage({
         .in('status', ['sealed', 'opened'])
         .order('use_by', { ascending: true, nullsFirst: false })
         .limit(100),
+      // `category`, `cost_per_unit` и `location_id` — колонки таблицы склада
+      // CRESKO Web (§8: Категорія · Склад · Собівартість · Сума). Они лежат
+      // в той же строке `materials` и своей поездки не стоят; имя места
+      // хранения берётся из уже запрошенного справочника `locations`,
+      // а не вложенной выборкой — второй источник того же имени.
       supabase.from('materials')
-        .select('id, name, unit, current_stock, min_stock_threshold, is_cosmetic, pao_months, brand, sku, image_path')
+        .select('id, name, unit, current_stock, min_stock_threshold, is_cosmetic, pao_months, brand, sku, image_path, category, cost_per_unit, location_id')
         .eq('tenant_id', m.tenantId)
         .eq('is_active', true)
         .order('name').limit(200),
       supabase.from('offering_variants')
-        .select('id, name, stock_qty, reserved_qty, min_stock_threshold, unit, track_stock, offering_id, offerings(title)')
+        .select('id, name, stock_qty, reserved_qty, min_stock_threshold, unit, track_stock, cost, offering_id, offerings(title, categories(name))')
         .eq('tenant_id', m.tenantId)
         .eq('is_active', true)
         .order('created_at').limit(200),
@@ -133,6 +138,11 @@ export default async function InventoryPage({
           // Фото банки в списке: мастер ищет её глазами, а не по названию —
           // у засобів имена различаются одним словом (0111).
           imagePath: mt.image_path,
+          // Колонки таблицы §8. `category` у засоба — свободная строка
+          // продавца, а не справочник платформы: чип показывает её как есть.
+          category: mt.category,
+          cost: mt.cost_per_unit != null ? Number(mt.cost_per_unit) : null,
+          locationId: mt.location_id,
         }))}
         variants={(variants ?? []).map((v) => ({
           id: v.id, name: v.name,
@@ -144,6 +154,15 @@ export default async function InventoryPage({
           title: (v.offerings as unknown as { title: string })?.title ?? '',
           stock: v.stock_qty, reserved: v.reserved_qty,
           threshold: v.min_stock_threshold, unit: v.unit, tracked: v.track_stock,
+          // Категорія товара — справочник платформы через позицию каталога.
+          // PostgREST на связи «многие к одному» отдаёт объект, но
+          // нетипизированный клиент рисует его массивом — разбираем оба вида
+          // (тот же приём, что в `app/app/catalog/page.tsx`).
+          category: (() => {
+            const c = (v.offerings as unknown as { categories?: { name: string } | { name: string }[] | null })?.categories
+            return Array.isArray(c) ? c[0]?.name ?? null : c?.name ?? null
+          })(),
+          cost: v.cost != null ? Number(v.cost) : null,
         }))}
         suppliers={suppliers ?? []}
         locations={locations ?? []}

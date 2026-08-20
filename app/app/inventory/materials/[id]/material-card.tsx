@@ -120,6 +120,31 @@ export function MaterialCard({
     suppliers.find((s) => s.id === id)?.name ?? null
   const locationName = locations.find((l) => l.id === material.locationId)?.name ?? null
 
+  // ── Мета шапки §9: три строки «підпис: значення» ─────────────────────
+  //
+  // Собрана списком, а не разметкой: строк три, пар в них разное число,
+  // и разложенная по JSX она превращается в четыре вложенные тернарки.
+  // Пустая пара выпадает целиком — «Бренд: —» это не факт о засобі,
+  // а сообщение о незаполненном поле формы, и в паспорте ему не место.
+  // Штрих-кода среди пар нет намеренно: привязки `material_barcodes`
+  // в карточку не приходят, а показать вместо кода артикул под чужой
+  // подписью значит соврать в паспорте.
+  type MetaPair = [label: string, value: string, mono: boolean]
+  const webMeta: MetaPair[][] = ([
+    [
+      material.category
+        ? [t('inventory.material.row.category'), material.category, false] as MetaPair
+        : null,
+      material.brand
+        ? [t('inventory.material.row.brand'), material.brand, false] as MetaPair
+        : null,
+    ].filter((x): x is MetaPair => x !== null),
+    material.sku
+      ? [[t('inventory.material.row.sku'), material.sku, true] as MetaPair]
+      : [],
+    [[t('inventory.material.row.unit'), material.unit, false] as MetaPair],
+  ] as MetaPair[][]).filter((line) => line.length > 0)
+
   // ── CRESKO Web, §9: вкладки карточки ─────────────────────────────────
   // Вкладка заводится только под то, что на карточке ЕСТЬ. «Історія руху»
   // пропадает у того, кому RLS не отдала журнал (инспектор), — пустая
@@ -225,7 +250,26 @@ export function MaterialCard({
           веба значит показать одни и те же поля дважды на одном экране. */}
       <div className="hidden flex-col gap-5 lg:flex">
 
+        {/* ── «Назад до складу» ─────────────────────────────────────
+            В веб-каркасе имя открытого ПОДЭКРАНА не пишет никто:
+            сайдбар подсвечивает раздел «Склад», а стрелка «назад»
+            из мобильной шапки на широком экране не рисуется. Без этой
+            ссылки выход из карточки — только повторное нажатие пункта
+            сайдбара, то есть человек возвращается не туда, откуда
+            пришёл, а в начало раздела. §9 ставит её первой строкой. */}
+        <Link href="/app/inventory"
+              className="inline-flex items-center gap-2 self-start"
+              style={{ fontSize: 14, fontWeight: 650, color: 'var(--color-accent-ink)' }}>
+          <span aria-hidden>←</span>
+          {t('inventory.web.back')}
+        </Link>
+
         {/* ── Шапка: фото 216×216 слева, имя и мета справа ──────────
+            БЕЗ карточки под собой — так в §9: фото и заголовок стоят
+            прямо на фоне страницы, а первая белая плоскость экрана —
+            это стат-ряд ниже. Пока шапка была `.webcard`, имя засоба
+            и стат-ряд читались как две одинаковые карточки подряд,
+            и глазу не за что было зацепиться.
             Радиус 16 — тот же, что у `.webcard`; фото раздаётся из
             публичного бакета `media` (0111), поэтому обычный <img>,
             а не next/image: оптимизатор был бы ещё одним прокси
@@ -233,7 +277,7 @@ export function MaterialCard({
             Пустого серого прямоугольника нет: без фото стоит плашка
             со значком — она читается как «фото не додали», а серый
             прямоугольник как «не завантажилось». */}
-        <section className="webcard flex gap-5">
+        <section className="flex gap-5">
           {material.imagePath ? (
             <span className="h-[216px] w-[216px] shrink-0 overflow-hidden rounded-2xl">
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -243,8 +287,11 @@ export function MaterialCard({
           ) : (
             <span className="flex h-[216px] w-[216px] shrink-0 items-center justify-center rounded-2xl"
                   style={{
-                    background: 'var(--color-surface-2)',
-                    border: '1px solid var(--color-border)',
+                    background: 'var(--color-surface)',
+                    // Пунктир, а не сплошная линия: §9 рисует место
+                    // под фото именно так — это «сюда можно положить»,
+                    // а не «здесь рамка карточки».
+                    border: '1px dashed var(--color-border-strong, var(--color-border))',
                     color: 'var(--color-faint)',
                   }}>
               <IconBox size={40} />
@@ -294,16 +341,28 @@ export function MaterialCard({
                 привязки `material_barcodes` в карточку не приходят,
                 а показывать вместо кода артикул под чужой подписью
                 значит соврать в паспорте. */}
-            <div className="mt-4 flex flex-col gap-1.5"
-                 style={{ color: 'var(--web-text-secondary, var(--color-muted))', fontSize: 14 }}>
-              <p>
-                {[material.category, material.brand].filter(Boolean).join(' · ')
-                  || t('inventory.material.noCategory')}
-              </p>
-              <p className="tabular">
-                {t('inventory.material.row.sku')}: {material.sku ?? '—'}
-              </p>
-              <p>{t('inventory.material.row.unit')}: {material.unit}</p>
+            {/* Подпись серым, значение тёмным и полужирным — так в §9
+                («Категорія: Манікюр • Бренд: Kodi Professional»).
+                Прежде вся строка шла одним серым тоном, и в «Манікюр ·
+                Kodi Professional» не было видно, где кончается категория
+                и начинается бренд. Разделитель между парами — точка,
+                как в референсе. */}
+            <div className="mt-4 flex flex-col gap-1.5" style={{ fontSize: 14 }}>
+              {webMeta.map((line, li) => (
+                <p key={li} className="flex flex-wrap items-baseline gap-x-2">
+                  {line.map(([label, value, mono], i) => (
+                    <span key={label} className="flex items-baseline gap-1.5">
+                      {i > 0 && <span aria-hidden style={{ color: 'var(--color-faint)' }}>·</span>}
+                      <span style={{ color: 'var(--color-muted)' }}>{label}:</span>
+                      {/* Значение — данные арендатора. */}
+                      <span className={mono ? 'tabular' : ''}
+                            style={{ color: 'var(--color-text)', fontWeight: 650 }}>
+                        {value}
+                      </span>
+                    </span>
+                  ))}
+                </p>
+              ))}
             </div>
           </div>
         </section>

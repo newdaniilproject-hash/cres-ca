@@ -19,7 +19,7 @@ export async function generateMetadata() {
 type MediaRow = { path: string; position: number }
 type VariantRow = {
   id: string; price: number | null; duration_minutes: number | null
-  track_stock: boolean; stock_qty: number | null
+  track_stock: boolean; stock_qty: number | null; min_stock_threshold: number | null
   /** Строки рецептуры варианта. Нужен только их СЧЁТ — см. ниже. */
   variant_materials: { material_id: string }[] | null
 }
@@ -76,6 +76,7 @@ export default async function CatalogPage() {
        categories(name),
        offering_media(path, position),
        offering_variants(id, price, duration_minutes, track_stock, stock_qty,
+                         min_stock_threshold,
                          variant_materials(material_id))`,
     )
     .eq('tenant_id', m.tenantId)
@@ -168,6 +169,14 @@ export default async function CatalogPage() {
               : null,
             stock: o.kind === 'product' && tracked.length > 0
               ? tracked.reduce((s, v) => s + (v.stock_qty ?? 0), 0)
+              : null,
+            // «Мало» — хоть у одного варианта с учётом остаток не выше
+            // порога. Именно ЛЮБОГО, а не суммы: сумма по трём вариантам
+            // прячет тот один, которого уже нет на полке, а карточка
+            // каталога существует ровно затем, чтобы это было видно.
+            stockLow: o.kind === 'product' && tracked.length > 0
+              ? tracked.some((v) => (v.min_stock_threshold ?? 0) > 0
+                  && (v.stock_qty ?? 0) <= (v.min_stock_threshold ?? 0))
               : null,
           }
         })}
