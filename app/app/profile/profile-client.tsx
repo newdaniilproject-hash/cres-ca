@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { afterSignOut } from '@/lib/where'
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -152,7 +153,7 @@ export function ProfileClient({
     // и «Вийти» на ноутбуке разлогинивал телефон. Выход со всех устройств —
     // отдельная кнопка ниже, с подтверждением.
     await supabase.auth.signOut({ scope: 'local' })
-    window.location.href = '/'
+    window.location.href = afterSignOut()
   }
 
   // Выход со всех устройств — глобальный signOut, ровно то поведение,
@@ -167,7 +168,7 @@ export function ProfileClient({
     })
     if (!ok) return
     await supabase.auth.signOut({ scope: 'global' })
-    window.location.href = '/'
+    window.location.href = afterSignOut()
   }
 
   // Удаление аккаунта — требование Apple 5.1.1(v) и условие сделки
@@ -209,7 +210,7 @@ export function ProfileClient({
     // сессией; локально чистим токены этого устройства, остальные сеансы
     // умерли вместе с пользователем.
     await supabase.auth.signOut({ scope: 'local' })
-    window.location.href = '/'
+    window.location.href = afterSignOut()
   }
 
   return (

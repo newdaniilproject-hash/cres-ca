@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { afterSignOut } from '@/lib/where'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, createContext, useContext, useEffect, useRef, useState, useTransition } from 'react'
 import { ThemeToggle } from '@/components/theme'
@@ -539,7 +540,7 @@ function AppShellInner({
     // и «Вийти» на ноутбуке разлогинивал телефон. Выход со всех
     // устройств — отдельное действие в профиле, с подтверждением.
     await createClient().auth.signOut({ scope: 'local' })
-    window.location.href = '/'
+    window.location.href = afterSignOut()
   }
 
   return (
