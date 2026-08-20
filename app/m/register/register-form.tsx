@@ -8,7 +8,11 @@ import { signupSource } from '@/lib/consent'
 import { CodeInput } from '../code-input'
 import { nextRoute } from '../where'
 import { AppScreen, Field, keepVisible } from '../ui'
-import { MailIcon, PasswordStrength, mmss } from '@/components/auth-ui'
+// PasswordInput — ОБЩИЙ (`components/auth-ui.tsx`). Здесь его разметка
+// была выписана заново ДВАЖДЫ — под пароль и под подтверждение, — вместе
+// со своими значками глаза и кнопкой 52×52. Правило проекта: «не забудь
+// продублировать» — признак отсутствующей архитектуры, а не дисциплины.
+import { MailIcon, PasswordInput, PasswordStrength, mmss } from '@/components/auth-ui'
 import { humanAuthError } from '@/lib/auth-errors'
 import { useT } from '@/lib/i18n/client'
 import { guardSignUp } from '@/lib/ratelimit/guard'
@@ -73,8 +77,6 @@ export function MobileRegisterForm() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
-  const [seePass, setSeePass] = useState(false)
-  const [seeConfirm, setSeeConfirm] = useState(false)
   const [agree, setAgree] = useState(false)
 
   const [busy, setBusy] = useState(false)
@@ -292,7 +294,12 @@ export function MobileRegisterForm() {
           <Field label={t('auth.field.firstName')} htmlFor="f-first" className="flex-1">
             <input
               id="f-first" required autoComplete="given-name" autoCapitalize="words"
-              className="input" style={{ height: 52, fontSize: 16 }}
+              // Ни высоты, ни кегля инлайном: и то и другое задаёт `.input`
+              // в globals.css (`--h-input` и пол в 16px на касательных
+              // устройствах, ниже которого iOS зумит страницу на фокусе).
+              // Инлайновые 52px делали поля приложения на 4px выше, чем
+              // те же поля в вебе и в кабинете.
+              className="input"
               value={first} onFocus={keepVisible}
               onChange={(e) => setFirst(e.target.value)}
               placeholder={t('m.register.first.placeholder')}
@@ -301,7 +308,7 @@ export function MobileRegisterForm() {
           <Field label={t('auth.field.lastName')} htmlFor="f-last" className="flex-1">
             <input
               id="f-last" required autoComplete="family-name" autoCapitalize="words"
-              className="input" style={{ height: 52, fontSize: 16 }}
+              className="input"
               value={last} onFocus={keepVisible}
               onChange={(e) => setLast(e.target.value)}
               placeholder={t('m.register.last.placeholder')}
@@ -310,18 +317,21 @@ export function MobileRegisterForm() {
         </div>
 
         <Field label={t('m.register.phone.label')} htmlFor="f-phone">
-          <div
-            className="input flex items-center gap-2"
-            style={{ height: 52, paddingRight: 0 }}
-          >
-            <span className="tabular shrink-0" style={{ fontSize: 16, color: 'var(--color-muted)' }}>
+          {/* Рамка поля — тот же `.input`, что у соседей: высота и кегль
+              приходят из globals.css, а не выписаны числами. Внутреннее
+              поле кегль НАСЛЕДУЕТ (`fontSize: 'inherit'`) — только так
+              оно остаётся 16px на касательных устройствах, где пол задан
+              правилом `.input`; собственные 16px были второй записью
+              того же порога. */}
+          <div className="input flex items-center gap-2 pr-0">
+            <span className="tabular shrink-0" style={{ color: 'var(--color-muted)' }}>
               +380
             </span>
             <input
               id="f-phone" required type="tel" inputMode="numeric" autoComplete="tel-national"
-              className="tabular min-w-0 flex-1"
+              className="tabular h-full min-w-0 flex-1"
               style={{
-                height: 50, fontSize: 16, border: 0, background: 'transparent',
+                fontSize: 'inherit', border: 0, background: 'transparent',
                 outline: 'none', color: 'var(--color-text)', letterSpacing: '0.02em',
               }}
               value={formatPhone(phone)}
@@ -339,7 +349,7 @@ export function MobileRegisterForm() {
           <div className="flex items-center gap-2">
             <input
               id="f-dd" required inputMode="numeric" aria-label={t('m.register.birth.day.aria')}
-              className="input tabular text-center" style={{ height: 52, fontSize: 16, width: 68 }}
+              className="input tabular w-16 text-center"
               value={dd} onFocus={keepVisible}
               onChange={(e) => {
                 const v = e.target.value.replace(/\D/g, '').slice(0, 2)
@@ -353,7 +363,7 @@ export function MobileRegisterForm() {
             <span aria-hidden style={{ color: 'var(--color-faint)' }}>·</span>
             <input
               ref={mmRef} required inputMode="numeric" aria-label={t('m.register.birth.month.aria')}
-              className="input tabular text-center" style={{ height: 52, fontSize: 16, width: 68 }}
+              className="input tabular w-16 text-center"
               value={mm} onFocus={keepVisible}
               onChange={(e) => {
                 const v = e.target.value.replace(/\D/g, '').slice(0, 2)
@@ -365,7 +375,7 @@ export function MobileRegisterForm() {
             <span aria-hidden style={{ color: 'var(--color-faint)' }}>·</span>
             <input
               ref={yRef} required inputMode="numeric" aria-label={t('m.register.birth.year.aria')}
-              className="input tabular text-center" style={{ height: 52, fontSize: 16, flex: 1 }}
+              className="input tabular flex-1 text-center"
               value={yyyy} onFocus={keepVisible}
               onChange={(e) => setYyyy(e.target.value.replace(/\D/g, '').slice(0, 4))}
               placeholder={t('m.register.birth.year.placeholder')}
@@ -389,34 +399,21 @@ export function MobileRegisterForm() {
           <input
             id="f-email" required type="email" autoComplete="email" inputMode="email"
             autoCapitalize="none" spellCheck={false}
-            className="input" style={{ height: 52, fontSize: 16 }}
+            className="input"
             value={email} onFocus={keepVisible}
             onChange={(e) => { setEmail(e.target.value); setTaken(false) }}
             placeholder="you@example.com"
           />
         </Field>
 
+        {/* Глазик внутри `PasswordInput` — единственный способ на телефоне
+            не ошибиться в пароле, который набираешь вслепую большим
+            пальцем. Своё состояние «видно/не видно» он держит сам. */}
         <Field label={t('m.field.password')} htmlFor="f-pass">
-          <div className="relative">
-            <input
-              id="f-pass" required minLength={8} autoComplete="new-password"
-              type={seePass ? 'text' : 'password'}
-              className="input" style={{ height: 52, fontSize: 16, paddingRight: 52 }}
-              value={password} onFocus={keepVisible}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-            {/* Глазик. Единственный способ на телефоне не ошибиться
-                в пароле, который набираешь вслепую большим пальцем. */}
-            <button
-              type="button"
-              onClick={() => setSeePass((v) => !v)}
-              aria-label={seePass ? t('auth.password.hide.aria') : t('auth.password.show.aria')}
-              className="absolute right-0 top-0 flex items-center justify-center"
-              style={{ width: 52, height: 52, color: 'var(--color-muted)' }}
-            >
-              {seePass ? <EyeOff /> : <Eye />}
-            </button>
-          </div>
+          <PasswordInput
+            id="f-pass" value={password} onChange={setPassword}
+            onFocus={keepVisible} autoComplete="new-password"
+          />
           <PasswordStrength value={password} />
         </Field>
 
@@ -424,25 +421,11 @@ export function MobileRegisterForm() {
             с опечаткой человек обнаруживает только на следующем входе —
             и уходит в восстановление, думая, что сломались мы. */}
         <Field label={t('auth.field.confirmPassword')} htmlFor="f-pass2">
-          <div className="relative">
-            <input
-              id="f-pass2" required minLength={8} autoComplete="new-password"
-              type={seeConfirm ? 'text' : 'password'}
-              className={confirm.length > 0 && confirm !== password ? 'input input-error' : 'input'}
-              style={{ height: 52, fontSize: 16, paddingRight: 52 }}
-              value={confirm} onFocus={keepVisible}
-              onChange={(e) => setConfirm(e.target.value)}
-            />
-            <button
-              type="button"
-              onClick={() => setSeeConfirm((v) => !v)}
-              aria-label={seeConfirm ? t('auth.password.hide.aria') : t('auth.password.show.aria')}
-              className="absolute right-0 top-0 flex items-center justify-center"
-              style={{ width: 52, height: 52, color: 'var(--color-muted)' }}
-            >
-              {seeConfirm ? <EyeOff /> : <Eye />}
-            </button>
-          </div>
+          <PasswordInput
+            id="f-pass2" value={confirm} onChange={setConfirm}
+            onFocus={keepVisible} autoComplete="new-password"
+            invalid={confirm.length > 0 && confirm !== password}
+          />
           {confirm.length > 0 && confirm !== password && (
             <p className="field-error">{t('auth.field.mismatch')}</p>
           )}
@@ -450,16 +433,19 @@ export function MobileRegisterForm() {
 
         {/* Согласие. Ссылки открываются, а не просто подчёркнуты:
             галочка без читаемого текста — повод для отказа и в App Store,
-            и у Meta при верификации бизнеса. */}
-        <label className="flex items-start gap-3" style={{ minHeight: 'var(--tap-min)' }}>
+            и у Meta при верификации бизнеса.
+
+            `.checkline` — тот же класс, что на веб-регистрации и в
+            онбординге. Здесь его разметка была выписана инлайном заново:
+            те же 22×22, тот же зазор, тот же цвет ссылки — то есть
+            третья запись одной и той же строки согласия. */}
+        <label className="checkline">
           <input
             type="checkbox"
             checked={agree}
             onChange={(e) => setAgree(e.target.checked)}
-            className="shrink-0"
-            style={{ width: 22, height: 22, marginTop: 2, accentColor: 'var(--color-accent)' }}
           />
-          <span className="t-sm" style={{ lineHeight: 1.5, color: 'var(--color-muted)' }}>
+          <span>
             {t('m.register.agree.lead')}{' '}
             {/* Названия документов приходят из `lib/legal.ts`: это перечень
                 юридических документов, а не строки интерфейса. */}
@@ -469,10 +455,7 @@ export function MobileRegisterForm() {
                     открывается пустой белой страницей без кнопки назад.
                     Документ открывается в том же экране, а стрелка
                     в его шапке возвращает ровно сюда. */}
-                <Link href={d.href} className="underline underline-offset-2"
-                      style={{ color: 'var(--color-text)' }}>
-                  {d.label}
-                </Link>
+                <Link href={d.href}>{d.label}</Link>
                 {i < LEGAL_DOCS.length - 2
                   ? ', '
                   : i === LEGAL_DOCS.length - 2 ? ` ${t('m.register.agree.and')} ` : ''}
@@ -488,8 +471,7 @@ export function MobileRegisterForm() {
             <p className="t-sm mt-1 prose-muted">{t('m.register.taken.desc')}</p>
             <Link
               href={`/m/login?email=${encodeURIComponent(email.trim())}`}
-              className="btn-primary mt-3 flex items-center justify-center"
-              style={{ height: 48, fontSize: 16 }}
+              className="btn-primary btn-tall mt-3"
             >
               {t('m.register.taken.action')}
             </Link>
@@ -510,36 +492,14 @@ export function MobileRegisterForm() {
             кнопка обязана оставаться её кнопкой отправки. Разбор
             и прежний дефект — в globals.css, `.m-actionbar`. */}
         <div className="m-actionbar">
-          <button
-            className="btn-primary flex w-full items-center justify-center"
-            style={{ height: 52, fontSize: 16 }}
-            disabled={busy || !ready}
-          >
+          {/* `btn-tall` — та же высота главной кнопки, что на всех
+              экранах входа; своих 52px и 16px инлайном здесь быть не
+              должно, значение живёт в globals.css одной записью. */}
+          <button className="btn-primary btn-tall" disabled={busy || !ready}>
             {busy ? t('m.register.busy') : t('m.register.submit')}
           </button>
         </div>
       </form>
     </AppScreen>
-  )
-}
-
-function Eye() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-         strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
-  )
-}
-function EyeOff() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-         strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 3l18 18" />
-      <path d="M10.6 10.6a3 3 0 0 0 4.2 4.2" />
-      <path d="M9.4 5.2A9.5 9.5 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4.1" />
-      <path d="M6.2 6.8A17 17 0 0 0 2 12s3.6 7 10 7c1.2 0 2.3-.2 3.3-.6" />
-    </svg>
   )
 }

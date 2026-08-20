@@ -350,11 +350,13 @@ function RegisterInner() {
           <PasswordInput id="pass" value={password} onChange={setPassword}
                          autoComplete="new-password" />
           {/* Шкала силы — та же, что на /forgot: пароль задаётся дважды
-              в продукте, и оценивается он обязан одинаково. */}
+              в продукте, и оценивается он обязан одинаково.
+              Отдельной строки «Мінімум 8 символів» под ней быть не должно:
+              `PasswordStrength` печатает ровно этот же ключ, пока поле
+              пустое, и «залишилось N символів» — пока пароль короче.
+              Строка снизу повторяла её слово в слово (снимок 390px,
+              20.08.2026: два одинаковых предложения подряд). */}
           <PasswordStrength value={password} />
-          <p className={password.length > 0 && password.length < 8 ? 'field-error' : 'field-hint'}>
-            {t('auth.password.min')}
-          </p>
         </div>
         <div>
           <label className="field-label" htmlFor="pass2">{t('auth.field.confirmPassword')}</label>

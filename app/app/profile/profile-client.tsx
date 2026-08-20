@@ -41,7 +41,12 @@ function Row({ label, value, onClick }: {
   const inner = (
     <>
       <span className="t-sm shrink-0" style={{ color: 'var(--color-muted)' }}>{label}</span>
-      <span className="t-md min-w-0 text-right">
+      {/* `break-words` — не оформление, а починка 20.08.2026: почта
+          вроде `oksana.kovalchuk.zadorozhnia@example.com` это ОДНО слово
+          без пробелов, и `min-w-0` его не ломает — он ужимает коробку,
+          а не строку. На 390px такая почта расширяла страницу на 15px,
+          и весь кабинет ездил вбок на экране профиля. */}
+      <span className="t-md min-w-0 break-words text-right">
         {value}
         {onClick && <span aria-hidden className="ml-2" style={{ color: 'var(--color-faint)' }}>›</span>}
       </span>

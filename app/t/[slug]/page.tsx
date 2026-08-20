@@ -196,7 +196,13 @@ export default async function ShopPage({
               )}
             </div>
             <div className="min-w-0">
-              <h1 className="display t-3xl sm:t-4xl">{shop.name}</h1>
+              {/* `sm:t-4xl` здесь стоял и не делал НИЧЕГО: `.t-4xl` —
+                  обычный класс в `@layer components`, а не утилита
+                  Tailwind, поэтому вариант `sm:` для него не собирается
+                  вовсе (проверено на 390/800/1440 — везде 24px). Мёртвый
+                  класс через месяц применят снова, решив, что так
+                  и задумано (правило 8), поэтому он удалён, а не оставлен. */}
+              <h1 className="display t-3xl">{shop.name}</h1>
               {shop.tagline && <p className="t-md mt-2 prose-muted">{shop.tagline}</p>}
               {/* Имя, подзаголовок, описание, адрес и город заведения —
                   данные продавца: не переводятся ни в каком языке. В словарь
@@ -213,9 +219,15 @@ export default async function ShopPage({
             </div>
             {/* Главное действие витрины услуг — запись. Якорь, а не второй
                 поток: кнопки «Записатися» с датой и мастером живут у самих
-                услуг ниже, шапка лишь доводит до них. */}
+                услуг ниже, шапка лишь доводит до них.
+                ⚠️ И ТОЛЬКО НА ШИРОКОМ ЭКРАНЕ (20.08.2026). На 390px список
+                услуг начинается сразу под шапкой заведения — виден без
+                прокрутки, — и якорь превращался в третью кнопку
+                «Записатися» на первом же экране: одна в шапке и по одной
+                у каждой услуги. На десктопе он нужен: там обложка и
+                логотип уводят услуги ниже сгиба. */}
             {services.length > 0 && (
-              <div className="shrink-0 lg:ml-auto lg:pb-2">
+              <div className="hidden shrink-0 lg:ml-auto lg:block lg:pb-2">
                 <a href="#services" className="btn-primary">
                   {t('public.storefront.book')}
                 </a>
@@ -231,21 +243,34 @@ export default async function ShopPage({
             <h2 className="display mb-4 t-xl">{t('public.storefront.services.title')}</h2>
             <div className="grid gap-3 lg:grid-cols-2 lg:gap-4">
               {services.map((o) => (
-                <div key={o.id} id={o.slug} className="card flex items-center gap-4">
-                  {o.image && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={mediaUrl(o.image)} alt=""
-                      className="h-14 w-14 shrink-0 object-cover"
-                      style={{ borderRadius: 'var(--radius-plate)', background: 'var(--color-surface-2)' }}
-                    />
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="t-lg">{o.title}</p>
-                    {o.subtitle && <p className="t-sm mt-0.5 prose-muted">{o.subtitle}</p>}
-                    {rating(o)}
+                // ⚠️ РАСКЛАДКА КАРТОЧКИ УСЛУГИ — ДВЕ РАЗНЫЕ, И ЭТО НЕ ПРИХОТЬ
+                // (найдено 20.08.2026 на 390px). Одна строка «кадр · название ·
+                // ціна · кнопка» держится, пока ширины хватает всем четверым.
+                // На телефоне цена и кнопка забирали больше половины, а
+                // «Плетіння афрокісок з канекалоном» ломалось на три строки
+                // в колонку шириной в два слова — это и есть десктопный ряд,
+                // не свёрнутый в столбец. Поэтому на телефоне два этажа:
+                // сверху кадр и название во всю ширину, снизу цена слева
+                // и «Записатися» справа. С `sm` возвращается прежняя строка,
+                // то есть на широком экране не меняется ничего.
+                <div key={o.id} id={o.slug}
+                     className="card flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+                  <div className="flex min-w-0 flex-1 items-center gap-3 sm:gap-4">
+                    {o.image && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={mediaUrl(o.image)} alt=""
+                        className="h-14 w-14 shrink-0 object-cover"
+                        style={{ borderRadius: 'var(--radius-plate)', background: 'var(--color-surface-2)' }}
+                      />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="t-lg">{o.title}</p>
+                      {o.subtitle && <p className="t-sm mt-0.5 prose-muted">{o.subtitle}</p>}
+                      {rating(o)}
+                    </div>
                   </div>
-                  <div className="flex shrink-0 items-center gap-4">
+                  <div className="flex shrink-0 items-center justify-between gap-4 sm:justify-end">
                     {/* Символ валюты ставит Intl, а не подстановка «` ₴`»:
                         у позиции своя `currency`, и вторая валюта появится
                         раньше, чем кто-нибудь вспомнит про эту строку. */}

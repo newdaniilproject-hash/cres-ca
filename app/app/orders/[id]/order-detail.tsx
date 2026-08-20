@@ -264,6 +264,12 @@ export function OrderDetail({
         )
       )}
 
+      {/* `min-w-0` у обеих карточек — починка 20.08.2026, а не оформление.
+          Ячейка грида по умолчанию не ужимается меньше своего min-content,
+          а почта покупателя (`oksana.kovalchuk.zadorozhnia@example.com`)
+          это одно слово без пробелов: на 390px она растягивала колонку
+          и уводила ВСЮ страницу вбок на 6px, а `truncate` на самой строке
+          не срабатывал — ему нечего было обрезать. */}
       <div className="grid gap-4 lg:grid-cols-2">
         {/* ── Покупець і доставка ────────────────────────────────────
             Было ДВЕ секции с заголовками и разделителем внутри одной
@@ -275,7 +281,7 @@ export function OrderDetail({
             Стало одна таблица «ключ → значение» (README, розділ C):
             те же данные, но каждое названо, и на 390px они не
             слипаются в абзац. */}
-        <section className="rise-3">
+        <section className="rise-3 min-w-0">
           <div className="kv">
             <div className="kv-row">
               <span className="kv-key">{t('orders.detail.buyer.title')}</span>
@@ -337,7 +343,7 @@ export function OrderDetail({
             кто зашёл посмотреть, что стало с заказом, и занимал на
             телефоне три строки под каждым открытием. Само правило от
             этого не изменилось — оно в базе, а не в подписи. */}
-        <section className="card rise-4">
+        <section className="card rise-4 min-w-0">
           <p className="eyebrow mb-3">{t('orders.detail.history.title')}</p>
           {events.length === 0 ? (
             <div className="empty !py-8">{t('orders.detail.history.empty')}</div>

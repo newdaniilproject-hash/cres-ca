@@ -331,8 +331,15 @@ function LoginInner() {
               <label className="field-label" htmlFor="pass">{t('auth.field.password')}</label>
               {/* Введённую почту несём с собой: /forgot её предзаполнит,
                   и человеку не придётся набирать адрес второй раз. */}
+              {/* Зона нажатия 44px (`--tap-min`) при кегле 10px: сама
+                  ссылка высотой в строку, и без запаса это цель
+                  в 13 пикселей — мимо неё промахиваются пальцем.
+                  `inline-flex` + `min-height` дают запас, не раздувая
+                  строку подписи: ряд выровнен по `items-baseline`,
+                  и видимое положение «Забули?» не меняется. */}
               <Link href={`/forgot${email.trim() ? `?email=${encodeURIComponent(email.trim())}` : ''}`}
-                    className="t-xs underline underline-offset-2 prose-muted">
+                    className="t-xs inline-flex items-center underline underline-offset-2 prose-muted"
+                    style={{ minHeight: 'var(--tap-min)' }}>
                 {t('auth.login.forgot')}
               </Link>
             </div>

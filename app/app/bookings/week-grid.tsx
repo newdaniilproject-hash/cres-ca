@@ -285,10 +285,18 @@ export function WeekGrid({ bookings, weekStart }: { bookings: B[]; weekStart: st
                     запись до пальца значит соврать о времени и накрыть
                     соседний час. Правило 44px остаётся у всего, что рядом:
                     стрелки недели, переключатель вида, кнопки в шторке.
-                    Кегли 11/12 — из хендоффа CRESKO Web §2; множитель
-                    размера текста они не слушают по той же причине:
-                    высота задана временем, и увеличенный текст просто
-                    не поместился бы в свои минуты. */}
+                    Кегли 10/12 — из ЗАКРЫТОЙ шкалы (10·12·13·14·15·16·17·
+                    21·22·24·30); множитель размера текста они не слушают
+                    по той же причине: высота задана временем, и увеличенный
+                    текст просто не поместился бы в свои минуты.
+
+                    Здесь стояло 11 — размер, которого в шкале нет вовсе
+                    (20.08.2026, проход телефона: сетка недели видна и на
+                    390px, то есть это был живой кегль вне шкалы, а не
+                    десктопная мелочь). Вниз, а не вверх: час — это 60px,
+                    из них под текст остаётся 44, и три строки по 12
+                    в них уже не помещаются — часовая запись потеряла бы
+                    название услуги. */}
                 {slots.map((s) => {
                   const tone = eventTone(s.b.status)
                   const top = (s.from - hourFrom) * HOUR
@@ -308,7 +316,7 @@ export function WeekGrid({ bookings, weekStart }: { bookings: B[]; weekStart: st
                               background: tone.fill,
                             }}>
                       <span className="tabular" style={{
-                        display: 'block', fontSize: 11, fontWeight: 650, lineHeight: 1.2,
+                        display: 'block', fontSize: 10, fontWeight: 650, lineHeight: 1.2,
                         color: tone.ink,
                         textDecoration: isVoid(s.b.status) ? 'line-through' : undefined,
                       }}>
@@ -322,7 +330,7 @@ export function WeekGrid({ bookings, weekStart }: { bookings: B[]; weekStart: st
                         {s.b.name}
                       </span>
                       <span style={{
-                        display: 'block', fontSize: 11, lineHeight: 1.3,
+                        display: 'block', fontSize: 10, lineHeight: 1.3,
                         color: 'var(--color-muted)',
                         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                       }}>
