@@ -953,7 +953,13 @@ export function OfferingForm({
             {canWrite && (
               <label className="btn-secondary w-fit cursor-pointer">
                 {busy === 'media' ? t('catalog.form.media.uploading') : t('catalog.form.media.add')}
-                <input type="file" accept="image/*" multiple className="hidden"
+                {/* `sr-only`, а не `hidden`: системное поле выбора файла
+                    рисует ОС своим языком, поэтому его прячут — но
+                    `display:none` вынимает его и из фокуса клавиатуры,
+                    то есть кнопка перестаёт существовать для того, кто
+                    не пользуется мышью (20.08.2026, вместе с починкой
+                    того же поля в карточке засоба и в документах). */}
+                <input type="file" accept="image/*" multiple className="sr-only"
                        disabled={busy !== null}
                        onChange={(e) => { void upload(e.target.files); e.target.value = '' }} />
               </label>

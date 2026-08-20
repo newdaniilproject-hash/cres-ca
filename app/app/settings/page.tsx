@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { currentMembership, can } from '@/lib/tenant'
+import { currentMembership, can, hasModule } from '@/lib/tenant'
 import { AppShell } from '@/components/shell'
 import { SettingsClient } from './settings-client'
 import { getT } from '@/lib/i18n/server'
@@ -57,6 +57,26 @@ export default async function SettingsPage() {
 
   if (!shop) redirect('/register/seller')
 
+  // Готові набори довідників (0122). Список пресетів — це ПРОДУКТ, а не
+  // дані закладу: у нього немає `tenant_id`, і читає його будь-хто вошедший.
+  // Тягнемо на сервері, щоб клієнт не ходив за списком сам.
+  // Відтінок бренду закладу (0123): один рядок, читається тим самим
+  // правом, що й решта налаштувань.
+  const { data: brandRow } = await supabase
+    .from('tenant_branding').select('brand_color')
+    .eq('tenant_id', m.tenantId).maybeSingle()
+
+  const { data: presetRows } = await supabase
+    .from('presets')
+    .select('code, title, description, kind, position')
+    .eq('is_active', true)
+    .order('position')
+
+  type PresetRow = {
+    code: string; title: string; description: string | null
+    kind: string | null; position: number
+  }
+
   type TeamRow = {
     user_id: string; full_name: string | null; email: string | null
     role: string; blocked_at: string | null
@@ -68,6 +88,20 @@ export default async function SettingsPage() {
         shop={shop}
         canWrite={can(m, 'settings.write')}
         canSeeTeam={canSeeTeam}
+        // ⚠️ ЭТОТ ПРИЗНАК НЕ ПЕРЕДАВАЛСЯ ВОВСЕ, и умолчание `false`
+        // в клиенте молча прятало публичную ссылку У ВСЕХ — включая
+        // заклады с модулем `storefront`. То есть адреса, который кладут
+        // в шапку Instagram, на экране «Магазин» не было ни у кого,
+        // и починка описана прямо в комментарии к пропу: «одна строка
+        // в page.tsx». Вот она.
+        hasStorefront={hasModule(m, 'storefront')}
+        // Пресет пропонується тільки той, що підходить виду закладу:
+        // салону не потрібен набір категорій магазину товарів. `kind: null`
+        // — підходить будь-якому.
+        brand={(brandRow as { brand_color: string | null } | null)?.brand_color ?? null}
+        presets={((presetRows ?? []) as PresetRow[])
+          .filter((p) => p.kind == null || p.kind === shop.kind)
+          .map((p) => ({ code: p.code, title: p.title, description: p.description }))}
         team={((team?.data ?? []) as TeamRow[]).map((t) => ({
           userId: t.user_id, role: t.role,
           name: t.full_name, email: t.email,

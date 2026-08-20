@@ -1,10 +1,10 @@
 'use client'
 
-import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { ORDER_STATUSES, orderBadge, orderLabel } from '../orders-client'
+import { IconBag } from '@/components/icons'
+import { ORDER_STATUSES, orderBadge, orderLabel } from '../status'
 import { useT } from '@/lib/i18n/client'
 import type { T } from '@/lib/i18n/translate'
 import { dbErrorText } from '@/lib/errors/db'
@@ -120,17 +120,42 @@ export function OrderDetail({
   ].filter(Boolean).join(' · ')
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="rise flex flex-wrap items-center justify-between gap-3">
-        <Link href="/app/orders" className="btn-ghost">← {t('orders.detail.back')}</Link>
-        <div className="flex items-center gap-2">
-          <span className="tabular t-xs prose-muted">
+    <div className="flex flex-col gap-4">
+      {/* ⚠️ ССЫЛКИ «← Усі замовлення» ЗДЕСЬ БОЛЬШЕ НЕТ, И ЭТО НЕ ПОТЕРЯ
+          ВЫХОДА. Оболочка ставит стрелку «назад» в шапке каждого
+          внутреннего экрана и ведёт ею в тот же `/app/orders`
+          (`components/app-shell.tsx`, `backOf`), плюс жест свайпом
+          показывает предыдущий экран под пальцем. Своя кнопка была
+          третьим входом в одно и то же действие и занимала целый ряд
+          над карточкой заказа.
+
+          README, розділ G, `orderItem`: «Шапка замовлення (номер,
+          клієнт, час, статус)» — одной карточкой, а не полосой из
+          четырёх разнородных кусков. */}
+      <section className="card rise flex items-center gap-3">
+        <span aria-hidden className="flex shrink-0 items-center justify-center"
+              style={{
+                width: 44, height: 44,
+                borderRadius: 'var(--radius-control)',
+                background: 'var(--color-accent-soft)',
+                color: 'var(--color-accent-ink)',
+              }}>
+          <IconBag size={20} />
+        </span>
+        <div className="min-w-0 flex-1">
+          {/* Имя покупателя — данные заказа, не переводится. */}
+          <p className="t-lg clamp-2">
+            <span className="tabular">№{order.number}</span> · {order.name}
+          </p>
+          <p className="tabular t-xs mt-0.5 truncate prose-muted">
             {t.dateTime(order.createdAt, stamp)} · {sourceLabel(t, order.source)}
-          </span>
-          {order.guest && <span className="badge">{t('orders.detail.badge.guest')}</span>}
-          <span className={orderBadge(order.status)}>{orderLabel(t, order.status)}</span>
+          </p>
         </div>
-      </div>
+        <span className="flex shrink-0 flex-col items-end gap-1">
+          <span className={orderBadge(order.status)}>{orderLabel(t, order.status)}</span>
+          {order.guest && <span className="badge">{t('orders.detail.badge.guest')}</span>}
+        </span>
+      </section>
 
       {/* Тексты отказов базы подставляются как есть; из словаря — рамка. */}
       {loadError && (
@@ -138,135 +163,188 @@ export function OrderDetail({
       )}
       {err && <p className="field-error rise">{err}</p>}
 
-      {/* Смена статуса */}
-      {canWrite && (
-        <section className="card rise-1">
-          <h2 className="t-lg mb-3">{t('orders.detail.next.title')}</h2>
-          {forward.length === 0 && undoing.length === 0 ? (
-            <p className="t-md prose-muted">{t('orders.detail.next.final')}</p>
-          ) : (
+      {/* ── Склад замовлення ──────────────────────────────────────────
+          README: позиции, суммы и строка «Разом» одной карточкой.
+
+          ⚠️ СТРОКИ «Позиції: 920 ₴» НАД ИТОГОМ БОЛЬШЕ НЕ БЫВАЕТ БЕЗ
+          СКИДКИ. Без неё это ровно то же число, что и «Разом», набранное
+          дважды подряд — а в заказе без скидки, то есть почти во всех,
+          так и было. Появляется только тогда, когда есть что вычитать. */}
+      <section className="card rise-1 !p-0">
+        <p className="eyebrow px-5 pt-5">{t('orders.detail.items.title')}</p>
+        <div className="px-5">
+          {items.length === 0 ? (
+            <div className="empty">{t('orders.detail.items.empty')}</div>
+          ) : items.map((it) => (
+            <div key={it.id} className="row">
+              <div className="min-w-0">
+                <p className="t-md truncate">{it.title}</p>
+                <p className="tabular t-xs mt-0.5 prose-muted">
+                  {it.variant} · {t.money(it.price)} × {t.number(it.qty)}
+                </p>
+              </div>
+              <span className="tabular t-md shrink-0">
+                {t.money(it.price * it.qty)}
+              </span>
+            </div>
+          ))}
+        </div>
+        <div className="tabular flex flex-col gap-1 px-5 pb-5 pt-4">
+          {order.discount > 0 && (
             <>
+              <p className="t-sm text-right prose-muted">
+                {t('orders.detail.sum.subtotal', { sum: t.money(order.subtotal) })}
+              </p>
+              <p className="t-sm text-right prose-muted">
+                {t('orders.detail.sum.discount', { sum: t.money(order.discount) })}
+              </p>
+            </>
+          )}
+          {/* «Разом» — подпись слева, число справа: строка итога в макете
+              единственная, у которой есть имя, и по нему глаз находит
+              её среди позиций. */}
+          <p className="t-lg flex items-baseline justify-between gap-4">
+            <span>{t('orders.detail.sum.total')}</span>
+            <span>{t.money(order.total)}</span>
+          </p>
+          {order.paid > 0 && (
+            <p className="t-sm text-right prose-muted">
+              {t('orders.detail.sum.paid', { sum: t.money(order.paid) })}
+            </p>
+          )}
+        </div>
+      </section>
+
+      {/* ── Дії ──────────────────────────────────────────────────────
+          README: главное действие кнопкой, «Скасувати замовлення»
+          отдельно внизу и `danger`. Карточки с заголовком «Що робимо
+          далі» вокруг них больше нет: заголовок над двумя кнопками
+          объяснял то, что кнопки и так говорят словами. */}
+      {canWrite && (
+        forward.length === 0 && undoing.length === 0 ? (
+          <p className="t-sm rise-2 prose-muted">{t('orders.detail.next.final')}</p>
+        ) : (
+          <div className="rise-2 flex flex-col gap-3">
+            {/* Комментарий уезжает вместе с переходом, поэтому стоит
+                НАД кнопками: набранный после нажатия он не попадёт
+                никуда. */}
+            <div>
+              <label className="field-label" htmlFor="status-note">
+                {t('orders.detail.note.label')}
+              </label>
+              <input id="status-note" className="input" value={note}
+                     placeholder={t('orders.detail.note.placeholder')}
+                     onChange={(e) => setNote(e.target.value)} />
+            </div>
+
+            {forward.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {forward.map((s, i) => (
                   <button key={s} disabled={busy !== null}
-                          className={i === 0 ? 'btn-primary t-md' : 'btn-secondary t-md'}
-                          onClick={() => void move(s)}>
-                    {actionLabel(t, s)}
-                  </button>
-                ))}
-                {undoing.map((s) => (
-                  <button key={s} disabled={busy !== null}
-                          className="btn-danger t-md"
+                          className={`${i === 0 ? 'btn-primary' : 'btn-secondary'} t-md flex-1`}
+                          style={{ minHeight: 'var(--tap-min)' }}
                           onClick={() => void move(s)}>
                     {actionLabel(t, s)}
                   </button>
                 ))}
               </div>
-              <div className="mt-3">
-                <label className="field-label" htmlFor="status-note">
-                  {t('orders.detail.note.label')}
-                </label>
-                <input id="status-note" className="input" value={note}
-                       placeholder={t('orders.detail.note.placeholder')}
-                       onChange={(e) => setNote(e.target.value)} />
-                <p className="field-hint">{t('orders.detail.note.hint')}</p>
-              </div>
-            </>
-          )}
-        </section>
+            )}
+
+            {undoing.map((s) => (
+              <button key={s} disabled={busy !== null}
+                      className="btn-danger t-md w-full"
+                      style={{ minHeight: 'var(--tap-min)' }}
+                      onClick={() => void move(s)}>
+                {actionLabel(t, s)}
+              </button>
+            ))}
+
+            <p className="field-hint">{t('orders.detail.note.hint')}</p>
+          </div>
+        )
       )}
 
+      {/* `min-w-0` у обеих карточек — починка 20.08.2026, а не оформление.
+          Ячейка грида по умолчанию не ужимается меньше своего min-content,
+          а почта покупателя (`oksana.kovalchuk.zadorozhnia@example.com`)
+          это одно слово без пробелов: на 390px она растягивала колонку
+          и уводила ВСЮ страницу вбок на 6px, а `truncate` на самой строке
+          не срабатывал — ему нечего было обрезать. */}
       <div className="grid gap-4 lg:grid-cols-2">
-        {/* Позиции */}
-        <section className="card rise-2 lg:col-span-2 !p-0">
-          <h2 className="t-lg px-5 pt-5">{t('orders.detail.items.title')}</h2>
-          <div className="px-5">
-            {items.length === 0 ? (
-              <div className="empty">{t('orders.detail.items.empty')}</div>
-            ) : items.map((it) => (
-              <div key={it.id} className="row">
-                <div className="min-w-0">
-                  <p className="t-md truncate">{it.title}</p>
-                  <p className="tabular t-xs mt-0.5 prose-muted">
-                    {it.variant} · {t.money(it.price)} × {t.number(it.qty)}
-                  </p>
-                </div>
-                <span className="tabular t-md shrink-0">
-                  {t.money(it.price * it.qty)}
+        {/* ── Покупець і доставка ────────────────────────────────────
+            Было ДВЕ секции с заголовками и разделителем внутри одной
+            карточки, и каждая строка в них шла свободным текстом:
+            «Покупець» → имя, телефон, почта; «Доставка» → склеенная
+            через « · » строка из четырёх полей, в которой не видно,
+            где город, а где отделение.
+
+            Стало одна таблица «ключ → значение» (README, розділ C):
+            те же данные, но каждое названо, и на 390px они не
+            слипаются в абзац. */}
+        <section className="rise-3 min-w-0">
+          <div className="kv">
+            <div className="kv-row">
+              <span className="kv-key">{t('orders.detail.buyer.title')}</span>
+              {/* Имя покупателя — данные заказа. */}
+              <span className="kv-val">{order.name}</span>
+            </div>
+            <div className="kv-row">
+              <span className="kv-key">{t('orders.detail.phone.key')}</span>
+              <span className="kv-val tabular">
+                {order.phone
+                  ? <a href={`tel:${order.phone}`}>{order.phone}</a>
+                  : t('orders.detail.buyer.noPhone')}
+              </span>
+            </div>
+            {order.email && (
+              <div className="kv-row">
+                <span className="kv-key">{t('orders.detail.email.key')}</span>
+                <span className="kv-val truncate">
+                  <a href={`mailto:${order.email}`}>{order.email}</a>
                 </span>
               </div>
-            ))}
-          </div>
-          <div className="tabular t-md flex flex-col items-end gap-1 px-5 pb-5 pt-4">
-            <p className="prose-muted">
-              {t('orders.detail.sum.subtotal', { sum: t.money(order.subtotal) })}
-            </p>
-            {order.discount > 0 && (
-              <p className="prose-muted">
-                {t('orders.detail.sum.discount', { sum: t.money(order.discount) })}
-              </p>
             )}
-            <p className="t-2xl">{t.money(order.total)}</p>
-            {order.paid > 0 && (
-              <p className="prose-muted">
-                {t('orders.detail.sum.paid', { sum: t.money(order.paid) })}
-              </p>
-            )}
-          </div>
-        </section>
-
-        {/* Контакты и доставка */}
-        <section className="card rise-3">
-          <h2 className="t-lg mb-3">{t('orders.detail.buyer.title')}</h2>
-          <div className="t-md flex flex-col gap-1">
-            <p className="t-md">{order.name}</p>
-            {order.phone
-              ? <a href={`tel:${order.phone}`} className="prose-muted">{order.phone}</a>
-              : <p className="prose-muted">{t('orders.detail.buyer.noPhone')}</p>}
-            {order.email && (
-              <a href={`mailto:${order.email}`} className="prose-muted">{order.email}</a>
-            )}
-            {order.guest && (
-              <p className="field-hint">{t('orders.detail.buyer.guestHint')}</p>
-            )}
-          </div>
-
-          <div className="divider my-4" />
-
-          <h2 className="t-lg mb-3">{t('orders.detail.delivery.title')}</h2>
-          <div className="t-md flex flex-col gap-1">
-            <p className={delivery ? '' : 'prose-muted'}>
-              {delivery || t('orders.detail.delivery.none')}
-            </p>
+            <div className="kv-row">
+              <span className="kv-key">{t('orders.detail.delivery.title')}</span>
+              <span className="kv-val">{delivery || t('orders.detail.delivery.none')}</span>
+            </div>
             {order.tracking && (
-              <p className="prose-muted">
-                {t('orders.detail.delivery.tracking', { number: order.tracking })}
-              </p>
+              <div className="kv-row">
+                <span className="kv-key">{t('orders.detail.tracking.key')}</span>
+                <span className="kv-val tabular">{order.tracking}</span>
+              </div>
             )}
           </div>
-
-          {(order.comment || order.cancelReason) && (
-            <>
-              <div className="divider my-4" />
-              {order.comment && (
-                <p className="t-md">
-                  <span className="prose-muted">{t('orders.detail.comment.label')} </span>
-                  {order.comment}
-                </p>
-              )}
-              {order.cancelReason && (
-                <p className="t-md mt-1">
-                  <span className="prose-muted">{t('orders.detail.cancel.label')} </span>
-                  {order.cancelReason}
-                </p>
-              )}
-            </>
+          {/* Комментарий покупателя и причина отмены — НЕ строки таблицы:
+              их подписи в словаре написаны с двоеточием на конце, потому
+              что задуманы началом предложения («Коментар покупця: …»),
+              а в столбце «ключ → значення» двоеточие лишнее. Резать его
+              из перевода нельзя — это было бы вторым правилом о том, как
+              строка выглядит, живущим в коде. */}
+          {order.comment && (
+            <p className="t-md mt-2">
+              <span className="prose-muted">{t('orders.detail.comment.label')} </span>
+              {order.comment}
+            </p>
+          )}
+          {order.cancelReason && (
+            <p className="t-md mt-1">
+              <span className="prose-muted">{t('orders.detail.cancel.label')} </span>
+              {order.cancelReason}
+            </p>
+          )}
+          {order.guest && (
+            <p className="field-hint mt-2">{t('orders.detail.buyer.guestHint')}</p>
           )}
         </section>
 
-        {/* История */}
-        <section className="card rise-4">
-          <h2 className="t-lg mb-3">{t('orders.detail.history.title')}</h2>
+        {/* История. ⚠️ Абзаца «Історію пише база на кожному переході…»
+            под ней больше нет: он объяснял неизменяемость журнала тому,
+            кто зашёл посмотреть, что стало с заказом, и занимал на
+            телефоне три строки под каждым открытием. Само правило от
+            этого не изменилось — оно в базе, а не в подписи. */}
+        <section className="card rise-4 min-w-0">
+          <p className="eyebrow mb-3">{t('orders.detail.history.title')}</p>
           {events.length === 0 ? (
             <div className="empty !py-8">{t('orders.detail.history.empty')}</div>
           ) : (
@@ -290,7 +368,6 @@ export function OrderDetail({
               ))}
             </ol>
           )}
-          <p className="field-hint">{t('orders.detail.history.hint')}</p>
         </section>
       </div>
     </div>

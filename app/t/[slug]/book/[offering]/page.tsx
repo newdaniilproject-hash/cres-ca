@@ -48,7 +48,11 @@ export default async function BookPage({
   return (
     <>
       <PublicHeader authed={!!user} />
-      <main className="mx-auto max-w-xl px-4 pb-16 pt-10 sm:px-6">
+      {/* Верхний отступ — на внутренней обёртке, а не на `<main>`:
+          правило `html[data-native] .topbar + *` незаслоённое и в обёртке
+          затирает его целиком. Разбор — в `app/privacy/legal.tsx`. */}
+      <main className="mx-auto max-w-xl px-4 pb-16 sm:px-6">
+       <div className="pt-10">
         <p className="rise t-sm prose-muted">{shop.name}</p>
         <h1 className="display rise mt-1 t-3xl">{off.title}</h1>
         {off.subtitle && <p className="rise-1 t-md mt-2 prose-muted">{off.subtitle}</p>}
@@ -63,6 +67,7 @@ export default async function BookPage({
           depositPercent={off.deposit_percent}
           cancelWindow={off.cancel_window_hours}
         />
+       </div>
       </main>
     </>
   )

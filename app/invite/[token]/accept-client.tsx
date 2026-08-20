@@ -104,30 +104,34 @@ export function AcceptClient({ token, email }: { token: string; email: string })
 
       {state === 'error' && verdict && <p className="field-error">{verdict.text}</p>}
 
-      <div className="flex flex-wrap gap-2">
+      {/* Кнопки столбцом и `btn-tall`, как на всех экранах входа.
+          Рядом `flex-wrap` они на 390px переносились по одной и вставали
+          разной ширины, а высота 44px расходилась с 52px соседних
+          экранов того же потока. */}
+      <div className="flex flex-col gap-2">
         {showAccept && (
-          <button type="button" className="btn-primary"
+          <button type="button" className="btn-primary btn-tall"
                   disabled={state === 'busy'} onClick={accept}>
             {state === 'busy' ? t('invite.accepting') : t('invite.accept')}
           </button>
         )}
 
         {verdict?.action === 'app' && (
-          <button type="button" className="btn-primary"
+          <button type="button" className="btn-primary btn-tall"
                   disabled={state === 'busy'} onClick={openApp}>
             {state === 'busy' ? t('invite.opening') : t('invite.openApp')}
           </button>
         )}
 
         {verdict?.action === 'relogin' && (
-          <Link className="btn-primary"
+          <Link className="btn-primary btn-tall"
                 href={`/login?next=${encodeURIComponent(`/invite/${token}`)}`}>
             {t('invite.relogin')}
           </Link>
         )}
 
         {verdict?.action !== 'app' && (
-          <Link className="btn-secondary" href="/app">{t('invite.later')}</Link>
+          <Link className="btn-secondary btn-tall" href="/app">{t('invite.later')}</Link>
         )}
       </div>
     </div>

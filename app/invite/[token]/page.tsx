@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { AcceptClient } from './accept-client'
+import { AuthShell } from '../../(auth)/auth-shell'
 import { getT } from '@/lib/i18n/server'
 
 export const dynamic = 'force-dynamic'
@@ -40,30 +41,38 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
 
   const next = encodeURIComponent(`/invite/${token}`)
 
+  // Раскладка — общая `AuthShell`, а не своя копия `auth-page`.
+  //
+  // Здесь стояла собственная верхняя полоса со строкой «CRESKO» ПРОСТЫМ
+  // ТЕКСТОМ (третье написание знака в продукте: `Brand` даёт разрядку
+  // и гарнитуру заголовков, а голая строка — обычный текст) и свой
+  // контейнер `max-w-lg`. То есть один и тот же экран входа на этой
+  // странице выглядел иначе, чем на /login. И главное: в ОБЁРТКЕ эта
+  // полоса вела на продающую главную, а прятать её было нечем —
+  // `web-only` живёт в `AuthShell`.
+  //
+  // Кнопки берут `btn-tall`: три двери в один поток («Прийняти»,
+  // «Увійти», «Створити акаунт») обязаны быть одной высоты, а на 390px
+  // ряд из двух `btn-primary`/`btn-secondary` ещё и переносился.
   return (
-    <div className="auth-page">
-      <div className="auth-topbar">
-        <Link href="/" className="brand-topbar">CRESKO</Link>
-      </div>
-      <div className="mx-auto w-full max-w-lg px-4 py-12">
-        {user ? (
-          <AcceptClient token={token} email={user.email ?? ''} />
-        ) : (
-          <div className="card flex flex-col gap-4">
-            <h1 className="display t-2xl">{t('invite.title')}</h1>
-            <p className="t-md prose-muted">{t('invite.guest.desc')}</p>
-            <p className="t-sm prose-muted">{t('invite.guest.noAccount')}</p>
-            <div className="flex flex-wrap gap-2">
-              <Link className="btn-primary" href={`/login?next=${next}`}>
-                {t('invite.guest.login')}
-              </Link>
-              <Link className="btn-secondary" href={`/register?next=${next}`}>
-                {t('invite.guest.register')}
-              </Link>
-            </div>
+    <AuthShell>
+      {user ? (
+        <AcceptClient token={token} email={user.email ?? ''} />
+      ) : (
+        <div className="card flex flex-col gap-4">
+          <h1 className="display t-2xl">{t('invite.title')}</h1>
+          <p className="t-md prose-muted">{t('invite.guest.desc')}</p>
+          <p className="t-sm prose-muted">{t('invite.guest.noAccount')}</p>
+          <div className="flex flex-col gap-2">
+            <Link className="btn-primary btn-tall" href={`/login?next=${next}`}>
+              {t('invite.guest.login')}
+            </Link>
+            <Link className="btn-secondary btn-tall" href={`/register?next=${next}`}>
+              {t('invite.guest.register')}
+            </Link>
           </div>
-        )}
-      </div>
-    </div>
+        </div>
+      )}
+    </AuthShell>
   )
 }

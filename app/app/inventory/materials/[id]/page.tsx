@@ -180,6 +180,12 @@ export default async function MaterialPage({
       <MaterialCard
         tenantId={m.tenantId}
         canWrite={can(m, 'stock.write')}
+        // Дверь в ЧУЖОЙ модуль прячется, а не показывает отказ. Подэкран
+        // документов стоит на модуле `compliance` (см. его page.tsx),
+        // а карточка — на `inventory`: у заведения, взявшего только склад,
+        // строка «Документи та сертифікати» вела бы на `<ModuleOff>`.
+        // Признак приходит с сервера, потому что модули знает только он.
+        hasCompliance={hasModule(m, 'compliance')}
         docsCount={docsCount ?? (docs ?? []).length}
         docs={(docs ?? []).map((d) => ({
           id: d.id, kind: d.kind, title: d.title, createdAt: d.created_at,

@@ -212,10 +212,16 @@ export default async function Home() {
             ))}
           </div>
 
-          <div className="mt-10 mb-5 flex items-end justify-between">
-            <h3 className="display t-2xl">{t('public.home.shops.title')}</h3>
-            <Link href="/map" className="btn-ghost">{t('public.home.shops.map')}</Link>
-          </div>
+          {/* ⚠️ Кнопки «Показати на мапі» здесь БОЛЬШЕ НЕТ, и это снятие
+              дубля, а не упрощение (20.08.2026). Дверь на `/map` лежала
+              на этом экране ТРИЖДЫ: «Мапа» в шапке, пилюля «На мапі ↗»
+              в ряду фильтров выше и эта кнопка — а на 390px пилюля
+              и кнопка помещались в один экран, метрах в двухстах
+              пикселей друг от друга. Осталась пилюля: она стоит в ряду
+              «Послуги · Товари · На мапі · города», то есть среди
+              равноправных способов смотреть, а не сбоку от заголовка
+              по десктопной привычке «действие справа от секции». */}
+          <h3 className="display t-2xl mt-10 mb-5">{t('public.home.shops.title')}</h3>
 
           {shops && shops.length > 0 ? (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

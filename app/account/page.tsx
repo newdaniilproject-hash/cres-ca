@@ -69,14 +69,34 @@ export default async function AccountPage() {
 
   return (
     <>
-      <PublicHeader authed />
-      <main className="mx-auto max-w-3xl px-4 pt-10 sm:px-6">
+      {/* `account` — шапка не рисует кнопку «Кабінет»: она вела бы на этот
+          же экран, то есть одна дверь лежала бы на нём дважды. */}
+      <PublicHeader authed account />
+      {/* Верхний отступ — на внутренней обёртке, а не на `<main>`:
+          правило `html[data-native] .topbar + *` незаслоённое и в обёртке
+          затирает его целиком. Разбор — в `app/privacy/legal.tsx`. */}
+      <main className="mx-auto max-w-3xl px-4 sm:px-6">
+       <div className="pt-10">
+        {/* ⚠️ `min-w-0` и `truncate` обязательны, и это не украшение
+            (найдено 20.08.2026 на 390px). У покупателя, зарегистрированного
+            почтой, `full_name` нет, и в заголовок попадает адрес вида
+            `daniilpadalko97@gmail.com`: без `min-w-0` колонка отказывается
+            сжиматься, «Безпека» уезжает за правый край, и ВСЯ страница
+            получает горизонтальную прокрутку. Кнопка при этом остаётся
+            `shrink-0` — сжиматься должно имя, а не действие. */}
         <div className="rise flex items-center justify-between gap-4">
-          <div>
-            <h1 className="display t-2xl">{name}</h1>
-            <p className="t-sm mt-0.5 prose-muted">{user.email}</p>
+          <div className="min-w-0">
+            <h1 className="display t-2xl truncate">{name}</h1>
+            {/* Почта второй строкой — только когда она НЕ повторяет
+                заголовок. Без имени обе строки печатали один и тот же
+                адрес друг под другом. */}
+            {name !== user.email && (
+              <p className="t-sm mt-0.5 truncate prose-muted">{user.email}</p>
+            )}
           </div>
-          <Link href="/account/security" className="btn-secondary">{t('account.link.security')}</Link>
+          <Link href="/account/security" className="btn-secondary shrink-0">
+            {t('account.link.security')}
+          </Link>
         </div>
 
         {/* Заведение есть — вход в кабинет. Заведения нет — предложение
@@ -84,21 +104,27 @@ export default async function AccountPage() {
             (0118), и без этой карточки путь «клиент решил стать
             мастером» из продукта пропал бы целиком — регистрация
             продавца осталась бы доступна только по прямой ссылке. */}
+        {/* Строка «текст слева, кнопка справа» — раскладка ДЕСКТОПНАЯ.
+            На 390px кнопка сжималась до двух строк, а описание — до
+            колонки в три слова. Поэтому на телефоне это столбец, а строкой
+            становится с `sm`, где ширина для неё есть. */}
         {memberships.length > 0 ? (
-          <Link href="/app" className="card-link rise-1 mt-6 flex items-center justify-between">
-            <div>
+          <Link href="/app"
+                className="card-link rise-1 mt-6 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+            <div className="min-w-0">
               <p className="t-lg">{t('account.business.title')}</p>
               <p className="t-sm mt-0.5 prose-muted">{t('account.business.desc')}</p>
             </div>
-            <span className="btn-primary">{t('account.business.open')}</span>
+            <span className="btn-primary shrink-0">{t('account.business.open')}</span>
           </Link>
         ) : (
-          <Link href="/register/seller" className="card-link rise-1 mt-6 flex items-center justify-between">
-            <div>
+          <Link href="/register/seller"
+                className="card-link rise-1 mt-6 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+            <div className="min-w-0">
               <p className="t-lg">{t('account.become.title')}</p>
               <p className="t-sm mt-0.5 prose-muted">{t('account.become.desc')}</p>
             </div>
-            <span className="btn-secondary">{t('account.become.action')}</span>
+            <span className="btn-secondary shrink-0">{t('account.become.action')}</span>
           </Link>
         )}
 
@@ -106,9 +132,16 @@ export default async function AccountPage() {
           <h2 className="display mb-3 t-xl">{t('account.bookings.title')}</h2>
           {bookings && bookings.length > 0 ? (
             <div className="card !p-0">
+              {/* `flex-wrap` давал непредсказуемую строку: у записи
+                  с кнопкой «Оцінити» состояние уезжало вниз и влево,
+                  у записи без неё оставалось справа — два соседних
+                  пункта одного списка выглядели по-разному. Столбец
+                  на телефоне, строка с `sm`: раскладка одна и та же
+                  у всех записей. */}
               {bookings.map((b) => (
-                <div key={`${b.tenant_id}-${b.number}`} className="row flex-wrap px-5">
-                  <div className="min-w-0">
+                <div key={`${b.tenant_id}-${b.number}`}
+                     className="row w-full flex-col items-start gap-2 px-5 sm:flex-row sm:items-center sm:gap-4">
+                  <div className="min-w-0 max-w-full">
                     <p className="t-md truncate">{b.title} · {b.variant_name}</p>
                     <p className="tabular t-sm mt-0.5 prose-muted">
                       {t.dateTime(String(b.period).slice(2, 27), {
@@ -140,14 +173,17 @@ export default async function AccountPage() {
             <div className="card !p-0">
               {orders.map((o) => (
                 <div key={`${o.tenant_id}-${o.number}`} className="flex flex-col gap-2 px-5 py-3">
-                  <div className="row !border-0 !p-0">
-                    <div>
+                  {/* Подписи состояний бывают длинными («очікує оплати»),
+                      и на 390px строка обязана сжимать номер, а не
+                      выталкивать сумму за край. */}
+                  <div className="row !border-0 !p-0 flex-wrap">
+                    <div className="min-w-0">
                       <p className="tabular t-md">
                         {t('account.order.number', { number: Number(o.number) })}
                       </p>
                       <p className="tabular t-sm mt-0.5 prose-muted">{t.date(o.created_at)}</p>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex shrink-0 items-center gap-3">
                       <span className="badge">{orderLabel(o.status)}</span>
                       {/* Символ валюты ставит Intl (`t.money`), а не подстановка «₴». */}
                       <p className="tabular t-md">{t.money(Number(o.total), o.currency)}</p>
@@ -178,6 +214,7 @@ export default async function AccountPage() {
             <div className="empty card">{t('account.orders.empty')}</div>
           )}
         </section>
+       </div>
       </main>
       <PublicFooter />
     </>

@@ -7,6 +7,7 @@ import { useT } from '@/lib/i18n/client'
 import { dbErrorText } from '@/lib/errors/db'
 import { Sheet } from '@/components/sheet'
 import { NEXT, isVoid, statusLabel, type B } from './status'
+import { cap } from './month'
 
 // Карточка записи в шторке — ОДНА на все виды раздела.
 //
@@ -49,18 +50,37 @@ export function BookingSheet({ booking, onClose }: {
            title={booking ? t('bookings.card.title', { number: booking.number }) : undefined}>
       {booking && (
         <div className="flex flex-col gap-3">
+          {/* День недели — ОТДЕЛЬНЫМ вызовом, и это не украшательство.
+              Один вызов `{ weekday, day, month, … }` в украинской локали
+              Chromium печатает «середу, 19 серпня о 09:00» — знахідний
+              відмінок: в CLDR у дня недели два контекста, и внутри даты
+              берётся тот, который читается как «у середу». Карточка
+              НАЗЫВАЕТ день, а не говорит «в такой-то день». Тот же разбор
+              и та же развилка — в шапке `dayLabel` (`./month`); Node
+              с другой сборкой ICU отдаёт «середа» и в слитном виде,
+              то есть на сервере ошибки не видно вовсе. */}
           <p className="tabular t-lg" style={{ color: 'var(--color-accent-ink)' }}>
+            {cap(t.dateTime(booking.start, { weekday: 'long' }))}
+            {', '}
             {t.dateTime(booking.start, {
-              weekday: 'long', day: 'numeric', month: 'long',
-              hour: '2-digit', minute: '2-digit',
+              day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit',
             })}
           </p>
           <p className="t-md">
             {booking.name}
             {booking.phone && <a href={`tel:${booking.phone}`} className="prose-muted"> · {booking.phone}</a>}
           </p>
+          {/* Услуга, вариант и мастер. Вариант печатается ТОЛЬКО когда он
+              не повторяет название услуги: у позиции с единственным
+              вариантом имена совпадают буква в букву, и строка выходила
+              «Манікюр + гель-лак · Манікюр + гель-лак · Олена» — одна
+              и та же величина дважды подряд. Все три вида раздела берут
+              её как `variant || title`, и карточка была единственным
+              местом, где показывались обе. */}
           <p className="t-sm" style={{ color: 'var(--color-faint)' }}>
-            {booking.title} · {booking.variant} · {booking.staff}
+            {[booking.title, booking.variant, booking.staff]
+              .filter((v, i, all) => v && all.indexOf(v) === i)
+              .join(' · ')}
           </p>
           <p className="flex items-center gap-2">
             <span className={

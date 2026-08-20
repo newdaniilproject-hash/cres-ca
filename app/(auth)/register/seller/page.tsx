@@ -301,10 +301,11 @@ function SellerRegisterInner() {
           <label className="field-label" htmlFor="pass">{t('auth.field.password')}</label>
           <PasswordInput id="pass" value={password} onChange={setPassword}
                          autoComplete="new-password" />
+          {/* Отдельной строки «Мінімум 8 символів» здесь нет намеренно:
+              её печатает сам `PasswordStrength`, пока поле пустое, —
+              и до 20.08.2026 одно и то же предложение стояло дважды
+              подряд, как на `/register`. */}
           <PasswordStrength value={password} />
-          <p className={password.length > 0 && password.length < 8 ? 'field-error' : 'field-hint'}>
-            {t('auth.password.min')}
-          </p>
         </div>
         <div>
           <label className="field-label" htmlFor="pass2">{t('auth.field.confirmPassword')}</label>

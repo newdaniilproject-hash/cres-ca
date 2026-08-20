@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { afterSignOut } from '@/lib/where'
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -40,7 +41,12 @@ function Row({ label, value, onClick }: {
   const inner = (
     <>
       <span className="t-sm shrink-0" style={{ color: 'var(--color-muted)' }}>{label}</span>
-      <span className="t-md min-w-0 text-right">
+      {/* `break-words` — не оформление, а починка 20.08.2026: почта
+          вроде `oksana.kovalchuk.zadorozhnia@example.com` это ОДНО слово
+          без пробелов, и `min-w-0` его не ломает — он ужимает коробку,
+          а не строку. На 390px такая почта расширяла страницу на 15px,
+          и весь кабинет ездил вбок на экране профиля. */}
+      <span className="t-md min-w-0 break-words text-right">
         {value}
         {onClick && <span aria-hidden className="ml-2" style={{ color: 'var(--color-faint)' }}>›</span>}
       </span>
@@ -152,7 +158,7 @@ export function ProfileClient({
     // и «Вийти» на ноутбуке разлогинивал телефон. Выход со всех устройств —
     // отдельная кнопка ниже, с подтверждением.
     await supabase.auth.signOut({ scope: 'local' })
-    window.location.href = '/'
+    window.location.href = afterSignOut()
   }
 
   // Выход со всех устройств — глобальный signOut, ровно то поведение,
@@ -167,7 +173,7 @@ export function ProfileClient({
     })
     if (!ok) return
     await supabase.auth.signOut({ scope: 'global' })
-    window.location.href = '/'
+    window.location.href = afterSignOut()
   }
 
   // Удаление аккаунта — требование Apple 5.1.1(v) и условие сделки
@@ -209,21 +215,55 @@ export function ProfileClient({
     // сессией; локально чистим токены этого устройства, остальные сеансы
     // умерли вместе с пользователем.
     await supabase.auth.signOut({ scope: 'local' })
-    window.location.href = '/'
+    window.location.href = afterSignOut()
   }
 
   return (
     <div className="flex flex-col gap-4">
 
+      {/* ═══ CRESKO Web, §17 «Профіль та акаунт» — хедер экрана (только lg)
+          До 20.08.2026 у этого экрана широкой раскладки не было ВОВСЕ:
+          мобильный столбик карточек растягивался на 1146px, и строка
+          «Пошта … anna@…» разъезжалась на всю ширину, а ползунок размера
+          текста становился метровым. Кнопки действия справа нет: всё,
+          что здесь делают, принадлежит своей строке, а не экрану. */}
+      <div className="hidden items-center gap-3 lg:flex">
+        <span aria-hidden className="flex shrink-0 items-center justify-center"
+              style={{
+                width: 44, height: 44,
+                borderRadius: 'var(--radius-plate)',
+                background: 'var(--color-accent-soft)',
+                color: 'var(--color-accent-ink)',
+              }}>
+          <IconUser size={22} />
+        </span>
+        <div className="min-w-0">
+          <h1 className="webh1" data-size="27">{t('app.screen.profile.title')}</h1>
+          <p style={{ fontSize: 14, color: 'var(--color-muted)' }}>
+            {t('app.screen.profile.desc')}
+          </p>
+        </div>
+      </div>
+
+      {/* ═══ Две колонки на широком экране, один столбик на телефоне ══════
+          Порядок карточек на телефоне НЕ меняется: внешний контейнер там
+          обычный `flex-col`, а колонки — просто два его ребёнка подряд.
+          Слева то, что читают («кто я», данные, безопасность), справа —
+          то, чем управляют: вид, размер текста и выход. */}
+      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_392px] lg:items-start lg:gap-5">
+      <div className="flex flex-col gap-4">
+
       {/* ── Кто вошёл ────────────────────────────────────────── */}
       <section className="card rise-1 flex items-center gap-4">
-        <span className="avatarbtn shrink-0"
-              style={{ width: 56, height: 56, fontSize: 22 }}>
+        {/* Размер аватара — классами, а не inline-стилем: в хендоффе
+            карточка человека несёт 66px, и на телефоне такой кружок
+            съедает четверть ширины. Inline-стиль перебил бы `lg:`. */}
+        <span className="avatarbtn h-14 w-14 shrink-0 text-[22px] lg:h-[66px] lg:w-[66px] lg:text-2xl">
           {initial || <IconUser size={24} />}
         </span>
         <div className="min-w-0">
           {/* Имя человека, почта и название заклада — данные, не строки. */}
-          <p className="display t-xl truncate">{name || t('common.noName')}</p>
+          <p className="display t-xl truncate lg:text-[21px]">{name || t('common.noName')}</p>
           <p className="t-sm truncate" style={{ color: 'var(--color-muted)' }}>{email}</p>
           <p className="mt-1 flex flex-wrap items-center gap-2">
             <span className="badge-accent">{roleLabel(t, role)}</span>
@@ -286,9 +326,16 @@ export function ProfileClient({
 
         {/* Без `settings.read` страница разворачивает на `/app`. Ссылка,
             ведущая в редирект, читается как поломка — прячем целиком:
-            пункт, который ничего не открывает, хуже отсутствующего. */}
+            пункт, который ничего не открывает, хуже отсутствующего.
+
+            ⚠️ И `lg:hidden` — ЭТО СНЯТЫЙ ДУБЛЬ. На широком экране
+            «Налаштування» стоят пунктом сайдбара всегда (FIXED_BOTTOM
+            в `components/app-shell.tsx`, то же право `settings.read`),
+            то есть дверь в один и тот же экран лежала на виду дважды.
+            На телефоне сайдбара нет — там строка остаётся. */}
         {canSettings && (
-          <Link href="/app/settings" className="row px-5" style={{ minHeight: 'var(--tap-min)' }}>
+          <Link href="/app/settings" className="row px-5 lg:hidden"
+                style={{ minHeight: 'var(--tap-min)' }}>
             <span className="flex min-w-0 items-center gap-3">
               <span className="list-anchor"><IconGear size={18} /></span>
               <span className="min-w-0">
@@ -302,6 +349,11 @@ export function ProfileClient({
           </Link>
         )}
       </section>
+
+      </div>
+
+      {/* ── Правая колонка: вид, размер текста и выход ──────────────── */}
+      <div className="flex flex-col gap-4">
 
       {/* ── Вид ──────────────────────────────────────────────── */}
       <section className="card rise-3 flex items-center justify-between gap-3">
@@ -320,8 +372,13 @@ export function ProfileClient({
         <TextSize />
       </section>
 
-      {/* ── Выход и удаление ─────────────────────────────────── */}
-      <section className="flex flex-col gap-2 rise-3">
+      {/* ── Выход и удаление ───────────────────────────────────
+          На широком экране — карточка «Дії з акаунтом» (§17): три голые
+          кнопки на пустом фоне колонки 392px висели в воздухе и не
+          читались как один блок. На телефоне карточки нет намеренно:
+          там это последнее на экране, и рамка вокруг выхода делает
+          его похожим на ещё один раздел настроек. */}
+      <section className="flex flex-col gap-2 rise-3 lg:rounded-2xl lg:border lg:border-[var(--color-border)] lg:bg-[var(--color-surface)] lg:p-4">
         <button type="button" onClick={() => void signOut()}
                 className="btn-secondary flex items-center justify-center gap-2">
           <IconExit size={18} /> {t('profile.signOut')}
@@ -335,6 +392,9 @@ export function ProfileClient({
           {t('profile.delete.open')}
         </button>
       </section>
+
+      </div>
+      </div>
 
       {/* ── Пароль ───────────────────────────────────────────── */}
       <Sheet open={pass} onClose={() => setPass(false)} title={t('profile.pass.sheet.title')}>

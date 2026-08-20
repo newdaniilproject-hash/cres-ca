@@ -7,7 +7,13 @@ import { createClient } from '@/lib/supabase/client'
 import { CodeInput } from '../code-input'
 import { nextRoute } from '../where'
 import { AppScreen, Field, keepVisible } from '../ui'
-import { MailIcon, PasswordStrength, mmss } from '@/components/auth-ui'
+// PasswordInput — ОБЩИЙ (`components/auth-ui.tsx`), а не свой.
+// Здесь лежала его точная копия: те же два глаза-значка, та же кнопка
+// 52×52, тот же `paddingRight`. Копий поля пароля в продукте было
+// четыре — общая и по одной в этом файле, в `/m/register` (дважды).
+// Правило проекта: «не забудь продублировать» — признак отсутствующей
+// архитектуры; разъезжаются такие пары молча и всегда.
+import { MailIcon, PasswordInput, PasswordStrength, mmss } from '@/components/auth-ui'
 import { humanAuthError, lockedText } from '@/lib/auth-errors'
 import { useT } from '@/lib/i18n/client'
 import { guardSignIn } from '@/lib/ratelimit/guard'
@@ -39,17 +45,12 @@ export function MobileLoginForm() {
 
   const [email, setEmail] = useState(params.get('email') ?? '')
   const [password, setPassword] = useState('')
-  const [seePass, setSeePass] = useState(false)
 
   const [code, setCode] = useState('')
   const [codeError, setCodeError] = useState('')
   const [left, setLeft] = useState(0)
 
   const [busy, setBusy] = useState(false)
-  // Вход через провайдера возвращается сюда с причиной отказа
-  // в адресе: своего состояния у него быть не может — приложение
-  // за это время успело перезагрузиться.
-  //
   const [error, setError] = useState('')
   const [noAccount, setNoAccount] = useState(false)
   // Замок учётной записи (0085). Отдельным состоянием, а не строкой в
@@ -161,13 +162,15 @@ export function MobileLoginForm() {
           <Field label={t('m.field.password')} htmlFor="l-newpass">
             <PasswordInput
               id="l-newpass" value={password} onChange={setPassword}
-              see={seePass} onSee={() => setSeePass((v) => !v)} autoComplete="new-password"
+              onFocus={keepVisible} autoComplete="new-password"
             />
             <PasswordStrength value={password} />
           </Field>
           {error && <p className="field-error">{error}</p>}
-          <button className="btn-primary flex items-center justify-center"
-                  style={{ height: 52, fontSize: 16 }}
+          {/* `btn-tall`, а не свои 52px и 16px инлайном: высота главной
+              кнопки живёт в globals.css одним значением, и второй записи
+              у неё быть не должно. */}
+          <button className="btn-primary btn-tall"
                   disabled={busy || password.length < 8}>
             {busy ? t('common.saving') : t('m.login.newpass.submit')}
           </button>
@@ -239,7 +242,12 @@ export function MobileLoginForm() {
           <input
             id="l-email" type="email" required autoFocus={!email} autoComplete="email"
             inputMode="email" autoCapitalize="none" spellCheck={false}
-            className="input" style={{ height: 52, fontSize: 16 }}
+            // Ни высоты, ни кегля инлайном: и то и другое задаёт `.input`
+            // в globals.css (`--h-input`, и пол в 16px на касательных
+            // устройствах — иначе iOS зумит страницу на фокусе).
+            // Инлайновые 52px делали поля приложения на 4px выше, чем
+            // те же поля в вебе и в кабинете.
+            className="input"
             value={email} onFocus={keepVisible}
             onChange={(e) => { setEmail(e.target.value); setNoAccount(false) }}
             placeholder="you@example.com"
@@ -250,7 +258,7 @@ export function MobileLoginForm() {
           <Field label={t('m.field.password')} htmlFor="l-pass">
             <PasswordInput
               id="l-pass" value={password} onChange={setPassword}
-              see={seePass} onSee={() => setSeePass((v) => !v)} autoComplete="current-password"
+              onFocus={keepVisible} autoComplete="current-password"
             />
           </Field>
         )}
@@ -259,8 +267,7 @@ export function MobileLoginForm() {
           <div className="card-flat" style={{ borderColor: 'var(--color-accent)' }}>
             <p className="t-md">{t('m.login.noAccount.title')}</p>
             <p className="t-sm mt-1 prose-muted">{t('m.login.noAccount.desc')}</p>
-            <Link href="/m/register" className="btn-primary mt-3 flex items-center justify-center"
-                  style={{ height: 48, fontSize: 16 }}>
+            <Link href="/m/register" className="btn-primary btn-tall mt-3">
               {t('m.login.noAccount.action')}
             </Link>
           </div>
@@ -275,8 +282,7 @@ export function MobileLoginForm() {
             <p className="t-md">{t('auth.locked.title')}</p>
             <p className="t-sm mt-1 prose-muted">{lockedText(t, lock)}</p>
             <p className="t-sm mt-1 prose-muted">{t('auth.locked.hint')}</p>
-            <button type="button" className="btn-secondary mt-3 flex items-center justify-center"
-                    style={{ height: 48, fontSize: 16 }}
+            <button type="button" className="btn-secondary btn-tall mt-3"
                     onClick={() => { setMode('reset'); setLock(null); setError('') }}>
               {t('auth.blocked.reset')}
             </button>
@@ -285,16 +291,11 @@ export function MobileLoginForm() {
 
         {error && <p className="field-error">{error}</p>}
 
-        <button className="btn-primary flex items-center justify-center"
-                style={{ height: 52, fontSize: 16 }}
+        <button className="btn-primary btn-tall"
                 disabled={busy || email.trim().length < 5 || (byPassword && password.length < 1)}>
           {busy ? t('m.login.busy') : byPassword ? t('m.login.submit') : t('m.login.sendCode')}
         </button>
       </form>
-
-      {/* Провайдеры показываем только на обычном входе: на экране
-          восстановления пароля кнопка «Продовжити з Apple» — это
-          другой разговор, и человек теряет нить. */}
 
       <div className="mt-6 flex flex-col items-center gap-3">
         {byPassword ? (
@@ -326,53 +327,5 @@ export function MobileLoginForm() {
         </p>
       </div>
     </AppScreen>
-  )
-}
-
-// Поле пароля с глазиком. Отдельным компонентом, потому что оно
-// встречается трижды и разъезжаться не должно.
-function PasswordInput({
-  id, value, onChange, see, onSee, autoComplete,
-}: {
-  id: string
-  value: string
-  onChange: (v: string) => void
-  see: boolean
-  onSee: () => void
-  autoComplete: string
-}) {
-  const t = useT()
-  return (
-    <div className="relative">
-      <input
-        id={id} required minLength={8} autoComplete={autoComplete}
-        type={see ? 'text' : 'password'}
-        className="input" style={{ height: 52, fontSize: 16, paddingRight: 52 }}
-        value={value} onFocus={keepVisible}
-        onChange={(e) => onChange(e.target.value)}
-      />
-      <button
-        type="button" onClick={onSee}
-        aria-label={see ? t('auth.password.hide.aria') : t('auth.password.show.aria')}
-        className="absolute right-0 top-0 flex items-center justify-center"
-        style={{ width: 52, height: 52, color: 'var(--color-muted)' }}
-      >
-        {see ? (
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-               strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 3l18 18" />
-            <path d="M10.6 10.6a3 3 0 0 0 4.2 4.2" />
-            <path d="M9.4 5.2A9.5 9.5 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4.1" />
-            <path d="M6.2 6.8A17 17 0 0 0 2 12s3.6 7 10 7c1.2 0 2.3-.2 3.3-.6" />
-          </svg>
-        ) : (
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-               strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" />
-            <circle cx="12" cy="12" r="3" />
-          </svg>
-        )}
-      </button>
-    </div>
   )
 }

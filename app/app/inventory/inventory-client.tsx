@@ -18,7 +18,7 @@ import { EXPIRY_BADGE, type ExpiryState, expiryState } from '@/lib/expiry'
 import { Scanner } from '@/components/scanner'
 import {
   IconAlert, IconArrows, IconBarcode, IconBeaker, IconBox, IconCheck,
-  IconClipboard, IconClock, IconClose, IconBag, IconDoc, IconInbox,
+  IconClipboard, IconClock, IconClose, IconBag, IconInbox,
   IconLayers, IconList, IconLow, IconMinus, IconPlus, IconQr, IconScan,
 } from '@/components/icons'
 
@@ -33,12 +33,18 @@ type Material = {
   sku: string | null; batch: string | null; expiry: string | null
   /** Фото засоба (0111). Пусто — рисуем значок, а не серый прямоугольник. */
   imagePath: string | null
+  /** Колонки таблицы CRESKO Web §8: Категорія · Склад · Собівартість. */
+  category: string | null
+  cost: number | null
+  locationId: string | null
 }
 type Variant = {
   id: string; name: string; title: string; stock: number; reserved: number
   threshold: number; unit: string; tracked: boolean
   /** Позиция каталога — по ней строка ведёт в карточку товара. */
   offeringId: string
+  category: string | null
+  cost: number | null
 }
 type ScanHit = {
   kind: string; id: string; title: string; subtitle: string | null
@@ -70,6 +76,14 @@ const MOVE_INK: Record<string, string> = {
   transfer_out: 'var(--color-danger)',
   adjustment: 'var(--color-warn)',
 }
+
+// Цвета полосок «Топ категорії за вартістю» (§8). Это ПОРЯДКОВЫЙ
+// набор, а не палитра категорий: у категории склада своего цвета нет
+// нигде в продукте, и заводить его здесь значило бы завести второй
+// источник правды о том, каким цветом рисуется «Манікюр».
+const BAR_TONE = [
+  'var(--tone-blue)', 'var(--tone-violet)', 'var(--tone-emerald)', 'var(--tone-amber)',
+]
 
 type Tab = 'all' | 'materials' | 'containers' | 'goods'
 /** Состояние, по которому отфильтрован список. Задаётся плиткой-счётчиком. */
@@ -161,10 +175,20 @@ export const EXPIRY_KEY: Record<ExpiryState, Key> = {
 // первый экран тому, кто заходит сюда раз в неделю.
 export function InventoryClient({
   tenantId, userId, containers, materials, variants, totals,
-  suppliers, locations, batches, initialScan, movements,
+  suppliers, locations, batches, initialScan, movements, hasCatalog,
 }: {
   /** Пришло с кнопки сканера в шапке (?scan=1). */
   initialScan: boolean
+  /**
+   * Есть ли у заведения модуль «Послуги і товари».
+   *
+   * Вкладка «Товари» и кнопка «Додати в каталог» ведут в ЧУЖОЙ модуль.
+   * У заведения, которое купило только склад, они открывали экран
+   * «модуль вимкнено» — человек читает это как поломку, а не как
+   * «мне сюда нельзя» (то же правило, что и с пунктами панели:
+   * нет модуля — нет кнопки, а не кнопка с отказом).
+   */
+  hasCatalog: boolean
   tenantId: string
   userId: string
   containers: Container[]
@@ -209,7 +233,13 @@ export function InventoryClient({
       ...containers.map((c) => expiryState(c.useBy)),
     ]
     return {
-      total: materials.length + containers.length + variants.length,
+      // «Позицій» — это ДЛИНА РЕЄСТРУ, а не всё что есть в разделе.
+      // С 19.08.2026 спокойный вид «Всі» показывает только засоби, и число
+      // обязано совпадать с подписью «Реєстр · N позицій» под ним: плитка
+      // «9» над списком из шести читается как потерянные строки.
+      // Состояния (Дійсні / Закінч. / Прострочені) при этом считают И банки
+      // — у них выход есть: нажатие ставит фильтр, и банки появляются.
+      total: materials.length,
       ok: items.filter((s) => s === 'ok').length,
       soon: items.filter((s) => s === 'soon' || s === 'urgent').length,
       expired: items.filter((s) => s === 'expired').length,
@@ -250,8 +280,28 @@ export function InventoryClient({
   const shownVariants = flag === 'all' ? variants : []
 
   const showMaterials = tab === 'all' || tab === 'materials'
-  const showContainers = tab === 'all' || tab === 'containers'
-  const showGoods = tab === 'all' || tab === 'goods'
+  // ⚠️ Решение владельца 19.08.2026: ёмкости в общем списке ПУТАЮТ —
+  // «L'Oréal … Mask» стоит там дважды, засобом и вскрытой банкой, и это
+  // читается как задвоение данных, а не как две разные сущности.
+  //
+  // Но вынести их из «Всі» насовсем нельзя: тем же днём записано, ради
+  // чего список вообще плоский — чтобы просроченная банка не легла ниже
+  // двадцати здоровых засобів. Экран существует ради ответа «що горить»,
+  // и банка горит чаще всего: у неё срок считается от вскрытия.
+  //
+  // Поэтому банки уходят из СПОКОЙНОГО вида и остаются в тревожном:
+  // без фильтра состояния «Всі» показывает только засоби (имена не
+  // двоятся), а под «Прострочені» и «Закінчується» — и засоби, и банки.
+  // Счётчики считают и то и другое, и это честно: нажатие на число
+  // ставит фильтр, то есть у каждого числа есть выход.
+  const showContainers = tab === 'containers' || (tab === 'all' && flag !== 'all')
+  // ⚠️ Без модуля каталога товаров нет НИГДЕ, а не только на своей вкладке.
+  // Вкладка «Товари» уже пряталась по `hasCatalog`, но вид «Всі» строки
+  // товаров всё равно показывал — и каждая вела в `/app/catalog/<id>`,
+  // то есть на экран «модуль вимкнено». Дверь в чужой модуль ПРЯЧЕТСЯ,
+  // а не показывает отказ (CLAUDE.md → «Доступ: роли и модули»), и
+  // прятать её надо там, где строится список, а не только в ленте вкладок.
+  const showGoods = hasCatalog && (tab === 'all' || tab === 'goods')
 
   const visible =
     (showMaterials ? shownMaterials.length : 0)
@@ -428,16 +478,46 @@ export function InventoryClient({
   // ── Вкладки — ОДИН список на обе раскладки ───────────────────────────
   // На телефоне они чипы, на lg — .wtab с чертой. Имена и порядок живут
   // здесь один раз: два списка разъехались бы на первой новой вкладке.
-  const tabItems = [
+  const tabItems = ([
     ['all', t('inventory.tab.all')],
     ['materials', t('inventory.tab.materials')],
     ['containers', `${t('inventory.tab.containers')}${containers.length ? ` · ${t.number(containers.length)}` : ''}`],
-    ['goods', t('inventory.tab.goods')],
-  ] as const
+    // Без модуля каталога товаров не существует вовсе: вкладка отдала бы
+    // пустой список и кнопку в отключённый модуль.
+    ...(hasCatalog ? [['goods', t('inventory.tab.goods')] as const] : []),
+  ] as const).filter(Boolean) as readonly (readonly [Tab, string])[]
 
   // Колонки таблицы CRESKO Web (экран «Склад»): единственное место,
   // где размеры задаются строкой, — так велит .wtable (грид задаёт экран).
-  const WGRID = '2.4fr 1.2fr .7fr .5fr 1.1fr 1fr 40px'
+  // Ширины из §8 дословно: Товар · Категорія · Залишок · Од. · Склад ·
+  // Собівартість · Сума · Статус · указатель.
+  const WGRID = '2.4fr 1.2fr .7fr .5fr 1.1fr .9fr .9fr 1fr 40px'
+
+  // ── Топ категорий по стоимости запаса (§8, правая рейка) ────────────
+  //
+  // Та же величина, что в колонке «Сума» таблицы: остаток × собівартість.
+  // Считается по засобам — у товара категория приходит из справочника
+  // платформы и живёт в другом разрезе; складывать две разные оси в один
+  // столбик значит показать сумму, которую нельзя проверить ни на одном
+  // экране. Четыре строки, как в референсе: пятая уже не про «топ».
+  const topCategories = useMemo(() => {
+    const by = new Map<string, number>()
+    for (const mt of materials) {
+      if (!mt.category || mt.cost == null) continue
+      by.set(mt.category, (by.get(mt.category) ?? 0) + mt.stock * mt.cost)
+    }
+    return [...by.entries()]
+      .map(([name, sum]) => ({ name, sum }))
+      .filter((c) => c.sum > 0)
+      .sort((a, b) => b.sum - a.sum)
+      .slice(0, 4)
+  }, [materials])
+
+  // Имя места хранения по идентификатору. Из уже полученного справочника
+  // `locations`, а не вложенной выборкой в запросе списка: второе имя
+  // того же места разошлось бы с первым при переименовании.
+  const locationName = (id: string | null) =>
+    (id ? locations.find((l) => l.id === id)?.name ?? null : null)
 
   const fab: { label: string; href?: string; onClick?: () => void } = tab === 'goods'
     ? { href: '/app/catalog', label: t('inventory.action.addInCatalog') }
@@ -457,7 +537,10 @@ export function InventoryClient({
     ...(containers.length > 0
       ? [{ href: '/app/inventory/labels', label: t('inventory.action.printLabels'), icon: IconQr, blank: true }]
       : []),
-    { href: '/app/documents', label: t('inventory.links.documents'), icon: IconDoc },
+    // «Усі документи» отсюда снято 19.08.2026 решением владельца: это была
+    // вторая дверь в раздел «Журнали», где документы и живут. Документы
+    // КОНКРЕТНОГО засоба открываются с его карточки — та дверь и нужна,
+    // а список всех документов заведения к складу отношения не имеет.
     { href: '/app/inventory/recipes', label: t('inventory.links.recipes'), icon: IconBeaker },
     { href: '/app/inventory/barcodes', label: t('inventory.links.barcodes'), icon: IconBarcode },
   ]
@@ -471,11 +554,45 @@ export function InventoryClient({
           (README: btn-blue живёт только тут и в модалке приймання).
           `?new=1` открывает форму нового документа сразу — тем же
           приёмом, каким `?scan=1` открывает камеру здесь. */}
-      <div className="hidden items-center justify-between lg:flex">
-        <h1 className="webh1">{t('app.screen.inventory.title')}</h1>
-        <Link href="/app/inventory/receipts?new=1" className="btn-blue">
-          {t('app.screen.inventory.receipts.title')}
-        </Link>
+      {/* Плашка со значком, имя экрана и подпись под ним — состав §8
+          дословно. Подпись здесь не спорит с решением «заголовка над
+          содержимым нет»: то решение про ТЕЛЕФОН (панель уже называет
+          раздел), а в веб-каркасе имени экрана не пишет никто — сайдбар
+          подсвечивает пункт, но заголовка страницы не даёт. */}
+      <div className="mb-1 hidden items-center justify-between gap-4 lg:flex">
+        <div className="flex min-w-0 items-center gap-3">
+          <span aria-hidden className="flex shrink-0 items-center justify-center"
+                style={{
+                  width: 44, height: 44,
+                  borderRadius: 'var(--radius-plate)',
+                  background: 'var(--color-accent-soft)',
+                  color: 'var(--color-accent-ink)',
+                }}>
+            <IconBox size={22} />
+          </span>
+          <div className="min-w-0">
+            <h1 className="webh1">{t('app.screen.inventory.title')}</h1>
+            <p style={{ fontSize: 14, color: 'var(--color-muted)' }}>
+              {t('app.screen.inventory.desc')}
+            </p>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {/* Действие вкладки — ТО ЖЕ, что у плавающей кнопки на телефоне
+              (`fab`), и ровно поэтому кнопка на lg скрыта: одно действие,
+              две раскладки, а не два входа. Порядок как в §8: слева
+              обводка, справа сплошная. */}
+          {fab.href
+            ? <Link href={fab.href} className="btn-secondary">{fab.label}</Link>
+            : <button type="button" className="btn-secondary" onClick={fab.onClick}>{fab.label}</button>}
+          {/* Синяя кнопка — ЕДИНСТВЕННАЯ в кабинете (README: btn-blue живёт
+              только тут и в модалке приймання). `?new=1` открывает форму
+              нового документа сразу — тем же приёмом, каким `?scan=1`
+              открывает камеру здесь. */}
+          <Link href="/app/inventory/receipts?new=1" className="btn-blue">
+            {t('app.screen.inventory.receipts.title')}
+          </Link>
+        </div>
       </div>
 
       {/* ── CRESKO Web: двухколонник (§8) ────────────────────────
@@ -625,13 +742,38 @@ export function InventoryClient({
         })}
       </div>
 
+      {/* ── CRESKO Web: вкладки чертой (только lg) ───────────────
+          Тот же tabItems и тот же switchTab, что и у чипов, —
+          отличается только вид.
+
+          Порядок из §8: лента вкладок стоит СРАЗУ под хедером, метрики —
+          под ней. Так и должно быть по смыслу: вкладка выбирает, о чём
+          вообще экран, а числа считаются уже внутри выбранного. Раньше
+          они стояли наоборот, и метрики читались как заголовок всей
+          страницы, хотя менялись вместе с вкладкой. */}
+      <div className="wtabs hidden lg:flex">
+        {tabItems.map(([key, label]) => (
+          <button key={key} type="button" onClick={() => switchTab(key)}
+                  className="wtab" data-active={tab === key}>
+            {label}
+          </button>
+        ))}
+      </div>
+
       {/* ── CRESKO Web: метрики (только lg) ──────────────────────
           Те же четыре числа и тот же клик-фильтр, что у мобильного
           ряда ниже, — но в виде .wmetric с иконкой-плашкой (README).
           Подписи длинные: на вебе плитке есть где дышать, и «Закінч.»
           выглядело бы обрезком. Активный фильтр — рамка акцентом:
           у .wmetric нет своего активного состояния, а заливать плитку
-          кобальтом значит спорить с единственной синей кнопкой выше. */}
+          кобальтом значит спорить с единственной синей кнопкой выше.
+
+          Третьей строки-примечания из §8 здесь НЕТ, и это решение:
+          в хендоффе она уточняет ВЕЛИЧИНУ («на всіх складах», «за
+          закупівельними цінами»), а у счётчика состояний уточнять
+          нечего — «за терміном придатності» пришлось бы написать
+          три раза подряд. Придуманная третья строка ради ровного
+          ряда — фикстура, а не оформление. */}
       <section className="hidden gap-4 rise-1 lg:grid lg:grid-cols-4">
         {([
           { key: 'all', n: stats.total, label: t('inventory.stats.total'), tone: 'blue', icon: IconLayers },
@@ -639,7 +781,11 @@ export function InventoryClient({
           { key: 'soon', n: stats.soon, label: t('inventory.stats.soon'), tone: 'amber', icon: IconClock },
           { key: 'expired', n: stats.expired, label: t('inventory.stats.expired'), tone: 'rose', icon: IconAlert },
         ] as const).map((s) => {
-          const on = flag === s.key
+          // «Усі позиції» рамкой НЕ подсвечивается, хотя формально это
+          // тоже выбранное состояние: без фильтра оно выбрано ВСЕГДА,
+          // и постоянная рамка на первой плитке читается не как «здесь
+          // фильтр», а как «эта плитка почему-то другая».
+          const on = flag === s.key && s.key !== 'all'
           const dead = s.key !== 'all' && s.n === 0
           return (
             <button key={s.key} type="button" disabled={dead} aria-pressed={on}
@@ -658,18 +804,6 @@ export function InventoryClient({
           )
         })}
       </section>
-
-      {/* ── CRESKO Web: вкладки чертой (только lg) ───────────────
-          Тот же tabItems и тот же switchTab, что и у чипов, —
-          отличается только вид. */}
-      <div className="wtabs hidden lg:flex">
-        {tabItems.map(([key, label]) => (
-          <button key={key} type="button" onClick={() => switchTab(key)}
-                  className="wtab" data-active={tab === key}>
-            {label}
-          </button>
-        ))}
-      </div>
 
       {/* ── Счётчики ─────────────────────────────────────────────
           По README: четыре в ряд, крупное число и мелкая подпись, без
@@ -996,143 +1130,226 @@ export function InventoryClient({
         </section>
 
         {/* ── CRESKO Web: таблица склада (только lg) ─────────────
-            То же отфильтрованное множество, что и карточки выше:
-            shownMaterials / shownContainers / shownVariants плюс те же
-            show*-флаги вкладок — второй логики фильтрации здесь нет,
-            поэтому пустая таблица возможна только там, где пуст
-            и мобильный список (а это состояние перехватывает ternary).
+            Колонки и ширины — из §8 ДОСЛОВНО: Товар (мініатюра 42px +
+            назва + бренд/обʼєм), Категорія (чип), Залишок, Од., Склад,
+            Собівартість, Сума, Статус и указатель.
 
-            Колонки хендоффа «Категорія» и «Місце» здесь заменены:
-            категории и места зберігання в пропсах списка НЕТ (их не
-            выбирает страница), а колонка из одних прочерков — мёртвый
-            вес. Вместо них — вид записи (полезен на вкладке «Всі»)
-            и термін придатності: обе колонки живут на реальных данных. */}
+            Прежняя версия этой таблицы заменяла «Категорію» и «Склад»
+            на «Тип» и «Термін» с объяснением «категорий и мест хранения
+            в пропсах НЕТ». Пропсы — наши: `page.tsx` теперь берёт
+            `category`, `cost_per_unit` и `location_id` из ТОЙ ЖЕ строки
+            `materials` (лишней поездки нет), а имя места хранения
+            подставляется из уже запрошенного справочника. Колонка «Тип»
+            снята: вид записи называет миниатюра (коробка — засіб,
+            QR — банка, сумка — товар), ровно как в мобильном списке,
+            и повторять его словом в отдельном столбце незачем.
+
+            «Термін» въехал ВТОРЫМ ЯРУСОМ в клетку статуса — §8 прямо
+            допускает двухъярусную клетку («рядок 48–64px залежить від
+            двоярусної клітинки»). Своей колонки он лишился, но не смысла:
+            под бейджем «Прострочено» стоит дата, из-за которой он такой.
+
+            Источник строк — ТОТ ЖЕ `registry`, что и у мобильного списка:
+            одно место фильтрации, одна сортировка «проблемные вверх».
+            До этого таблица шла тремя отдельными списками подряд, и
+            просроченная банка лежала ниже двадцати здоровых засобів —
+            то самое, что для карточек уже чинили. */}
         <section className="hidden rise lg:block">
           <div className="wtable">
             <div className="wtable-head" style={{ gridTemplateColumns: WGRID }}>
               <span>{t('inventory.web.table.item')}</span>
-              <span>{t('inventory.web.table.kind')}</span>
+              <span>{t('inventory.web.table.category')}</span>
               <span>{t('inventory.web.table.stock')}</span>
               <span>{t('inventory.material.row.unit')}</span>
-              <span>{t('inventory.web.table.expiry')}</span>
+              <span>{t('inventory.web.table.location')}</span>
+              <span className="text-right">{t('inventory.web.table.cost')}</span>
+              <span className="text-right">{t('inventory.web.table.sum')}</span>
               <span>{t('inventory.material.row.status')}</span>
               <span aria-hidden />
             </div>
 
-            {/* Расходники. Залишок краснеет просроченным и желтеет на
-                исходе срока или ниже порога — тем же условием, каким
-                мобильная карточка выбирает badge-warn. */}
-            {showMaterials && shownMaterials.map((mt) => {
-              const state = expiryState(mt.expiry)
-              const low = mt.threshold > 0 && mt.stock <= mt.threshold
-              return (
-                <Link key={`m-${mt.id}`} href={`/app/inventory/materials/${mt.id}`}
-                      className="wtable-row" style={{ gridTemplateColumns: WGRID }}>
-                  <span className="min-w-0">
-                    {/* Название и бренд — данные арендатора. */}
-                    <span className="block truncate font-semibold" style={{ color: 'var(--color-text)' }}>
-                      {mt.name}
-                    </span>
-                    {(mt.brand || mt.sku) && (
-                      <span className="block truncate" style={{ color: 'var(--color-faint)' }}>
-                        {[mt.brand, mt.sku].filter(Boolean).join(' · ')}
-                      </span>
-                    )}
-                  </span>
-                  <span>{t('inventory.web.kind.material')}</span>
-                  <span className="tabular"
-                        style={state === 'expired'
-                          ? { color: 'var(--color-danger)' }
-                          : (low || state === 'soon' || state === 'urgent')
-                            ? { color: 'var(--tone-amber)' }
-                            : undefined}>
-                    {t.number(mt.stock)}
-                  </span>
-                  <span>{mt.unit}</span>
-                  <span className="tabular">{mt.expiry ? short(mt.expiry) : '—'}</span>
-                  <span>
-                    {state !== 'none'
-                      ? <span className={EXPIRY_BADGE[state]}>{t(EXPIRY_KEY[state])}</span>
-                      : '—'}
-                  </span>
-                  <span aria-hidden className="text-right" style={{ color: 'var(--color-faint)' }}>›</span>
-                </Link>
-              )
-            })}
-
-            {/* Ёмкости — тем же гридом: залишок = обʼєм, термін = use_by.
-                Строка ведёт туда же, куда мобильная карточка, — в контроль
-                вскрытия засоба. */}
-            {showContainers && shownContainers.map((c) => {
-              const state = expiryState(c.useBy)
-              return (
-                <Link key={`c-${c.id}`} href={`/app/inventory/materials/${c.materialId}/pao`}
-                      className="wtable-row" style={{ gridTemplateColumns: WGRID }}>
-                  <span className="min-w-0">
-                    <span className="block truncate font-semibold" style={{ color: 'var(--color-text)' }}>
-                      {c.material}
-                    </span>
-                    <span className="block truncate" style={{ color: 'var(--color-faint)' }}>
-                      {c.code}
-                      {c.openedAt ? ` · ${t('inventory.container.openedAt', { date: short(c.openedAt) })}` : ''}
-                    </span>
-                  </span>
-                  <span>{t('inventory.web.kind.container')}</span>
-                  <span className="tabular"
-                        style={state === 'expired' ? { color: 'var(--color-danger)' } : undefined}>
-                    {c.volume != null ? t.number(c.volume) : '—'}
-                  </span>
-                  <span>{c.unit ?? '—'}</span>
-                  <span className="tabular">{c.useBy ? short(c.useBy) : '—'}</span>
-                  <span>
-                    {c.useBy
-                      ? <span className={EXPIRY_BADGE[state]}>{t(EXPIRY_KEY[state])}</span>
-                      : c.status === 'sealed'
-                        ? <span className="badge">{t('inventory.container.sealed')}</span>
-                        : '—'}
-                  </span>
-                  <span aria-hidden className="text-right" style={{ color: 'var(--color-faint)' }}>›</span>
-                </Link>
-              )
-            })}
-
-            {/* Товары. Срока годности у них нет — в колонке термін честный
-                прочерк, статус говорит только про остаток. */}
-            {showGoods && shownVariants.map((v) => {
-              const low = v.tracked && v.threshold > 0 && v.stock <= v.threshold
-              return (
-                <Link key={`v-${v.id}`} href={`/app/catalog/${v.offeringId}`}
-                      className="wtable-row" style={{ gridTemplateColumns: WGRID }}>
-                  <span className="min-w-0">
-                    <span className="block truncate font-semibold" style={{ color: 'var(--color-text)' }}>
-                      {v.title}
-                    </span>
-                    <span className="block truncate" style={{ color: 'var(--color-faint)' }}>
-                      {v.name}
-                      {v.reserved > 0 ? ` · ${t('inventory.goods.reserved', { n: t.number(v.reserved) })}` : ''}
-                    </span>
-                  </span>
-                  <span>{t('inventory.web.kind.good')}</span>
-                  <span className="tabular"
-                        style={low ? { color: 'var(--tone-amber)' } : undefined}>
-                    {v.tracked ? t.number(v.stock) : '—'}
-                  </span>
-                  <span>{v.unit}</span>
-                  <span>—</span>
-                  <span>
-                    {!v.tracked
-                      ? <span className="badge">{t('inventory.goods.untracked')}</span>
+            {registry.map((row) => {
+              // Одна строка на все три вида записи. Разводить её по видам
+              // значит завести три определения слова «залишок» и три
+              // раскладки одной и той же сетки — они разъедутся на первой
+              // правке ширины колонки.
+              const cell = (() => {
+                if (row.kind === 'material') {
+                  const mt = row.m
+                  const low = mt.threshold > 0 && mt.stock <= mt.threshold
+                  return {
+                    href: `/app/inventory/materials/${mt.id}`,
+                    // Фото засоба (0111); нет фото — значок вида записи.
+                    thumb: mt.imagePath
+                      // eslint-disable-next-line @next/next/no-img-element
+                      ? <img src={photoUrl(mt.imagePath)} alt=""
+                             style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      : <IconBox size={20} />,
+                    title: mt.name,
+                    sub: [mt.brand, mt.sku].filter(Boolean).join(' · '),
+                    category: mt.category,
+                    qty: mt.stock, unit: mt.unit, low,
+                    location: locationName(mt.locationId),
+                    cost: mt.cost,
+                    date: mt.expiry,
+                    badge: row.state !== 'none'
+                      ? <span className={EXPIRY_BADGE[row.state]}>{t(EXPIRY_KEY[row.state])}</span>
                       : low
                         ? <span className="badge-warn">{t('inventory.stats.short.low')}</span>
-                        : '—'}
+                        : null,
+                  }
+                }
+                if (row.kind === 'container') {
+                  const c = row.c
+                  // Категория и место у банки — материнского засоба: своих
+                  // у неё нет и быть не может, а прочерк в двух колонках
+                  // читался бы как «не заполнено», хотя заполнено.
+                  const parent = materials.find((mt) => mt.id === c.materialId)
+                  return {
+                    href: `/app/inventory/materials/${c.materialId}/pao`,
+                    thumb: <IconQr size={20} />,
+                    title: c.material,
+                    sub: [c.code, c.openedAt
+                      ? t('inventory.container.openedAt', { date: short(c.openedAt) })
+                      : null].filter(Boolean).join(' · '),
+                    category: parent?.category ?? null,
+                    qty: c.volume, unit: c.unit ?? '', low: false,
+                    location: locationName(parent?.locationId ?? null),
+                    cost: null,
+                    date: c.useBy,
+                    badge: c.useBy
+                      ? <span className={EXPIRY_BADGE[row.state]}>{t(EXPIRY_KEY[row.state])}</span>
+                      : c.status === 'sealed'
+                        ? <span className="badge">{t('inventory.container.sealed')}</span>
+                        : null,
+                  }
+                }
+                const v = row.v
+                const low = v.tracked && v.threshold > 0 && v.stock <= v.threshold
+                return {
+                  href: `/app/catalog/${v.offeringId}`,
+                  thumb: <IconBag size={20} />,
+                  title: v.title,
+                  sub: [v.name, v.reserved > 0
+                    ? t('inventory.goods.reserved', { n: t.number(v.reserved) })
+                    : null].filter(Boolean).join(' · '),
+                  category: v.category,
+                  qty: v.tracked ? v.stock : null, unit: v.unit, low,
+                  // Место хранения — свойство засоба, а не позиции каталога:
+                  // у товара его в модели нет вовсе.
+                  location: null,
+                  cost: v.cost,
+                  date: null,
+                  badge: !v.tracked
+                    ? <span className="badge">{t('inventory.goods.untracked')}</span>
+                    : low
+                      ? <span className="badge-warn">{t('inventory.stats.short.low')}</span>
+                      : null,
+                }
+              })()
+
+              // Сумма — остаток × собівартість, и только когда есть оба
+              // множителя. Ноль вместо неизвестной цены — это утверждение
+              // «запас ничего не стоит», а его никто не проверял.
+              const sum = cell.qty != null && cell.cost != null ? cell.qty * cell.cost : null
+
+              return (
+                <Link key={row.key} href={cell.href}
+                      className="wtable-row" style={{ gridTemplateColumns: WGRID }}>
+                  <span className="flex min-w-0 items-center gap-3">
+                    {/* Миниатюра 42px из §8. Она же называет вид записи —
+                        поэтому отдельной колонки «Тип» в таблице нет. */}
+                    <span aria-hidden className="flex shrink-0 items-center justify-center overflow-hidden"
+                          style={{
+                            width: 42, height: 42,
+                            borderRadius: 'var(--radius-plate)',
+                            background: 'var(--web-surface-tint, var(--color-surface-2))',
+                            color: 'var(--color-faint)',
+                          }}>
+                      {cell.thumb}
+                    </span>
+                    <span className="min-w-0">
+                      {/* Название и бренд — данные арендатора. */}
+                      <span className="block truncate font-semibold" style={{ color: 'var(--color-text)' }}>
+                        {cell.title}
+                      </span>
+                      {cell.sub && (
+                        <span className="block truncate" style={{ fontSize: 12, color: 'var(--color-faint)' }}>
+                          {cell.sub}
+                        </span>
+                      )}
+                    </span>
+                  </span>
+
+                  {/* Категорія — чипом, как в §8. Нет категории — пусто,
+                      а не «—»: прочерк в чипе выглядит как заполненное поле.
+                      Чип ПЕРЕНОСИТСЯ, а не обрезается: «Догляд за волоссям»
+                      в одну строку не влезает ни при какой ширине колонки,
+                      и «Догляд за…» не отличить от «Догляд за тілом».
+                      Двухъярусная клетка §8 разрешена прямо. */}
+                  <span className="min-w-0">
+                    {cell.category
+                      ? <span className="badge inline-block max-w-full text-left"
+                              // Высота у `.badge` фиксированная (h-6) — на
+                              // двух строках текст вылезал бы за пилюлю.
+                              // Здесь чип прямоугольный, как в §8: радиус
+                              // 7px из шкалы геометрии, высота по содержимому.
+                              style={{
+                                whiteSpace: 'normal', lineHeight: 1.35,
+                                height: 'auto', padding: '4px 8px', borderRadius: 7,
+                              }}>
+                          {cell.category}
+                        </span>
+                      : null}
+                  </span>
+
+                  <span className="tabular font-semibold"
+                        style={row.state === 'expired'
+                          ? { color: 'var(--color-danger)' }
+                          : (cell.low || row.state === 'soon' || row.state === 'urgent')
+                            ? { color: 'var(--tone-amber)' }
+                            : { color: 'var(--color-text)' }}>
+                    {cell.qty != null ? t.number(cell.qty) : '—'}
+                  </span>
+                  <span>{cell.unit || '—'}</span>
+                  {/* Место хранения переносится по той же причине, что и
+                      чип категории: «Основний склад» и «Основний стелаж»
+                      обрезаются в одинаковое «Основний с…». */}
+                  <span className="min-w-0" style={{ lineHeight: 1.35 }}>{cell.location ?? '—'}</span>
+                  <span className="tabular text-right">
+                    {cell.cost != null ? t.money(cell.cost) : '—'}
+                  </span>
+                  <span className="tabular text-right font-semibold" style={{ color: 'var(--color-text)' }}>
+                    {sum != null ? t.money(sum) : '—'}
+                  </span>
+                  {/* Двухъярусная клетка §8: бейдж и под ним дата, из-за
+                      которой он такой. Без даты «Прострочено» не отвечает
+                      на вопрос «наскільки». */}
+                  <span className="min-w-0">
+                    {cell.badge}
+                    {cell.date && (
+                      <span className="tabular mt-0.5 block truncate"
+                            style={{ fontSize: 12, color: 'var(--color-faint)' }}>
+                        {short(cell.date)}
+                      </span>
+                    )}
+                    {!cell.badge && !cell.date ? '—' : null}
                   </span>
                   <span aria-hidden className="text-right" style={{ color: 'var(--color-faint)' }}>›</span>
                 </Link>
               )
             })}
 
+            {/* «Показано N з M» из §8. Пагинации нет и не подделываем:
+                список приходит одной выборкой, и кнопки страниц под ним
+                были бы органом управления, который ничего не переключает. */}
             <div className="wtable-foot">
-              <span className="tabular">{t('inventory.web.table.total', { n: t.number(visible) })}</span>
+              <span className="tabular">
+                {t('inventory.web.table.shown', {
+                  n: t.number(visible),
+                  total: t.number(materials.length + containers.length + variants.length),
+                })}
+              </span>
               {/* Денежные итоги — только на вкладке товаров, как и мобильные
                   плитки: посреди смешанного списка они перебивали бы метрики. */}
               {tab === 'goods' && totals && totals.units > 0 && (
@@ -1193,9 +1410,12 @@ export function InventoryClient({
           экране раздела.
           «Останні рухи» — реальные строки `stock_movements` (шесть
           свежих, запрос в page.tsx), тем же переводчиком типов, что
-          экран «Рухи». Блока «Топ категорії за вартістю» из README НЕТ
-          намеренно: категорий у записей склада в данных экрана не
-          существует, а рисовать плашки без данных — фикстура. */}
+          экран «Рухи».
+          «Топ категорії за вартістю» — третья карточка §8. Прежде её
+          здесь не было с объяснением «категорий у записей склада
+          в данных экрана не существует»; теперь `category` и
+          `cost_per_unit` приезжают той же строкой `materials`, и карта
+          считается по НАСТОЯЩИМ запасам, а не по нарисованным полоскам. */}
       <aside className="hidden shrink-0 flex-col gap-4 lg:flex"
              style={{ width: 268 }}>
         <section className="webcard rise-1">
@@ -1204,14 +1424,24 @@ export function InventoryClient({
             <Link key={`rail-${it.href}${it.label}`} href={it.href}
                   className="flex items-center gap-3 py-2"
                   {...(it.blank ? { target: '_blank', rel: 'noreferrer' } : {})}>
-              <span className="list-anchor"><it.icon size={17} /></span>
+              {/* Плашка 28px из §8. `.list-anchor` без тона в веб-палитре
+                  невидима: её фон — `surfaceMuted` (#FCFCFD) на белой
+                  карточке. Тон акцента даёт ровно ту лавандовую плашку,
+                  что в референсе. */}
+              <span className="list-anchor" data-tone="accent"
+                    style={{ width: 28, height: 28, borderRadius: 9 }}>
+                <it.icon size={16} />
+              </span>
               <span className="t-sm min-w-0 flex-1 truncate">{it.label}</span>
               <span aria-hidden style={{ color: 'var(--color-faint)' }}>›</span>
             </Link>
           ))}
           <button type="button" onClick={() => setAdding('refs')}
                   className="flex w-full items-center gap-3 py-2 text-left">
-            <span className="list-anchor"><IconList size={17} /></span>
+            <span className="list-anchor" data-tone="accent"
+                  style={{ width: 28, height: 28, borderRadius: 9 }}>
+              <IconList size={16} />
+            </span>
             <span className="t-sm min-w-0 flex-1 truncate">{t('inventory.action.refs')}</span>
             <span aria-hidden style={{ color: 'var(--color-faint)' }}>›</span>
           </button>
@@ -1255,6 +1485,43 @@ export function InventoryClient({
             </Link>
           </section>
         )}
+
+        {/* ── Топ категорії за вартістю (§8) ───────────────────
+            Считается по тем же строкам, что и колонка «Сума» в таблице:
+            остаток × собівартість, сгруппированные по категории засоба.
+            Полоска — доля от САМОЙ ДОРОГОЙ категории, а не от общей
+            суммы: в референсе первая полоска всегда полная, и это
+            читается как «вот эта — главная», а доли от целого
+            на четырёх строках дают четыре одинаково коротких обрубка.
+
+            Без категорий карточка не рисуется вовсе: заголовок над
+            одной строкой «— 0 ₴» обещает разрез, которого нет. */}
+        {topCategories.length > 0 && (
+          <section className="webcard rise-3">
+            <p className="webh2 mb-2">{t('inventory.web.rail.topCategories')}</p>
+            {topCategories.map((c, i) => (
+              <div key={c.name} className={i === 0 ? '' : 'mt-3'}>
+                <div className="flex items-baseline justify-between gap-2">
+                  {/* Имя категории — данные арендатора. */}
+                  <span className="t-sm min-w-0 truncate">{c.name}</span>
+                  <span className="tabular t-sm shrink-0 font-semibold"
+                        style={{ color: 'var(--color-text)' }}>
+                    {t.money(c.sum)}
+                  </span>
+                </div>
+                <div className="mt-1.5 overflow-hidden"
+                     style={{ height: 5, borderRadius: 99, background: 'var(--web-border-dash, var(--color-border))' }}>
+                  <div style={{
+                    height: '100%',
+                    width: `${Math.max(4, Math.round((c.sum / topCategories[0].sum) * 100))}%`,
+                    borderRadius: 99,
+                    background: BAR_TONE[i % BAR_TONE.length],
+                  }} />
+                </div>
+              </div>
+            ))}
+          </section>
+        )}
       </aside>
       </div>{/* конец двухколонника */}
 
@@ -1266,10 +1533,14 @@ export function InventoryClient({
           действие. Две кнопки одного действия в двадцати сантиметрах
           друг от друга — ровно тот дубляж, из-за которого экран
           и переделывался. */}
+      {/* На lg плавающей кнопки НЕТ: то же действие стоит в хедере экрана
+          рядом с «Прийманням» (§8 — два действия в правом углу). Плавающая
+          пилюля поверх таблицы — мобильный приём, и на широком экране она
+          была бы вторым входом в то же самое. */}
       {!(visible === 0 && emptyTenant) && (
         fab.href
-          ? <Link href={fab.href} className="fab-wide">{fab.label}</Link>
-          : <button type="button" className="fab-wide" onClick={fab.onClick}>{fab.label}</button>
+          ? <Link href={fab.href} className="fab-wide lg:hidden">{fab.label}</Link>
+          : <button type="button" className="fab-wide lg:hidden" onClick={fab.onClick}>{fab.label}</button>
       )}
 
       {/* ── Формы заведения ──────────────────────────────────── */}

@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { ThemeToggle } from '@/components/theme'
-import { DEFAULT_LANG } from '@/lib/i18n/dict'
+import { DEFAULT_LANG, type Key } from '@/lib/i18n/dict'
 import { createT, type T } from '@/lib/i18n/translate'
 
 // ── ЯЗЫК ВИТРИНЫ ЗАКРЕПЛЁН НА УКРАИНСКОМ. Это решение, а не недоделка ───────
@@ -44,13 +44,24 @@ export const publicT: T = createT(DEFAULT_LANG)
 
 // Публичная шапка. Ссылок мало сознательно: поиск — главный вход.
 //
-// Здесь был второй хром — «родной», для обёртки Capacitor: он прятал
-// переключатель темы и ссылки на сайт, чтобы приложение не выдавало
-// в себе сайт в рамке. Переключал их атрибут `data-native`. Обёртки
-// больше нет (CLAUDE.md → «Мобильная версия»), поэтому остался один
-// хром — вебовый, а классы `.web-only` / `.native-only` удалены
-// по правилу 8 вместе с механизмом, который их различал.
-export function PublicHeader({ authed }: { authed: boolean }) {
+// ⚠️ ЭТА ЗАПИСЬ УСТАРЕЛА И СТОИЛА ДЕФЕКТА (снято 20.08.2026). Здесь
+// стояло «обёртки больше нет, поэтому хром остался один — вебовый».
+// Обёртка ВЕРНУЛАСЬ решением директора 11.08.2026, а комментарий и код
+// остались от периода отказа. Практический итог: человек выходил
+// из кабинета в приложении и получал ПРОДАЮЩУЮ ГЛАВНУЮ САЙТА внутри
+// приложения — со словесным знаком, ссылками «Мапа» и «Увійти»
+// и заголовком «Одна підписка замість чотирьох сервісів».
+//
+// Прятать хром классами `.web-only` больше не нужно и не надо: правило
+// в globals.css скрывает саму шапку и подвал по `html[data-native]` —
+// одно место вместо класса на каждом элементе, и новый пункт шапки
+// не придётся вспоминать пометить.
+// `account` — страница, которая САМА является кабинетом покупателя.
+// Тогда кнопка «Кабінет» в шапке ведёт на текущий экран, то есть одна
+// и та же дверь лежит на экране дважды: сверху ссылка, ниже — сама
+// страница (найдено 20.08.2026 на 390px). Ссылка на себя — не навигация,
+// а шум, и на телефоне она вдобавок отбирает ширину у имени человека.
+export function PublicHeader({ authed, account }: { authed: boolean; account?: boolean }) {
   const t = publicT
   return (
     <header className="topbar">
@@ -61,7 +72,12 @@ export function PublicHeader({ authed }: { authed: boolean }) {
             придётся одну строку словаря, а не шапку и три юридических
             документа. Переводчик его не переводит — он его ПИШЕТ на своём
             языке, как имя пишут на своём языке. */}
-        <Link href="/" className="display t-xl">
+        {/* Зона нажатия — `--tap-min`, а не высота строки. Знак это ССЫЛКА
+            на главную, и 22px по вертикали на телефоне промахиваются
+            (Apple HIG — 44px). Видимого размера это не меняет: строка
+            центрируется внутри увеличенной зоны. */}
+        <Link href="/" className="display t-xl inline-flex items-center"
+              style={{ minHeight: 'var(--tap-min)' }}>
           {t('public.chrome.brand')}<span style={{ color: 'var(--color-gold)' }}>.</span>
         </Link>
         <nav className="flex items-center gap-1 sm:gap-2">
@@ -71,7 +87,8 @@ export function PublicHeader({ authed }: { authed: boolean }) {
           </Link>
           <ThemeToggle className="hidden sm:inline-flex" />
           {authed ? (
-            <Link href="/account" className="btn-secondary">{t('public.chrome.account')}</Link>
+            account ? null
+              : <Link href="/account" className="btn-secondary">{t('public.chrome.account')}</Link>
           ) : (
             <>
               <Link href="/login" className="btn-ghost">{t('public.chrome.signIn')}</Link>
@@ -92,6 +109,16 @@ export function PublicHeader({ authed }: { authed: boolean }) {
   )
 }
 
+// Тип `Key` здесь не украшение: опечатка в имени ключа не соберётся
+// `tsc --noEmit`, то есть ловится заданием «Збірка» до слияния,
+// а не пустым местом в подвале (тот же приём, что в `app/page.tsx`).
+const FOOTER_LINKS: [string, Key][] = [
+  ['/register/seller', 'public.footer.openBusiness'],
+  ['/login', 'public.footer.signIn'],
+  ['/privacy', 'public.footer.privacy'],
+  ['/privacy/delete', 'public.footer.dataDelete'],
+]
+
 // Подвал сайта: «Відкрити бізнес», «Вхід», юридические ссылки.
 export function PublicFooter() {
   const t = publicT
@@ -105,15 +132,17 @@ export function PublicFooter() {
             страницы: этого требуют и Meta при верификации бизнеса, и обе
             магазинные проверки. Прятать их в подвале второго уровня —
             повод для отказа. */}
-        <div className="flex flex-wrap gap-x-5 gap-y-2">
-          <Link href="/register/seller" className="hover:underline">
-            {t('public.footer.openBusiness')}
-          </Link>
-          <Link href="/login" className="hover:underline">{t('public.footer.signIn')}</Link>
-          <Link href="/privacy" className="hover:underline">{t('public.footer.privacy')}</Link>
-          <Link href="/privacy/delete" className="hover:underline">
-            {t('public.footer.dataDelete')}
-          </Link>
+        {/* Зона нажатия — `--tap-min` у КАЖДОЙ ссылки. Юридические ссылки
+            в подвале обязаны открываться и с телефона: их проверяют Meta
+            и обе магазинные проверки, а строка высотой 16px промахивается
+            пальцем. Видимый вид не меняется — растёт только зона. */}
+        <div className="flex flex-wrap items-center gap-x-5">
+          {FOOTER_LINKS.map(([href, key]) => (
+            <Link key={href} href={href} className="inline-flex items-center hover:underline"
+                  style={{ minHeight: 'var(--tap-min)' }}>
+              {t(key)}
+            </Link>
+          ))}
         </div>
       </div>
     </footer>

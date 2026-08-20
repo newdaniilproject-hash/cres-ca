@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { keepVisible } from '../ui'
+import { Brand } from '@/components/auth-ui'
 import { dbErrorText } from '@/lib/errors/db'
 import { useT } from '@/lib/i18n/client'
 
@@ -77,12 +78,11 @@ export default function MobileShopPage() {
 
   if (!ready) {
     return (
-      <main className="flex flex-1 items-center justify-center">
-        {/* Знак марки. Название продукта не переводится ни на один
-            язык — как и «CRESKO» в `components/auth-ui.tsx`. */}
-        <div className="display t-2xl" style={{ opacity: 0.35 }}>
-          Маркет<span style={{ color: 'var(--color-gold)' }}>.</span>
-        </div>
+      // Тот же знак и то же его приглушение, что на приветственном
+      // экране (`app/m/page.tsx`): ожидание сессии выглядит одинаково
+      // на всех экранах приложения.
+      <main className="flex flex-1 items-center justify-center" style={{ opacity: 0.35 }}>
+        <Brand />
       </main>
     )
   }
@@ -94,11 +94,15 @@ export default function MobileShopPage() {
     // появляется ровно та прокрутка, которой не хватает. Запасов
     // снизу больше нет — см. globals.css, раздел про клавиатуру.
     <main className="m-scroll flex flex-1 flex-col px-6 pb-6">
-      <div className="flex items-center justify-between" style={{ height: 56 }}>
-        {/* Знак марки — не строка интерфейса, см. выше. */}
-        <span className="display t-lg">
-          Маркет<span style={{ color: 'var(--color-gold)' }}>.</span>
-        </span>
+      {/* ⚠️ ЗДЕСЬ СТОЯЛ ЗНАК «Маркет.» — ВТОРАЯ МАРКА В ПРОДУКТЕ.
+          Экран лежит ровно между `/m/register` и кабинетом, и на обоих
+          соседях знак читается «CRESKO». Человек, дошедший до создания
+          закладу, видел посреди потока чужое имя и золотую точку
+          из ПЕРВОГО оформления (`--color-gold` в интерфейсе больше нигде
+          не выводится). Знака здесь теперь нет вовсе: остальные экраны
+          приложения его в шапке тоже не носят — там только стрелка
+          «назад», а тут её место занимает выход. */}
+      <div className="flex items-center justify-end" style={{ height: 56 }}>
         <button
           type="button"
           onClick={signOut}
@@ -123,8 +127,9 @@ export default function MobileShopPage() {
           id="shop-name"
           required
           autoFocus
+          // Ни высоты, ни кегля инлайном: `.input` в globals.css задаёт
+          // `--h-input` и пол в 16px на касательных устройствах.
           className="input"
-          style={{ height: 52, fontSize: 16 }}
           value={name}
           onFocus={keepVisible}
           onChange={(e) => setName(e.target.value)}
@@ -176,7 +181,6 @@ export default function MobileShopPage() {
         <input
           id="shop-city"
           className="input"
-          style={{ height: 52, fontSize: 16 }}
           value={city}
           onFocus={keepVisible}
           onChange={(e) => setCity(e.target.value)}
@@ -193,11 +197,7 @@ export default function MobileShopPage() {
             и поднимается над клавиатурой. Прокручиваемая область
             отступает на её высоту, поэтому поля под ней не прячутся. */}
         <div className="m-actionbar">
-          <button
-            className="btn-primary flex w-full items-center justify-center"
-            style={{ height: 52, fontSize: 16 }}
-            disabled={busy || name.trim().length < 2}
-          >
+          <button className="btn-primary btn-tall" disabled={busy || name.trim().length < 2}>
             {busy ? t('m.shop.busy') : t('m.shop.submit')}
           </button>
         </div>

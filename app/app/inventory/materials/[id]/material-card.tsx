@@ -54,11 +54,18 @@ function Row({ label, value, mono }: { label: string; value: React.ReactNode; mo
 }
 
 export function MaterialCard({
-  tenantId, canWrite, material, isActive, stock, batches, containers,
-  docsCount, docs, movements, suppliers, locations,
+  tenantId, canWrite, hasCompliance, material, isActive, stock, batches,
+  containers, docsCount, docs, movements, suppliers, locations,
 }: {
   tenantId: string
   canWrite: boolean
+  /**
+   * У заведения подключён модуль `compliance`. Подэкран документов стоит
+   * именно на нём, а карточка — на `inventory`: без этого признака строка
+   * «Документи та сертифікати» вела бы на экран отказа. Дверь в чужой
+   * модуль прячется, а не показывает `<ModuleOff>`.
+   */
+  hasCompliance: boolean
   material: MaterialInit
   /** Засіб в обращении. Показывается значком, формой не правится. */
   isActive: boolean
@@ -113,6 +120,31 @@ export function MaterialCard({
     suppliers.find((s) => s.id === id)?.name ?? null
   const locationName = locations.find((l) => l.id === material.locationId)?.name ?? null
 
+  // ── Мета шапки §9: три строки «підпис: значення» ─────────────────────
+  //
+  // Собрана списком, а не разметкой: строк три, пар в них разное число,
+  // и разложенная по JSX она превращается в четыре вложенные тернарки.
+  // Пустая пара выпадает целиком — «Бренд: —» это не факт о засобі,
+  // а сообщение о незаполненном поле формы, и в паспорте ему не место.
+  // Штрих-кода среди пар нет намеренно: привязки `material_barcodes`
+  // в карточку не приходят, а показать вместо кода артикул под чужой
+  // подписью значит соврать в паспорте.
+  type MetaPair = [label: string, value: string, mono: boolean]
+  const webMeta: MetaPair[][] = ([
+    [
+      material.category
+        ? [t('inventory.material.row.category'), material.category, false] as MetaPair
+        : null,
+      material.brand
+        ? [t('inventory.material.row.brand'), material.brand, false] as MetaPair
+        : null,
+    ].filter((x): x is MetaPair => x !== null),
+    material.sku
+      ? [[t('inventory.material.row.sku'), material.sku, true] as MetaPair]
+      : [],
+    [[t('inventory.material.row.unit'), material.unit, false] as MetaPair],
+  ] as MetaPair[][]).filter((line) => line.length > 0)
+
   // ── CRESKO Web, §9: вкладки карточки ─────────────────────────────────
   // Вкладка заводится только под то, что на карточке ЕСТЬ. «Історія руху»
   // пропадает у того, кому RLS не отдала журнал (инспектор), — пустая
@@ -124,7 +156,10 @@ export function MaterialCard({
     { key: 'batches', label: t('inventory.material.web.tab.batches'), n: batches.length, show: true },
     { key: 'containers', label: t('inventory.material.web.tab.containers'), n: containers.length, show: true },
     { key: 'movements', label: t('inventory.material.web.tab.movements'), n: movements.length, show: movements.length > 0 },
-    { key: 'docs', label: t('inventory.material.web.tab.docs'), n: docsCount, show: true },
+    // Вкладка документов — только когда модуль соответствия у заведения
+    // есть: подэкран `docs/` стоит на нём, и без модуля вкладка вела бы
+    // на `<ModuleOff>`.
+    { key: 'docs', label: t('inventory.material.web.tab.docs'), n: docsCount, show: hasCompliance },
   ]
 
   // Колонки таблиц CRESKO Web: единственное место, где размер задаётся
@@ -215,7 +250,26 @@ export function MaterialCard({
           веба значит показать одни и те же поля дважды на одном экране. */}
       <div className="hidden flex-col gap-5 lg:flex">
 
+        {/* ── «Назад до складу» ─────────────────────────────────────
+            В веб-каркасе имя открытого ПОДЭКРАНА не пишет никто:
+            сайдбар подсвечивает раздел «Склад», а стрелка «назад»
+            из мобильной шапки на широком экране не рисуется. Без этой
+            ссылки выход из карточки — только повторное нажатие пункта
+            сайдбара, то есть человек возвращается не туда, откуда
+            пришёл, а в начало раздела. §9 ставит её первой строкой. */}
+        <Link href="/app/inventory"
+              className="inline-flex items-center gap-2 self-start"
+              style={{ fontSize: 14, fontWeight: 650, color: 'var(--color-accent-ink)' }}>
+          <span aria-hidden>←</span>
+          {t('inventory.web.back')}
+        </Link>
+
         {/* ── Шапка: фото 216×216 слева, имя и мета справа ──────────
+            БЕЗ карточки под собой — так в §9: фото и заголовок стоят
+            прямо на фоне страницы, а первая белая плоскость экрана —
+            это стат-ряд ниже. Пока шапка была `.webcard`, имя засоба
+            и стат-ряд читались как две одинаковые карточки подряд,
+            и глазу не за что было зацепиться.
             Радиус 16 — тот же, что у `.webcard`; фото раздаётся из
             публичного бакета `media` (0111), поэтому обычный <img>,
             а не next/image: оптимизатор был бы ещё одним прокси
@@ -223,7 +277,7 @@ export function MaterialCard({
             Пустого серого прямоугольника нет: без фото стоит плашка
             со значком — она читается как «фото не додали», а серый
             прямоугольник как «не завантажилось». */}
-        <section className="webcard flex gap-5">
+        <section className="flex gap-5">
           {material.imagePath ? (
             <span className="h-[216px] w-[216px] shrink-0 overflow-hidden rounded-2xl">
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -233,8 +287,11 @@ export function MaterialCard({
           ) : (
             <span className="flex h-[216px] w-[216px] shrink-0 items-center justify-center rounded-2xl"
                   style={{
-                    background: 'var(--color-surface-2)',
-                    border: '1px solid var(--color-border)',
+                    background: 'var(--color-surface)',
+                    // Пунктир, а не сплошная линия: §9 рисует место
+                    // под фото именно так — это «сюда можно положить»,
+                    // а не «здесь рамка карточки».
+                    border: '1px dashed var(--color-border-strong, var(--color-border))',
                     color: 'var(--color-faint)',
                   }}>
               <IconBox size={40} />
@@ -284,16 +341,28 @@ export function MaterialCard({
                 привязки `material_barcodes` в карточку не приходят,
                 а показывать вместо кода артикул под чужой подписью
                 значит соврать в паспорте. */}
-            <div className="mt-4 flex flex-col gap-1.5"
-                 style={{ color: 'var(--web-text-secondary, var(--color-muted))', fontSize: 14 }}>
-              <p>
-                {[material.category, material.brand].filter(Boolean).join(' · ')
-                  || t('inventory.material.noCategory')}
-              </p>
-              <p className="tabular">
-                {t('inventory.material.row.sku')}: {material.sku ?? '—'}
-              </p>
-              <p>{t('inventory.material.row.unit')}: {material.unit}</p>
+            {/* Подпись серым, значение тёмным и полужирным — так в §9
+                («Категорія: Манікюр • Бренд: Kodi Professional»).
+                Прежде вся строка шла одним серым тоном, и в «Манікюр ·
+                Kodi Professional» не было видно, где кончается категория
+                и начинается бренд. Разделитель между парами — точка,
+                как в референсе. */}
+            <div className="mt-4 flex flex-col gap-1.5" style={{ fontSize: 14 }}>
+              {webMeta.map((line, li) => (
+                <p key={li} className="flex flex-wrap items-baseline gap-x-2">
+                  {line.map(([label, value, mono], i) => (
+                    <span key={label} className="flex items-baseline gap-1.5">
+                      {i > 0 && <span aria-hidden style={{ color: 'var(--color-faint)' }}>·</span>}
+                      <span style={{ color: 'var(--color-muted)' }}>{label}:</span>
+                      {/* Значение — данные арендатора. */}
+                      <span className={mono ? 'tabular' : ''}
+                            style={{ color: 'var(--color-text)', fontWeight: 650 }}>
+                        {value}
+                      </span>
+                    </span>
+                  ))}
+                </p>
+              ))}
             </div>
           </div>
         </section>
@@ -643,7 +712,7 @@ export function MaterialCard({
             {/* Нотификация: только статус и вход. Код, дата и приём
                 подтверждения живут на экране документов — подтверждение
                 ЕСТЬ документ, и принимается оно там же (0106). */}
-            {material.isCosmetic && (
+            {material.isCosmetic && hasCompliance && (
               <section className="webcard">
                 <p className="webh2 mb-3">{t('inventory.material.web.moz.title')}</p>
                 <Link href={`/app/inventory/materials/${material.id}/docs`}
@@ -685,13 +754,31 @@ export function MaterialCard({
       </div>
 
       {/* ── Шапка карточки ───────────────────────────────────────
-          Фото слева, если оно есть. README хендоффа просит блок 4:3
-          над карточкой; здесь он сделан миниатюрой рядом с именем,
-          и это осознанное отступление: фото засоба — опознавательный
-          знак банки, а не витринный кадр товара. Полосу 4:3 во весь
-          экран пришлось бы показывать и тем, у кого фото нет, — то есть
-          отдавать треть первого экрана серому прямоугольнику. */}
+          README, розділ C: фото 4:3 (радіус 16), бейдж статусу,
+          назва 22px/700, опис 13px/muted — в этом порядке.
+
+          Фото — во всю ширину и ТОЛЬКО когда оно есть. Прежняя запись
+          здесь отказывала полосе 4:3 целиком, боясь «отдать треть экрана
+          серому прямоугольнику»; условие снимает ровно этот страх, не
+          отменяя макета: без фото полосы нет вовсе, а с фото банку
+          узнают с расстояния вытянутой руки — ради чего его и снимают.
+          Второй показ той же картинки (миниатюра рядом с именем) снят:
+          одно изображение на экран.
+
+          Радиус 16px — ступень шкалы README (10 · 12 · 14 · 16 · 18 · 20),
+          токен назван по первому применению; своего значения здесь нет. */}
       <section className="card rise-1 flex flex-col gap-2 lg:hidden">
+        {material.imagePath && (
+          <span className="block w-full overflow-hidden"
+                style={{ aspectRatio: '4 / 3', borderRadius: 'var(--radius-calendar)' }}>
+            {/* Обычный <img>, а не next/image: файл лежит в публичном
+                бакете Supabase, и оптимизатор Next для него означал бы
+                ещё один прокси на пути картинки без выигрыша. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={photoUrl(material.imagePath)} alt=""
+                 className="h-full w-full object-cover" />
+          </span>
+        )}
         <div className="flex flex-wrap items-center gap-2">
           <span className={EXPIRY_BADGE[state]}>{t(EXPIRY_KEY[state])}</span>
           {material.isCosmetic && (
@@ -699,20 +786,10 @@ export function MaterialCard({
           )}
           {!canWrite && <span className="badge">{t('inventory.material.badge.readonly')}</span>}
         </div>
-        <div className="flex items-start gap-3">
-          {material.imagePath && (
-            <span className="list-card-thumb shrink-0">
-              {/* Обычный <img>, а не next/image: файл лежит в публичном
-                  бакете Supabase, и оптимизатор Next для него означал бы
-                  ещё один прокси на пути картинки без выигрыша. */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={photoUrl(material.imagePath)} alt=""
-                   className="h-full w-full object-cover" />
-            </span>
-          )}
-          <h2 className="display t-2xl min-w-0 flex-1">{material.name}</h2>
-        </div>
-        <p className="t-sm" style={{ color: 'var(--color-muted)' }}>
+        <h2 className="display t-2xl">{material.name}</h2>
+        {/* Опис — 13px/muted (README), то есть `.t-base`, а не 12px:
+            подпись под именем и вторичный текст списка — разные роли. */}
+        <p className="t-base" style={{ color: 'var(--color-muted)' }}>
           {/* Бренд и категория — данные арендатора. */}
           {[material.brand, material.category].filter(Boolean).join(' · ')
             || t('inventory.material.noCategory')}
@@ -737,10 +814,14 @@ export function MaterialCard({
 
       {/* ── Паспорт засоба (ТЗ 3.1) ──────────────────────────────
           README, розділ C, блок 1: Бренд, Артикул, Категорія,
-          Країна-виробник. INCI отсюда УБРАН и стоит своей секцией
-          ниже, как в спецификации: это абзац состава, а не строка
-          таблицы — в «ключ → значение» он занимал пять строк высоты
-          и ломал ритм остальных. */}
+          Країна-виробник — ровно четыре строки. INCI отсюда УБРАН
+          и стоит своей секцией ниже, как в спецификации: это абзац
+          состава, а не строка таблицы — в «ключ → значение» он занимал
+          пять строк высоты и ломал ритм остальных.
+
+          Пятой строки «Одиниця» здесь больше нет: единица уже стоит
+          в «В наявності: 15 шт» шапки и в подписи «Собівартість за
+          одиницю» — третий её показ на одном экране ничего не добавлял. */}
       <section className="rise-2 lg:hidden">
         <p className="eyebrow mb-2">{t('inventory.material.passport.title')}</p>
         <div className="kv">
@@ -748,67 +829,16 @@ export function MaterialCard({
           <Row label={t('inventory.material.row.sku')} value={material.sku ?? '—'} mono />
           <Row label={t('inventory.material.row.category')} value={material.category ?? '—'} />
           <Row label={t('inventory.material.row.country')} value={material.country ?? '—'} />
-          <Row label={t('inventory.material.row.unit')} value={material.unit} />
         </div>
       </section>
 
-      {/* ── Зберігання і собівартість ──────────────────────────────
-          Коммерческая часть: у инспектора запрос к `materials` вернул
-          пустоту (stock === null), и блок не рисуется вовсе — та же
-          логика, что у строки «В наявності». Перенос места — ТОЛЬКО
-          кнопкой: она зовёт relocate_stock (0113) и оставляет след
-          в журнале движений, чего молчаливый селект формы не делает. */}
-      {stock !== null && (
-        <section className="rise-2 lg:hidden">
-          <p className="eyebrow mb-2">{t('inventory.material.storage.title')}</p>
-          <div className="kv">
-            <Row label={t('inventory.material.location.label')}
-                 value={locationName ?? t('inventory.material.relocate.none')} />
-            {material.cost != null && (
-              <Row label={t('inventory.material.row.cost')}
-                   value={t.money(material.cost)} mono />
-            )}
-          </div>
-          {material.cost != null && (
-            // С 0112 приёмка пересчитывает cost_per_unit сама — без этой
-            // строки владелец «чинит» цифру руками и ломает средневзвешенную.
-            <p className="field-hint mt-1">{t('inventory.material.cost.hint')}</p>
-          )}
-          {canWrite && (
-            <button type="button" className="btn-secondary mt-2"
-                    onClick={() => setRelocate(true)}>
-              {t('inventory.material.relocate.action')}
-            </button>
-          )}
-        </section>
-      )}
-
-      {/* ── Своё: заметка и произвольные поля ─────────────────────
-          Показывается только тому, кто их видит: инспектору эти колонки
-          не приходят вовсе (0111), и блок у него просто не рисуется. */}
-      {(material.note || Object.keys(material.attributes ?? {}).length > 0) && (
-        <section className="rise-2 lg:hidden">
-          <p className="eyebrow mb-2">{t('inventory.material.own.title')}</p>
-          {material.note && (
-            <div className="card mb-2">
-              {/* Кегль — из шкалы (t-sm), а не ручным calc: свой размер
-                  выпал бы из множителя --type-scale при первой правке. */}
-              <p className="t-sm" style={{ whiteSpace: 'pre-wrap' }}>
-                {material.note}
-              </p>
-            </div>
-          )}
-          {Object.keys(material.attributes ?? {}).length > 0 && (
-            <div className="kv">
-              {Object.entries(material.attributes ?? {}).map(([k, v]) => (
-                <Row key={k} label={k} value={v} />
-              ))}
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* ── Партия и сроки ───────────────────────────────────── */}
+      {/* ── Партия и сроки ─────────────────────────────────────
+          Идёт СРАЗУ за паспортом, как в README (блок 1 → блок 2 →
+          два навигационных ряда → INCI → нотификация). Раньше между
+          ними стояли «Зберігання» и «Ваше» — то есть коммерция заведения
+          разрывала паспорт по Техрегламенту пополам, и инспектор искал
+          номер партии где-то под заметкой мастера. Оба блока целы
+          и переехали ниже нотификации. */}
       <section className="rise-2 lg:hidden">
         <div className="section-head">
           <p className="eyebrow">{t('inventory.material.batches.title')}</p>
@@ -860,36 +890,39 @@ export function MaterialCard({
             единственный вход в правку (кнопка «Виправити партію N» снята
             как дубль), и при одной партии он обязан существовать. */}
         {batches.length > 0 && (
-          <div className="mt-3 border-t pt-2" style={{ borderColor: 'var(--color-border)' }}>
-            <p className="t-xs mb-1" style={{ color: 'var(--color-faint)' }}>
+          <div className="mt-3">
+            <p className="t-xs mb-2" style={{ color: 'var(--color-faint)' }}>
               {t('inventory.material.batches.all', { n: t.number(batches.length) })}
             </p>
-            {batches.map((b) => {
-              const s = expiryState(b.expiry)
-              const inner = (
-                <>
-                  <span className="tabular t-md">{b.number}</span>
-                  <span className={`tabular ${EXPIRY_BADGE[s]}`}>
-                    {t('inventory.material.batch.until', {
-                      date: t.date(b.expiry, { day: 'numeric', month: 'short' }),
-                    })}
-                  </span>
-                </>
-              )
-              // Читателю — div, а не выключенная кнопка: disabled-кнопка
-              // обещает действие, которого нет, и глушит прокрутку с фокусом.
-              return canWrite ? (
-                <button key={b.id} type="button" onClick={() => setBatchEdit(b)}
-                        className="row w-full text-left"
-                        style={{ minHeight: 'var(--tap-min)' }}>
-                  {inner}
-                </button>
-              ) : (
-                <div key={b.id} className="row" style={{ minHeight: 'var(--tap-min)' }}>
-                  {inner}
-                </div>
-              )
-            })}
+            {/* Отдельные карточки с зазором, а не строки на голом фоне:
+                прежний список висел без подложки и читался обрывком
+                таблицы выше. Ритм тот же, что у реестра склада
+                и у истории розливов (`.list-card`). */}
+            <div className="flex flex-col gap-2">
+              {batches.map((b) => {
+                const s = expiryState(b.expiry)
+                const inner = (
+                  <>
+                    <span className="tabular t-md min-w-0 flex-1">{b.number}</span>
+                    <span className={`tabular shrink-0 ${EXPIRY_BADGE[s]}`}>
+                      {t('inventory.material.batch.until', {
+                        date: t.date(b.expiry, { day: 'numeric', month: 'short' }),
+                      })}
+                    </span>
+                  </>
+                )
+                // Читателю — div, а не выключенная кнопка: disabled-кнопка
+                // обещает действие, которого нет, и глушит прокрутку с фокусом.
+                return canWrite ? (
+                  <button key={b.id} type="button" onClick={() => setBatchEdit(b)}
+                          className="list-card">
+                    {inner}
+                  </button>
+                ) : (
+                  <div key={b.id} className="list-card">{inner}</div>
+                )
+              })}
+            </div>
           </div>
         )}
       </section>
@@ -901,26 +934,35 @@ export function MaterialCard({
           по смыслу подэкрана (бумаги и физическая банка), и одинаковый
           серый кружок у обоих читался как один пункт с переносом. */}
       <section className="card rise-3 !p-0 lg:hidden">
-        <Link href={`/app/inventory/materials/${material.id}/docs`}
-              className="row px-5" style={{ minHeight: 'var(--tap-min)' }}>
-          <span aria-hidden className="list-anchor" data-tone="accent">
-            <IconDoc size={18} />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="t-md block">{t('inventory.material.docs.title')}</span>
-            <span className="t-xs block" style={{ color: 'var(--color-faint)' }}>
-              {docsCount > 0
-                ? t.plural('inventory.material.docs.count', docsCount)
-                : t('inventory.material.docs.none')}
+        {/* Дверь в чужой модуль прячется, а не показывает отказ: подэкран
+            документов стоит на модуле `compliance`, а карточка — на
+            `inventory`. */}
+        {hasCompliance && (
+          <Link href={`/app/inventory/materials/${material.id}/docs`}
+                className="row px-5" style={{ minHeight: 'var(--tap-min)' }}>
+            <span aria-hidden className="list-anchor" data-tone="accent">
+              <IconDoc size={18} />
             </span>
-          </span>
-          <span className="flex shrink-0 items-center gap-2">
-            {material.isCosmetic && docsCount === 0
-              ? <span className="badge-warn">{t('inventory.material.docs.needed')}</span>
-              : <span className="badge tabular">{t.number(docsCount)}</span>}
-            <span aria-hidden style={{ color: 'var(--color-faint)' }}>›</span>
-          </span>
-        </Link>
+            <span className="min-w-0 flex-1">
+              <span className="t-md block">{t('inventory.material.docs.title')}</span>
+              {/* README: підпис «N файлів». Числовой значок справа снят —
+                  он повторял то же число, что уже стоит в подписи. Значок
+                  остался только у косметики без документов: там он не
+                  повторяет счёт, а называет требование. */}
+              <span className="t-xs block" style={{ color: 'var(--color-faint)' }}>
+                {docsCount > 0
+                  ? t.plural('inventory.material.docs.count', docsCount)
+                  : t('inventory.material.docs.none')}
+              </span>
+            </span>
+            <span className="flex shrink-0 items-center gap-2">
+              {material.isCosmetic && docsCount === 0 && (
+                <span className="badge-warn">{t('inventory.material.docs.needed')}</span>
+              )}
+              <span aria-hidden style={{ color: 'var(--color-faint)' }}>›</span>
+            </span>
+          </Link>
+        )}
 
         <Link href={`/app/inventory/materials/${material.id}/pao`}
               className="row px-5" style={{ minHeight: 'var(--tap-min)' }}>
@@ -955,29 +997,124 @@ export function MaterialCard({
         <section className="rise-3 lg:hidden">
           <p className="eyebrow mb-2">{t('inventory.material.inci.title')}</p>
           <div className="card">
-            {/* Кегль и цвет — классами шкалы, а не ручным calc. */}
-            <p className="t-xs prose-muted">{material.inci}</p>
+            {/* Кегль — 12px из шкалы (`.t-sm`), как задано в README.
+                Стоял `.t-xs`, то есть 10px, — это кегль БЕЙДЖА, и абзац
+                состава им набирать нельзя: INCI читают глазами, сверяя
+                с этикеткой. */}
+            <p className="t-sm prose-muted">{material.inci}</p>
           </div>
         </section>
       )}
 
-      {/* ── Нотификация МОЗ: одна строка-ссылка ────────────────────
-          Полный блок с кодом, датой и подтверждением живёт на экране
-          документов — там ему место, потому что подтверждение ЕСТЬ
-          документ и принимается там же. Здесь тот же блок почти
-          дублировался (два источника одной правды на соседних экранах),
-          поэтому на карточке — только статус и вход на «Документи». */}
-      {material.isCosmetic && (
-        <p className="rise-3 lg:hidden">
+      {/* ── Нотификация МОЗ ────────────────────────────────────────
+          README, розділ C: «внизу інфо-блок «Нотифікація МОЗ» на
+          accentSoft (код + дата реєстрації)». Раньше здесь стоял голый
+          бейдж без кода и без даты — то есть самого содержимого блока
+          не было, а инспектор спрашивает именно КОД.
+
+          Дублем экрана документов это не становится: там нотификацию
+          ПРАВЯТ и там её подтверждают документом, здесь она только
+          читается. Ссылка ведёт туда же, где действие. Блок целиком
+          снимается вместе с модулем `compliance`: без него подэкран
+          документов заведению не открыт. */}
+      {material.isCosmetic && hasCompliance && (
+        <section className="rise-3 lg:hidden">
           <Link href={`/app/inventory/materials/${material.id}/docs`}
-                className={material.notificationConfirmedAt ? 'badge-success' : 'badge-danger'}>
-            {material.notificationConfirmedAt
-              ? t('inventory.material.moz.proof.ok', {
-                  date: t.date(material.notificationConfirmedAt),
-                })
-              : `${t('inventory.material.moz.proof.missing')} · ${t('inventory.material.moz.proof.open')}`}
+                className="block"
+                style={{
+                  background: 'var(--color-accent-soft)',
+                  borderRadius: 'var(--radius-card)',
+                  padding: 'var(--space-4)',
+                }}>
+            <span className="eyebrow block">{t('inventory.docs.moz.title')}</span>
+            {material.notificationCode ? (
+              <>
+                {/* Код нотификации — данные арендатора. */}
+                <span className="tabular t-md mt-2 block">
+                  {t('inventory.docs.moz.code', { code: material.notificationCode })}
+                </span>
+                <span className="tabular t-sm block" style={{ color: 'var(--color-muted)' }}>
+                  {t('inventory.docs.moz.date', { date: t.date(material.notificationDate) })}
+                </span>
+              </>
+            ) : (
+              <span className="t-sm mt-2 block" style={{ color: 'var(--color-muted)' }}>
+                {t('inventory.docs.moz.noCode')}
+              </span>
+            )}
+            {/* Код — это слова поставщика, подтверждение — документ.
+                Проверка смотрит второе (0106), поэтому статус стоит
+                отдельной строкой, а не сливается с кодом. */}
+            <span className="mt-3 block">
+              <span className={material.notificationConfirmedAt ? 'badge-success' : 'badge-danger'}>
+                {material.notificationConfirmedAt
+                  ? t('inventory.material.moz.proof.ok', {
+                      date: t.date(material.notificationConfirmedAt),
+                    })
+                  : `${t('inventory.material.moz.proof.missing')} · ${t('inventory.material.moz.proof.open')}`}
+              </span>
+            </span>
           </Link>
-        </p>
+        </section>
+      )}
+
+      {/* ── Зберігання і собівартість ──────────────────────────────
+          Коммерческая часть заведения, и потому НИЖЕ паспорта: README
+          держит подряд блок 1 → блок 2 → подэкраны → INCI → нотификацию,
+          а этот блок разрывал их пополам. У инспектора запрос
+          к `materials` вернул пустоту (stock === null), и блок
+          не рисуется вовсе — та же логика, что у строки «В наявності».
+          Перенос места — ТОЛЬКО кнопкой: она зовёт relocate_stock (0113)
+          и оставляет след в журнале движений, чего молчаливый селект
+          формы не делает. */}
+      {stock !== null && (
+        <section className="rise-3 lg:hidden">
+          <p className="eyebrow mb-2">{t('inventory.material.storage.title')}</p>
+          <div className="kv">
+            <Row label={t('inventory.material.location.label')}
+                 value={locationName ?? t('inventory.material.relocate.none')} />
+            {material.cost != null && (
+              <Row label={t('inventory.material.row.cost')}
+                   value={t.money(material.cost)} mono />
+            )}
+          </div>
+          {material.cost != null && (
+            // С 0112 приёмка пересчитывает cost_per_unit сама — без этой
+            // строки владелец «чинит» цифру руками и ломает средневзвешенную.
+            <p className="field-hint mt-1">{t('inventory.material.cost.hint')}</p>
+          )}
+          {canWrite && (
+            <button type="button" className="btn-secondary mt-2"
+                    onClick={() => setRelocate(true)}>
+              {t('inventory.material.relocate.action')}
+            </button>
+          )}
+        </section>
+      )}
+
+      {/* ── Своё: заметка и произвольные поля ─────────────────────
+          Показывается только тому, кто их видит: инспектору эти колонки
+          не приходят вовсе (0111), и блок у него просто не рисуется. */}
+      {(material.note || Object.keys(material.attributes ?? {}).length > 0) && (
+        <section className="rise-3 lg:hidden">
+          <p className="eyebrow mb-2">{t('inventory.material.own.title')}</p>
+          {material.note && (
+            <div className="card mb-2">
+              {/* Кегль — из шкалы (t-sm), а не ручным calc: свой размер
+                  выпал бы из множителя --type-scale при первой правке. */}
+              <p className="t-sm" style={{ whiteSpace: 'pre-wrap' }}>
+                {material.note}
+              </p>
+            </div>
+          )}
+          {Object.keys(material.attributes ?? {}).length > 0 && (
+            <div className="kv">
+              {Object.entries(material.attributes ?? {}).map(([k, v]) => (
+                <Row key={k} label={k} value={v} />
+              ))}
+            </div>
+          )}
+        </section>
       )}
 
       {/* ── Правка карточки ──────────────────────────────────── */}

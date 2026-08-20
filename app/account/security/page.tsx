@@ -2,17 +2,16 @@
 
 import Link from 'next/link'
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { PasswordInput, PasswordStrength } from '@/components/auth-ui'
 import { humanAuthError } from '@/lib/auth-errors'
+import { afterSignOut } from '@/lib/where'
 import { useT } from '@/lib/i18n/client'
 
 // Безопасность: смена пароля, смена почты (с подтверждением обоих
 // адресов — это включено в Supabase по умолчанию), выход.
 export default function SecurityPage() {
   const t = useT()
-  const router = useRouter()
   const supabase = createClient()
 
   const [password, setPassword] = useState('')
@@ -60,7 +59,15 @@ export default function SecurityPage() {
     // и «Вийти» на ноутбуке разлогинивает телефон. Выход со всех устройств —
     // отдельное осознанное действие в профиле кабинета.
     await supabase.auth.signOut({ scope: 'local' })
-    router.push('/'); router.refresh()
+    // ⚠️ НЕ `router.push('/')`. Это была ЧЕТВЁРТАЯ кнопка «Вийти», ведущая
+    // на продающую главную; три остальных (панель, шторка под аватаром,
+    // профиль) переведены на `afterSignOut()` 20.08.2026, а эта осталась —
+    // ровно тот случай, ради которого источник правды и заводился.
+    // Внутри обёртки `/` показывало САЙТ внутри приложения; выход — это
+    // «хочу войти другим», а не «ушёл с сайта». `location.href`, а не
+    // `router.push`: сессия уже погашена, и мягкий переход отрисовал бы
+    // экран со старыми данными из кэша роутера.
+    window.location.href = afterSignOut()
   }
 
   return (

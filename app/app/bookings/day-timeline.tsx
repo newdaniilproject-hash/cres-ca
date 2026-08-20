@@ -26,6 +26,12 @@ const HOUR_MIN = 8   // границы дня по умолчанию: сало�
 const HOUR_MAX = 20  // до 20, и уже этого сетка не сужает никогда
 const GUTTER = 42    // колонка часов слева, README дословно
 
+// Короче этого «свободное окно» не показываем. Причина не в вёрстке:
+// плашка «09:55 – 10:00 Вільний час» приглашает поставить клиента в щель,
+// в которую не помещается ни одна услуга салона (самая короткая в хендоффе
+// — 45 хв). Пустая плашка, обещающая невозможное, хуже её отсутствия.
+const MIN_FREE = 15
+
 export function DayTimeline({ bookings, day }: {
   bookings: B[]
   /** Показанный день, `ГГГГ-ММ-ДД`. Живёт в адресе — разбор в `page.tsx`. */
@@ -50,8 +56,22 @@ export function DayTimeline({ bookings, day }: {
   // записям (самая ранняя минус час, самая поздняя плюс час), но НИКОГДА
   // не сужаются уже 8–20: день, показанный полосой в два часа, читается
   // как поломка, а не как «записей нет».
-  const { byHour, hours, count } = useMemo(() => {
+  //
+  // ВТОРАЯ ВЕЛИЧИНА ТОГО ЖЕ ПРОХОДА — ЗАНЯТЫЕ ОТРЕЗКИ, и без неё вид врал.
+  // Раскладка шла по ЧАСУ НАЧАЛА, то есть запись 12:00–15:30 занимала одну
+  // строку из четырёх, а 13:00, 14:00 и 15:00 рисовались пунктиром «Вільний
+  // час» — прямо поверх клиента в кресле. Ради ответа «куда я могу поставить
+  // клиента» этот вид и существует, и ошибался он ровно в нём.
+  //
+  // Отрезки минутами от полуночи, а не часами: услуга кончается в 15:30,
+  // и округление до часа снова соврало бы — в одну сторону или в другую.
+  const { byHour, freeByHour, hours, count } = useMemo(() => {
     const map = new Map<number, B[]>()
+    // Занятое время дня, отрезками `[початок, кінець)` в минутах.
+    // Отменённая запись и неявка занимают время НАРАВНЕ с остальными:
+    // час, который уже прошёл, не становится свободным задним числом
+    // (то же решение, что и у тона плашки — см. `./status`).
+    const busy: [number, number][] = []
     let from = HOUR_MIN
     let to = HOUR_MAX
     if (ready) {
@@ -61,21 +81,72 @@ export function DayTimeline({ bookings, day }: {
         const h = s.getHours()
         map.set(h, [...(map.get(h) ?? []), b])
         from = Math.min(from, h)
-        to = Math.max(to, Math.min(24, h + 1))
+
+        // Конец записи может лежать в СЛЕДУЮЩИХ сутках (ночная смена)
+        // либо быть неразобранным. В обоих случаях отрезок обрезается
+        // концом дня: рисовать завтрашние часы в сегодняшнем дне нельзя.
+        const e = new Date(b.end)
+        const startMin = s.getHours() * 60 + s.getMinutes()
+        const endMin = Number.isNaN(e.getTime()) || dayOf(e) !== day
+          ? 24 * 60
+          : Math.max(startMin, e.getHours() * 60 + e.getMinutes())
+        busy.push([startMin, endMin])
+        // Час КОНЦА, а не начала: иначе хвост длинной записи уезжал бы
+        // за нижнюю границу показанных часов и просто не рисовался.
+        to = Math.max(to, Math.min(24, Math.ceil(endMin / 60)))
       }
     }
     for (const list of map.values()) {
       list.sort((x, y) => x.start.localeCompare(y.start))
     }
+
+    // Слияние пересекающихся отрезков: две записи разных мастеров на один
+    // час — обычное дело, и без слияния свободное окно вычиталось бы
+    // дважды, оставляя дыры там, где их нет.
+    busy.sort((a, b) => a[0] - b[0])
+    const merged: [number, number][] = []
+    for (const [s, e] of busy) {
+      const last = merged[merged.length - 1]
+      if (last && s <= last[1]) last[1] = Math.max(last[1], e)
+      else merged.push([s, e])
+    }
+
+    const hours = Array.from({ length: Math.max(1, to - from) }, (_, i) => from + i)
+
+    // Свободные окна ЧАСА — это час минус занятое. Их может не быть вовсе
+    // (час занят целиком), быть одно (обычный случай) или два (запись
+    // посреди часа). Считаются на всём часе, а не «есть ли запись»:
+    // ответ «свободно с 15:30» и есть то, за чем сюда приходят.
+    const freeByHour = new Map<number, [number, number][]>()
+    for (const h of hours) {
+      const gaps: [number, number][] = []
+      let cur = h * 60
+      const end = cur + 60
+      for (const [s, e] of merged) {
+        if (e <= cur || s >= end) continue
+        if (s > cur) gaps.push([cur, Math.min(s, end)])
+        cur = Math.max(cur, e)
+        if (cur >= end) break
+      }
+      if (cur < end) gaps.push([cur, end])
+      freeByHour.set(h, gaps.filter(([s, e]) => e - s >= MIN_FREE))
+    }
+
     return {
       byHour: map,
-      hours: Array.from({ length: Math.max(1, to - from) }, (_, i) => from + i),
+      freeByHour,
+      hours,
       count: [...map.values()].reduce((n, l) => n + l.length, 0),
     }
   }, [bookings, day, ready])
 
-  const hourLabel = (h: number) =>
-    t.dateTime(new Date(2000, 0, 1, h), { hour: '2-digit', minute: '2-digit' })
+  // Подпись времени по минутам от полуночи. Форматирует `t.dateTime`,
+  // то есть локаль, а не экран; 24:00 сам печатается как «00:00».
+  const atMin = (m: number) =>
+    t.dateTime(new Date(2000, 0, 1, Math.floor(m / 60), m % 60),
+               { hour: '2-digit', minute: '2-digit' })
+
+  const hourLabel = (h: number) => atMin(h * 60)
 
   return (
     <div className="flex flex-col gap-3">
@@ -108,6 +179,29 @@ export function DayTimeline({ bookings, day }: {
       <div className="flex flex-col gap-2">
         {hours.map((h) => {
           const list = byHour.get(h) ?? []
+          const gaps = freeByHour.get(h) ?? []
+          // Час, занятый ЦЕЛИКОМ записью, которая началась раньше, строки
+          // не получает вовсе. Сказать ему нечего: карточка выше называет
+          // свой конец («12:00 – 15:30»), повторить её значило бы показать
+          // одну запись четырьмя плашками, а пустая строка с одним номером
+          // часа читается как «здесь что-то не загрузилось».
+          if (list.length === 0 && gaps.length === 0) return null
+
+          // Внутри часа окна и записи идут ПО ВРЕМЕНИ, а не сперва одни,
+          // потом другие: в 16:00 запись до 16:30 обязана стоять выше
+          // свободного окна 16:30–17:00, иначе строка читается задом
+          // наперёд. Минута начала берётся здесь, а не в разборе выше:
+          // до гидратации записей в часе нет вовсе (см. `ready`).
+          const items: ({ at: number } & (
+            { free: [number, number]; b?: never } | { b: B; free?: never }
+          ))[] = [
+            ...gaps.map((g) => ({ at: g[0], free: g })),
+            ...list.map((b) => {
+              const s = new Date(b.start)
+              return { at: s.getHours() * 60 + s.getMinutes(), b }
+            }),
+          ].sort((x, y) => x.at - y.at)
+
           return (
             <div key={h} className="flex items-start gap-2">
               <span className="tabular shrink-0"
@@ -119,28 +213,43 @@ export function DayTimeline({ bookings, day }: {
               </span>
 
               <span className="flex min-w-0 flex-1 flex-col gap-2">
-                {list.length === 0 ? (
-                  // Свободный час. Пунктир, а не сплошная рамка: это
-                  // не объект, а его отсутствие, и сплошная граница
-                  // читалась бы как ещё одна запись. И не кнопка:
-                  // запись заводится одним входом — «Новий запис» выше,
-                  // а двенадцать «кнопок» свободных часов были бы
-                  // двенадцатью вторыми входами в то же действие.
-                  <span style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    gap: 8, minHeight: 'var(--tap-min)', padding: '10px 12px',
-                    borderRadius: 'var(--radius-control)',
-                    border: '1px dashed var(--color-border-strong)',
-                    background: 'var(--color-surface-2)',
-                  }}>
-                    <span className="tabular" style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-muted)' }}>
-                      {hourLabel(h)} – {hourLabel((h + 1) % 24)}
-                    </span>
-                    <span style={{ fontSize: 12, color: 'var(--color-faint)' }}>
-                      {t('bookings.day.free')}
-                    </span>
-                  </span>
-                ) : list.map((b) => {
+                {/* Содержимое часа: свободные окна и записи вперемешку,
+                    по времени.
+
+                    Свободное окно — пунктир, а не сплошная рамка: это
+                    не объект, а его отсутствие, и сплошная граница
+                    читалась бы как ещё одна запись. И не кнопка:
+                    запись заводится одним входом — «Новий запис» выше,
+                    а двенадцать «кнопок» свободных часов были бы
+                    двенадцатью вторыми входами в то же действие.
+
+                    Границы окна — НАСТОЯЩИЕ, а не круглый час: после
+                    записи до 15:30 плашка говорит «15:30 – 16:00», и это
+                    ровно то время, в которое можно поставить клиента.
+                    Окон в часе бывает и два — когда запись стоит посреди
+                    него, — поэтому это список, а не развилка «есть запись
+                    или нет». */}
+                {items.map((it) => {
+                  if (it.free) {
+                    const [s, e] = it.free
+                    return (
+                      <span key={`f${s}`} style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        gap: 8, minHeight: 'var(--tap-min)', padding: '10px 12px',
+                        borderRadius: 'var(--radius-control)',
+                        border: '1px dashed var(--color-border-strong)',
+                        background: 'var(--color-surface-2)',
+                      }}>
+                        <span className="tabular" style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-muted)' }}>
+                          {atMin(s)} – {atMin(e)}
+                        </span>
+                        <span style={{ fontSize: 12, color: 'var(--color-faint)' }}>
+                          {t('bookings.day.free')}
+                        </span>
+                      </span>
+                    )
+                  }
+                  const b = it.b
                   const tone = eventTone(b.status)
                   return (
                     <button key={b.id} type="button" onClick={() => setOpen(b)}

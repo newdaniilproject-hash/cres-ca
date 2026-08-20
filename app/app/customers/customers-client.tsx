@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Sheet } from '@/components/sheet'
 import { useToast } from '@/components/toast'
@@ -75,14 +75,28 @@ type Card = {
 }
 
 export function CustomersClient({
-  tenantId, customers, canWrite,
+  tenantId, customers, canWrite, active = 'all',
+  stats = { all: 0, month: 0, idle: 0 },
 }: {
   tenantId: string
   customers: CustomerRow[]
   /** `customers.write`. Только раскладка: границу держит политика 0006. */
   canWrite: boolean
+  /** Выбранный отбор. Значения — те же, что понимает `page.tsx`. */
+  active?: 'all' | 'month' | 'idle'
+  /**
+   * Счётчики по ВСЕЙ базе, а не по выданной сотне (см. `page.tsx`).
+   * Величины мехАнические: сколько всего, сколько было в этом месяце,
+   * у скольких нет ни одного замовлення. «Постійний клієнт» и «середній
+   * чек» из макета сюда НЕ попали намеренно: первого в продукте нет как
+   * понятия, второй не считается без суммы по всей базе — а плитка,
+   * посчитанная по видимой сотне, врёт ровно у того заклада, которому
+   * она нужна.
+   */
+  stats?: { all: number; month: number; idle: number }
 }) {
   const t = useT()
+  const router = useRouter()
   const toast = useToast()
   const supabase = useMemo(() => createClient(), [])
   // Форма новая одна на оба экрана, кнопок две (широкий хедер и узкая
@@ -119,7 +133,12 @@ export function CustomersClient({
   useEffect(() => {
     const id = sp.get('id')
     if (!id) return
-    window.history.replaceState(null, '', '/app/customers')
+    // Убираем ТОЛЬКО `id`, а не весь запрос: в адресе может стоять отбор
+    // списка, и затерев его, мы вернули бы человека с «Були цього місяця»
+    // на полную базу молча.
+    const url = new URL(window.location.href)
+    url.searchParams.delete('id')
+    window.history.replaceState(null, '', url.pathname + url.search)
     // Приход по ссылке — единственный случай, когда нажатия не было и
     // спросить о раскладке некого. Здесь (и только здесь) её выясняет
     // `matchMedia`: эффект клиентский, разметку он не рисует, поэтому
@@ -258,6 +277,36 @@ export function CustomersClient({
         </div>
       </div>
 
+      {/* ── CRESKO Web §3: смуга вкладок відбору (тільки lg) ──────────
+          У хендоффі тут «Всі клієнти / Нові / Постійні / VIP / Неактивні».
+          Наші три — це ті самі відбори, які РЕАЛЬНО вміє сторінка
+          (`?filter=`): вся база, були цього місяця, без жодного
+          замовлення. «Постійні» і «VIP» — теги, а не стани, і вкладка
+          під них показувала б порожньо тому, хто тегів не веде.
+
+          Без цієї смуги десктоп лишався без жодних дверей до відбору:
+          на телефоні три плитки-лічильники, а тут — нічого. Число поруч
+          з підписом стоїть з тієї ж причини, з якої воно стоїть у плитці:
+          вкладка «Без замовлень» без цифри не каже, чи є кого дивитись. */}
+      {customers.length > 0 && (
+        <div className="wtabs mb-4 hidden lg:flex">
+          {([
+            ['all', '/app/customers', stats.all],
+            ['month', '/app/customers?filter=month', stats.month],
+            ['idle', '/app/customers?filter=idle', stats.idle],
+          ] as const).map(([key, href, n]) => (
+            <button key={key} type="button" className="wtab"
+                    data-active={active === key ? 'true' : undefined}
+                    onClick={() => router.push(href)}>
+              {t(`customers.stats.${key}`)}
+              <span className="tabular ml-1.5" style={{ color: 'var(--color-faint)' }}>
+                {t.number(n)}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* README, розділ G: рядок клієнта — аватар, ім'я, бейдж категорії,
           останній візит, статистика. Телефона в этой строке НЕТ и быть
           не может: контакт отдаёт `customer_card` с проверкой права
@@ -266,25 +315,34 @@ export function CustomersClient({
 
           Аватар — буква имени на плашке, а не картинка: колонки под фото
           у клиента нет, и пустой серый кружок был бы честнее только на вид. */}
-      <section className="rise mb-3 flex items-center justify-between gap-3 lg:hidden">
-        <p className="eyebrow">{t('customers.list.title')}</p>
-        <span className="flex items-center gap-2">
-          {customers.length > 0 && (
-            <button type="button" className="btn-ghost t-sm"
-                    disabled={busy === 'export'}
-                    onClick={() => void exportAll()}>
-              {busy === 'export' ? t('common.saving') : t('customers.export.cta')}
-            </button>
-          )}
-          {canWrite && (
-            <button type="button" className="btn-primary t-sm"
-                    style={{ minHeight: 'var(--tap-min)' }}
-                    onClick={() => setAdding(true)}>
-              <IconPlus size={16} />
-              {t('customers.add.cta')}
-            </button>
-          )}
-        </span>
+      {/* README, розділ G: над списком клиентов стоит статистика.
+
+          ⚠️ НАДЗАГОЛОВКА «КЛІЄНТИ» НАД НЕЙ БОЛЬШЕ НЕТ. Экран уже назван
+          дважды — строкой в шапке и подписью в нижней панели, — и третья
+          подпись занимала ряд, ничего не добавляя.
+
+          Числа кликабельные: плитка, сообщающая «без замовлень: 12»
+          и не дающая их увидеть, заставляет искать этих двенадцать
+          глазами по списку. Выбранная подсвечивается (`aria-pressed`) —
+          иначе после нажатия непонятно, что сейчас показано. */}
+      <section className="rise mb-3 grid grid-cols-3 gap-2 lg:hidden">
+        <button type="button" className="metric" aria-pressed={active === 'all'}
+                onClick={() => router.push('/app/customers')}>
+          <span className="metric-value tabular">{t.number(stats.all)}</span>
+          <span className="metric-label">{t('customers.stats.all')}</span>
+        </button>
+        <button type="button" className="metric" data-tone="emerald"
+                aria-pressed={active === 'month'}
+                onClick={() => router.push('/app/customers?filter=month')}>
+          <span className="metric-value tabular">{t.number(stats.month)}</span>
+          <span className="metric-label">{t('customers.stats.month')}</span>
+        </button>
+        <button type="button" className="metric" data-tone="amber"
+                aria-pressed={active === 'idle'}
+                onClick={() => router.push('/app/customers?filter=idle')}>
+          <span className="metric-value tabular">{t.number(stats.idle)}</span>
+          <span className="metric-label">{t('customers.stats.idle')}</span>
+        </button>
       </section>
 
       {customers.length === 0 ? (
@@ -297,48 +355,96 @@ export function CustomersClient({
         </section>
       ) : (
         <>
+        {/* README, розділ G: аватар + імʼя + бейдж категорії + останній
+            візит; знизу окремим рядком статистика по клієнту.
+
+            Дві смуги замість однієї не косметика: раніше «останній візит»,
+            сума і число замовлень стояли в один ряд з імʼям, і на 390px
+            імʼя лишалося з сотнею пікселів — «Олена Пе…» замість людини.
+            Тепер верхня смуга відповідає «хто це», нижня — «скільки він
+            нам приніс», і жодна з них не тисне другу. */}
         <div className="rise-1 flex flex-col gap-2 lg:hidden">
           {customers.map((c) => (
-            <button key={c.id} type="button" className="list-card"
+            <button key={c.id} type="button"
+                    className="list-card !flex-col !items-stretch gap-2"
                     disabled={busy === c.id}
                     onClick={() => void openCard(c.id, 'sheet')}>
-              <span aria-hidden className="thumb-sm t-md" style={{ fontWeight: 650 }}>
-                {c.name.trim().charAt(0).toUpperCase()}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="t-md block truncate">{c.name}</span>
-                <span className="tabular t-xs mt-0.5 block prose-muted">
-                  {c.last_order_at
-                    ? t('customers.lastVisit', { date: t.date(c.last_order_at) })
-                    : t('customers.noVisits')}
+              <span className="flex items-center gap-3">
+                <span aria-hidden className="thumb-sm t-md"
+                      style={{
+                        fontWeight: 650,
+                        background: 'var(--color-accent-soft)',
+                        color: 'var(--color-accent-ink)',
+                      }}>
+                  {c.name.trim().charAt(0).toUpperCase()}
                 </span>
-                {(c.tags ?? []).length > 0 && (
-                  <span className="mt-1 flex flex-wrap gap-1">
-                    {(c.tags ?? []).slice(0, 2).map((tag) => (
-                      <span key={tag} className="badge">{tag}</span>
-                    ))}
+                {/* Имя и метка категории — ОДНОЙ строкой, как в макете.
+                    Перенос метки под имя добавлял карточке третью строку
+                    ради двух слов и ломал выравнивание с датой справа. */}
+                <span className="flex min-w-0 flex-1 items-center gap-2">
+                  {/* Имя клиента — данные заклада, не переводится. */}
+                  <span className="t-md truncate">{c.name}</span>
+                  {(c.tags ?? []).slice(0, 1).map((tag) => (
+                    <span key={tag} className="badge shrink-0">{tag}</span>
+                  ))}
+                </span>
+                <span className="shrink-0 text-right">
+                  <span className="t-xs block prose-muted">
+                    {t('customers.web.table.last')}
                   </span>
-                )}
-              </span>
-              <span className="flex shrink-0 flex-col items-end gap-1">
-                {Number(c.total_spent) > 0 && (
-                  <span className="tabular t-md">{t.money(Number(c.total_spent))}</span>
-                )}
-                <span className="badge-accent tabular">
-                  {t('customers.ordersCount', { n: Number(c.orders_count) })}
+                  <span className="tabular t-md block">
+                    {c.last_order_at ? t.date(c.last_order_at) : t('common.noValue')}
+                  </span>
+                </span>
+                {/* Шеврон обязателен: карточка открывается ЗАПРОСОМ к базе
+                    и оставляет строку в журнале доступа. Строка, которая
+                    выглядит как текст, но что-то делает, — это случайные
+                    открытия в журнале, по которому потом разбираются,
+                    кто смотрел контакты. */}
+                <span aria-hidden className="shrink-0" style={{ color: 'var(--color-faint)' }}>
+                  {busy === c.id ? '…' : <IconChevronRight size={16} />}
                 </span>
               </span>
-              {/* Шеврон обязателен: карточка открывается ЗАПРОСОМ к базе
-                  и оставляет строку в журнале доступа. Строка, которая
-                  выглядит как текст, но что-то делает, — это случайные
-                  открытия в журнале, по которому потом разбираются,
-                  кто смотрел контакты. */}
-              <span aria-hidden className="shrink-0" style={{ color: 'var(--color-faint)' }}>
-                {busy === c.id ? '…' : '›'}
-              </span>
+
+              {/* Нижняя смуга — только у тех, у кого есть что показать:
+                  у только что заведённой карточки оба числа нулевые,
+                  и линия с двумя нулями сообщает лишь то, что клиент
+                  новый, — это уже видно по отсутствию даты визита. */}
+              {Number(c.orders_count) > 0 && (
+                <>
+                  <span className="divider" />
+                  <span className="tabular t-xs flex flex-wrap gap-4">
+                    <span>
+                      <span className="prose-muted">{t('customers.card.orders')}: </span>
+                      {t.number(Number(c.orders_count))}
+                    </span>
+                    <span>
+                      <span className="prose-muted">{t('customers.card.spent')}: </span>
+                      <span style={{ color: 'var(--color-accent-ink)' }}>
+                        {t.money(Number(c.total_spent))}
+                      </span>
+                    </span>
+                  </span>
+                </>
+              )}
             </button>
           ))}
         </div>
+
+        {/* Выгрузка — ПОСЛЕ списка и обводкой, а не в шапке экрана.
+            Это самое опасное действие раздела: одним нажатием уходит вся
+            база, и каждый вызов пишется в журнал доступа. Кнопка,
+            стоящая первой строкой над списком, ровно поэтому и не должна
+            быть первым, что попадает под палец, — но и прятать её нельзя:
+            «данные клиента — его собственность с выгрузкой в любой
+            момент» записано в условия сделки. */}
+        {customers.length > 0 && (
+          <button type="button" className="btn-secondary mt-3 lg:hidden"
+                  disabled={busy === 'export'}
+                  onClick={() => void exportAll()}>
+            {busy === 'export' ? t('common.saving') : t('customers.export.cta')}
+          </button>
+        )}
 
         {/* ── CRESKO Web: список таблицей + панель деталей (только lg) ──
             Панель, а не вторая страница: карточку открывают, чтобы
@@ -378,17 +484,17 @@ export function CustomersClient({
                           style={{ width: 36, height: 36, fontWeight: 650 }}>
                       {c.name.trim().charAt(0).toUpperCase()}
                     </span>
-                    <span className="min-w-0">
+                    {/* Имя и метка — ОДНОЙ строкой, как в §3. Меткой под
+                        именем строка становилась двухъярусной у одних
+                        клиентов и одноярусной у других, и таблица шла
+                        рваным шагом: 48px, 64px, 48px. */}
+                    <span className="flex min-w-0 items-center gap-2">
                       {/* Имя клиента — данные заклада, не переводится. */}
-                      <span className="block truncate font-semibold"
+                      <span className="truncate font-semibold"
                             style={{ color: 'var(--color-text)' }}>{c.name}</span>
-                      {(c.tags ?? []).length > 0 && (
-                        <span className="mt-0.5 flex flex-wrap gap-1">
-                          {(c.tags ?? []).slice(0, 2).map((tag) => (
-                            <span key={tag} className="badge">{tag}</span>
-                          ))}
-                        </span>
-                      )}
+                      {(c.tags ?? []).slice(0, 1).map((tag) => (
+                        <span key={tag} className="badge shrink-0">{tag}</span>
+                      ))}
                     </span>
                   </span>
                   <span>
@@ -410,9 +516,20 @@ export function CustomersClient({
                   </span>
                 </button>
               ))}
+              {/* Подвал §3 говорит «Всього клієнтів: 248», и наш обязан
+                  говорить то же — но ЧЕСТНО: список обрезан сотней строк,
+                  а счётчик приходит по всей базе и по текущему отбору
+                  (см. `page.tsx`). «Разом: 7» под семью видимыми строками
+                  у заведения с двумя сотнями клиентов — не подвал, а
+                  повтор того, что и так на экране. */}
               <div className="wtable-foot">
                 <span className="tabular">
-                  {t('customers.web.table.total', { n: t.number(customers.length) })}
+                  {t('customers.web.table.shown', {
+                    shown: t.number(customers.length),
+                    total: t.number(
+                      active === 'month' ? stats.month : active === 'idle' ? stats.idle : stats.all,
+                    ),
+                  })}
                 </span>
               </div>
             </div>
@@ -567,6 +684,19 @@ export function CustomersClient({
           </div>
         )}
       </Sheet>
+
+      {/* Главное действие раздела — плавающей кнопкой, как на складе
+          (М31) и в заказах: клиента заводят, пока он на линии, а не
+          дойдя до конца сотни строк. Полосы с кнопкой над списком
+          больше нет — она занимала ряд там, где макет показывает
+          статистику. */}
+      {canWrite && (
+        <button type="button" className="fab-wide lg:hidden"
+                onClick={() => setAdding(true)}>
+          <IconPlus size={18} />
+          {t('customers.add.cta')}
+        </button>
+      )}
 
       {/* Форма нового клиента — одна на обе раскладки (разбор у состояния
           `adding` выше). Она сама обновляет список после успеха. */}

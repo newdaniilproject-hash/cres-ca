@@ -203,7 +203,11 @@ export function WeekGrid({ bookings, weekStart }: { bookings: B[]; weekStart: st
                          borderRadius: '10px 10px 0 0',
                          background: d === today ? 'var(--color-accent-soft)' : undefined,
                        }}>
-                    <span style={{ display: 'block', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', color: d === today ? 'var(--color-accent-ink)' : 'var(--color-muted)' }}>
+                    {/* Кегль 10 — ступень шкалы для подписи-«шапки»
+                        (README: 10px 700 uppercase). Стоявшие здесь 11px
+                        в шкале не существуют вовсе, а ряд дней недели
+                        в месячной сетке рисуется теми же десятью. */}
+                    <span style={{ display: 'block', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: d === today ? 'var(--color-accent-ink)' : 'var(--color-muted)' }}>
                       {t.date(dayDate(d), { weekday: 'short' })}
                     </span>
                     <span className="tabular" style={{ display: 'block', fontSize: 15, fontWeight: 700, color: d === today ? 'var(--color-accent-ink)' : 'var(--color-text)' }}>
@@ -226,10 +230,13 @@ export function WeekGrid({ bookings, weekStart }: { bookings: B[]; weekStart: st
                 {hours.map((h) => (
                   <div key={h} style={{ height: HOUR, paddingRight: 10, textAlign: 'right' }}>
                     {/* Кегль 12 — из README §2 (підпис години 12px faint);
-                        на телефоне 11: колонка часов там делит 390px
-                        с семью днями, и лишний пиксель кегля — это
-                        лишние пиксели самой колонки. */}
-                    <span className="tabular text-[11px] lg:text-[12px]" style={{ color: 'var(--color-faint)' }}>
+                        на телефоне ступень ниже: колонка часов там делит
+                        390px с семью днями, и лишний пиксель кегля — это
+                        лишние пиксели самой колонки. Ступень именно
+                        СЛЕДУЮЩАЯ (10), а не 11: одиннадцати в шкале нет,
+                        а заведённый ради одного места кегль перестаёт
+                        быть исключением на втором. */}
+                    <span className="tabular text-[10px] lg:text-[12px]" style={{ color: 'var(--color-faint)' }}>
                       {t.dateTime(new Date(2000, 0, 1, h), { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>
@@ -278,10 +285,18 @@ export function WeekGrid({ bookings, weekStart }: { bookings: B[]; weekStart: st
                     запись до пальца значит соврать о времени и накрыть
                     соседний час. Правило 44px остаётся у всего, что рядом:
                     стрелки недели, переключатель вида, кнопки в шторке.
-                    Кегли 11/12 — из хендоффа CRESKO Web §2; множитель
-                    размера текста они не слушают по той же причине:
-                    высота задана временем, и увеличенный текст просто
-                    не поместился бы в свои минуты. */}
+                    Кегли 10/12 — из ЗАКРЫТОЙ шкалы (10·12·13·14·15·16·17·
+                    21·22·24·30); множитель размера текста они не слушают
+                    по той же причине: высота задана временем, и увеличенный
+                    текст просто не поместился бы в свои минуты.
+
+                    Здесь стояло 11 — размер, которого в шкале нет вовсе
+                    (20.08.2026, проход телефона: сетка недели видна и на
+                    390px, то есть это был живой кегль вне шкалы, а не
+                    десктопная мелочь). Вниз, а не вверх: час — это 60px,
+                    из них под текст остаётся 44, и три строки по 12
+                    в них уже не помещаются — часовая запись потеряла бы
+                    название услуги. */}
                 {slots.map((s) => {
                   const tone = eventTone(s.b.status)
                   const top = (s.from - hourFrom) * HOUR
@@ -301,7 +316,7 @@ export function WeekGrid({ bookings, weekStart }: { bookings: B[]; weekStart: st
                               background: tone.fill,
                             }}>
                       <span className="tabular" style={{
-                        display: 'block', fontSize: 11, fontWeight: 650, lineHeight: 1.2,
+                        display: 'block', fontSize: 10, fontWeight: 650, lineHeight: 1.2,
                         color: tone.ink,
                         textDecoration: isVoid(s.b.status) ? 'line-through' : undefined,
                       }}>
@@ -315,7 +330,7 @@ export function WeekGrid({ bookings, weekStart }: { bookings: B[]; weekStart: st
                         {s.b.name}
                       </span>
                       <span style={{
-                        display: 'block', fontSize: 11, lineHeight: 1.3,
+                        display: 'block', fontSize: 10, lineHeight: 1.3,
                         color: 'var(--color-muted)',
                         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                       }}>

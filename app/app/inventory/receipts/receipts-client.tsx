@@ -11,7 +11,7 @@ import type { T } from '@/lib/i18n/translate'
 import type { RefItem } from '../material-form'
 import { dbErrorText } from '@/lib/errors/db'
 import { Sheet } from '@/components/sheet'
-import { IconClose, IconInbox } from '@/components/icons'
+import { IconCheck, IconClose, IconDoc, IconInbox } from '@/components/icons'
 
 // Значения enum stock_receipt_status из 0003_inventory.sql — дословно.
 // Четвёртого состояния нет: документ либо готовится, либо уже изменил
@@ -54,6 +54,17 @@ export type ReceiptRow = {
 
 /** Фильтр списка. Задаётся плиткой-счётчиком, как на экране склада. */
 type Flag = 'all' | 'draft' | 'applied' | 'cancelled'
+
+// Колонки таблицы документов на широком экране: Номер · Постачальник ·
+// Дата · Рядків · Статус · указатель. Ширины подобраны по тем же
+// правилам, что и на складе (§8): имя тянется, числа узкие.
+const RGRID = '1.2fr 1.4fr 1.1fr .6fr 1fr 40px'
+
+// Значок плитки — по смыслу состояния, а не один на три: три одинаковые
+// плашки в ряд не различают ничего и читаются как узор.
+const WEB_ICON: Record<Flag, typeof IconInbox> = {
+  all: IconInbox, draft: IconDoc, applied: IconCheck, cancelled: IconClose,
+}
 
 export function ReceiptsClient({
   tenantId, userId, canWrite, receipts, suppliers, error,
@@ -226,8 +237,56 @@ export function ReceiptsClient({
         <p className="field-error rise">{t('inventory.receipts.loadError')}: {error}</p>
       )}
 
-      {/* ── Счётчики, они же фильтр ────────────────────────────── */}
-      <section className="rise grid grid-cols-3 gap-2">
+      {/* ── CRESKO Web: хедер экрана (только lg) ─────────────────
+          Плашка со значком, имя подэкрана и подпись — тот же состав,
+          что у «Складу» (§8). «Назад до складу» той же строкой, что
+          и на карточке засоба: в веб-каркасе подэкран ничем не назван,
+          а сайдбар подсвечивает раздел целиком.
+          Кнопка СИНЯЯ — это буквально та же «Приймання», что в хедере
+          склада, и красить одно действие двумя цветами в двух местах
+          значит сказать, что это разные действия (README: `blueAction`
+          живёт на приймання и в его модалке). */}
+      <div className="hidden flex-col gap-4 lg:flex">
+        <Link href="/app/inventory"
+              className="inline-flex items-center gap-2 self-start"
+              style={{ fontSize: 14, fontWeight: 650, color: 'var(--color-accent-ink)' }}>
+          <span aria-hidden>←</span>
+          {t('inventory.web.back')}
+        </Link>
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <span aria-hidden className="flex shrink-0 items-center justify-center"
+                  style={{
+                    width: 44, height: 44,
+                    borderRadius: 'var(--radius-plate)',
+                    background: 'var(--color-accent-soft)',
+                    color: 'var(--color-accent-ink)',
+                  }}>
+              <IconInbox size={22} />
+            </span>
+            <div className="min-w-0">
+              <h1 className="webh1" data-size="27">
+                {t('app.screen.inventory.receipts.title')}
+              </h1>
+              <p style={{ fontSize: 14, color: 'var(--color-muted)' }}>
+                {t('app.screen.inventory.receipts.desc')}
+              </p>
+            </div>
+          </div>
+          {canWrite && receipts.length > 0 && (
+            <button type="button" className="btn-blue shrink-0"
+                    onClick={() => { setOpen(true); setErr('') }}>
+              {t('inventory.receipts.new')}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ── Счётчики, они же фильтр ──────────────────────────────
+          Ниже lg — мобильные плитки `.metric`, на lg — `.wmetric`
+          с иконкой-плашкой, как на складе. Числа, фильтр и
+          обработчик общие: это одна полоса в двух раскладках. */}
+      <section className="rise grid grid-cols-3 gap-2 lg:hidden">
         {stats.map((s) => {
           const on = flag === s.key
           const dead = s.n === 0 && !on
@@ -243,19 +302,95 @@ export function ReceiptsClient({
           )
         })}
       </section>
+      <section className="rise hidden gap-4 lg:grid lg:grid-cols-3">
+        {stats.map((s) => {
+          const on = flag === s.key
+          const dead = s.n === 0 && !on
+          return (
+            <button key={`w-${s.key}`} type="button" disabled={dead} aria-pressed={on}
+                    onClick={() => setFlag(on ? 'all' : s.key)}
+                    className="wmetric text-left"
+                    style={{
+                      cursor: dead ? 'default' : 'pointer',
+                      borderColor: on ? 'var(--color-accent)' : undefined,
+                    }}>
+              <span className="min-w-0">
+                <span className="wmetric-label block">{s.label}</span>
+                <span className="wmetric-value tabular block">{t.number(s.n)}</span>
+              </span>
+              {/* Тон — ТОТ ЖЕ `s.tone`, что у мобильной плитки: имена
+                  тонов у `.metric` и `.wmetric-icon` совпадают, и вторая
+                  таблица соответствий разъехалась бы с первой (сейчас
+                  «скасоване» намеренно нейтральное, а не красное —
+                  это отброшенная заготовка, а не ошибка). */}
+              <span className="wmetric-icon" data-tone={s.tone}>
+                {(() => { const I = WEB_ICON[s.key]; return <I size={19} /> })()}
+              </span>
+            </button>
+          )
+        })}
+      </section>
 
       {/* Единственная кнопка создания — над списком. В пустом состоянии
           её нет: там та же кнопка стоит в `.empty-actions`, и две кнопки
           одного действия в двадцати сантиметрах друг от друга — тот самый
-          дубляж, из-за которого переделывался склад. */}
+          дубляж, из-за которого переделывался склад.
+          На lg она уехала в хедер экрана — и там ОДНА: `lg:hidden`
+          не даёт ей остаться на экране во второй раз. */}
       {canWrite && receipts.length > 0 && (
-        <button type="button" className="btn-primary self-start"
+        <button type="button" className="btn-primary self-start lg:hidden"
                 onClick={() => { setOpen(true); setErr('') }}>
           {t('inventory.receipts.new')}
         </button>
       )}
 
-      <section className="card rise-1 !p-0">
+      {/* ── CRESKO Web: таблица документов (только lg) ───────────
+          Тот же `shown`, что и в мобильном списке ниже: одно место
+          фильтрации. Колонки — те же величины, что стоят в строке
+          на телефоне, просто разложенные по столбцам. */}
+      {shown.length > 0 && (
+        <section className="rise-1 hidden lg:block">
+          <div className="wtable">
+            <div className="wtable-head" style={{ gridTemplateColumns: RGRID }}>
+              <span>{t('inventory.receipts.form.number.label')}</span>
+              <span>{t('inventory.receipts.form.supplier.label')}</span>
+              <span>{t('inventory.material.web.col.date')}</span>
+              <span className="text-right">{t('inventory.receipts.web.col.lines')}</span>
+              <span>{t('inventory.material.row.status')}</span>
+              <span aria-hidden />
+            </div>
+            {shown.map((r) => (
+              <Link key={`w-${r.id}`} href={`/app/inventory/receipts/${r.id}`}
+                    className="wtable-row" style={{ gridTemplateColumns: RGRID }}>
+                {/* Номер накладной и имя поставщика — данные арендатора. */}
+                <span className="tabular truncate font-semibold"
+                      style={{ color: 'var(--color-text)' }}>
+                  {r.number ? `№${r.number}` : t('inventory.receipts.row.noNumber')}
+                </span>
+                <span className="truncate">{r.supplier ?? '—'}</span>
+                <span className="tabular">{fmt(r.createdAt)}</span>
+                <span className="tabular text-right">{t.number(r.lines)}</span>
+                <span className="min-w-0">
+                  <span className={receiptBadge(r.status)}>
+                    {receiptStatusLabel(t, r.status)}
+                  </span>
+                  {/* Дата проведения — вторым ярусом под бейджем: она
+                      объясняет, почему документ больше не правится. */}
+                  {r.appliedAt && (
+                    <span className="tabular mt-0.5 block truncate"
+                          style={{ fontSize: 12, color: 'var(--color-faint)' }}>
+                      {fmt(r.appliedAt)}
+                    </span>
+                  )}
+                </span>
+                <span aria-hidden className="text-right" style={{ color: 'var(--color-faint)' }}>›</span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section className={`card rise-1 !p-0 ${shown.length > 0 ? 'lg:hidden' : ''}`}>
         {shown.length === 0 ? (
           <div className="empty">
             <span className="empty-icon"><IconInbox size={24} /></span>

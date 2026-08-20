@@ -9,7 +9,7 @@ import type { T } from '@/lib/i18n/translate'
 import { dbErrorText } from '@/lib/errors/db'
 import {
   IconGear, IconBag, IconDoc, IconUsers, IconDownload, IconLock,
-  IconChevronRight, IconClose,
+  IconChevronRight, IconClose, IconLayers,
 } from '@/components/icons'
 
 type Shop = {
@@ -42,7 +42,7 @@ const roleLabel = (t: T, r: string): string =>
 // приходит модулем), а не задан константой: раздел в списке, за которым
 // на этом экране ничего не стоит, — это сломанная навигация, ровно как
 // колокол, который ничего не открывает.
-type SectionKey = 'public' | 'shop' | 'team' | 'export' | 'security'
+type SectionKey = 'public' | 'shop' | 'presets' | 'team' | 'export' | 'security'
 
 // Витрина — отдельный модуль (`storefront`), а страница настроек модуля
 // не требует: в панели «Магазин» им не помечен, потому что здесь же
@@ -61,9 +61,17 @@ type SectionKey = 'public' | 'shop' | 'team' | 'export' | 'security'
 // и приглашение положить её в шапку Instagram. Лишний отказ виден,
 // лишний доступ — нет.
 export function SettingsClient({
-  shop, canWrite, team, canSeeTeam, hasStorefront = false,
+  shop, canWrite, team, canSeeTeam, hasStorefront = false, presets = [], brand = null,
 }: {
   shop: Shop; canWrite: boolean; team: Member[]
+  /**
+   * Готові набори довідників (0122). Приходять пропом із серверної
+   * сторінки: список пресетів — це продукт, а не дані закладу, і клієнт
+   * за ним не ходить сам.
+   */
+  presets?: { code: string; title: string; description: string | null }[]
+  /** Обраний відтінок бренду (0123) або null. */
+  brand?: string | null
   /**
    * Виден ли состав команды. Право на этот экран — `settings.read`,
    * а имена и почты отдаёт `team_overview` по `team.read` (0082), и это
@@ -86,6 +94,12 @@ export function SettingsClient({
   const [phone, setPhone] = useState(shop.contact_phone ?? '')
   const [state, setState] = useState<'idle' | 'busy' | 'saved' | 'error'>('idle')
   const [error, setError] = useState('')
+  const [copied, setCopied] = useState(false)
+  const [brandColor, setBrandColor] = useState(brand ?? '')
+  const [brandBusy, setBrandBusy] = useState(false)
+  const [presetBusy, setPresetBusy] = useState<string | null>(null)
+  const [presetDone, setPresetDone] = useState('')
+  const [presetError, setPresetError] = useState('')
 
   // Выбранный раздел — ТОЛЬКО для широкого экрана. Умолчание `null`:
   // панель не рисуется, список занимает всю ширину. Открывать первый
@@ -152,21 +166,42 @@ export function SettingsClient({
   // двухколоночную сетку формы в панели приходится гасить явно —
   // иначе поле «Місто» получает сто пикселей.
 
-  /** Витрина: адрес публичной страницы и состояние публикации. */
-  function publicBody() {
+  /**
+   * Витрина: адрес публичной страницы и состояние публикации.
+   *
+   * `withState` — потому что признак публикации живёт РОВНО В ОДНОМ месте
+   * на каждой раскладке: на телефоне это метка в шапке-герое (макет
+   * `shop`), на широком экране — вот эта строка в панели. Показать оба
+   * значило бы дважды сообщить одно и то же в одном экране.
+   */
+  function publicBody(withState = true) {
     return (
       <div className="flex flex-wrap items-center gap-2">
         {/* Адрес витрины — данные, а не текст. */}
         <code className="card-flat t-md !px-3 !py-2 break-all">{publicUrl}</code>
+        {/* Кнопка без ответа читается как сломанная: буфер обмена ничего
+            не показывает сам. Отсюда состояние `copied`. */}
         <button type="button" className="btn-secondary t-sm"
-                onClick={() => navigator.clipboard.writeText(publicUrl)}>
-          {t('common.copy')}
+                onClick={() => {
+                  void navigator.clipboard.writeText(publicUrl)
+                  setCopied(true)
+                  setTimeout(() => setCopied(false), 2000)
+                }}>
+          {copied ? t('common.copied') : t('common.copy')}
         </button>
-        {shop.storefront_enabled ? (
+        {/* «Переглянути сторінку» из §18. Не дубль копирования: адрес
+            рядом лежит ТЕКСТОМ и не открывается нажатием, то есть
+            посмотреть на свою витрину отсюда было нельзя вовсе —
+            приходилось копировать и вставлять в адресную строку. */}
+        <a href={publicUrl} target="_blank" rel="noreferrer"
+           className="btn-secondary t-sm">
+          {t('settings.public.open')}
+        </a>
+        {withState && (shop.storefront_enabled ? (
           <span className="badge-success">{t('settings.public.published')}</span>
         ) : (
           <span className="badge-warn">{t('settings.public.draft')}</span>
-        )}
+        ))}
       </div>
     )
   }
@@ -182,6 +217,12 @@ export function SettingsClient({
 
     return (
       <form onSubmit={save} className={wrap}>
+        {/* Подзаголовки групп — из §18 «Публічна сторінка бізнесу»:
+            семь полей подряд без разделения читаются как анкета, а не
+            как «вот это про заклад, а вот это его контакты». Отдельного
+            экрана витрины у нас нет и заводить его не надо: те же три
+            группы хендоффа лежат здесь. */}
+        <p className={`t-lg webh2 ${full}`}>{t('settings.shop.group.main')}</p>
         <div className={full}>
           <label className="field-label">{t('settings.shop.name.label')}</label>
           <input required className="input" value={name} disabled={!canWrite}
@@ -193,6 +234,13 @@ export function SettingsClient({
                  onChange={(e) => setTagline(e.target.value)}
                  placeholder={t('settings.shop.tagline.placeholder')} />
         </div>
+        <div className={full}>
+          <label className="field-label">{t('settings.shop.about.label')}</label>
+          <textarea className="textarea" value={description} disabled={!canWrite}
+                    onChange={(e) => setDescription(e.target.value)} />
+        </div>
+
+        <p className={`t-lg webh2 mt-1 ${full}`}>{t('settings.shop.group.contacts')}</p>
         <div>
           <label className="field-label">{t('settings.shop.city.label')}</label>
           <input className="input" value={city} disabled={!canWrite}
@@ -208,11 +256,6 @@ export function SettingsClient({
           <label className="field-label">{t('settings.shop.phone.label')}</label>
           <input type="tel" className="input" value={phone} disabled={!canWrite}
                  onChange={(e) => setPhone(e.target.value)} />
-        </div>
-        <div className={full}>
-          <label className="field-label">{t('settings.shop.about.label')}</label>
-          <textarea className="textarea" value={description} disabled={!canWrite}
-                    onChange={(e) => setDescription(e.target.value)} />
         </div>
 
         {/* Отказ базы показывается как есть: это её текст, а не наш.
@@ -303,6 +346,138 @@ export function SettingsClient({
         {t('settings.export.open')}
       </Link>
     )
+  }
+
+  /**
+   * Відтінок бренду (0123).
+   *
+   * Вибирається ВІДТІНОК, а не колір: світлота й насиченість зафіксовані
+   * в globals.css, інакше блідий вибір дає нечитабельну кнопку. Тому тут
+   * готові зразки, а не піпетка на весь спектр — зразок показує рівно те,
+   * що людина отримає, а піпетка обіцяла б більше, ніж ми даємо.
+   *
+   * Зберігається одразу, без кнопки «Зберегти»: значення одне, і результат
+   * видно на екрані в ту ж мить — підтверджувати нема чого.
+   */
+  const BRAND_SWATCHES = [
+    '#2563eb', '#0ea5e9', '#0d9488', '#16a34a',
+    '#ca8a04', '#ea580c', '#dc2626', '#db2777',
+    '#7c3aed', '#4f46e5', '#475569', '#0f766e',
+  ]
+
+  function brandBody() {
+    return (
+      <div className="flex flex-col gap-3">
+        {/* §18 «Оформлення сторінки». У нас настраивается ОДНА величина —
+            оттенок; шрифтов в хендоффе два селекта, и их здесь нет
+            намеренно: шрифт кабинета один на весь продукт. */}
+        <p className="t-lg webh2">{t('settings.brand.title')}</p>
+        <span className="t-sm" style={{ color: 'var(--color-muted)' }}>
+          {t('settings.brand.desc')}
+        </span>
+        <div className="flex flex-wrap gap-2">
+          {BRAND_SWATCHES.map((c) => (
+            <button key={c} type="button" aria-label={c}
+                    aria-pressed={brandColor.toLowerCase() === c}
+                    disabled={!canWrite || brandBusy}
+                    onClick={() => saveBrand(c)}
+                    className="btn-icon"
+                    style={{
+                      background: c,
+                      borderRadius: 'var(--radius-plate)',
+                      outline: brandColor.toLowerCase() === c
+                        ? '2px solid var(--color-text)' : 'none',
+                      outlineOffset: 2,
+                    }} />
+          ))}
+        </div>
+        {brandColor ? (
+          <div>
+            <button type="button" className="btn-secondary t-sm"
+                    disabled={!canWrite || brandBusy}
+                    onClick={() => saveBrand(null)}>
+              {t('settings.brand.reset')}
+            </button>
+          </div>
+        ) : null}
+      </div>
+    )
+  }
+
+  async function saveBrand(color: string | null) {
+    setBrandBusy(true)
+    const { error } = color
+      ? await supabase.from('tenant_branding')
+          .upsert({ tenant_id: shop.id, brand_color: color }, { onConflict: 'tenant_id' })
+      : await supabase.from('tenant_branding')
+          .update({ brand_color: null }).eq('tenant_id', shop.id)
+    setBrandBusy(false)
+    if (error) { setError(dbErrorText(t, error)); return }
+    setBrandColor(color ?? '')
+    // Відтінок віддає РОЗМІТКА макета кабінету, а не цей компонент, тому
+    // без оновлення сторінки новий акцент не поїде по решті екрана.
+    router.refresh()
+  }
+
+  /**
+   * Швидке заповнення довідників готовим набором (0122).
+   *
+   * Це і є впровадження: людина, яка щойно завела заклад, бачить не
+   * десяток порожніх довідників, а робочу систему. Кнопка лишається
+   * і після заповнення — повторний виклик нічого не подвоює, і саме це
+   * написано під нею: інакше її бояться натиснути вдруге.
+   */
+  function presetsBody() {
+    if (presets.length === 0) {
+      return <p className="t-sm" style={{ color: 'var(--color-muted)' }}>
+        {t('settings.presets.empty')}
+      </p>
+    }
+    return (
+      <div className="flex flex-col gap-3">
+        {presets.map((p) => (
+          <div key={p.code} className="card-flat flex flex-col gap-2">
+            <b className="t-md">{p.title}</b>
+            {p.description ? (
+              <span className="t-sm" style={{ color: 'var(--color-muted)' }}>
+                {p.description}
+              </span>
+            ) : null}
+            <div>
+              <button type="button" className="btn-secondary t-sm"
+                      disabled={!canWrite || presetBusy === p.code}
+                      onClick={() => applyPreset(p.code)}>
+                {presetBusy === p.code ? t('common.saving') : t('settings.presets.apply')}
+              </button>
+            </div>
+          </div>
+        ))}
+        <p className="t-sm" style={{ color: 'var(--color-muted)' }}>
+          {t('settings.presets.note')}
+        </p>
+        {presetDone ? (
+          <p className="t-sm" style={{ color: 'var(--tone-emerald)' }}>{presetDone}</p>
+        ) : null}
+        {presetError ? (
+          <p className="t-sm" style={{ color: 'var(--color-danger)' }}>{presetError}</p>
+        ) : null}
+      </div>
+    )
+  }
+
+  async function applyPreset(code: string) {
+    setPresetBusy(code); setPresetDone(''); setPresetError('')
+    const { data, error } = await supabase.rpc('apply_preset', {
+      p_tenant_id: shop.id, p_preset: code,
+    })
+    setPresetBusy(null)
+    if (error) { setPresetError(dbErrorText(t, error)); return }
+    // Сумма по всем сущностям, а не перечень: человеку важно «сработало
+    // и сколько», а не разбивка по таблицам, названий которых он не знает.
+    const added = Object.values((data ?? {}) as Record<string, number>)
+      .reduce((a, b) => a + Number(b || 0), 0)
+    setPresetDone(t('settings.presets.done', { n: t.number(added) }))
+    router.refresh()
   }
 
   /** Безпека: удаление аккаунта. */
@@ -407,8 +582,17 @@ export function SettingsClient({
       title: t('settings.shop.title'), desc: t('settings.shop.desc'),
       icon: <IconDoc size={20} />,
       bg: 'var(--tone-blue-soft)', fg: 'var(--tone-blue)',
-      body: () => shopForm(true),
+      body: () => (<div className="flex flex-col gap-5">{shopForm(true)}{brandBody()}</div>),
     },
+    ...(canWrite ? [{
+      key: 'presets' as const,
+      title: t('settings.presets.title'), desc: t('settings.presets.desc'),
+      icon: <IconLayers size={20} />,
+      // Акцент, а не шостий тон: шкала тонів закрита пʼятьма, а заповнення
+      // довідників — головна дія при заведенні закладу, їй акцент і личить.
+      bg: 'var(--color-accent-soft)', fg: 'var(--color-accent-ink)',
+      body: () => presetsBody(),
+    }] : []),
     {
       key: 'team',
       title: t('settings.team.title'), desc: t('settings.team.desc'),
@@ -465,27 +649,72 @@ export function SettingsClient({
           там, где сегодня всё видно сразу. Тела разделов — те же
           функции, что зовёт панель справа. */}
       <div className="flex flex-col gap-5 lg:hidden">
-        {/* Публичная ссылка — то, что уходит в шапку Instagram.
-            Весь блок принадлежит модулю `storefront`: и адрес сторінки,
-            и отметка «опубліковано / чернетка» — это состояние витрины. */}
-        {hasStorefront && (
-          <section className="card rise-1">
-            <h2 className="t-lg mb-1">{t('settings.public.title')}</h2>
-            <p className="t-md mb-3 prose-muted">{t('settings.public.desc')}</p>
-            {publicBody()}
-          </section>
-        )}
+        {/* ── Шапка-герой закладу (макет `shop`) ────────────────────────
+            README, розділ G: «Обкладинка + статистика + сітка послуг +
+            контактні картки». Обложки и сетки услуг здесь нет намеренно:
+            колонки под обложку у заклада не существует, а «популярні
+            послуги» — это каталог, у которого свой раздел в панели.
+            Показывать чужую сетку вторым входом в тот же каталог значит
+            завести на экране второй путь туда же.
+
+            Статистики из макета — рейтинг, підписники, «рекомендують» —
+            тоже нет: подписчиков продукт не считает вовсе, а рисовать
+            плитку ради круглого числа — это ровно то, за что был снят
+            рейтинг с экрана послуг (М32).
+
+            Что осталось — то, ради чего сюда заходят: как заклад выглядит
+            снаружи и та самая ссылка, которая уходит в шапку Instagram.
+            Признак публикации стоит здесь же кнопкой-меткой, как
+            в макете, а не отдельной секцией строкой ниже. */}
+        <section className="card rise-1">
+          <div className="flex items-center gap-3">
+            <span aria-hidden className="flex shrink-0 items-center justify-center"
+                  style={{
+                    width: 56, height: 56,
+                    borderRadius: 999,
+                    background: 'var(--color-accent-soft)',
+                    color: 'var(--color-accent-ink)',
+                    fontSize: 24, fontWeight: 700,
+                  }}>
+              {shop.name.trim().charAt(0).toUpperCase()}
+            </span>
+            <div className="min-w-0 flex-1">
+              {/* Название и адрес — данные заклада, не переводятся. */}
+              <p className="t-xl clamp-2">{shop.name}</p>
+              <p className="t-sm mt-0.5 truncate prose-muted">
+                {[shop.city, shop.address].filter(Boolean).join(', ') || shop.tagline}
+              </p>
+            </div>
+            {hasStorefront && (
+              shop.storefront_enabled
+                ? <span className="badge-success shrink-0">{t('settings.public.published')}</span>
+                : <span className="badge-warn shrink-0">{t('settings.public.draft')}</span>
+            )}
+          </div>
+
+          {hasStorefront && (
+            <>
+              <div className="divider my-4" />
+              <p className="t-sm mb-2 prose-muted">{t('settings.public.desc')}</p>
+              {publicBody(false)}
+            </>
+          )}
+        </section>
 
         {/* Данные заведения */}
         {shopForm(false)}
 
-        {/* Команда */}
-        <section className="card rise-3 !p-0">
-          <div className="flex items-center justify-between p-5 pb-3">
-            <h2 className="t-lg">{t('settings.team.title')}</h2>
-          </div>
-          {teamBody(false)}
-        </section>
+        {/* ⚠️ СРЕЗА СОСТАВА КОМАНДЫ ЗДЕСЬ БОЛЬШЕ НЕТ, И ЭТО СНЯТЫЙ ДУБЛЬ.
+            Он показывал список без единого действия и заканчивался
+            кнопкой «Керувати доступами», ведущей на `/app/team` — экран,
+            который и так лежит пунктом в шторке под аватаром. То есть
+            на телефоне было ДВА входа в команду, и один из них тратил
+            карточку на нередактируемую копию чужого экрана.
+
+            На широком экране список остаётся: там разделы живут колонкой
+            с панелью справа, и «Команда» — её законный раздел, а не
+            дубль пункта навигации. Тела `teamBody` это не касается —
+            оно одно на обе раскладки и зовётся панелью. */}
 
         {/* Ваши данные: выгрузка заведения.
 
@@ -498,14 +727,14 @@ export function SettingsClient({
             РАЗДЕЛОВ внутри `tenant_export` (0102). */}
         <section className="card rise-3">
           <h2 className="t-lg mb-1">{t('settings.export.title')}</h2>
-          <p className="t-md mb-3 prose-muted">{t('settings.export.desc')}</p>
+          <p className="t-sm mb-3 prose-muted">{t('settings.export.desc')}</p>
           {exportBody()}
         </section>
 
         {/* Безпека: видалення акаунта */}
         <section className="card rise-3">
           <h2 className="t-lg mb-1">{t('settings.security.title')}</h2>
-          <p className="t-md mb-3 prose-muted">{t('settings.security.desc')}</p>
+          <p className="t-sm mb-3 prose-muted">{t('settings.security.desc')}</p>
           {securityBody()}
         </section>
       </div>
@@ -518,7 +747,13 @@ export function SettingsClient({
           всю ширину — пустая колонка 420px справа сообщала бы, что
           «здесь что-то не загрузилось». */}
       <div className="hidden items-start gap-5 lg:flex">
-        <div className="flex min-w-0 flex-1 flex-col gap-2">
+        {/* Потолок ширины — не украшение. Пока панель закрыта, ряд тянулся
+            на всю контентную область (1146px на 1440), и шеврон уезжал
+            от подписи на метр: строка переставала читаться как строка.
+            В хендоффе (§17) колонка разделов держит примерно эту ширину
+            и с панелью, и без неё — то есть открытие панели ряды
+            не переставляет. */}
+        <div className="flex min-w-0 flex-1 flex-col gap-2" style={{ maxWidth: 700 }}>
           {sections.map((s) => {
             const active = picked === s.key
             return (

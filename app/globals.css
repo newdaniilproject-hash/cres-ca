@@ -257,15 +257,74 @@ html.dark {
   --shadow-overlay: 0 24px 64px rgb(0 0 0 / 0.64);
 }
 
+/* ═══ БРЕНД ЗАВЕДЕНИЯ ═══════════════════════════════════════════════════
+   Миграция 0123. Единственная ось, которую клиент настраивает под себя:
+   АКЦЕНТ. Фон, поверхности, границы, радиусы и типографическая шкала
+   общие — они и есть продукт, а не оформление.
+
+   Из выбранного клиентом цвета берётся ТОЛЬКО `h`. Светлота и насыщенность
+   наши, и это не осторожность, а два конкретных отказа, которых иначе
+   не избежать: бледный акцент делает белый текст на кнопке нечитаемым,
+   а пастель на кнопке действия перестаёт читаться как действие. Ощущение
+   «мой фирменный цвет» при этом сохраняется полностью.
+
+   Числа те же, что у продуктового акцента строкой выше, — потому и стоят
+   рядом: разъехаться им негде. `--color-accent-text` не выводится вовсе:
+   он белый при любом отттенке ровно потому, что светлота зафиксирована.
+
+   Атрибут ставит макет кабинета РАЗМЕТКОЙ (`app/app/layout.tsx`), а не
+   скриптом: значение приходит с сервера вместе со страницей, и кадра
+   с кобальтом перед перекраской не существует.
+
+   Относительный цвет (`oklch(from …)`) понимают Safari 16.4+, Chrome 119+
+   и Firefox 128+ — то есть всё, где открывается обёртка. Где не понимают,
+   правило целиком отбрасывается, и акцент остаётся продуктовым: запасной
+   путь получается сам, без второй записи. */
+[data-brand] {
+  --color-accent:       oklch(from var(--brand) 0.55 0.21 h);
+  --color-accent-hover: oklch(from var(--brand) 0.49 0.21 h);
+  --color-accent-ink:   oklch(from var(--brand) 0.49 0.21 h);
+  --color-accent-soft:  oklch(from var(--brand) 0.55 0.21 h / 0.10);
+}
+
+/* Тёмная тема: тот же отттенок, но своя светлота — ровно как у продуктового
+   акцента, где заливка почти не меняется, а `ink` светлеет. */
+html.dark [data-brand] {
+  --color-accent:       oklch(from var(--brand) 0.62 0.19 h);
+  --color-accent-hover: oklch(from var(--brand) 0.55 0.19 h);
+  --color-accent-ink:   oklch(from var(--brand) 0.72 0.15 h);
+  --color-accent-soft:  oklch(from var(--brand) 0.62 0.19 h / 0.16);
+}
+
 @layer base {
   :root { color-scheme: light; }
   html.dark { color-scheme: dark; }
 
   html {
     scroll-behavior: smooth;
-    /* Зум НЕ блокируем: user-scalable=no — нарушение доступности.
-       От случайного зума на полях защищает размер шрифта 16px. */
     -webkit-text-size-adjust: 100%;
+  }
+
+  /* ── ЗУМ ЗАКРЫТ ───────────────────────────────────────────────
+     Решение владельца 19.08.2026: «экраны не должны зумироваться
+     как в браузере, вообще». Отменяет прежнюю запись здесь и в
+     CLAUDE.md — не возвращать.
+
+     Щипок закрывает настройка окна (`maximumScale`/`userScalable`
+     в `app/layout.tsx`), а ДВОЙНОЕ КАСАНИЕ — нет: это отдельный
+     жест, и гасит его только `touch-action`. Без этой строки экран
+     всё равно прыгал бы в масштаб по двойному тапу, и человек
+     читал бы это как поломку.
+
+     `manipulation` оставляет прокрутку и панорамирование —
+     запрещает ровно двойной тап и щипок. `none` здесь был бы
+     ошибкой: он убил бы и прокрутку страницы.
+
+     На касательных устройствах И ТОЛЬКО на них: на десктопе
+     масштаб браузера — законный способ читать мелкий текст,
+     и трогать его нечем и незачем. */
+  @media (hover: none) and (pointer: coarse) {
+    html { touch-action: manipulation; }
   }
 
   /* ── НА ЭКРАНАХ `/m` ДОКУМЕНТ НЕ ПРОКРУЧИВАЕТСЯ ──────────────
@@ -534,10 +593,42 @@ html.dark {
      касательных устройствах — на столе зума по фокусу нет,
      и там мелкое поле это просто мелкое поле.                    */
   @media (hover: none) and (pointer: coarse) {
-    .input, .select, textarea { font-size: max(16px, var(--text-base)); }
+    /* ⚠️ `.textarea` и `.search-hero` В СПИСКЕ ОБЯЗАТЕЛЬНЫ, и это не
+       перестраховка (найдено проходом 20.08.2026). Элементный селектор
+       `textarea` имеет специфичность 0-0-1, а компонент объявлен КЛАССОМ
+       `.textarea` (0-1-0) с `text-base sm:text-sm` — класс выигрывал,
+       и поле оставалось 14px. Замерено на 390px: `.input` давал 16,
+       `.textarea` давал 14. Практический итог — поле «Коментар»
+       в оформлении заказа на витрине зумило страницу на фокусе и обратно
+       не отъезжало, ровно тот отказ, ради которого пол и заведён.
+       `.search-hero` не было вовсе, а это два самых частых поля продукта:
+       крупный поиск главной и экрана поиска. */
+    .input, .select, .textarea, textarea, .search-hero {
+      font-size: max(16px, var(--text-base));
+    }
   }
 
-  .select { @apply appearance-none pr-9; }
+  /* Шеврон селекта. `appearance-none` снимает СИСТЕМНУЮ стрелку, а `pr-9`
+     резервирует под неё место — но рисовать её было нечем, и селект
+     месяцами выглядел полем ввода с необъяснимой пустотой справа
+     (найдено проходом карточки засоба 19.08.2026; README §H требует
+     шеврон у каждого селекта).
+
+     Фоном, а не псевдоэлементом: у `select` псевдоэлементы не рисуются
+     ни в одном движке. Цвет зашит в сам SVG — `currentColor` внутри
+     `url(data:…)` не наследуется, — поэтому строк ДВЕ: своя на тёмную
+     тему. Это ровно тот случай, когда значение вынужденно живёт дважды,
+     и обе записи стоят рядом, чтобы разъехаться было негде. */
+  .select {
+    @apply appearance-none pr-9;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%235b6270' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 20px 20px;
+  }
+  html.dark .select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%2399a1ae' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  }
   .textarea {
     @apply w-full min-h-24 p-3.5 text-base sm:text-sm border outline-none resize-y;
     border-radius: var(--radius-control);
@@ -551,7 +642,15 @@ html.dark {
   .input:disabled, .select:disabled, .textarea:disabled {
     opacity: 0.5; background: var(--color-surface-2); cursor: not-allowed;
   }
-  .input:read-only, .select:read-only, .textarea:read-only {
+  /* ⚠️ СЕЛЕКТОР ЭЛЕМЕНТНЫЙ, и это починка 20.08.2026. `:read-only`
+     по спецификации совпадает с ЛЮБЫМ нередактируемым элементом, а не
+     только с полем: `<div class="input">` попадает под него ВСЕГДА.
+     Составное поле, у которого класс висит на обёртке (рамка плюс
+     приписка «+380» слева), красилось как ВЫКЛЮЧЕННОЕ — второй
+     поверхностью с пунктирной границей, и `.input:focus` не срабатывал
+     вовсе. Единственное обязательное поле анкеты регистрации стояло
+     серым среди белых. */
+  input.input:read-only, select.select:read-only, textarea.textarea:read-only {
     background: var(--color-surface-2); border-style: dashed;
   }
   /* Специфичность поднята составным селектором (.input.input-error), а не
@@ -838,18 +937,29 @@ html.dark {
   .sidebar-item:hover { color: var(--color-text); background: var(--color-surface-2); }
   .sidebar-item[data-active="true"] { color: var(--color-accent-ink); background: var(--color-accent-soft); }
 
-  /* Шторка снизу. Высота в dvh, а не vh: при открытии клавиатуры
-     dvh уменьшается сам, и кнопка «Зберегти» остаётся на экране —
-     на vh она уезжает под клавиатуру. */
+  /* Шторка снизу.
+     ⚠️ ЧТО ЗДЕСЬ БЫЛО СЛОМАНО (найдено 20.08.2026 на живом телефоне).
+     Высота считалась ТОЛЬКО в `dvh`, и шапка `components/sheet.tsx`
+     обещала «запас под клавиатуру (--kb)», которого в правиле не было.
+     Обещание не сбывалось: iOS `dvh` о клавиатуре не знает — она
+     накрывает окно, а не уменьшает его. Практический итог: открываешь
+     поиск, набираешь два знака, и выдача рисуется ПОД клавиатурой.
+     Человек читает это как «поиск ничего не находит», хотя находит.
+
+     Поэтому обе величины считаются с `--kb` (его меряет
+     `components/keyboard-fit.tsx` по visualViewport): потолок высоты
+     уменьшается, отступ снизу растёт, содержимое прокручивается
+     над клавиатурой. Без клавиатуры `--kb` равен нулю и правило
+     ведёт себя ровно как прежнее. */
   .sheet {
     @apply fixed inset-x-0 bottom-0 z-50 border-t p-5;
-    max-height: 90dvh;
+    max-height: calc(90dvh - var(--kb, 0px));
     overflow-y: auto;
     border-radius: var(--radius-hero) var(--radius-hero) 0 0;
     border-color: var(--color-border);
     background: var(--color-surface);
     box-shadow: var(--shadow-overlay);
-    padding-bottom: calc(1.25rem + env(safe-area-inset-bottom));
+    padding-bottom: calc(1.25rem + env(safe-area-inset-bottom) + var(--kb, 0px));
     animation: sheet-up var(--dur-base) var(--ease-out-soft) both;
   }
   .sheet-grip {
@@ -1406,7 +1516,13 @@ html.dark {
 
   /* ── Вход и регистрация ──────────────────────────────────── */
 
-  .auth-page { @apply flex min-h-dvh flex-col; }
+  /* Запас под клавиатуру. В браузере хватило бы одного `dvh` — он при
+     выезде клавиатуры уменьшается сам. В ОБЁРТКЕ не хватает: там
+     `Keyboard.resize: 'none'`, веб-вью не ужимается, `dvh` остаётся
+     прежним, и кнопка «Увійти» с полем пароля уезжают ПОД клавиатуру,
+     а прокрутить к ним нечего — страница ровно в экран. Без клавиатуры
+     `--kb` равен нулю и правило не меняет ничего. */
+  .auth-page { @apply flex min-h-dvh flex-col; padding-bottom: var(--kb, 0px); }
 
   .auth-topbar {
     @apply flex items-center justify-between gap-4 px-4 sm:px-6;
@@ -1444,7 +1560,7 @@ html.dark {
   }
   .auth-panel-title {
     @apply flex items-center gap-2.5 font-bold;
-    font-size: 26px;
+    font-size: calc(24px * var(--type-scale));
     letter-spacing: -0.02em;
   }
   .auth-panel-tagline {
@@ -1466,7 +1582,7 @@ html.dark {
     height: 20px;
     border-radius: 999px;
     background: rgb(255 255 255 / 0.2);
-    font-size: 11px;
+    font-size: calc(12px * var(--type-scale));
   }
   .auth-panel-foot { @apply text-center; font-size: 13px; opacity: 0.72; }
 
@@ -1538,7 +1654,7 @@ html.dark {
     @apply grid place-items-center;
     width: 40px;
     height: 40px;
-    font-size: 18px;
+    font-size: calc(17px * var(--type-scale));
     border-radius: var(--radius-control);
     background: var(--color-accent-soft);
     color: var(--color-accent-ink);
@@ -1623,6 +1739,27 @@ html.dark {
    ============================================================ */
 
 html[data-native] .web-only { display: none; }
+
+/* ⚠️ ПУБЛИЧНЫЙ ХРОМ ВНУТРИ ПРИЛОЖЕНИЯ (закрыто 20.08.2026).
+   Витрина, поиск, карта и главная — часть приложения, а не сайт в рамке.
+   Но шапка и подвал у них вебовые: словесный знак, «Мапа», «Увійти»,
+   юридические ссылки. Человек выходил из кабинета и оказывался
+   на продающей главной ВНУТРИ приложения — то есть приложение
+   показывало ему рекламу самого себя.
+
+   Прячем сам хром, а не помечаем классом каждый его элемент: класс
+   надо помнить ставить, а правило работает и на том, что допишут
+   завтра. Содержимое страниц остаётся — оно и есть приложение. */
+html[data-native] .topbar { display: none; }
+/* ⚠️ `margin-top`, А НЕ `padding-top` — это ПОЧИНКА того же дня.
+   Правило незаслоённое и выигрывает у любой утилиты Tailwind, поэтому
+   `padding-top` ЗАТИРАЛ собственный отступ элемента целиком: в обёртке
+   `/search` терял свои 40px, `/privacy` — 48px, и заголовок вставал
+   вплотную к краю экрана. На Android, где выреза нет, `env()` равен нулю
+   и потеря была полной. `margin-top` складывается с собственным
+   отступом элемента, а не заменяет его. */
+html[data-native] .topbar + * { margin-top: env(safe-area-inset-top); }
+html[data-native] footer.divider { display: none; }
 
 /* Обратное правило: разметка, которая существует только в обёртке.
    По умолчанию скрыта, поэтому в браузере её нет даже на кадр. */
@@ -1878,8 +2015,8 @@ html[data-native] body:has(input:focus, textarea:focus) .bottomnav { display: no
 .legal h2 {
   margin-top: 32px;
   margin-bottom: 10px;
-  font-size: 19px;
-  line-height: 24px;
+  font-size: calc(17px * var(--type-scale));
+  line-height: calc(22px * var(--type-scale));
   font-weight: 650;
   letter-spacing: -0.015em;
   color: var(--color-text);
@@ -2321,6 +2458,12 @@ body.kb-open .m-actionbar {
   color: var(--color-accent-ink);
 }
 /* В верхней полосе веба марка мельче — там это ссылка, а не герой. */
+/* Знак — ССЫЛКА, и её зона нажатия равна высоте строки: замерено
+   77×15 на 390px, втрое ниже порога 44px. Запас невидимый, кегль
+   и отступы полосы не меняются — тот же приём, что у `.btn-ghost`. */
+.brand-topbar {
+  display: inline-flex; align-items: center; min-height: var(--tap-min);
+}
 .brand-topbar .brand-word { font-size: var(--text-lg); }
 
 /* ── Высокая кнопка ─────────────────────────────────────────────

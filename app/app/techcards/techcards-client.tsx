@@ -17,12 +17,32 @@ const DAY: Intl.DateTimeFormatOptions = {
   day: 'numeric', month: 'short', year: 'numeric',
 }
 
-type Card = {
+export type Card = {
   id: string; title: string; version: number; steps: unknown
   isActive: boolean; offeringId: string | null; offeringTitle: string | null
   createdAt: string
 }
-type Service = { id: string; title: string }
+export type Service = { id: string; title: string }
+
+/**
+ * Всё, что экрану техкарт нужно от сервера. Тип объявлен ЗДЕСЬ, а не
+ * в загрузчике (`./data.ts`): загрузчик серверный, а вкладка «Техкарти»
+ * на экране «Послуги» — клиентская, и типу нельзя тащить за собой
+ * серверный модуль через границу (CLAUDE.md → «Серверное и клиентское»).
+ */
+export type TechCardsData = {
+  tenantId: string
+  userId: string
+  /**
+   * `compliance.write` — выпуск новой версии карты. Читателю без него
+   * (инспектор, наблюдатель, мастер) кнопок не показываем: утверждение
+   * упёрлось бы в `tech_cards_insert` (0014).
+   */
+  canWrite: boolean
+  cards: Card[]
+  services: Service[]
+  loadError: string
+}
 
 // Ключи шага заданы ТЗ 3.4 — «використані розчини, пропорції, час витримки»,
 // и отчёт для проверяющего читает именно их: step / solution / proportion /
@@ -108,7 +128,11 @@ function VersionList({ t, group, openVersion, setOpenVersion }: {
         return (
           <div key={v.id}>
             <div className="row">
-              <button className="btn-ghost tabular !px-0"
+              {/* Влево, а не по центру: строка версии длинная («Версія 3 ·
+                  14 серп. 2026 р. · кроків: 3») и на 390px переносится —
+                  по центру перенос давал лесенку, у которой не найти
+                  начала. */}
+              <button className="btn-ghost tabular min-w-0 flex-1 justify-start text-left !px-0"
                       style={{ minHeight: 'var(--tap-min)' }}
                       onClick={() => setOpenVersion(open ? null : v.id)}>
                 <span aria-hidden>{open ? '▾' : '▸'}</span>
@@ -162,16 +186,7 @@ function VersionList({ t, group, openVersion, setOpenVersion }: {
 
 export function TechCardsClient({
   tenantId, userId, canWrite, cards, services, loadError,
-}: {
-  tenantId: string; userId: string
-  /**
-   * `compliance.write` — выпуск новой версии карты. Читателю без него
-   * (инспектор, наблюдатель, мастер) кнопок не показываем: утверждение
-   * упёрлось бы в `tech_cards_insert` (0014).
-   */
-  canWrite: boolean
-  cards: Card[]; services: Service[]; loadError: string
-}) {
+}: TechCardsData) {
   const t = useT()
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
@@ -191,6 +206,18 @@ export function TechCardsClient({
   // Ключ — НАЗВАНИЕ группы, а не id версии: карта это стопка версий,
   // и после выпуска новой версии карточка обязана остаться открытой.
   const [webCard, setWebCard] = useState<string | null>(null)
+  // Раскрытая карта НА ТЕЛЕФОНЕ. Отдельно от `webCard`, а не тем же
+  // состоянием: на lg открытая карточка ЗАМЕНЯЕТ список (§6 README),
+  // а на телефоне список остаётся и раскрывается одна строка. Одно
+  // состояние на два разных поведения — это ветвление по ширине экрана
+  // внутри логики, а не в раскладке.
+  //
+  // До 19.08.2026 раскрытия не было вовсе: история версий висела
+  // развёрнутой под КАЖДОЙ картой, и три карты по две-три версии давали
+  // девять строк с треугольниками там, где в макете три строки списка.
+  // Ключ — НАЗВАНИЕ группы: карта это стопка версий, и после выпуска
+  // новой версии строка обязана остаться раскрытой.
+  const [openCard, setOpenCard] = useState<string | null>(null)
   const [cardTab, setCardTab] = useState<'steps' | 'history'>('steps')
   // README §7 (`techNew`): шаг визарда. Из пяти шагов макета данными
   // существуют три: Основне · Етапи · Перевірка. «Матеріали» — это
@@ -369,38 +396,49 @@ export function TechCardsClient({
           Мобильной раскладки условие не касается — все эти блоки
           и так `hidden` ниже lg. */}
       {!draft && !webGroup && (
-      <div className="hidden items-center justify-between lg:flex">
-        <h1 className="webh1">{t('app.screen.techcards.title')}</h1>
+      <div className="hidden items-center justify-between gap-4 lg:flex">
+        {/* Плашка 44px + H1 27px + подпись — тот же хедер, что у «Клієнтів»
+            и «Фінансів» (§5 README: техкарты в списке экранов с плашкой,
+            то есть H1 у них 27px, а не 29px). Значок тот же, что у строк
+            таблицы и у карточки §6: это опознавательный знак техкарты,
+            а не украшение хедера. Подпись — тот же ключ, которым раздел
+            описан в шторке профиля; второй строки про то же самое
+            в продукте нет. */}
+        <div className="flex min-w-0 items-center gap-3">
+          <span aria-hidden className="flex shrink-0 items-center justify-center"
+                style={{
+                  width: 44, height: 44,
+                  borderRadius: 'var(--radius-plate)',
+                  background: 'var(--color-accent-soft)',
+                  color: 'var(--color-accent-ink)',
+                }}>
+            <IconClipboard size={22} />
+          </span>
+          <div className="min-w-0">
+            <h1 className="webh1" data-size="27">{t('app.screen.techcards.title')}</h1>
+            <p style={{ fontSize: 14, color: 'var(--color-muted)' }}>
+              {t('app.screen.techcards.desc')}
+            </p>
+          </div>
+        </div>
         {canWrite && (
-          <button type="button" className="btn-primary" onClick={startNew}>
+          <button type="button" className="btn-primary shrink-0" onClick={startNew}>
+            <IconPlus size={18} />
             {t('techcards.new')}
           </button>
         )}
       </div>
       )}
 
-      {/* ── CRESKO Web: метрики (только lg) ──────────────────────
-          Те же три числа, что и в мобильном ряду ниже, в виде .wmetric
-          с иконкой-плашкой. Плитки не нажимаются: фильтр живёт
-          во вкладках, и второй орган управления с тем же действием —
-          это два входа в одно место. */}
-      {!draft && !webGroup && (
-      <section className="rise hidden gap-4 lg:grid lg:grid-cols-3">
-        {([
-          { key: 'cards', n: groups.length, label: t('techcards.stats.cards'), tone: 'violet', icon: IconClipboard },
-          { key: 'linked', n: linked.length, label: t('techcards.stats.linked'), tone: 'blue', icon: IconScissors },
-          { key: 'versions', n: cards.length, label: t('techcards.stats.versions'), tone: 'emerald', icon: IconLayers },
-        ] as const).map((s) => (
-          <div key={s.key} className="wmetric">
-            <span className="min-w-0">
-              <span className="wmetric-label block">{s.label}</span>
-              <span className="wmetric-value tabular block">{t.number(s.n)}</span>
-            </span>
-            <span className="wmetric-icon" data-tone={s.tone}><s.icon size={19} /></span>
-          </div>
-        ))}
-      </section>
-      )}
+      {/* ⚠️ РЯДА .wmetric НА lg ЗДЕСЬ БОЛЬШЕ НЕТ, и это снятый дубль,
+          а не потеря. Плитки показывали «Техкарт 3» и «До послуг 2» —
+          ровно те же два числа, что стоят В САМИХ ВКЛАДКАХ ниже
+          («Усі · 3», «До послуг · 2»), только вкладка ещё и фильтрует,
+          а плитка не делала ничего. Третье число (версий всего) осталось
+          в колонке «Версії» у каждой карты, где у него есть смысл.
+          В §5 хендоффа ряда метрик нет вовсе: экран идёт H1 → таби →
+          інструменти → таблиця. Мобильный ряд ниже сохранён — там
+          вкладок нет, и эти три числа единственные. */}
 
       {/* README, розділ G: «стат-хедер». Сетки миниатюр из макета здесь
           НЕТ намеренно: у техкарты нет ни фото, ни чего-либо, что можно
@@ -431,19 +469,30 @@ export function TechCardsClient({
       {/* Ссылок на «Журнали» и «Документи» здесь больше нет: оба раздела
           лежат под аватаром, и второй вход в них с этого экрана —
           дублирование навигации. Единственное действие экрана —
-          создать техкарту, и оно одно. */}
-      {canWrite && (
-        <button className="btn-primary rise-1 lg:hidden" onClick={startNew}
-                disabled={draft !== null}>
-          {t('techcards.new')}
-        </button>
-      )}
+          создать техкарту, и оно одно.
+
+          ⚠️ КНОПКА ПЕРЕЕХАЛА ПОД СПИСОК 19.08.2026 — она стояла здесь,
+          сразу под счётчиками, и сплошным кобальтом во всю ширину
+          забирала себе первый экран телефона. Техкарту выпускают
+          несколько раз в год, а список читают на каждой проверке
+          и перед каждой процедурой; на снимке хендоффа (раздел G)
+          первый экран занят карточками карт, кнопки на нём нет вовсе.
+          То же решение и по той же причине уже принято у документов. */}
 
       {loadError && <p className="field-error rise">{loadError}</p>}
       {err && <p className="field-error rise">{err}</p>}
 
       {draft && (
-        <form onSubmit={save} className="card rise-1 flex flex-col gap-4">
+        // ⚠️ НА lg ФОРМА САМА КАРТОЧКОЙ НЕ ЯВЛЯЕТСЯ. В §7 «Назад до
+        // техкарт», H1 с подписью и стрічка кроків стоят НА ФОНЕ
+        // страницы, а карточка начинается с «Основної інформації», —
+        // и это не вкус: карточка вокруг всего делала хедер визарда
+        // белой полосой во всю ширину, то есть второй шапкой под
+        // настоящей. Ниже lg всё остаётся как было, одной карточкой:
+        // на 390px фон и карточка не различаются по ширине, и вторая
+        // рамка вокруг формы там лишняя.
+        <form onSubmit={save}
+              className="card rise-1 flex flex-col gap-4 lg:!border-0 lg:!bg-transparent lg:!p-0 lg:!shadow-none">
           {/* ── CRESKO Web §7: шапка визарда (только lg) ────────────
               «Назад до техкарт» закрывает черновик — черновика в базе
               не существует, карта затверджується одразу (0014), поэтому
@@ -548,6 +597,24 @@ export function TechCardsClient({
               {t('techcards.draft.version', { n: t.number(draft.version) })}
             </span>
           </div>
+
+          {/* Содержимое шага — карточка §7. Класс `.webcard` объявлен
+              ВНУТРИ медиа-запроса lg (globals.css), поэтому на телефоне
+              этот div не рисует ничего и остаётся простой колонкой:
+              вторая рамка внутри мобильной карточки была бы рамкой
+              в рамке. */}
+          <div className="webcard flex flex-col gap-4">
+          {/* Имя шага над полями — то же, что подписано в стрічці кроків.
+              Ключи те же: два списка названий шагов разъехались бы
+              на первой правке. У «Перевірки» свой заголовок ниже —
+              он объясняет, что с этим делать, а не повторяет номер. */}
+          {wstep < 2 && (
+            <h2 className="webh2 hidden lg:block">
+              {wstep === 0
+                ? t('techcards.wizard.step.basics')
+                : t('techcards.wizard.step.steps')}
+            </h2>
+          )}
 
           <div className={`grid gap-3 sm:grid-cols-2 ${wstep === 0 ? '' : 'lg:hidden'}`}>
             <div>
@@ -701,6 +768,7 @@ export function TechCardsClient({
             </button>
           </div>
           <p className="field-hint">{t('techcards.form.hint')}</p>
+          </div>
         </form>
       )}
 
@@ -1038,46 +1106,91 @@ export function TechCardsClient({
         </>
         )}
 
-        <div className="flex flex-col gap-4 lg:hidden">
-          {groups.map((g) => (
-            <section key={g.title} className="card rise-2 flex flex-col gap-3">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  {/* Назва техкарти і назва послуги — данные заклада. */}
-                  <h2 className="display t-lg">{g.title}</h2>
-                  {/* «Загальна для салону» — только когда услуги и правда
-                      нет. Название приходит из `compliance_offerings`
-                      (0083) и есть у всех, кто видит карту, включая
-                      инспектора; подпись «привʼязана до послуги» без
-                      названия осталась как последняя защита: подписать
-                      привязанную карту «загальною» значит соврать
-                      про регламент. */}
-                  <p className="tabular t-xs prose-muted">
-                    {g.latest.offeringTitle
-                      ?? (g.latest.offeringId
-                        ? t('techcards.card.linked')
-                        : t('techcards.field.service.general'))}
-                    {' · '}
-                    {t('techcards.card.versions', { n: t.number(g.versions.length) })}
-                  </p>
-                </div>
-                {canWrite && (
-                  <button className="btn-secondary t-sm" disabled={draft !== null}
-                          onClick={() => startNextVersion(g)}>
-                    {t('techcards.card.newVersion')}
-                  </button>
+        {/* ── Список техкарт (телефон) ────────────────────────────
+            Хендофф, раздел G: плашка, назва, «версія N», статус. Строка
+            и есть вход в карту — вторая кнопка «Створити нову версію»
+            в каждой строке была ТРЕТЬИМ входом в выпуск версии рядом
+            с «Нова техкарта» сверху, и на 390px занимала полстроки.
+            Теперь она внутри раскрытой карты, там, где видно, ЧТО
+            именно продолжают версией. */}
+        <div className="rise-2 flex flex-col gap-2 lg:hidden">
+          {groups.map((g) => {
+            const open = openCard === g.title
+            // «Загальна для салону» — только когда услуги и правда нет.
+            // Название приходит из `compliance_offerings` (0083) и есть
+            // у всех, кто видит карту, включая инспектора; подпись
+            // «привʼязана до послуги» без названия осталась как последняя
+            // защита: подписать привязанную карту «загальною» значит
+            // соврать про регламент.
+            const service = g.latest.offeringTitle
+              ?? (g.latest.offeringId
+                ? t('techcards.card.linked')
+                : t('techcards.field.service.general'))
+            return (
+              <div key={g.title} className="flex flex-col gap-2">
+                <button type="button" className="list-card" aria-expanded={open}
+                        onClick={() => setOpenCard(open ? null : g.title)}>
+                  {/* Плашка вместо мініатюри из макета: у регламента нет
+                      ни фото, ни чего-либо, что можно показать картинкой,
+                      а пустой серый прямоугольник читается как «картинка
+                      не загрузилась», то есть как поломка. */}
+                  <span className="list-card-thumb"><IconClipboard size={22} /></span>
+                  <span className="min-w-0 flex-1">
+                    {/* Назва техкарти і назва послуги — данные заклада. */}
+                    <span className="t-md clamp-2 block">{g.title}</span>
+                    <span className="tabular t-sm prose-muted mt-0.5 block truncate">
+                      {t('techcards.webitem.meta.version', {
+                        n: t.number(g.versions[0]?.version ?? 0),
+                      })}
+                      {' · '}{service}
+                    </span>
+                  </span>
+                  <span className={`shrink-0 ${g.currentId ? 'badge-success' : 'badge'}`}>
+                    {g.currentId
+                      ? t('techcards.version.current')
+                      : t('techcards.version.archived')}
+                  </span>
+                </button>
+
+                {open && (
+                  <div className="card flex flex-col gap-3">
+                    <VersionList t={t} group={g}
+                                 openVersion={openVersion} setOpenVersion={setOpenVersion} />
+                    {canWrite && (
+                      <button className="btn-secondary self-start" disabled={draft !== null}
+                              onClick={() => startNextVersion(g)}>
+                        {t('techcards.card.newVersion')}
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
-
-              <VersionList t={t} group={g}
-                           openVersion={openVersion} setOpenVersion={setOpenVersion} />
-            </section>
-          ))}
+            )
+          })}
         </div>
         </>
       )}
 
-      <p className="field-hint rise-3">{t('techcards.footer')}</p>
+      {/* Выпуск новой карты — ПОСЛЕ списка (разбор выше). Пустой реестр
+          не исключение: кнопка нужна и там, иначе первая карта заводится
+          неоткуда. Пока открыт визард, кнопки нет вовсе — она вела бы
+          туда, где человек уже стоит. */}
+      {canWrite && draft === null && (
+        <button className="btn-primary rise-3 lg:hidden" onClick={startNew}>
+          <IconPlus size={18} />
+          {t('techcards.new')}
+        </button>
+      )}
+
+      {/* ⚠️ ЭТО ЖЕ ПРАВИЛО НА lg УЖЕ НАПЕЧАТАНО В КАРТОЧКЕ §6 (блок
+          «Затвердження» правой колонки) и в подсказке визарда, поэтому
+          при открытой карточке или визарде подвала здесь нет: один
+          и тот же абзац дважды на экране человек читает как ошибку
+          вёрстки, а не как важное. На телефоне карточки-экрана §6 нет
+          вовсе, и подвал остаётся единственным местом, где это сказано. */}
+      <p className={`field-hint rise-3 ${webGroup || draft ? 'lg:hidden' : ''}`}>
+        {t('techcards.footer')}
+      </p>
     </div>
   )
 }

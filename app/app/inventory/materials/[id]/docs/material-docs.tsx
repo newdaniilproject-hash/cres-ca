@@ -42,6 +42,14 @@ type Material = {
 const kindLabel = (t: T, k: DocKind): string => t(`documents.kind.${k}`)
 const kindShort = (t: T, k: DocKind): string => t(`documents.kind.${k}.short`)
 
+// Расширение для плашки слева (README, розділ C: плашка `PDF` 38px,
+// `danger` на `dangerSoft`). Берётся из ПУТИ, а не из mime, и это не
+// упрощение: путь — то же самое, из чего этот экран уже собирает имя
+// файла при скачивании, то есть второй способ узнать формат здесь
+// не заводится. Расширение не переводится — это формат файла.
+const extOf = (path: string): string =>
+  (path.split('.').pop() ?? '').slice(0, 4).toUpperCase() || 'FILE'
+
 // Фильтры ровно как на макете: «Всі», потом виды, у которых есть файлы.
 // Пустой вид в полосе фильтров — обещание, за которым ничего нет.
 const FILTERS: ('all' | DocKind)[] = [
@@ -283,9 +291,14 @@ export function MaterialDocs({
         </div>
       )}
 
-      {/* ── Список файлов ────────────────────────────────────── */}
-      <section className="card rise-2 !p-0">
-        {shown.length === 0 ? (
+      {/* ── Список файлов ──────────────────────────────────────
+          ОТДЕЛЬНЫЕ карточки с зазором, а не одна карточка с линиями:
+          так лежит список в хендоффе (`stockDocs`) и так же устроен
+          реестр склада (`.list-card`). Разница не косметическая — у строки
+          слева плашка формата и две строки текста, и в сплошном списке
+          они слипаются. */}
+      {shown.length === 0 ? (
+        <section className="card rise-2">
           <div className="empty">
             <span className="empty-icon"><IconDoc size={24} /></span>
             <p className="empty-title">
@@ -306,63 +319,94 @@ export function MaterialDocs({
               </div>
             )}
           </div>
-        ) : shown.map((d) => (
-          <div key={d.id} className="row px-5">
-            <button type="button" onClick={() => void view(d)}
-                    disabled={busy === d.id}
-                    className="min-w-0 flex-1 text-left"
-                    style={{ minHeight: 'var(--tap-min)' }}>
-              <span className="t-md block truncate">{d.title}</span>
-              <span className="tabular t-xs block" style={{ color: 'var(--color-faint)' }}>
-                {[
-                  kindShort(t, d.kind),
-                  fmtSize(t, d.size),
-                  t.date(d.createdAt),
-                ].filter(Boolean).join(' · ')}
-              </span>
-            </button>
-            {/* Подтверждение нотификации (0106). Кнопка только у вида
-                `notification`: база всё равно откажет остальным, но
-                предлагать невозможное — значит учить человека получать
-                отказы. Принятый документ помечен, а не спрятан: инспектор
-                спрашивает «покажіть підтвердження», и его надо открыть. */}
-            {material.isCosmetic && d.kind === 'notification' && (
-              material.notificationDocId === d.id ? (
-                <span className="flex shrink-0 items-center gap-2">
-                  <span className="badge-success">{t('inventory.docs.moz.proof.is')}</span>
-                  {canEditMoz && (
-                    <button type="button" className="btn-ghost t-sm"
-                            disabled={busy !== null}
-                            onClick={() => void revokeDoc()}>
-                      {t('inventory.docs.moz.proof.revoke')}
+        </section>
+      ) : (
+        <div className="rise-2 flex flex-col gap-2">
+          {shown.map((d) => {
+          // Подтверждение нотификации (0106) — своей строкой ПОД файлом,
+          // а не в один ряд с ним. В ряду оно съедало ширину у названия:
+          // на 390px «Нотифікація МОЗ України» переносилось по одной
+          // букве в столбик. Ряд держит то, что есть у каждого файла;
+          // то, что бывает у одного, живёт под ним.
+          const proof = material.isCosmetic && d.kind === 'notification'
+          const isProof = proof && material.notificationDocId === d.id
+          return (
+            <div key={d.id} className="list-card flex-col items-stretch gap-2">
+              <div className="flex items-center justify-between gap-3">
+                <button type="button" onClick={() => void view(d)}
+                        disabled={busy === d.id}
+                        className="flex min-w-0 flex-1 items-start gap-3 text-left"
+                        style={{ minHeight: 'var(--tap-min)' }}>
+                  {/* README, розділ C: плашка формата 38px слева.
+                      Тон `danger` — только у PDF, у остальных нейтральный:
+                      палитра форматов была бы лишней осью цвета. */}
+                  <span aria-hidden className="doc-ext"
+                        data-tone={extOf(d.path) === 'PDF' ? 'danger' : undefined}>
+                    {extOf(d.path)}
+                  </span>
+                  <span className="min-w-0">
+                    {/* Название НЕ обрезается: на 390px рядом стоят две
+                        кнопки-значка по 44px, и «Паспорт безпеки (MSDS)»
+                        обрывалось на «(М…» — то есть по строке нельзя было
+                        понять, какой это документ. Перенос дороже обрезки
+                        ровно на одну строку. */}
+                    <span className="t-md block">{d.title}</span>
+                    <span className="tabular t-xs block" style={{ color: 'var(--color-faint)' }}>
+                      {[
+                        kindShort(t, d.kind),
+                        fmtSize(t, d.size),
+                        t('inventory.docs.row.added', { date: t.date(d.createdAt) }),
+                      ].filter(Boolean).join(' · ')}
+                    </span>
+                  </span>
+                </button>
+                <span className="flex shrink-0 items-center gap-1">
+                  {/* Значки — инлайновый SVG из components/icons: текстовые
+                      глифы приезжают квадратами на части прошивок. */}
+                  <button className="btn-icon" aria-label={t('inventory.docs.download.aria')}
+                          disabled={busy === d.id} onClick={() => void download(d)}>
+                    <IconDownload size={18} />
+                  </button>
+                  {canWrite && (
+                    <button className="btn-icon" aria-label={t('common.delete')}
+                            disabled={busy === d.id} onClick={() => void remove(d)}>
+                      <IconClose size={18} />
                     </button>
                   )}
                 </span>
-              ) : canEditMoz && (
-                <button type="button" className="btn-secondary t-sm shrink-0"
-                        disabled={busy !== null}
-                        onClick={() => void confirmDoc(d.id)}>
-                  {t('inventory.docs.moz.proof.mark')}
-                </button>
-              )
-            )}
-            <span className="flex shrink-0 items-center gap-1">
-              {/* Значки — инлайновый SVG из components/icons: текстовые
-                  глифы приезжают квадратами на части прошивок. */}
-              <button className="btn-icon" aria-label={t('inventory.docs.download.aria')}
-                      disabled={busy === d.id} onClick={() => void download(d)}>
-                <IconDownload size={18} />
-              </button>
-              {canWrite && (
-                <button className="btn-icon" aria-label={t('common.delete')}
-                        disabled={busy === d.id} onClick={() => void remove(d)}>
-                  <IconClose size={18} />
-                </button>
+              </div>
+              {/* Кнопка только у вида `notification`: база всё равно
+                  откажет остальным, но предлагать невозможное — значит
+                  учить человека получать отказы. Принятый документ помечен,
+                  а не спрятан: инспектор спрашивает «покажіть
+                  підтвердження», и его надо открыть. */}
+              {proof && (isProof || canEditMoz) && (
+                <div className="flex flex-wrap items-center gap-2">
+                  {isProof ? (
+                    <>
+                      <span className="badge-success">{t('inventory.docs.moz.proof.is')}</span>
+                      {canEditMoz && (
+                        <button type="button" className="btn-ghost t-sm"
+                                disabled={busy !== null}
+                                onClick={() => void revokeDoc()}>
+                          {t('inventory.docs.moz.proof.revoke')}
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <button type="button" className="btn-secondary t-sm"
+                            disabled={busy !== null}
+                            onClick={() => void confirmDoc(d.id)}>
+                      {t('inventory.docs.moz.proof.mark')}
+                    </button>
+                  )}
+                </div>
               )}
-            </span>
-          </div>
-        ))}
-      </section>
+            </div>
+            )
+          })}
+        </div>
+      )}
 
       {/* ── Нотификация МОЗ ──────────────────────────────────── */}
       {material.isCosmetic && (
@@ -434,11 +478,25 @@ export function MaterialDocs({
                    value={title} onChange={(e) => setTitle(e.target.value)} />
             <p className="field-hint">{t('inventory.docs.field.title.hint')}</p>
           </div>
-          <div className="sm:col-span-2">
+          {/* `min-w-0` — разбор там же, где и остальное про это поле:
+              имя файла это одно длинное слово, и без него оно растягивает
+              колонку грида, а не обрезается. */}
+          <div className="min-w-0 sm:col-span-2">
             <label className="field-label">{t('inventory.docs.field.file.label')}</label>
-            <input key={fileKey} required type="file" className="input pt-2.5"
-                   accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx"
-                   onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            {/* ⚠️ ГОЛОЕ `input[type=file]` СЮДА НЕ ВОЗВРАЩАТЬ: его рисует
+                операционная система своим шрифтом и своим языком —
+                «Выбрать файл» по-русски посреди украинского кабинета
+                (найдено на телефоне владельца 20.08.2026). Разбор
+                и те же два условия (`sr-only` вместо `hidden`, снятое
+                `required`) — в `app/app/documents/documents-client.tsx`. */}
+            <label className="btn-secondary w-fit max-w-full cursor-pointer">
+              <span className="min-w-0 truncate">
+                {file ? file.name : t('inventory.docs.add')}
+              </span>
+              <input key={fileKey} type="file" className="sr-only"
+                     accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx"
+                     onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            </label>
             <p className="field-hint">{t('inventory.docs.field.file.hint')}</p>
           </div>
           <div className="flex gap-2 sm:col-span-2">

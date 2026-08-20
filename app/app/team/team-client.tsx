@@ -230,6 +230,9 @@ export function TeamClient(props: {
   // («кому из двух Оль закрыт доступ»), и уводить ради этого с экрана
   // значит заставить вернуться.
   const [webTab, setWebTab] = useState<'all' | 'active' | 'blocked' | 'invites'>('all')
+  // Раскрыта ли форма приглашения на широком экране. На телефоне она
+  // раскрыта всегда и этого состояния не читает.
+  const [inviting, setInviting] = useState(false)
   const [picked, setPicked] = useState<string | null>(null)
   // Журнал свёрнут по умолчанию: двести строк истории над экраном, где
   // работают каждый день, превращают его в ленту, а не в инструмент.
@@ -1056,32 +1059,46 @@ export function TeamClient(props: {
 
       {/* ═══ CRESKO Web, §16 «Співробітники» — хедер экрана (только lg) ═══
           Плашка со значком, имя экрана тем же ключом, которым его называет
-          панель и вкладка браузера, и подпись под ним. Кнопки действия
-          справа нет намеренно: единственное действие уровня экрана —
-          пригласить человека, и его форма стоит прямо под хедером
-          на обеих раскладках. Кнопка, прокручивающая к форме, которая
-          и так на виду, — второй вход в одно и то же. */}
-      <div className="hidden items-center gap-3 lg:flex">
-        <span aria-hidden className="flex shrink-0 items-center justify-center"
-              style={{
-                width: 44, height: 44,
-                borderRadius: 'var(--radius-plate)',
-                background: 'var(--color-accent-soft)',
-                color: 'var(--color-accent-ink)',
-              }}>
-          <IconUsers size={22} />
-        </span>
-        <div className="min-w-0">
-          <h1 className="webh1" data-size="27">{t('app.screen.team.title')}</h1>
-          <p style={{ fontSize: 14, color: 'var(--color-muted)' }}>
-            {t('app.screen.team.desc')}
-          </p>
+          панель и вкладка браузера, и подпись под ним. Справа — `primary`
+          «Запросити людину» из хендоффа.
+
+          ⚠️ ПРЕЖНИЙ КОММЕНТАРИЙ ЗДЕСЬ УТВЕРЖДАЛ обратное: «кнопки нет
+          намеренно, форма и так на виду». На 1440 это стоило первого
+          экрана — форма из четырёх полей стояла РАСКРЫТОЙ всегда, между
+          именем раздела и таблицей, ради действия, которое делают раз
+          в месяц. Второго входа кнопка не заводит: на широком экране
+          форма ПОЯВЛЯЕТСЯ по ней и больше нигде не лежит. На телефоне
+          она по-прежнему раскрыта — там ниже неё ничего не теряется. */}
+      <div className="hidden items-center justify-between gap-4 lg:flex">
+        <div className="flex min-w-0 items-center gap-3">
+          <span aria-hidden className="flex shrink-0 items-center justify-center"
+                style={{
+                  width: 44, height: 44,
+                  borderRadius: 'var(--radius-plate)',
+                  background: 'var(--color-accent-soft)',
+                  color: 'var(--color-accent-ink)',
+                }}>
+            <IconUsers size={22} />
+          </span>
+          <div className="min-w-0">
+            <h1 className="webh1" data-size="27">{t('app.screen.team.title')}</h1>
+            <p style={{ fontSize: 14, color: 'var(--color-muted)' }}>
+              {t('app.screen.team.desc')}
+            </p>
+          </div>
         </div>
+        {props.canWrite && (
+          <button type="button" className="btn-primary shrink-0"
+                  aria-expanded={inviting}
+                  onClick={() => setInviting(!inviting)}>
+            {t('team.invite.title')}
+          </button>
+        )}
       </div>
 
       {/* ── Приглашение ─────────────────────────────────────────────── */}
       {props.canWrite && (
-        <section className="card rise-1">
+        <section className={`card rise-1 ${inviting ? '' : 'lg:hidden'}`}>
           <h2 className="t-lg mb-1">{t('team.invite.title')}</h2>
           <p className="t-md mb-4 prose-muted">{t('team.invite.desc')}</p>
 
@@ -1238,8 +1255,11 @@ export function TeamClient(props: {
                   </p>
                 </div>
                 {/* Перенос по строке — потому что на 390px четыре бейджа
-                    рядом с именем не помещаются. */}
-                <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+                    рядом с именем не помещаются. `min-w-0` вместо `shrink-0`:
+                    с последним блок брал ширину по содержимому и НЕ переносил
+                    ничего — четыре бейджа уезжали за правый край экрана,
+                    и страница начинала ездить вбок. */}
+                <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
                   {stateBadges(m)}
                   <span className={m.role === 'owner' ? 'badge-accent' : 'badge'}>
                     {roleLabel(t, m.role)}
@@ -1543,7 +1563,7 @@ export function TeamClient(props: {
                         {t('team.templates.perms.hint', { role: roleLabel(t, tpl.role) })}
                         {!iHaveStar && ` ${t('team.templates.perms.hintNotMine')}`}
                       </p>
-                      <div className="grid gap-x-4 sm:grid-cols-2">
+                      <div className="grid gap-x-4 sm:grid-cols-2 lg:grid-cols-4">
                         {allPerms.map((p) => {
                           const base = tRolePerms.has(p)
                           const val = tPerms[p] ?? base
@@ -1613,7 +1633,7 @@ export function TeamClient(props: {
               <p className="field-hint mb-2">
                 {t('team.templates.new.perms.hint', { role: roleLabel(t, tplRole) })}
               </p>
-              <div className="grid gap-x-4 sm:grid-cols-2">
+              <div className="grid gap-x-4 sm:grid-cols-2 lg:grid-cols-4">
                 {allPerms.map((p) => {
                   const base = permsByRole[tplRole]?.has(p) ?? false
                   const val = tplPerms[p] ?? base

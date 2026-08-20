@@ -131,6 +131,11 @@ export function formatMoney(
   return new Intl.NumberFormat(LOCALE[lang], {
     style: 'currency',
     currency,
+    // Знак «₴», а не слово «грн»: так задано в хендоффе CRESKO («450 ₴»)
+    // и так короче в узких столбцах. Выбор знака остаётся за Intl —
+    // `narrowSymbol` просит КОРОТКУЮ форму, а не подставляет символ руками,
+    // поэтому и вторая валюта, и английская локаль остаются правильными.
+    currencyDisplay: 'narrowSymbol',
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(n)

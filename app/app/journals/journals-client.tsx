@@ -10,13 +10,30 @@ import { useT } from '@/lib/i18n/client'
 import type { T } from '@/lib/i18n/translate'
 import { dbErrorText } from '@/lib/errors/db'
 import { Sheet } from '@/components/sheet'
-import { IconBeaker, IconCheck, IconChevronRight, IconClipboard } from '@/components/icons'
+import {
+  IconBack, IconBeaker, IconCheck, IconChevronRight, IconClipboard, IconDoc, IconList,
+  IconPlus, IconScissors,
+} from '@/components/icons'
 
 // Дата и время записи журнала — «16 серп., 14:05». Это НАБОР ОПЦИЙ,
 // а не своя `fmt`: форматирует по-прежнему `t.dateTime`, то есть язык
 // и порядок частей выбирает локаль, а не мы (lib/i18n/format.ts).
 const AT: Intl.DateTimeFormatOptions = {
   day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+}
+
+// Только время — «10:15». Хендофф, раздел G (`inspJournals`): у записи
+// журнала час стоит ОТДЕЛЬНОЙ колонкой слева и набран акцентом. Дата
+// в строке при этом не повторяется: её называет заголовок дня над
+// группой (`journalDay` — «Записи за 09.05.2025»).
+const TIME: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit' }
+
+// День записи — «19.08.2026». Заголовок группы; цифрами, а не словом
+// месяца, ровно как в хендоффе («ЗАПИСИ ЗА 9.05.2025»): надзаголовок
+// набран капслоком с разрядкой, и «19 СЕРПНЯ 2026 Р.» занимает в нём
+// всю ширину телефона.
+const DAY: Intl.DateTimeFormatOptions = {
+  day: '2-digit', month: '2-digit', year: 'numeric',
 }
 
 // `performer` — имя исполнителя или null. Null значит «имя не достаётся»
@@ -68,6 +85,65 @@ function Performer({ name }: { name: string | null }) {
       </span>
 }
 
+// ── Записи журнала, разложенные по дням ────────────────────────────────────
+//
+// Хендофф, раздел F: `journalDay` показывает «Записи за 09.05.2025», то есть
+// журнал читается ДНЯМИ, а не сплошной лентой. Календаря-месяца у нас нет
+// (см. оговорку у самих списков), но день как единица чтения обязан быть:
+// без него у записи негде показать дату, кроме как в строке рядом с часом,
+// а тогда строка перестаёт помещаться на 390px.
+//
+// Список приезжает УЖЕ отсортированным базой по убыванию времени, поэтому
+// группировка идёт подряд, без второй сортировки на клиенте.
+function byDay<R>(rows: R[], at: (r: R) => string): { key: string; at: string; items: R[] }[] {
+  const out: { key: string; at: string; items: R[] }[] = []
+  for (const r of rows) {
+    const key = new Date(at(r)).toDateString()
+    const last = out[out.length - 1]
+    if (last && last.key === key) last.items.push(r)
+    else out.push({ key, at: at(r), items: [r] })
+  }
+  return out
+}
+
+// Строка записи журнала (хендофф, раздел G): час акцентом слева, название
+// и исполнитель посередине, бейдж состояния справа. Нажатие открывает
+// карточку записи — `journalEntry` из раздела F.
+//
+// Объявлена НА ВЕРХНЕМ УРОВНЕ модуля, а не внутри рендера: функция,
+// созданная на каждой отрисовке, — новый тип элемента, и React сносит
+// поддерево (та же грабля, из-за которой формы ниже лежат элементами JSX).
+function EntryRow({ at, title, meta, badge, onOpen }: {
+  at: string; title: string; meta: React.ReactNode
+  badge: React.ReactNode; onOpen: () => void
+}) {
+  const t = useT()
+  return (
+    <div className="row px-5">
+      <button type="button" onClick={onOpen}
+              className="flex min-w-0 flex-1 items-center gap-3 text-left"
+              style={{ minHeight: 'var(--tap-min)' }}>
+        {/* Час — единственное место экрана, где акцент стоит на тексте:
+            по нему запись и находят глазами. 42px — ширина колонки времени
+            из хендоффа (раздел D, вид «День»); без фиксированной ширины
+            «09:05» и «15:45» разъезжаются, и колонка перестаёт быть
+            колонкой. Своего токена под ширину колонки в системе нет —
+            это величина макета, как и 110×78 у плашки техкарты. */}
+        <span className="tabular t-base shrink-0 font-bold"
+              style={{ color: 'var(--color-accent-ink)', width: 42 }}>
+          {t.dateTime(at, TIME)}
+        </span>
+        <span className="min-w-0 flex-1">
+          {/* Назва засобу або пристрою — данные записи журнала. */}
+          <span className="t-md clamp-2 block">{title}</span>
+          <span className="t-xs prose-muted mt-0.5 block truncate">{meta}</span>
+        </span>
+      </button>
+      {badge}
+    </div>
+  )
+}
+
 // Три журнала одним экраном. Каждая запись — одно касание или одна
 // короткая форма: заполнять их будут между клиентами, стоя.
 export function JournalsClient({
@@ -108,11 +184,32 @@ export function JournalsClient({
   // «покажи журнал стерилизации» можно отправить мастеру в чат.
   const search = useSearchParams()
   const raw = search.get('tab')
-  const tab: 'cleaning' | 'solutions' | 'sterilization' | 'actions' =
-    raw === 'solutions' || raw === 'sterilization' || raw === 'actions' ? raw : 'cleaning'
+  // ⚠️ ДВЕ РАЗНЫЕ ВЕЛИЧИНЫ, и различие несёт всю мобильную раскладку.
+  //
+  //   `chosen` — журнал, который человек ВЫБРАЛ. `null` значит «ещё
+  //     не выбрал», и на телефоне это отдельный экран: список журналов
+  //     (хендофф CRESKO, раздел F — `journals` → `journalDay`).
+  //   `tab` — какой журнал ПОКАЗЫВАТЬ. На широком экране список и
+  //     содержимое стоят рядом, поэтому пустого состояния там нет:
+  //     без выбора показывается первый журнал, как и раньше.
+  //
+  // Пока величина была одна, телефон открывал сразу чек-лист прибирання,
+  // а остальные три журнала жили за лентой чипов — то есть экран начинался
+  // с органа управления, которого в макете нет вовсе.
+  const chosen: 'cleaning' | 'solutions' | 'sterilization' | 'actions' | null =
+    raw === 'solutions' || raw === 'sterilization' || raw === 'actions' || raw === 'cleaning'
+      ? raw : null
+  const tab = chosen ?? 'cleaning'
   // Параметр назван `next`, а не `t`: `t` — переводчик.
-  const setTab = (next: typeof tab) =>
+  const setTab = (next: NonNullable<typeof chosen>) =>
     router.replace(next === 'cleaning' ? '/app/journals' : `/app/journals?tab=${next}`)
+  // Форма записи в журнал — шторкой, а не блоком поверх списка. Причина
+  // та же, по которой так сделана загрузка документа: четыре поля
+  // занимали первый экран телефона, и записи журнала, ради которых сюда
+  // заходят, начинались за сгибом. Записывают раз в смену, смотрят —
+  // на каждой проверке. На широком экране форма остаётся на месте:
+  // там она ничего не вытесняет (см. `solutionForm` ниже).
+  const [adding, setAdding] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
   const [err, setErr] = useState('')
   // Отметки, сделанные без сети: показываем «сьогодні ✓» сразу,
@@ -200,6 +297,22 @@ export function JournalsClient({
   // за то, что смотрят изредка. Тот же приём, что у колокола и поиска.
   const [history, setHistory] = useState<{ task: Task; rows: HistoryRow[] | null } | null>(null)
 
+  // ── Карточка записи (`journalEntry` из раздела F) ────────────────────────
+  //
+  // Хендофф показывает поля записи таблицей «ключ → значення». Ради этого
+  // строка списка и стала короткой: раньше объём, концентрация, время
+  // и исполнитель были склеены в одну строку под названием и на 390px
+  // занимали три строки текста — то есть карточка записи существовала,
+  // просто её роль исполняла строка списка.
+  //
+  // ⚠️ КНОПОК «Редагувати» И «Видалити запис» ЗДЕСЬ НЕТ, хотя в макете они
+  // есть. Записи санитарных журналов неизменяемы СВОЙСТВОМ БАЗЫ: политик
+  // UPDATE и DELETE у них не существует, плюс триггер безусловно роняет
+  // любую попытку. Кнопка, которая гарантированно упрётся в отказ, хуже
+  // её отсутствия: она обещает то, чего в продукте нет ни у кого, включая
+  // владельца. Ошибочная запись гасится встречной — как движение склада.
+  const [entry, setEntry] = useState<{ title: string; rows: [string, React.ReactNode][] } | null>(null)
+
   async function openHistory(task: Task) {
     setHistory({ task, rows: null })
     // Имена исполнителей — отдельным запросом к `compliance_actors`,
@@ -263,6 +376,9 @@ export function JournalsClient({
     })
     setBusy(null)
     if (error) { setErr(dbErrorText(t, error)); return }
+    // Шторка закрывается сама: оставленная открытой поверх обновлённого
+    // списка она читается как «не сохранилось».
+    setAdding(false)
     setNewTask(''); router.refresh()
   }
 
@@ -293,7 +409,7 @@ export function JournalsClient({
       setErr(dbErrorText(t, ex))
       return
     }
-    setBusy(null)
+    setBusy(null); setAdding(false)
     setAgent(''); setConc(''); setVol(''); router.refresh()
   }
 
@@ -320,7 +436,7 @@ export function JournalsClient({
       setErr(dbErrorText(t, ex))
       return
     }
-    setBusy(null)
+    setBusy(null); setAdding(false)
     router.refresh()
   }
 
@@ -334,32 +450,150 @@ export function JournalsClient({
     ['actions', t('journals.tab.actions')],
   ] as const
 
-  // ── Карточки журналов (только lg) ────────────────────────────────────────
-  // Три САНИТАРНЫХ журнала — ровно те, что требует Техрегламент №65.
-  // «Дії» сюда не входят: это аудит изменений данных, а не журнал уборки,
-  // и число строк в нём ничего не говорит о готовности к проверке.
+  // ── Реестр журналов: ОДИН список на обе раскладки ────────────────────────
   //
-  // Тон плашки здесь — ОПОЗНАВАТЕЛЬНЫЙ знак журнала, а не состояние: три
+  // На телефоне это экран-оглавление (хендофф, раздел F: плашка, назва,
+  // опис, «Останній запис», лічильник, chevron), на lg — три карточки над
+  // вкладками. Два списка разъехались бы на первом же новом журнале.
+  //
+  // Три САНИТАРНЫХ журнала — ровно те, что требует Техрегламент №65.
+  // Журнал ДІЙ сюда не входит: это аудит изменений данных, а не журнал
+  // уборки, и число строк в нём ничего не говорит о готовности к проверке.
+  // Поэтому на lg карточек по-прежнему три.
+  //
+  // Тон плашки — ОПОЗНАВАТЕЛЬНЫЙ знак журнала, а не состояние: четыре
   // одинаковых серых кружка читались бы как один пункт, разбитый переносом.
-  // Состояние показывают бейджи в таблицах ниже.
-  const journalCards = [
+  // Состояние показывают бейджи в самих журналах.
+  const sanitaryJournals = [
     {
       key: 'cleaning' as const, icon: IconClipboard, tone: 'blue' as const,
-      title: t('journals.tab.cleaning'), n: totals.cleaning, last: cleaningLastAt,
+      title: t('journals.tab.cleaning'), desc: t('journals.card.cleaning.desc'),
+      n: totals.cleaning as number | null, last: cleaningLastAt as string | null,
     },
     {
       key: 'solutions' as const, icon: IconBeaker, tone: 'violet' as const,
-      title: t('journals.tab.solutions'), n: totals.solutions,
+      title: t('journals.tab.solutions'), desc: t('journals.card.solutions.desc'),
+      n: totals.solutions as number | null,
       // Список уже отсортирован базой по убыванию — первая строка и есть
       // последняя запись. Второй сортировки на клиенте быть не должно.
-      last: solutions[0]?.prepared_at ?? null,
+      last: (solutions[0]?.prepared_at ?? null) as string | null,
     },
     {
       key: 'sterilization' as const, icon: IconCheck, tone: 'emerald' as const,
-      title: t('journals.tab.sterilization'), n: totals.cycles,
-      last: cycles[0]?.performed_at ?? null,
+      title: t('journals.tab.sterilization'), desc: t('journals.card.sterilization.desc'),
+      n: totals.cycles as number | null,
+      last: (cycles[0]?.performed_at ?? null) as string | null,
     },
   ]
+
+  // Оглавление телефона — те же три плюс журнал действий. На телефоне
+  // он обязан быть здесь: ленты чипов больше нет, и без строки в списке
+  // «Дії» недостижимы вовсе.
+  const journalCards = [
+    ...sanitaryJournals,
+    {
+      // Число записей и дата последней у аудита НЕИЗВЕСТНЫ до открытия:
+      // лента грузится по нажатию (двести последних строк), и считать их
+      // вместе с экраном значило бы платить за то, что смотрят раз в месяц.
+      // Поэтому у этой строки нет ни счётчика, ни даты — а не «0», которого
+      // не бывает: в аудите есть запись о самом заведении.
+      key: 'actions' as const, icon: IconDoc, tone: 'amber' as const,
+      title: t('journals.tab.actions'), desc: t('journals.card.actions.desc'),
+      n: null as number | null, last: null as string | null,
+    },
+  ]
+
+  // ── Формы записи: ОДНО описание на обе раскладки ─────────────────────────
+  //
+  // На широком экране форма стоит над таблицей, на телефоне — в шторке
+  // по кнопке «Додати запис». Это не две формы, а одно и то же дерево,
+  // положенное в два места: значение и обработчик общие, и разъехаться
+  // им негде. Вторая копия разметки на первой же правке показывала бы
+  // на телефоне не то, что на вебе (урок М43).
+  //
+  // Компонентами это делать НЕЛЬЗЯ: функция, объявленная внутри рендера,
+  // на каждом нажатии клавиши — новый тип элемента, React сносит поддерево,
+  // и поле теряет фокус после первой буквы. Элемент JSX — просто данные,
+  // и такой беды у него нет.
+  const solutionForm = canWrite ? (
+    <form onSubmit={addSolution} className="grid gap-3 sm:grid-cols-2">
+      <div className="sm:col-span-2">
+        <label className="field-label">{t('journals.solution.agent.label')}</label>
+        <input required className="input" placeholder={t('journals.solution.agent.placeholder')}
+               value={agent} onChange={(e) => setAgent(e.target.value)} />
+      </div>
+      <div>
+        <label className="field-label">{t('journals.solution.conc.label')}</label>
+        <input required className="input" placeholder={t('journals.solution.conc.placeholder')}
+               value={conc} onChange={(e) => setConc(e.target.value)} />
+      </div>
+      <div>
+        <label className="field-label">{t('journals.solution.volume.label')}</label>
+        <input required type="number" step="0.1" min="0.1" className="input"
+               value={vol} onChange={(e) => setVol(e.target.value)} />
+      </div>
+      <div>
+        <label className="field-label">{t('journals.solution.hours.label')}</label>
+        <input required type="number" min="1" className="input"
+               value={hours} onChange={(e) => setHours(e.target.value)} />
+      </div>
+      <button className="btn-primary self-end sm:col-span-2 sm:justify-self-start"
+              disabled={busy === 'solution'}>
+        {t('journals.solution.submit')}
+      </button>
+    </form>
+  ) : null
+
+  const cycleForm = canWrite ? (
+    <form onSubmit={addCycle} className="grid gap-3 sm:grid-cols-2">
+      <div className="sm:col-span-2">
+        <label className="field-label">{t('journals.cycle.device.label')}</label>
+        <input required className="input" value={device}
+               onChange={(e) => setDevice(e.target.value)} />
+      </div>
+      <div>
+        <label className="field-label">{t('journals.cycle.temp.label')}</label>
+        <input required type="number" min="1" className="input"
+               value={temp} onChange={(e) => setTemp(e.target.value)} />
+      </div>
+      <div>
+        <label className="field-label">{t('journals.cycle.mins.label')}</label>
+        <input required type="number" min="1" className="input"
+               value={mins} onChange={(e) => setMins(e.target.value)} />
+      </div>
+      <label className="t-md flex items-center gap-2 sm:col-span-2">
+        <input type="checkbox" checked={indicator}
+               onChange={(e) => setIndicator(e.target.checked)} />
+        {t('journals.cycle.indicator.label')}
+      </label>
+      <button className="btn-primary self-end sm:col-span-2 sm:justify-self-start"
+              disabled={busy === 'cycle'}>
+        {t('journals.cycle.submit')}
+      </button>
+    </form>
+  ) : null
+
+  // Пункт чек-листа заводит ЗАКЛАД, а не мастер: `cleaning_tasks_insert`
+  // требует `compliance.write` и не принимает `compliance.journal.write`.
+  const taskForm = canManage ? (
+    <form onSubmit={addTask} className="flex gap-2">
+      <input className="input" placeholder={t('journals.cleaning.newTask.placeholder')}
+             value={newTask} onChange={(e) => setNewTask(e.target.value)} />
+      <button className="btn-secondary shrink-0"
+              disabled={!newTask.trim() || busy === 'newtask'}>
+        {t('journals.cleaning.newTask.submit')}
+      </button>
+    </form>
+  ) : null
+
+  // Что открывает кнопка «Додати запис» этого журнала. У аудита такой
+  // кнопки нет вовсе: его строки пишет триггер, руками туда не пишут.
+  const addForm = tab === 'cleaning' ? taskForm
+    : tab === 'solutions' ? solutionForm
+      : tab === 'sterilization' ? cycleForm : null
+  const addTitle = tab === 'cleaning'
+    ? t('journals.cleaning.newTask.title')
+    : t('journals.add')
 
   // Колонки таблиц CRESKO Web. Единственное место, где размер задаётся
   // строкой, — так велит `.wtable`: сетку задаёт экран, а не класс.
@@ -370,23 +604,21 @@ export function JournalsClient({
 
   return (
     <div className="flex flex-col gap-5">
-      {/* ⚠️ ВКЛАДКИ ДОСТУПНЫ НА ВСЕХ ЭКРАНАХ, и это условие сильнее вида.
-          Раньше на них висело `hidden lg:inline-flex` с объяснением
-          «на телефоне эти же вкладки живут в нижней панели приложения» —
-          объяснение устарело 15.08.2026, когда панель перестала держать
-          экраны раздела и стала держать сами разделы (CLAUDE.md →
-          «Мобильная версия»). С того дня с телефона нельзя было открыть
-          ни «Розчини», ні «Стерилізацію», ні «Дії»: человек видел первую
-          вкладку и считал, что других журналов в продукте нет.
+      {/* ⚠️ ЖУРНАЛЫ ДОСТУПНЫ НА ОБЕИХ РАСКЛАДКАХ, и это условие сильнее вида.
+          Когда-то на переключателе висело `hidden lg:inline-flex`
+          с объяснением «на телефоне эти же вкладки живут в нижней панели
+          приложения» — оно устарело 15.08.2026, когда панель перестала
+          держать экраны раздела и стала держать сами разделы (CLAUDE.md →
+          «Мобильная версия»), и с того дня с телефона нельзя было открыть
+          ни «Розчини», ні «Стерилізацію», ні «Дії».
 
-          Ниже они разведены по РАСКЛАДКАМ, а не спрятаны: чипы под палец
-          на узком экране, `.wtab` с чертой на широком. Оба списка строятся
-          из одного `tabItems` и зовут один `setTab` — иначе новая вкладка
-          появилась бы ровно в одной раскладке, и мы вернулись бы сюда же.
-
-          Правило шире одного экрана: спрятанное «потому что оно есть
-          в другом месте» стареет молча — другое место меняется, а класс
-          остаётся. Ровно так же было с `.apphead-back` (CLAUDE.md). */}
+          Сейчас переключателя на телефоне нет ВООБЩЕ, и это не откат
+          к тому же: журналы стали экраном-оглавлением (хендофф CRESKO,
+          раздел F), то есть каждый журнал открывается ссылкой на самом
+          экране, а не лентой чипов над содержимым. На lg остались
+          карточки и `.wtab`: там список и содержимое стоят рядом.
+          Оба входа строятся из одного `journalCards` — иначе новый
+          журнал появился бы ровно в одной раскладке. */}
       {/* ── CRESKO Web: хедер экрана (только lg) ─────────────────
           Слева имя экрана тем же ключом, которым его называет панель
           и вкладка браузера; справа — единственное действие уровня
@@ -394,9 +626,32 @@ export function JournalsClient({
           нет намеренно: запись в каждый журнал своя и делается формой
           внутри вкладки, а кнопка, ведущая «куда-то в журналы», была бы
           третьим входом в то же самое. */}
-      <div className="hidden items-center justify-between lg:flex">
-        <h1 className="webh1">{t('app.screen.journals.title')}</h1>
-        <div className="flex items-center gap-2">
+      <div className="hidden items-center justify-between gap-4 lg:flex">
+        {/* §12: H1 со значком журнала и подписью под ним. Значок — тот же
+            приём, что у «Клієнтів» и «Фінансів»: плашка 44px акцентом.
+            Взят `IconList`, а не `IconCheck` (значок раздела в панели)
+            и не `IconClipboard`: обоими уже помечены КАРТОЧКИ журналов
+            ниже — стерилизация и прибирання, — и третья такая же плашка
+            над ними читалась бы как ещё один журнал. Подпись — тот же
+            ключ, которым раздел описан в шторке профиля. */}
+        <div className="flex min-w-0 items-center gap-3">
+          <span aria-hidden className="flex shrink-0 items-center justify-center"
+                style={{
+                  width: 44, height: 44,
+                  borderRadius: 'var(--radius-plate)',
+                  background: 'var(--color-accent-soft)',
+                  color: 'var(--color-accent-ink)',
+                }}>
+            <IconList size={22} />
+          </span>
+          <div className="min-w-0">
+            <h1 className="webh1" data-size="27">{t('app.screen.journals.title')}</h1>
+            <p style={{ fontSize: 14, color: 'var(--color-muted)' }}>
+              {t('app.screen.journals.desc')}
+            </p>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
           {/* Техкарти — экран ТОГО ЖЕ модуля соответствия (одно право
               `compliance.read`, той же связки санитарного учёта), но
               своего пункта в навигации у него нет: реестр модулей ведёт
@@ -420,7 +675,7 @@ export function JournalsClient({
           один орган управления, а не два входа в одно место: карточка
           несёт величины, которых у вкладки нет. */}
       <section className="rise hidden lg:grid lg:grid-cols-3" style={{ gap: 14 }}>
-        {journalCards.map((c) => (
+        {sanitaryJournals.map((c) => (
           <button key={c.key} type="button" aria-pressed={tab === c.key}
                   onClick={() => setTab(c.key)}
                   className="webcard text-left"
@@ -442,7 +697,7 @@ export function JournalsClient({
             </span>
             <span className="tabular mt-1 flex items-baseline gap-1.5">
               <span style={{ fontSize: 21, fontWeight: 800, color: 'var(--color-text)' }}>
-                {t.number(c.n)}
+                {t.number(c.n ?? 0)}
               </span>
               <span style={{ fontSize: 12, color: 'var(--color-muted)' }}>
                 {t('journals.web.card.records')}
@@ -464,17 +719,8 @@ export function JournalsClient({
         ))}
       </section>
 
-      <div className="scroll-x rise -mx-4 flex items-center gap-2 px-4 pb-1 lg:hidden sm:mx-0 sm:px-0">
-        {tabItems.map(([key, label]) => (
-          <button key={key} onClick={() => setTab(key)}
-                  className={`${tab === key ? 'chip-active' : 'chip'} shrink-0`}>
-            {label}
-          </button>
-        ))}
-      </div>
-
       {/* ── CRESKO Web: вкладки чертой (только lg) ───────────────
-          Тот же `tabItems` и тот же `setTab`, что и у чипов, —
+          Тот же `tabItems` и тот же `setTab`, что и у карточек выше, —
           отличается только вид. */}
       <div className="wtabs hidden lg:flex">
         {tabItems.map(([key, label]) => (
@@ -485,28 +731,125 @@ export function JournalsClient({
         ))}
       </div>
 
-      {/* Подпись кнопки — интерфейс и переводится. САМ отчёт по этой ссылке
-          собирается всегда по-украински и от языка кабинета не зависит:
-          это документ для Держпродспоживслужби (lib/report/sanitation-report.ts).
-          На lg та же ссылка стоит в хедере экрана, поэтому здесь её нет:
-          два входа в одно действие — то, что разбор склада велел убирать. */}
-      {/* Тот же единственный вход в техкарты — и на телефоне: без него
-          раздел недостижим и там (в панели и под аватаром его нет —
-          реестр модулей ведёт на /app/journals). */}
-      <div className="rise-1 flex flex-wrap gap-2 lg:hidden">
-        <a href="/app/journals/report" target="_blank" rel="noreferrer"
-           className="btn-secondary">
-          {t('journals.report.open')}
-        </a>
-        <Link href="/app/techcards" className="btn-secondary">
-          {t('journals.links.techcards')}
+      {/* ── Оглавление журналов (телефон) ────────────────────────
+          Хендофф, раздел F: плашка, назва, опис, «Останній запис»,
+          лічильник, chevron. Ленты чипов над содержимым больше нет:
+          она была ОРГАНОМ УПРАВЛЕНИЯ на первом экране — четыре
+          пилюли, из которых три уезжали за край, — и человек видел
+          первый журнал раньше, чем узнавал, что журналов четыре.
+
+          Каждая строка — ссылка, а не кнопка состояния: адрес журнала
+          отправляют мастеру в чат, и жест «назад» обязан возвращать
+          в оглавление сам, без нашей помощи. */}
+      {chosen === null && (
+        <section className="rise flex flex-col gap-2 lg:hidden">
+          {journalCards.map((c) => (
+            <Link key={c.key} href={`/app/journals?tab=${c.key}`}
+                  className="list-card !items-start">
+              <span className="stat-tile-icon shrink-0" data-tone={c.tone}>
+                <c.icon size={18} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="t-md clamp-2 block">{c.title}</span>
+                <span className="t-sm prose-muted mt-0.5 block">{c.desc}</span>
+                {c.last && (
+                  <span className="tabular t-xs mt-1 block"
+                        style={{ color: 'var(--color-faint)' }}>
+                    {t('journals.web.card.last', { date: t.dateTime(c.last, AT) })}
+                  </span>
+                )}
+              </span>
+              {c.n !== null && (
+                <span className="badge tabular shrink-0">{t.number(c.n)}</span>
+              )}
+              <span aria-hidden className="shrink-0" style={{ color: 'var(--color-faint)' }}>
+                <IconChevronRight size={18} />
+              </span>
+            </Link>
+          ))}
+
+          {/* Техкарти — экран ТОГО ЖЕ модуля соответствия, но своего
+              пункта в навигации у него нет: реестр модулей ведёт на
+              `/app/journals`, и без этой строки раздел недостижим
+              с телефона вовсе. Это ЕДИНСТВЕННЫЙ вход, а не второй —
+              потому он и стоит в оглавлении, рядом с журналами,
+              а не кнопкой над каждым из них, как было до 19.08.2026. */}
+          <Link href="/app/techcards" className="list-card">
+            {/* Значок НЕ повторяет чей-либо из журналов: плашка здесь —
+                опознавательный знак строки, и второй планшет подряд
+                читался бы как ещё один журнал прибирання. */}
+            <span className="stat-tile-icon shrink-0" data-tone="rose">
+              <IconScissors size={18} />
+            </span>
+            <span className="t-md min-w-0 flex-1">{t('journals.links.techcards')}</span>
+            <span aria-hidden className="shrink-0" style={{ color: 'var(--color-faint)' }}>
+              <IconChevronRight size={18} />
+            </span>
+          </Link>
+
+          {/* Подпись кнопки — интерфейс и переводится. САМ отчёт по этой
+              ссылке собирается всегда по-украински и от языка кабинета
+              не зависит: это документ для Держпродспоживслужби
+              (lib/report/sanitation-report.ts). На lg та же ссылка стоит
+              в хедере экрана, поэтому второй раз здесь её нет. */}
+          <a href="/app/journals/report" target="_blank" rel="noreferrer"
+             className="btn-secondary mt-2">
+            {t('journals.report.open')}
+          </a>
+
+          {/* Раздел F требует примечание про Audit Log именно здесь,
+              на оглавлении: оно отвечает на вопрос «а можно ли это
+              подделать» раньше, чем человек откроет первый журнал.
+
+              Строка СВОЯ, а не `journals.audit.hint`: та говорит про
+              журнал ДІЙ («сюди потрапляє кожна зміна карток і партій»)
+              и стоит внутри него. Поставить её и здесь значило бы
+              обещать на оглавлении не то, что под ним лежит. */}
+          <p className="field-hint">{t('journals.list.hint')}</p>
+        </section>
+      )}
+
+      {/* Возврат в оглавление. Стрелка шапки сюда не годится: она
+          считается из АДРЕСА (`backOf` в app-shell), а журнал живёт
+          в параметре того же адреса — для оболочки это тот же экран. */}
+      {chosen !== null && (
+        <Link href="/app/journals" className="btn-ghost rise self-start !px-0 lg:hidden">
+          <IconBack size={18} />
+          {t('journals.back')}
         </Link>
-      </div>
+      )}
+
+      {/* Какой журнал открыт. Шапка кабинета называет РАЗДЕЛ («Журнали»),
+          а не журнал: она собирается из адреса, а журнал живёт в его
+          параметре. Без этой строки человек, пришедший по ссылке из чата,
+          видит записи и не знает, чьи они. */}
+      {chosen !== null && (
+        <p className="eyebrow lg:hidden">
+          {journalCards.find((c) => c.key === tab)?.title}
+        </p>
+      )}
+
+      {/* Единственное действие журнала — «Додати запис» (хендофф, раздел F:
+          `journalDay` → `journalAdd`). Форм на самом экране больше нет:
+          отчёт и техкарты ушли в оглавление, а поля — в шторку.
+
+          Заливкой акцента набрано только то, что ПИШЕТ В ЖУРНАЛ. Состав
+          чек-листа — настройка заклада, её трогают раз в жизни, и кричать
+          громче отметки «Виконано» она не имеет права (CLAUDE.md: акцент —
+          дефицитный ресурс). */}
+      {chosen !== null && addForm !== null && (
+        <button type="button"
+                className={`${tab === 'cleaning' ? 'btn-secondary' : 'btn-primary'} rise-1 lg:hidden`}
+                onClick={() => { setErr(''); setAdding(true) }}>
+          <IconPlus size={18} />
+          {addTitle}
+        </button>
+      )}
 
       {err && <p className="field-error rise">{err}</p>}
 
       {tab === 'cleaning' && (
-        <section className="flex flex-col gap-4">
+        <section className={`flex flex-col gap-4 ${chosen === null ? 'hidden lg:flex' : ''}`}>
           <div className="card rise-1 !p-0 lg:hidden">
             {tasks.length === 0 ? (
               <div className="empty">
@@ -526,8 +869,11 @@ export function JournalsClient({
                         onClick={() => void openHistory(task)}>
                   <p className="t-md">{task.name}</p>
                   {task.doneToday && task.doneAt ? (
+                    // Только час: отметка всегда СЕГОДНЯШНЯЯ (запрос
+                    // `entries` обрезан текущим днём), и дата рядом
+                    // с бейджем «сьогодні ✓» повторяла его словом.
                     <p className="t-xs prose-muted">
-                      {t.dateTime(task.doneAt, AT)} · <Performer name={task.donePerformer} />
+                      {t.dateTime(task.doneAt, TIME)} · <Performer name={task.donePerformer} />
                     </p>
                   ) : task.schedule ? (
                     <p className="t-xs prose-muted">{task.schedule}</p>
@@ -619,52 +965,28 @@ export function JournalsClient({
             )}
           </div>
 
-          {canManage && (
-            <form onSubmit={addTask} className="rise-2 flex gap-2">
-              <input className="input" placeholder={t('journals.cleaning.newTask.placeholder')}
-                     value={newTask} onChange={(e) => setNewTask(e.target.value)} />
-              <button className="btn-secondary shrink-0" disabled={!newTask.trim() || busy === 'newtask'}>
-                {t('journals.cleaning.newTask.submit')}
-              </button>
-            </form>
+          {/* На телефоне эта же форма приезжает шторкой по кнопке
+              «Новий пункт чек-листа» — см. `addForm` ниже.
+
+              На lg она лежит В КАРТОЧКЕ, как формы двух других журналов
+              рядом: поле и кнопка прямо на фоне страницы — единственное
+              место экрана без поверхности под собой, и на светлом фоне
+              CRESKO Web это читается как обрывок таблицы выше. */}
+          {taskForm && (
+            <div className="card rise-2 hidden lg:block">
+              <h2 className="webh2 mb-3">{t('journals.cleaning.newTask.title')}</h2>
+              {taskForm}
+            </div>
           )}
           <p className="field-hint">{t('journals.cleaning.hint')}</p>
         </section>
       )}
 
       {tab === 'solutions' && (
-        <section className="flex flex-col gap-4">
-          {canWrite && (
-          <form onSubmit={addSolution} className="card rise-1 grid gap-3 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <label className="field-label">{t('journals.solution.agent.label')}</label>
-              <input required className="input" placeholder={t('journals.solution.agent.placeholder')}
-                     value={agent} onChange={(e) => setAgent(e.target.value)} />
-            </div>
-            <div>
-              <label className="field-label">{t('journals.solution.conc.label')}</label>
-              <input required className="input" placeholder={t('journals.solution.conc.placeholder')}
-                     value={conc} onChange={(e) => setConc(e.target.value)} />
-            </div>
-            <div>
-              <label className="field-label">{t('journals.solution.volume.label')}</label>
-              <input required type="number" step="0.1" min="0.1" className="input"
-                     value={vol} onChange={(e) => setVol(e.target.value)} />
-            </div>
-            <div>
-              <label className="field-label">{t('journals.solution.hours.label')}</label>
-              <input required type="number" min="1" className="input"
-                     value={hours} onChange={(e) => setHours(e.target.value)} />
-            </div>
-            <button className="btn-primary self-end" disabled={busy === 'solution'}>
-              {t('journals.solution.submit')}
-            </button>
-          </form>
-          )}
-
+        <section className={`flex flex-col gap-4 ${chosen === null ? 'hidden lg:flex' : ''}`}>
           {/* ── CRESKO Web: журнал розчинів таблицей (только lg) ────
               Ни одного действия у строки нет и на телефоне — розчин
-              записывают формой выше, а запись журнала неизменяема.
+              записывают формой под таблицей, а запись журнала неизменяема.
               Поэтому строки здесь не нажимаются: нажатие, которое
               ничего не открывает, читается как поломка. */}
           <div className="wtable hidden lg:block">
@@ -720,64 +1042,86 @@ export function JournalsClient({
             )}
           </div>
 
-          <div className="card rise-2 !p-0 lg:hidden">
-            {solutions.length === 0 ? (
+          {/* ⚠️ ФОРМА СТОИТ ПОД ТАБЛИЦЕЙ, А НЕ НАД НЕЙ (перенесено
+              20.08.2026). Пять полей над журналом занимали первый экран
+              и на 1440×900 оставляли под собой две строки записей: сюда
+              заходят СМОТРЕТЬ (на каждой проверке), а записывают раз
+              в смену. В §12 хендоффа формы на экране нет вовсе — там
+              запись открывается кнопкой; шторка у нас именно так
+              и работает ниже lg. Тот же порядок теперь у всех трёх
+              журналов: сначала записи, потом форма. */}
+          {solutionForm && (
+            <div className="card rise-2 hidden lg:block">
+              <h2 className="webh2 mb-3">{t('journals.add')}</h2>
+              {solutionForm}
+            </div>
+          )}
+
+          {/* ── Журнал розчинів по дням (телефон) ────────────────
+              Хендофф, раздел F: «Записи за {дата}» и строка записи
+              с часом акцентом. Бейдж набран ОДНИМ СЛОВОМ («придатний» /
+              «непридатний»): до 19.08.2026 в него уезжала дата
+              окончания срока, и на 390px пилюля переносилась в две
+              строки, разваливая строку записи. Сам срок никуда не делся
+              — он в карточке записи, где у него есть подпись. */}
+          {solutions.length === 0 ? (
+            <div className="card rise-2 lg:hidden">
               <div className="empty">{t('journals.solutions.empty')}</div>
-            ) : solutions.map((s) => {
-              const active = new Date(s.expires_at) > new Date()
-              return (
-                <div key={s.id} className="row px-5">
-                  <div>
-                    {/* Назва засобу и концентрация — данные записи журнала. */}
-                    <p className="t-md">{s.agent_name} · {s.concentration}</p>
-                    <p className="tabular t-xs prose-muted">
-                      {t.number(Number(s.volume))} {s.unit}
-                      {' · '}{t('journals.solution.prepared', { date: t.dateTime(s.prepared_at, AT) })}
-                      {' · '}<Performer name={s.performer} />
-                    </p>
-                  </div>
-                  <span className={active ? 'badge-success tabular' : 'badge tabular'}>
-                    {active
-                      ? t('journals.solution.until', { date: t.dateTime(s.expires_at, AT) })
-                      : t('journals.solution.expired')}
-                  </span>
-                </div>
-              )
-            })}
-          </div>
+            </div>
+          ) : byDay(solutions, (s) => s.prepared_at).map((day) => (
+            <div key={day.key} className="rise-2 flex flex-col gap-2 lg:hidden">
+              <p className="eyebrow">
+                {t('journals.day.records', { date: t.date(day.at, DAY) })}
+              </p>
+              <div className="card !p-0">
+                {day.items.map((s) => {
+                  const active = new Date(s.expires_at) > new Date()
+                  return (
+                    <EntryRow
+                      key={s.id} at={s.prepared_at}
+                      // Назва засобу — данные записи журнала. Концентрация
+                      // ушла во вторую строку: в заголовке она разрывала
+                      // название засоба переносом на 390px, а различают
+                      // засоби по имени, а не по проценту.
+                      title={s.agent_name}
+                      meta={(
+                        <>
+                          {s.concentration}{' · '}<Performer name={s.performer} />
+                        </>
+                      )}
+                      badge={(
+                        <span className={active ? 'badge-success' : 'badge'}>
+                          {active
+                            ? t('journals.solution.valid')
+                            : t('journals.solution.expired')}
+                        </span>
+                      )}
+                      onOpen={() => setEntry({
+                        title: s.agent_name,
+                        rows: [
+                          [t('journals.entry.at'), t.dateTime(s.prepared_at, AT)],
+                          [t('journals.solution.conc.label'), s.concentration],
+                          [t('journals.web.table.volume'),
+                            `${t.number(Number(s.volume))} ${s.unit}`],
+                          [t('journals.web.table.validity'),
+                            active
+                              ? t('journals.solution.until', { date: t.dateTime(s.expires_at, AT) })
+                              : t('journals.solution.expired')],
+                          [t('journals.web.table.performer'),
+                            <Performer key="p" name={s.performer} />],
+                        ],
+                      })}
+                    />
+                  )
+                })}
+              </div>
+            </div>
+          ))}
         </section>
       )}
 
       {tab === 'sterilization' && (
-        <section className="flex flex-col gap-4">
-          {canWrite && (
-          <form onSubmit={addCycle} className="card rise-1 grid gap-3 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <label className="field-label">{t('journals.cycle.device.label')}</label>
-              <input required className="input" value={device}
-                     onChange={(e) => setDevice(e.target.value)} />
-            </div>
-            <div>
-              <label className="field-label">{t('journals.cycle.temp.label')}</label>
-              <input required type="number" min="1" className="input"
-                     value={temp} onChange={(e) => setTemp(e.target.value)} />
-            </div>
-            <div>
-              <label className="field-label">{t('journals.cycle.mins.label')}</label>
-              <input required type="number" min="1" className="input"
-                     value={mins} onChange={(e) => setMins(e.target.value)} />
-            </div>
-            <label className="t-md flex items-center gap-2 sm:col-span-2">
-              <input type="checkbox" checked={indicator}
-                     onChange={(e) => setIndicator(e.target.checked)} />
-              {t('journals.cycle.indicator.label')}
-            </label>
-            <button className="btn-primary self-end" disabled={busy === 'cycle'}>
-              {t('journals.cycle.submit')}
-            </button>
-          </form>
-          )}
-
+        <section className={`flex flex-col gap-4 ${chosen === null ? 'hidden lg:flex' : ''}`}>
           {/* ── CRESKO Web: журнал стерилізації таблицей (только lg) ── */}
           <div className="wtable hidden lg:block">
             <div className="wtable-head" style={{ gridTemplateColumns: GRID_CYCLES }}>
@@ -824,29 +1168,64 @@ export function JournalsClient({
             )}
           </div>
 
-          <div className="card rise-2 !p-0 lg:hidden">
-            {cycles.length === 0 ? (
+          {/* Форма — под таблицей, как у двух журналов выше (разбор там же). */}
+          {cycleForm && (
+            <div className="card rise-2 hidden lg:block">
+              <h2 className="webh2 mb-3">{t('journals.add')}</h2>
+              {cycleForm}
+            </div>
+          )}
+
+          {/* ── Журнал стерилізації по дням (телефон) ────────────
+              Провал цикла — ТАКАЯ ЖЕ запись, как успешный: журнал
+              обязан показывать её рядом, а не прятать. Красный бейдж
+              и есть то, ради чего проверка сюда смотрит. */}
+          {cycles.length === 0 ? (
+            <div className="card rise-2 lg:hidden">
               <div className="empty">{t('journals.cycles.empty')}</div>
-            ) : cycles.map((c) => (
-              <div key={c.id} className="row px-5">
-                <div>
-                  {/* Назва пристрою — данные записи журнала. */}
-                  <p className="t-md">{c.device}</p>
-                  <p className="tabular t-xs prose-muted">
-                    {t('journals.cycle.line', {
-                      temp: t.number(c.temperature_c),
-                      mins: t.number(c.duration_minutes),
+            </div>
+          ) : byDay(cycles, (c) => c.performed_at).map((day) => (
+            <div key={day.key} className="rise-2 flex flex-col gap-2 lg:hidden">
+              <p className="eyebrow">
+                {t('journals.day.records', { date: t.date(day.at, DAY) })}
+              </p>
+              <div className="card !p-0">
+                {day.items.map((c) => (
+                  <EntryRow
+                    key={c.id} at={c.performed_at}
+                    // Назва пристрою — данные записи журнала.
+                    title={c.device}
+                    meta={(
+                      <>
+                        {t('journals.cycle.line', {
+                          temp: t.number(c.temperature_c),
+                          mins: t.number(c.duration_minutes),
+                        })}
+                        {' · '}<Performer name={c.performer} />
+                      </>
+                    )}
+                    badge={(
+                      <span className={c.indicator_ok ? 'badge-success' : 'badge-danger'}>
+                        {c.indicator_ok ? t('journals.cycle.ok') : t('journals.cycle.fail')}
+                      </span>
+                    )}
+                    onOpen={() => setEntry({
+                      title: c.device,
+                      rows: [
+                        [t('journals.entry.at'), t.dateTime(c.performed_at, AT)],
+                        [t('journals.cycle.temp.label'), `${t.number(c.temperature_c)} °C`],
+                        [t('journals.cycle.mins.label'), t.number(c.duration_minutes)],
+                        [t('journals.web.table.indicator'),
+                          c.indicator_ok ? t('journals.cycle.ok') : t('journals.cycle.fail')],
+                        [t('journals.web.table.performer'),
+                          <Performer key="p" name={c.performer} />],
+                      ],
                     })}
-                    {' · '}{t.dateTime(c.performed_at, AT)}
-                    {' · '}<Performer name={c.performer} />
-                  </p>
-                </div>
-                <span className={c.indicator_ok ? 'badge-success' : 'badge-danger'}>
-                  {c.indicator_ok ? t('journals.cycle.ok') : t('journals.cycle.fail')}
-                </span>
+                  />
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </section>
       )}
 
@@ -855,7 +1234,7 @@ export function JournalsClient({
           на запитання інспектора «хто і коли це виправив» — і водночас
           захист самого власника від «я нічого не міняв». */}
       {tab === 'actions' && (
-        <section className="flex flex-col gap-4">
+        <section className={`flex flex-col gap-4 ${chosen === null ? 'hidden lg:flex' : ''}`}>
           <p className="field-hint rise">{t('journals.audit.hint')}</p>
 
           {/* ── CRESKO Web: журнал дій таблицей (только lg) ─────────
@@ -897,31 +1276,63 @@ export function JournalsClient({
             )}
           </div>
 
-          <div className="card rise-1 !p-0 lg:hidden">
-            {audit === null ? (
+          {/* ── Журнал дій по дням (телефон) ─────────────────────
+              Та же строка записи, что и в санитарных журналах: час
+              акцентом слева, событие и автор посередине. Дата уехала
+              из бейджа справа в заголовок дня — она повторялась
+              у каждой строки подряд, а бейджем набирают СОСТОЯНИЕ,
+              и дата в его форме читалась как «статус: 19 серп.».
+              Карточки у записи аудита нет: всё, что о ней известно,
+              уже в строке — открывать нечего. */}
+          {audit === null ? (
+            <div className="card rise-1 lg:hidden">
               <div className="empty">{t('journals.audit.loading')}</div>
-            ) : audit.length === 0 ? (
+            </div>
+          ) : audit.length === 0 ? (
+            <div className="card rise-1 lg:hidden">
               <div className="empty">{t('journals.audit.empty')}</div>
-            ) : audit.map((a) => (
-              <div key={a.id} className="row px-5">
-                <div className="min-w-0">
-                  <p className="t-md truncate">
-                    {actionLabel(t, a.action)}{' '}
-                    {entityLabel(t, a.entity)}
-                    {/* `label` — имя изменённой строки (назва засобу, номер
-                        партії): данные арендатора, не переводятся. */}
-                    {a.label ? <span className="prose-muted"> · {a.label}</span> : null}
-                  </p>
-                  <p className="t-xs prose-muted truncate">
-                    {a.actor_email ?? t('journals.audit.system')}
-                  </p>
-                </div>
-                <span className="badge tabular shrink-0">{t.dateTime(a.at, AT)}</span>
+            </div>
+          ) : byDay(audit, (a) => a.at).map((day) => (
+            <div key={day.key} className="rise-1 flex flex-col gap-2 lg:hidden">
+              <p className="eyebrow">
+                {t('journals.day.records', { date: t.date(day.at, DAY) })}
+              </p>
+              <div className="card !p-0">
+                {day.items.map((a) => (
+                  <div key={a.id} className="row px-5">
+                    <span className="tabular t-base shrink-0 font-bold"
+                          style={{ color: 'var(--color-accent-ink)', width: 42 }}>
+                      {t.dateTime(a.at, TIME)}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="t-md clamp-2 block">
+                        {actionLabel(t, a.action)}{' '}
+                        {entityLabel(t, a.entity)}
+                        {/* `label` — имя изменённой строки (назва засобу,
+                            номер партії): данные арендатора, не переводятся. */}
+                        {a.label ? <span className="prose-muted"> · {a.label}</span> : null}
+                      </span>
+                      <span className="t-xs prose-muted mt-0.5 block truncate">
+                        {a.actor_email ?? t('journals.audit.system')}
+                      </span>
+                    </span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </section>
       )}
+      {/* ── Запись в журнал (телефон) ───────────────────────────
+          Одна шторка на все журналы: поля берутся у того, что открыт.
+          Три шторки подряд означали бы три состояния «открыто» и три
+          места, где можно забыть закрыть. */}
+      <Sheet open={adding && addForm !== null} onClose={() => setAdding(false)}
+             title={addTitle}>
+        {err && <p className="field-error mb-3">{err}</p>}
+        {addForm}
+      </Sheet>
+
       {/* ── История отметок по пункту чек-листа ─────────────────
           ТЗ 3.3 называет это журналом, а не «состоянием на сегодня».
           Здесь видно ровно то, что напечатано в отчёте для проверки:
@@ -948,13 +1359,36 @@ export function JournalsClient({
             <div className="flex flex-col">
               {(history?.rows ?? []).map((r) => (
                 <div key={r.id} className="row">
-                  <span className="tabular t-md">{t.dateTime(r.at, AT)}</span>
+                  {/* Дата акцентом — тем же приёмом, что и час в строке
+                      записи: по времени эту таблицу и читают. */}
+                  <span className="tabular t-base font-bold"
+                        style={{ color: 'var(--color-accent-ink)' }}>
+                    {t.dateTime(r.at, AT)}
+                  </span>
                   <span className="t-sm prose-muted"><Performer name={r.performer} /></span>
                 </div>
               ))}
             </div>
           </>
         )}
+      </Sheet>
+
+      {/* ── Картка запису журналу (`journalEntry`, розділ F) ────
+          Поля таблицей «ключ → значення», как в хендоффе. Ни правки,
+          ни удаления: запись санитарного журнала неизменяема свойством
+          базы, и об этом же говорит подпись внизу — иначе отсутствие
+          кнопок читается как «забыли сделать». */}
+      <Sheet open={entry !== null} onClose={() => setEntry(null)}
+             title={entry?.title}>
+        <div className="kv">
+          {(entry?.rows ?? []).map(([label, value]) => (
+            <div key={label} className="kv-row">
+              <span className="kv-key">{label}</span>
+              <span className="kv-val tabular">{value}</span>
+            </div>
+          ))}
+        </div>
+        <p className="field-hint mt-3">{t('journals.entry.hint')}</p>
       </Sheet>
 
     </div>

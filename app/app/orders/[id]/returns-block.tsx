@@ -89,8 +89,14 @@ export function ReturnsBlock({
 
       {err && <p className="field-error rise">{err}</p>}
 
+      {/* «Повернень немає» пишем только тому, кто НЕ может их завести:
+          рядом с кнопкой «Оформити повернення» эта строка сообщает то же
+          самое второй раз — пустой список и так пуст, а кнопка уже
+          говорит, что делать. */}
       {returns.length === 0 ? (
-        <p className="t-sm prose-muted">{t('returns.empty')}</p>
+        canWrite && returnable.length > 0
+          ? null
+          : <p className="t-sm prose-muted">{t('returns.empty')}</p>
       ) : (
         <div className="flex flex-col gap-3">
           {returns.map((r) => (
