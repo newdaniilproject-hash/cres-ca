@@ -396,38 +396,49 @@ export function TechCardsClient({
           Мобильной раскладки условие не касается — все эти блоки
           и так `hidden` ниже lg. */}
       {!draft && !webGroup && (
-      <div className="hidden items-center justify-between lg:flex">
-        <h1 className="webh1">{t('app.screen.techcards.title')}</h1>
+      <div className="hidden items-center justify-between gap-4 lg:flex">
+        {/* Плашка 44px + H1 27px + подпись — тот же хедер, что у «Клієнтів»
+            и «Фінансів» (§5 README: техкарты в списке экранов с плашкой,
+            то есть H1 у них 27px, а не 29px). Значок тот же, что у строк
+            таблицы и у карточки §6: это опознавательный знак техкарты,
+            а не украшение хедера. Подпись — тот же ключ, которым раздел
+            описан в шторке профиля; второй строки про то же самое
+            в продукте нет. */}
+        <div className="flex min-w-0 items-center gap-3">
+          <span aria-hidden className="flex shrink-0 items-center justify-center"
+                style={{
+                  width: 44, height: 44,
+                  borderRadius: 'var(--radius-plate)',
+                  background: 'var(--color-accent-soft)',
+                  color: 'var(--color-accent-ink)',
+                }}>
+            <IconClipboard size={22} />
+          </span>
+          <div className="min-w-0">
+            <h1 className="webh1" data-size="27">{t('app.screen.techcards.title')}</h1>
+            <p style={{ fontSize: 14, color: 'var(--color-muted)' }}>
+              {t('app.screen.techcards.desc')}
+            </p>
+          </div>
+        </div>
         {canWrite && (
-          <button type="button" className="btn-primary" onClick={startNew}>
+          <button type="button" className="btn-primary shrink-0" onClick={startNew}>
+            <IconPlus size={18} />
             {t('techcards.new')}
           </button>
         )}
       </div>
       )}
 
-      {/* ── CRESKO Web: метрики (только lg) ──────────────────────
-          Те же три числа, что и в мобильном ряду ниже, в виде .wmetric
-          с иконкой-плашкой. Плитки не нажимаются: фильтр живёт
-          во вкладках, и второй орган управления с тем же действием —
-          это два входа в одно место. */}
-      {!draft && !webGroup && (
-      <section className="rise hidden gap-4 lg:grid lg:grid-cols-3">
-        {([
-          { key: 'cards', n: groups.length, label: t('techcards.stats.cards'), tone: 'violet', icon: IconClipboard },
-          { key: 'linked', n: linked.length, label: t('techcards.stats.linked'), tone: 'blue', icon: IconScissors },
-          { key: 'versions', n: cards.length, label: t('techcards.stats.versions'), tone: 'emerald', icon: IconLayers },
-        ] as const).map((s) => (
-          <div key={s.key} className="wmetric">
-            <span className="min-w-0">
-              <span className="wmetric-label block">{s.label}</span>
-              <span className="wmetric-value tabular block">{t.number(s.n)}</span>
-            </span>
-            <span className="wmetric-icon" data-tone={s.tone}><s.icon size={19} /></span>
-          </div>
-        ))}
-      </section>
-      )}
+      {/* ⚠️ РЯДА .wmetric НА lg ЗДЕСЬ БОЛЬШЕ НЕТ, и это снятый дубль,
+          а не потеря. Плитки показывали «Техкарт 3» и «До послуг 2» —
+          ровно те же два числа, что стоят В САМИХ ВКЛАДКАХ ниже
+          («Усі · 3», «До послуг · 2»), только вкладка ещё и фильтрует,
+          а плитка не делала ничего. Третье число (версий всего) осталось
+          в колонке «Версії» у каждой карты, где у него есть смысл.
+          В §5 хендоффа ряда метрик нет вовсе: экран идёт H1 → таби →
+          інструменти → таблиця. Мобильный ряд ниже сохранён — там
+          вкладок нет, и эти три числа единственные. */}
 
       {/* README, розділ G: «стат-хедер». Сетки миниатюр из макета здесь
           НЕТ намеренно: у техкарты нет ни фото, ни чего-либо, что можно
@@ -472,7 +483,16 @@ export function TechCardsClient({
       {err && <p className="field-error rise">{err}</p>}
 
       {draft && (
-        <form onSubmit={save} className="card rise-1 flex flex-col gap-4">
+        // ⚠️ НА lg ФОРМА САМА КАРТОЧКОЙ НЕ ЯВЛЯЕТСЯ. В §7 «Назад до
+        // техкарт», H1 с подписью и стрічка кроків стоят НА ФОНЕ
+        // страницы, а карточка начинается с «Основної інформації», —
+        // и это не вкус: карточка вокруг всего делала хедер визарда
+        // белой полосой во всю ширину, то есть второй шапкой под
+        // настоящей. Ниже lg всё остаётся как было, одной карточкой:
+        // на 390px фон и карточка не различаются по ширине, и вторая
+        // рамка вокруг формы там лишняя.
+        <form onSubmit={save}
+              className="card rise-1 flex flex-col gap-4 lg:!border-0 lg:!bg-transparent lg:!p-0 lg:!shadow-none">
           {/* ── CRESKO Web §7: шапка визарда (только lg) ────────────
               «Назад до техкарт» закрывает черновик — черновика в базе
               не существует, карта затверджується одразу (0014), поэтому
@@ -577,6 +597,24 @@ export function TechCardsClient({
               {t('techcards.draft.version', { n: t.number(draft.version) })}
             </span>
           </div>
+
+          {/* Содержимое шага — карточка §7. Класс `.webcard` объявлен
+              ВНУТРИ медиа-запроса lg (globals.css), поэтому на телефоне
+              этот div не рисует ничего и остаётся простой колонкой:
+              вторая рамка внутри мобильной карточки была бы рамкой
+              в рамке. */}
+          <div className="webcard flex flex-col gap-4">
+          {/* Имя шага над полями — то же, что подписано в стрічці кроків.
+              Ключи те же: два списка названий шагов разъехались бы
+              на первой правке. У «Перевірки» свой заголовок ниже —
+              он объясняет, что с этим делать, а не повторяет номер. */}
+          {wstep < 2 && (
+            <h2 className="webh2 hidden lg:block">
+              {wstep === 0
+                ? t('techcards.wizard.step.basics')
+                : t('techcards.wizard.step.steps')}
+            </h2>
+          )}
 
           <div className={`grid gap-3 sm:grid-cols-2 ${wstep === 0 ? '' : 'lg:hidden'}`}>
             <div>
@@ -730,6 +768,7 @@ export function TechCardsClient({
             </button>
           </div>
           <p className="field-hint">{t('techcards.form.hint')}</p>
+          </div>
         </form>
       )}
 
@@ -1143,7 +1182,15 @@ export function TechCardsClient({
         </button>
       )}
 
-      <p className="field-hint rise-3">{t('techcards.footer')}</p>
+      {/* ⚠️ ЭТО ЖЕ ПРАВИЛО НА lg УЖЕ НАПЕЧАТАНО В КАРТОЧКЕ §6 (блок
+          «Затвердження» правой колонки) и в подсказке визарда, поэтому
+          при открытой карточке или визарде подвала здесь нет: один
+          и тот же абзац дважды на экране человек читает как ошибку
+          вёрстки, а не как важное. На телефоне карточки-экрана §6 нет
+          вовсе, и подвал остаётся единственным местом, где это сказано. */}
+      <p className={`field-hint rise-3 ${webGroup || draft ? 'lg:hidden' : ''}`}>
+        {t('techcards.footer')}
+      </p>
     </div>
   )
 }

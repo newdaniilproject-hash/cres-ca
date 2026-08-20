@@ -11,8 +11,8 @@ import type { T } from '@/lib/i18n/translate'
 import { dbErrorText } from '@/lib/errors/db'
 import { Sheet } from '@/components/sheet'
 import {
-  IconBack, IconBeaker, IconCheck, IconChevronRight, IconClipboard, IconDoc, IconPlus,
-  IconScissors,
+  IconBack, IconBeaker, IconCheck, IconChevronRight, IconClipboard, IconDoc, IconList,
+  IconPlus, IconScissors,
 } from '@/components/icons'
 
 // Дата и время записи журнала — «16 серп., 14:05». Это НАБОР ОПЦИЙ,
@@ -626,9 +626,32 @@ export function JournalsClient({
           нет намеренно: запись в каждый журнал своя и делается формой
           внутри вкладки, а кнопка, ведущая «куда-то в журналы», была бы
           третьим входом в то же самое. */}
-      <div className="hidden items-center justify-between lg:flex">
-        <h1 className="webh1">{t('app.screen.journals.title')}</h1>
-        <div className="flex items-center gap-2">
+      <div className="hidden items-center justify-between gap-4 lg:flex">
+        {/* §12: H1 со значком журнала и подписью под ним. Значок — тот же
+            приём, что у «Клієнтів» и «Фінансів»: плашка 44px акцентом.
+            Взят `IconList`, а не `IconCheck` (значок раздела в панели)
+            и не `IconClipboard`: обоими уже помечены КАРТОЧКИ журналов
+            ниже — стерилизация и прибирання, — и третья такая же плашка
+            над ними читалась бы как ещё один журнал. Подпись — тот же
+            ключ, которым раздел описан в шторке профиля. */}
+        <div className="flex min-w-0 items-center gap-3">
+          <span aria-hidden className="flex shrink-0 items-center justify-center"
+                style={{
+                  width: 44, height: 44,
+                  borderRadius: 'var(--radius-plate)',
+                  background: 'var(--color-accent-soft)',
+                  color: 'var(--color-accent-ink)',
+                }}>
+            <IconList size={22} />
+          </span>
+          <div className="min-w-0">
+            <h1 className="webh1" data-size="27">{t('app.screen.journals.title')}</h1>
+            <p style={{ fontSize: 14, color: 'var(--color-muted)' }}>
+              {t('app.screen.journals.desc')}
+            </p>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
           {/* Техкарти — экран ТОГО ЖЕ модуля соответствия (одно право
               `compliance.read`, той же связки санитарного учёта), но
               своего пункта в навигации у него нет: реестр модулей ведёт
@@ -943,22 +966,27 @@ export function JournalsClient({
           </div>
 
           {/* На телефоне эта же форма приезжает шторкой по кнопке
-              «Новий пункт чек-листа» — см. `addForm` ниже. */}
-          {taskForm && <div className="rise-2 hidden lg:block">{taskForm}</div>}
+              «Новий пункт чек-листа» — см. `addForm` ниже.
+
+              На lg она лежит В КАРТОЧКЕ, как формы двух других журналов
+              рядом: поле и кнопка прямо на фоне страницы — единственное
+              место экрана без поверхности под собой, и на светлом фоне
+              CRESKO Web это читается как обрывок таблицы выше. */}
+          {taskForm && (
+            <div className="card rise-2 hidden lg:block">
+              <h2 className="webh2 mb-3">{t('journals.cleaning.newTask.title')}</h2>
+              {taskForm}
+            </div>
+          )}
           <p className="field-hint">{t('journals.cleaning.hint')}</p>
         </section>
       )}
 
       {tab === 'solutions' && (
         <section className={`flex flex-col gap-4 ${chosen === null ? 'hidden lg:flex' : ''}`}>
-          {/* На телефоне та же форма приезжает шторкой по кнопке
-              «Додати запис»: четыре поля занимали первый экран, и записи
-              журнала начинались за сгибом. */}
-          {solutionForm && <div className="card rise-1 hidden lg:block">{solutionForm}</div>}
-
           {/* ── CRESKO Web: журнал розчинів таблицей (только lg) ────
               Ни одного действия у строки нет и на телефоне — розчин
-              записывают формой выше, а запись журнала неизменяема.
+              записывают формой под таблицей, а запись журнала неизменяема.
               Поэтому строки здесь не нажимаются: нажатие, которое
               ничего не открывает, читается как поломка. */}
           <div className="wtable hidden lg:block">
@@ -1013,6 +1041,21 @@ export function JournalsClient({
               </div>
             )}
           </div>
+
+          {/* ⚠️ ФОРМА СТОИТ ПОД ТАБЛИЦЕЙ, А НЕ НАД НЕЙ (перенесено
+              20.08.2026). Пять полей над журналом занимали первый экран
+              и на 1440×900 оставляли под собой две строки записей: сюда
+              заходят СМОТРЕТЬ (на каждой проверке), а записывают раз
+              в смену. В §12 хендоффа формы на экране нет вовсе — там
+              запись открывается кнопкой; шторка у нас именно так
+              и работает ниже lg. Тот же порядок теперь у всех трёх
+              журналов: сначала записи, потом форма. */}
+          {solutionForm && (
+            <div className="card rise-2 hidden lg:block">
+              <h2 className="webh2 mb-3">{t('journals.add')}</h2>
+              {solutionForm}
+            </div>
+          )}
 
           {/* ── Журнал розчинів по дням (телефон) ────────────────
               Хендофф, раздел F: «Записи за {дата}» и строка записи
@@ -1079,10 +1122,6 @@ export function JournalsClient({
 
       {tab === 'sterilization' && (
         <section className={`flex flex-col gap-4 ${chosen === null ? 'hidden lg:flex' : ''}`}>
-          {/* На телефоне та же форма приезжает шторкой по кнопке
-              «Додати запис». */}
-          {cycleForm && <div className="card rise-1 hidden lg:block">{cycleForm}</div>}
-
           {/* ── CRESKO Web: журнал стерилізації таблицей (только lg) ── */}
           <div className="wtable hidden lg:block">
             <div className="wtable-head" style={{ gridTemplateColumns: GRID_CYCLES }}>
@@ -1128,6 +1167,14 @@ export function JournalsClient({
               </div>
             )}
           </div>
+
+          {/* Форма — под таблицей, как у двух журналов выше (разбор там же). */}
+          {cycleForm && (
+            <div className="card rise-2 hidden lg:block">
+              <h2 className="webh2 mb-3">{t('journals.add')}</h2>
+              {cycleForm}
+            </div>
+          )}
 
           {/* ── Журнал стерилізації по дням (телефон) ────────────
               Провал цикла — ТАКАЯ ЖЕ запись, как успешный: журнал

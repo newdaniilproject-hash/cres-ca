@@ -9,7 +9,7 @@ import type { T } from '@/lib/i18n/translate'
 
 import { DOC_KINDS as KINDS, documentSignedUrl, fmtSize, type DocKind } from '@/lib/documents'
 import { Sheet } from '@/components/sheet'
-import { IconAlert, IconBeaker, IconDoc, IconLayers } from '@/components/icons'
+import { IconAlert, IconBeaker, IconDoc, IconLayers, IconPlus } from '@/components/icons'
 import {
   DOC_EXT_BY_MIME as EXT_BY_MIME,
   DOC_MAX_BYTES as MAX_BYTES,
@@ -289,11 +289,38 @@ export function DocumentsClient({
           что и на телефоне. Кнопка одна на обе раскладки по смыслу,
           но не по разметке: на телефоне она во всю ширину под шапкой,
           на вебе — в правом углу хедера. */}
-      <div className="hidden items-center justify-between lg:flex">
-        <h1 className="webh1">{t('app.screen.documents.title')}</h1>
+      <div className="hidden items-center justify-between gap-4 lg:flex">
+        {/* §14: H1 со значком документа и подписью. Плашка 44px акцентом —
+            тот же хедер, что у «Клієнтів», «Фінансів» и «Техкарт»: один
+            приём на все экраны кабинета, а не свой у каждого. Значок
+            повторяет плитку «Всього документів» ниже намеренно — это
+            один и тот же предмет, и в макете хендоффа он тот же самый.
+            Подпись — ключ, которым раздел описан в шторке профиля. */}
+        <div className="flex min-w-0 items-center gap-3">
+          <span aria-hidden className="flex shrink-0 items-center justify-center"
+                style={{
+                  width: 44, height: 44,
+                  borderRadius: 'var(--radius-plate)',
+                  background: 'var(--color-accent-soft)',
+                  color: 'var(--color-accent-ink)',
+                }}>
+            <IconDoc size={22} />
+          </span>
+          <div className="min-w-0">
+            <h1 className="webh1" data-size="27">{t('app.screen.documents.title')}</h1>
+            <p style={{ fontSize: 14, color: 'var(--color-muted)' }}>
+              {t('app.screen.documents.desc')}
+            </p>
+          </div>
+        </div>
         {canWrite && (
-          <button type="button" className="btn-primary"
+          // Кнопка со split-chevron из §14 здесь без шеврона: он
+          // открывает список ВТОРЫХ действий («створити з шаблону»
+          // и т.п.), а действие тут ровно одно. Шеврон, ничего
+          // не открывающий, — сломанная навигация.
+          <button type="button" className="btn-primary shrink-0"
                   onClick={() => { setErr(''); setUploading(true) }}>
+            <IconPlus size={18} />
             {t('documents.upload.submit')}
           </button>
         )}
@@ -313,13 +340,24 @@ export function DocumentsClient({
           об одну плитку. До xl их три. */}
       <section className="rise hidden gap-4 lg:grid lg:grid-cols-3 xl:grid-cols-5">
         {metrics.map((s) => (
-          <div key={s.key} className="wmetric">
-            <span className="min-w-0">
-              <span className="wmetric-label block">{s.label}</span>
-              <span className="wmetric-value tabular block">{t.number(s.n)}</span>
-              {s.note && <span className="wmetric-note mt-0.5 block">{s.note}</span>}
+          // ⚠️ РАСКЛАДКА ПЛИТКИ ЗДЕСЬ ДРУГАЯ, ЧЕМ НА СКЛАДЕ, и это
+          // не самодеятельность: §8 хендоффа ставит подпись слева,
+          // а плашку справа, §14 — плашку И подпись ОДНОЙ СТРОКОЙ
+          // сверху, число под ними. Класс `.wmetric` даёт поверхность,
+          // рамку, радиус и отступы (одни на все экраны); направление
+          // оси перекрывается здесь, потому что правило внутри
+          // media-запроса не перебивается утилитой Tailwind (М43).
+          <div key={s.key} className="wmetric"
+               style={{
+                 flexDirection: 'column', alignItems: 'stretch',
+                 justifyContent: 'flex-start',
+               }}>
+            <span className="flex items-center gap-2.5">
+              <span className="wmetric-icon" data-tone={s.tone}><s.icon size={19} /></span>
+              <span className="wmetric-label min-w-0">{s.label}</span>
             </span>
-            <span className="wmetric-icon" data-tone={s.tone}><s.icon size={19} /></span>
+            <span className="wmetric-value tabular mt-2.5 block">{t.number(s.n)}</span>
+            {s.note && <span className="wmetric-note mt-0.5 block">{s.note}</span>}
           </div>
         ))}
       </section>
