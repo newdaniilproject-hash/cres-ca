@@ -643,7 +643,12 @@ export function DocumentsClient({
                  value={title} onChange={(e) => setTitle(e.target.value)} />
           <p className="field-hint">{t('documents.upload.title.hint')}</p>
         </div>
-        <div>
+        {/* `min-w-0` — иначе имя выбранного файла (одно длинное слово)
+            задаёт минимальную ширину колонки грида, и шторка уезжает
+            вправо вместе со всеми полями: `truncate` на самой подписи
+            при этом не срабатывает, потому что обрезать нечего —
+            колонка растянулась под неё. */}
+        <div className="min-w-0">
           <label className="field-label">{t('documents.upload.file.label')}</label>
           {/* ⚠️ ГОЛОЕ `input[type=file]` СЮДА НЕ ВОЗВРАЩАТЬ. Его рисует
               ОПЕРАЦИОННАЯ СИСТЕМА — своим шрифтом и своим языком:

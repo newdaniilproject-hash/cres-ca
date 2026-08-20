@@ -478,7 +478,10 @@ export function MaterialDocs({
                    value={title} onChange={(e) => setTitle(e.target.value)} />
             <p className="field-hint">{t('inventory.docs.field.title.hint')}</p>
           </div>
-          <div className="sm:col-span-2">
+          {/* `min-w-0` — разбор там же, где и остальное про это поле:
+              имя файла это одно длинное слово, и без него оно растягивает
+              колонку грида, а не обрезается. */}
+          <div className="min-w-0 sm:col-span-2">
             <label className="field-label">{t('inventory.docs.field.file.label')}</label>
             {/* ⚠️ ГОЛОЕ `input[type=file]` СЮДА НЕ ВОЗВРАЩАТЬ: его рисует
                 операционная система своим шрифтом и своим языком —
