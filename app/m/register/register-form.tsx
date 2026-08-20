@@ -317,23 +317,31 @@ export function MobileRegisterForm() {
         </div>
 
         <Field label={t('m.register.phone.label')} htmlFor="f-phone">
-          {/* Рамка поля — тот же `.input`, что у соседей: высота и кегль
-              приходят из globals.css, а не выписаны числами. Внутреннее
-              поле кегль НАСЛЕДУЕТ (`fontSize: 'inherit'`) — только так
-              оно остаётся 16px на касательных устройствах, где пол задан
-              правилом `.input`; собственные 16px были второй записью
-              того же порога. */}
-          <div className="input flex items-center gap-2 pr-0">
-            <span className="tabular shrink-0" style={{ color: 'var(--color-muted)' }}>
+          {/* ⚠️ `.input` ТЕПЕРЬ НА САМОМ ПОЛЕ, А НЕ НА ОБЁРТКЕ.
+              Раньше класс висел на `<div>`, а внутри лежал голый `<input>`
+              без рамки, и поле выглядело ВЫКЛЮЧЕННЫМ: `.input:read-only`
+              в globals.css красит фон второй поверхностью и делает
+              границу пунктирной, а псевдокласс `:read-only` по спецификации
+              совпадает с ЛЮБЫМ нередактируемым элементом — с `<div>`
+              в том числе. Поэтому единственное обязательное поле анкеты
+              стояло серым среди белых (снимок 390px, 20.08.2026).
+              Заодно у обёртки не срабатывал `.input:focus`: `<div>`
+              фокуса не получает, и рамка при наборе номера не загоралась.
+
+              Префикс — надпись поверх поля, а не его сосед: он не поле
+              ввода, стирать и править его нечего (разбор — в шапке
+              `formatPhone`). `pointer-events: none`, чтобы нажатие
+              на «+380» попадало в поле, а не в подпись. */}
+          <div className="relative">
+            <span aria-hidden
+                  className="tabular pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5"
+                  style={{ color: 'var(--color-muted)' }}>
               +380
             </span>
             <input
               id="f-phone" required type="tel" inputMode="numeric" autoComplete="tel-national"
-              className="tabular h-full min-w-0 flex-1"
-              style={{
-                fontSize: 'inherit', border: 0, background: 'transparent',
-                outline: 'none', color: 'var(--color-text)', letterSpacing: '0.02em',
-              }}
+              className="input tabular pl-16"
+              style={{ letterSpacing: '0.02em' }}
               value={formatPhone(phone)}
               onFocus={keepVisible}
               onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 9))}

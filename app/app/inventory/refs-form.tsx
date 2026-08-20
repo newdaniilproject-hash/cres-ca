@@ -14,12 +14,23 @@ import type { RefItem } from './material-form'
 // как «Розетка», «розетка» и «Розетка ТОВ» — та самая причина, по которой
 // в 0009 поставщик стал таблицей.
 export function RefsForm({
-  tenantId, suppliers, locations, onDone,
+  tenantId, suppliers, locations, onDone, onCreated,
 }: {
   tenantId: string
   suppliers: RefItem[]
   locations: RefItem[]
   onDone: () => void
+  /**
+   * Заведённая строка — тому, кто позвал форму из ДРУГОГО места
+   * (карточка засоба: «+» рядом с селектом). Форма при этом одна:
+   * вторая копия «добавить поставщика» разъехалась бы с этой на первой
+   * же правке, а справочник — то самое место, где расхождение даёт
+   * «Розетка», «розетка» и «Розетка ТОВ» тремя строками.
+   *
+   * Не задан — ничего не меняется: со склада форма открывается как
+   * открывалась, `router.refresh()` подтягивает список сам.
+   */
+  onCreated?: (kind: 'supplier' | 'location', item: RefItem) => void
 }) {
   const t = useT()
   const supabase = useMemo(() => createClient(), [])
@@ -36,12 +47,16 @@ export function RefsForm({
   async function addSupplier(e: React.FormEvent) {
     e.preventDefault()
     setBusy('supplier'); setErr('')
-    const { error } = await supabase.from('suppliers').insert({
+    // `select().single()` — не «на всякий случай»: заведённую строку
+    // ждёт тот, кто позвал форму из карточки засоба, чтобы сразу
+    // подставить её в селект. Без возврата id пришлось бы искать
+    // поставщика по имени, а имена не уникальны в глазах человека.
+    const { data, error } = await supabase.from('suppliers').insert({
       tenant_id: tenantId,
       name: sName.trim(),
       phone: sPhone.trim() || null,
       email: sEmail.trim() || null,
-    })
+    }).select('id, name').single()
     setBusy(null)
     if (error) {
       // Экранная подпись для дубля; запасной путь — общий разбор (М25).
@@ -49,24 +64,26 @@ export function RefsForm({
       return
     }
     setSName(''); setSPhone(''); setSEmail('')
+    if (data) onCreated?.('supplier', { id: data.id, name: data.name })
     router.refresh()
   }
 
   async function addLocation(e: React.FormEvent) {
     e.preventDefault()
     setBusy('location'); setErr('')
-    const { error } = await supabase.from('storage_locations').insert({
+    const { data, error } = await supabase.from('storage_locations').insert({
       tenant_id: tenantId,
       name: lName.trim(),
       // position оставляем по умолчанию: порядок полок никто не сортирует
       // руками, пока их меньше десятка.
-    })
+    }).select('id, name').single()
     setBusy(null)
     if (error) {
       setErr(error.code === '23505' ? t('inventory.refs.location.duplicate') : dbErrorText(t, error))
       return
     }
     setLName('')
+    if (data) onCreated?.('location', { id: data.id, name: data.name })
     router.refresh()
   }
 

@@ -56,11 +56,25 @@ export const POLICY_VERSION = '1.0'
  */
 export const POLICY_DATE = '2026-08-04'
 
+// ⚠️ ВЕРХНЕГО ОТСТУПА НА САМОМ `<main>` БЫТЬ НЕ ДОЛЖНО, и это не вкус
+// (найдено 20.08.2026 в обёртке). В globals.css стоит правило
+// `html[data-native] .topbar + * { padding-top: env(safe-area-inset-top) }` —
+// оно НЕЗАСЛОЁННОЕ, то есть выигрывает у любой утилиты Tailwind. `<main>`
+// здесь идёт сразу за шапкой сайта, и внутри приложения его `pt-12`
+// молча заменялся на вырез: заголовок «Політика конфіденційності»
+// вставал вплотную к верхнему краю, а на Android, где выреза нет,
+// вырез равен нулю — и заголовок упирался в самый край экрана.
+//
+// Отступ поэтому живёт на ВНУТРЕННЕЙ обёртке: правило по-прежнему
+// добавляет `<main>` вырез (это его работа), а собственный ритм
+// документа остаётся нетронутым. В браузере не меняется ничего.
 export function Legal({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <main className="mx-auto max-w-3xl px-4 pt-12 pb-8 sm:px-6 sm:pt-16">
-      <h1 className="display rise t-4xl">{title}</h1>
-      <article className="rise-1 mt-8">{children}</article>
+    <main className="mx-auto max-w-3xl px-4 pb-8 sm:px-6">
+      <div className="pt-12 sm:pt-16">
+        <h1 className="display rise t-4xl">{title}</h1>
+        <article className="rise-1 mt-8">{children}</article>
+      </div>
     </main>
   )
 }

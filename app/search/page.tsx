@@ -65,7 +65,13 @@ export default async function SearchPage({
     <>
       <PublicHeader authed={!!user} />
 
-      <main className="mx-auto max-w-4xl px-4 pt-10 sm:px-6">
+      {/* Верхний отступ — на внутренней обёртке, а не на `<main>`.
+          Причина и разбор — в `app/privacy/legal.tsx`: правило
+          `html[data-native] .topbar + *` незаслоённое и в обёртке
+          затирало `pt-10`, из-за чего поиск начинался вплотную
+          к верхнему краю экрана. */}
+      <main className="mx-auto max-w-4xl px-4 sm:px-6">
+       <div className="pt-10">
         <form action="/search" className="relative rise">
           <span aria-hidden className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 t-xl"
                 style={{ color: 'var(--color-faint)' }}>⌕</span>
@@ -141,6 +147,7 @@ export default async function SearchPage({
             </div>
           )}
         </section>
+       </div>
       </main>
 
       <PublicFooter />

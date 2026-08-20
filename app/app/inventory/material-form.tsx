@@ -7,7 +7,9 @@ import { useT } from '@/lib/i18n/client'
 import { dbErrorText } from '@/lib/errors/db'
 import { MEDIA_EXT_BY_MIME, MEDIA_MAX_BYTES } from '@/lib/upload/guard'
 import { verifyUploaded } from '@/lib/upload/client'
-import { IconBox, IconClose } from '@/components/icons'
+import { IconBox, IconChevronRight, IconClose, IconPlus } from '@/components/icons'
+import { Sheet } from '@/components/sheet'
+import { RefsForm } from './refs-form'
 
 export type RefItem = { id: string; name: string }
 
@@ -104,6 +106,30 @@ export function MaterialForm({
   const [cost, setCost] = useState(material?.cost != null ? String(material.cost) : '')
   const [supplierId, setSupplierId] = useState(material?.supplierId ?? '')
   const [locationId, setLocationId] = useState(material?.locationId ?? '')
+
+  // ── Редкое — под раскрытием ─────────────────────────────────────────
+  //
+  // Решение владельца 20.08.2026 по живому телефону: «форма создания
+  // засоба какая-то перегруженная». Одиннадцать полей подряд — это
+  // стена для мастера, который заводит банку у кресла. Сверху остаётся
+  // то, без чего строки склада не существует (название, единица, порог),
+  // остальное — за одним нажатием.
+  //
+  // Открыто СРАЗУ, если внутри уже что-то лежит: при правке засоба
+  // закрытое раскрытие прячет заполненные поля, и человек читает это
+  // как «данные пропали». Считается один раз, при монтировании, —
+  // иначе блок захлопывался бы на каждом изменении.
+  const [more, setMore] = useState(() => Boolean(
+    material && (material.sku || material.category || material.supplierId
+      || material.locationId || material.cost != null || material.imagePath
+      || material.note || Object.keys(material.attributes ?? {}).length > 0),
+  ))
+  // Справочники поставщиков и мест — ТОЙ ЖЕ формой, что и на складе
+  // (`refs-form.tsx`), шторкой поверх этой. Своей мини-формы здесь нет
+  // намеренно: две формы одного справочника расходятся на первой правке.
+  // До 20.08.2026 двери отсюда не было вовсе — оба селекта показывали
+  // «— не вказано —» и завести значение было неоткуда.
+  const [refs, setRefs] = useState(false)
 
   const [cosmetic, setCosmetic] = useState(material?.isCosmetic ?? false)
   const [brand, setBrand] = useState(material?.brand ?? '')
@@ -249,49 +275,6 @@ export function MaterialForm({
         <p className="field-hint">{t('inventory.material.threshold.hint')}</p>
       </div>
 
-      <div>
-        <label className="field-label">{t('inventory.material.cost.label')}</label>
-        <input type="number" min="0" step="0.01" className="input"
-               placeholder={t('inventory.material.optional.placeholder')}
-               value={cost} onChange={(e) => setCost(e.target.value)} />
-      </div>
-
-      <div>
-        <label className="field-label">{t('inventory.material.category.label')}</label>
-        <input className="input" placeholder={t('inventory.material.category.placeholder')}
-               value={category} onChange={(e) => setCategory(e.target.value)} />
-      </div>
-
-      <div>
-        <label className="field-label">{t('inventory.material.sku.label')}</label>
-        <input className="input" placeholder={t('inventory.material.sku.placeholder')}
-               value={sku} onChange={(e) => setSku(e.target.value)} />
-        <p className="field-hint">{t('inventory.material.sku.hint')}</p>
-      </div>
-
-      <div>
-        <label className="field-label">{t('inventory.material.supplier.label')}</label>
-        <select className="select" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
-          <option value="">{t('inventory.common.notSet')}</option>
-          {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
-      </div>
-
-      <div>
-        <label className="field-label">{t('inventory.material.location.label')}</label>
-        <select className="select" value={locationId} onChange={(e) => setLocationId(e.target.value)}>
-          <option value="">{t('inventory.common.notSet')}</option>
-          {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-        </select>
-        {/* Селект меняет место МОЛЧА — след в журнале движений оставляет
-            только «Перемістити» на карточке (relocate_stock, 0113).
-            Подсказка стоит лишь при правке: у нового засоба карточки
-            ещё нет, и отсылать к ней не к чему. */}
-        {material && (
-          <p className="field-hint">{t('inventory.material.location.hint')}</p>
-        )}
-      </div>
-
       <label className="t-md flex items-center gap-2 sm:col-span-2"
              style={{ minHeight: 'var(--tap-min)' }}>
         <input type="checkbox" checked={cosmetic}
@@ -341,79 +324,193 @@ export function MaterialForm({
         </div>
       )}
 
-      {/* ── Своё: фото, заметка, произвольные поля ────────────────
-          Это НЕ паспорт по регламенту — тот выше и обязателен для всех.
-          Здесь склад конкретного продавца: узнать банку на полке,
-          записать своими словами, завести поле, которого нет ни у кого
-          другого. Требование владельца 19.08.2026: «это его склад,
-          он может делать с ним всё, что хочет». */}
+      {/* ── «Додатково»: всё редкое — за одним нажатием ─────────────
+          Решение владельца 20.08.2026: «форма создания засоба какая-то
+          перегруженная». Сверху осталось то, без чего строка склада
+          не имеет смысла (название, единица, порог) плюс галочка
+          косметики — она РАЗВИЛКА, а не деталь: от неё зависит, будет
+          ли у засоба компланс-часть, поэтому она видна всегда.
+
+          Здесь — то, что заполняют не каждый раз: артикул, категория,
+          поставщик, место, себестоимость, фото, заметка и свои поля. */}
       <div className="sm:col-span-2">
-        <p className="eyebrow mb-2">{t('inventory.material.own.title')}</p>
-
-        <div className="flex items-start gap-3">
-          {/* Фото — квадратом, а не полосой: в списке оно рисуется
-              миниатюрой, и кадрировать его человек должен там же,
-              где выбирает. */}
-          <span className="list-card-thumb">
-            {imagePath
-              // eslint-disable-next-line @next/next/no-img-element
-              ? <img src={photoUrl(imagePath)} alt=""
-                     className="h-full w-full object-cover" />
-              : <IconBox size={26} />}
+        <button type="button" className="btn-ghost !px-0" aria-expanded={more}
+                onClick={() => setMore(!more)}>
+          <span aria-hidden className="inline-flex"
+                style={{
+                  transform: more ? 'rotate(90deg)' : 'none',
+                  transition: 'transform var(--dur-fast)',
+                }}>
+            <IconChevronRight size={18} />
           </span>
-          <div className="min-w-0 flex-1">
-            <label className="field-label">{t('inventory.material.photo.label')}</label>
-            <input type="file" className="input pt-2.5"
-                   accept="image/jpeg,image/png,image/webp,image/avif"
-                   disabled={busy}
-                   onChange={(e) => {
-                     const f = e.target.files?.[0]
-                     if (f) void uploadPhoto(f)
-                     e.target.value = ''
-                   }} />
-            <p className="field-hint">{t('inventory.material.photo.hint')}</p>
-            {imagePath && (
-              <button type="button" className="btn-ghost t-sm" disabled={busy}
-                      onClick={() => void dropPhoto()}>
-                {t('inventory.material.photo.remove')}
-              </button>
-            )}
-            {photoErr && <p className="field-error">{photoErr}</p>}
+          {more ? t('inventory.collapse') : t('inventory.receipts.form.section.extra')}
+        </button>
+      </div>
+
+      {more && (
+        <div className="grid gap-3 sm:col-span-2 sm:grid-cols-2">
+          <div>
+            <label className="field-label">{t('inventory.material.cost.label')}</label>
+            <input type="number" min="0" step="0.01" className="input"
+                   placeholder={t('inventory.material.optional.placeholder')}
+                   value={cost} onChange={(e) => setCost(e.target.value)} />
           </div>
-        </div>
 
-        <div className="mt-3">
-          <label className="field-label">{t('inventory.material.note.label')}</label>
-          <textarea className="textarea" placeholder={t('inventory.material.note.placeholder')}
-                    value={note} onChange={(e) => setNote(e.target.value)} />
-        </div>
+          <div>
+            <label className="field-label">{t('inventory.material.category.label')}</label>
+            <input className="input" placeholder={t('inventory.material.category.placeholder')}
+                   value={category} onChange={(e) => setCategory(e.target.value)} />
+          </div>
 
-        <div className="mt-3">
-          <label className="field-label">{t('inventory.material.attrs.label')}</label>
-          {attrs.map(([k, v], i) => (
-            <div key={i} className="mb-2 flex gap-2">
-              <input className="input" placeholder={t('inventory.material.attrs.key')}
-                     value={k}
-                     onChange={(e) => setAttrs(attrs.map((row, j) =>
-                       (j === i ? [e.target.value, row[1]] : row)))} />
-              <input className="input" placeholder={t('inventory.material.attrs.value')}
-                     value={v}
-                     onChange={(e) => setAttrs(attrs.map((row, j) =>
-                       (j === i ? [row[0], e.target.value] : row)))} />
+          <div>
+            <label className="field-label">{t('inventory.material.sku.label')}</label>
+            <input className="input" placeholder={t('inventory.material.sku.placeholder')}
+                   value={sku} onChange={(e) => setSku(e.target.value)} />
+            <p className="field-hint">{t('inventory.material.sku.hint')}</p>
+          </div>
+
+          {/* ⚠️ КНОПКА «+» РЯДОМ С СЕЛЕКТОМ — ЭТО ВЫХОД ИЗ ТУПИКА,
+              а не украшение. До 20.08.2026 оба селекта у нового заклада
+              показывали одно «— не вказано —», и завести значение было
+              НЕОТКУДА: справочники живут на своём экране, а двери туда
+              из формы не было. Открывается та же самая `RefsForm`,
+              что и со склада, — своей мини-формы здесь нет намеренно:
+              две формы одного справочника расходятся на первой правке,
+              а расхождение в справочнике поставщиков — это «Розетка»,
+              «розетка» и «Розетка ТОВ» тремя строками. */}
+          <div>
+            <label className="field-label">{t('inventory.material.supplier.label')}</label>
+            <div className="flex items-center gap-2">
+              <select className="select min-w-0 flex-1" value={supplierId}
+                      onChange={(e) => setSupplierId(e.target.value)}>
+                <option value="">{t('inventory.common.notSet')}</option>
+                {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
               <button type="button" className="btn-icon shrink-0"
-                      aria-label={t('common.delete')}
-                      onClick={() => setAttrs(attrs.filter((_, j) => j !== i))}>
-                <IconClose size={18} />
+                      aria-label={t('inventory.action.refs')}
+                      onClick={() => setRefs(true)}>
+                <IconPlus size={18} />
               </button>
             </div>
-          ))}
-          <button type="button" className="btn-secondary t-sm"
-                  onClick={() => setAttrs([...attrs, ['', '']])}>
-            {t('inventory.material.attrs.add')}
-          </button>
-          <p className="field-hint">{t('inventory.material.attrs.hint')}</p>
+          </div>
+
+          <div>
+            <label className="field-label">{t('inventory.material.location.label')}</label>
+            <div className="flex items-center gap-2">
+              <select className="select min-w-0 flex-1" value={locationId}
+                      onChange={(e) => setLocationId(e.target.value)}>
+                <option value="">{t('inventory.common.notSet')}</option>
+                {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+              </select>
+              <button type="button" className="btn-icon shrink-0"
+                      aria-label={t('inventory.action.refs')}
+                      onClick={() => setRefs(true)}>
+                <IconPlus size={18} />
+              </button>
+            </div>
+            {/* Селект меняет место МОЛЧА — след в журнале движений оставляет
+                только «Перемістити» на карточке (relocate_stock, 0113).
+                Подсказка стоит лишь при правке: у нового засоба карточки
+                ещё нет, и отсылать к ней не к чему. */}
+            {material && (
+              <p className="field-hint">{t('inventory.material.location.hint')}</p>
+            )}
+          </div>
+
+          {/* ── Своё: фото, заметка, произвольные поля ────────────────
+              Это НЕ паспорт по регламенту — тот выше и обязателен для всех.
+              Здесь склад конкретного продавца: узнать банку на полке,
+              записать своими словами, завести поле, которого нет ни у кого
+              другого. Требование владельца 19.08.2026: «это его склад,
+              он может делать с ним всё, что хочет».
+
+              Свои поля лежат ВНУТРИ этого заголовка, а не рядом с ним:
+              они того же рода, что фото и заметка, — своё про этот засіб.
+              До 20.08.2026 надзаголовок стоял только над фото и заметкой,
+              и «Власні поля» читались как продолжение регламента. */}
+          <div className="sm:col-span-2">
+            <p className="eyebrow mb-2">{t('inventory.material.own.title')}</p>
+
+            <div className="flex items-start gap-3">
+              {/* Фото — квадратом, а не полосой: в списке оно рисуется
+                  миниатюрой, и кадрировать его человек должен там же,
+                  где выбирает. */}
+              <span className="list-card-thumb">
+                {imagePath
+                  // eslint-disable-next-line @next/next/no-img-element
+                  ? <img src={photoUrl(imagePath)} alt=""
+                         className="h-full w-full object-cover" />
+                  : <IconBox size={26} />}
+              </span>
+              <div className="min-w-0 flex-1">
+                <label className="field-label">{t('inventory.material.photo.label')}</label>
+                {/* ⚠️ СИСТЕМНОЕ ПОЛЕ ВЫБОРА ФАЙЛА СЮДА НЕ ВОЗВРАЩАТЬ.
+                    Голый `input[type=file]` рисует ОПЕРАЦИОННАЯ СИСТЕМА:
+                    своим шрифтом и своим языком — на телефоне владельца
+                    это была русская надпись «Выбрать файл» посреди
+                    украинского кабинета, и никаким классом она
+                    не чинится (20.08.2026). Поле спрятано в `sr-only`
+                    (не `hidden`: так оно остаётся доступным с клавиатуры
+                    и для чтения с экрана), а нажимают на нашу кнопку —
+                    `label` открывает выбор файла и на телефоне тоже. */}
+                <label className="btn-secondary w-fit cursor-pointer">
+                  {busy
+                    ? t('catalog.form.media.uploading')
+                    : t('catalog.form.media.add')}
+                  <input type="file" className="sr-only"
+                         accept="image/jpeg,image/png,image/webp,image/avif"
+                         disabled={busy}
+                         onChange={(e) => {
+                           const f = e.target.files?.[0]
+                           if (f) void uploadPhoto(f)
+                           e.target.value = ''
+                         }} />
+                </label>
+                <p className="field-hint">{t('inventory.material.photo.hint')}</p>
+                {imagePath && (
+                  <button type="button" className="btn-ghost t-sm" disabled={busy}
+                          onClick={() => void dropPhoto()}>
+                    {t('inventory.material.photo.remove')}
+                  </button>
+                )}
+                {photoErr && <p className="field-error">{photoErr}</p>}
+              </div>
+            </div>
+
+            <div className="mt-3">
+              <label className="field-label">{t('inventory.material.note.label')}</label>
+              <textarea className="textarea" placeholder={t('inventory.material.note.placeholder')}
+                        value={note} onChange={(e) => setNote(e.target.value)} />
+            </div>
+
+            <div className="mt-3">
+              <label className="field-label">{t('inventory.material.attrs.label')}</label>
+              {attrs.map(([k, v], i) => (
+                <div key={i} className="mb-2 flex gap-2">
+                  <input className="input" placeholder={t('inventory.material.attrs.key')}
+                         value={k}
+                         onChange={(e) => setAttrs(attrs.map((row, j) =>
+                           (j === i ? [e.target.value, row[1]] : row)))} />
+                  <input className="input" placeholder={t('inventory.material.attrs.value')}
+                         value={v}
+                         onChange={(e) => setAttrs(attrs.map((row, j) =>
+                           (j === i ? [row[0], e.target.value] : row)))} />
+                  <button type="button" className="btn-icon shrink-0"
+                          aria-label={t('common.delete')}
+                          onClick={() => setAttrs(attrs.filter((_, j) => j !== i))}>
+                    <IconClose size={18} />
+                  </button>
+                </div>
+              ))}
+              <button type="button" className="btn-secondary t-sm"
+                      onClick={() => setAttrs([...attrs, ['', '']])}>
+                {t('inventory.material.attrs.add')}
+              </button>
+              <p className="field-hint">{t('inventory.material.attrs.hint')}</p>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
       {err && <p className="field-error sm:col-span-2">{err}</p>}
 

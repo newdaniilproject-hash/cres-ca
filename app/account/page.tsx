@@ -72,7 +72,11 @@ export default async function AccountPage() {
       {/* `account` — шапка не рисует кнопку «Кабінет»: она вела бы на этот
           же экран, то есть одна дверь лежала бы на нём дважды. */}
       <PublicHeader authed account />
-      <main className="mx-auto max-w-3xl px-4 pt-10 sm:px-6">
+      {/* Верхний отступ — на внутренней обёртке, а не на `<main>`:
+          правило `html[data-native] .topbar + *` незаслоённое и в обёртке
+          затирает его целиком. Разбор — в `app/privacy/legal.tsx`. */}
+      <main className="mx-auto max-w-3xl px-4 sm:px-6">
+       <div className="pt-10">
         {/* ⚠️ `min-w-0` и `truncate` обязательны, и это не украшение
             (найдено 20.08.2026 на 390px). У покупателя, зарегистрированного
             почтой, `full_name` нет, и в заголовок попадает адрес вида
@@ -210,6 +214,7 @@ export default async function AccountPage() {
             <div className="empty card">{t('account.orders.empty')}</div>
           )}
         </section>
+       </div>
       </main>
       <PublicFooter />
     </>

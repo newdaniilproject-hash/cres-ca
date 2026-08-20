@@ -85,7 +85,21 @@ export function MapView({ points }: { points: Point[] }) {
 
       map = L.map(ref.current!, { zoomControl: false })
         .setView(center, points.length ? 12 : 6)
-      L.control.zoom({ position: 'bottomright' }).addTo(map)
+
+      // ⚠️ ЗОНА НАЖАТИЯ КНОПОК МАСШТАБА — НАША, А НЕ LEAFLET'ОВСКАЯ
+      // (20.08.2026). Своей таблицей стилей Leaflet рисует «+» и «−»
+      // размером 30×30: это меньше `--tap-min` (44px, Apple HIG), и на
+      // телефоне единственное управление картой промахивается пальцем.
+      // Размера у контрола нет в настройках, поэтому он ставится на
+      // созданных им же узлах — но ЗНАЧЕНИЕМ ТОКЕНА, а не числом:
+      // поменяется `--tap-min` — поменяется и здесь.
+      const zoom = L.control.zoom({ position: 'bottomright' })
+      zoom.addTo(map)
+      for (const a of zoom.getContainer()?.querySelectorAll('a') ?? []) {
+        a.style.width = 'var(--tap-min)'
+        a.style.height = 'var(--tap-min)'
+        a.style.lineHeight = 'var(--tap-min)'
+      }
 
       L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap',
@@ -126,7 +140,11 @@ export function MapView({ points }: { points: Point[] }) {
   }, [points, t])
 
   return (
-    <div className="relative h-full">
+    // Отступ снизу на вырез. Кнопки масштаба и подпись OpenStreetMap
+    // Leaflet прижимает к нижнему краю СВОЕГО контейнера, а в обёртке
+    // этот край закрыт полосой домой-жеста: «−» оказывалась ровно под
+    // ней. В браузере `env()` равен нулю, то есть не меняется ничего.
+    <div className="relative h-full" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
       <div ref={ref} className="h-full w-full" />
       {points.length === 0 && (
         <div className="pointer-events-none absolute inset-x-0 top-6 z-[500] mx-auto max-w-sm px-4">
