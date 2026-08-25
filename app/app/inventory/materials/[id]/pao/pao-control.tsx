@@ -1,8 +1,8 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Sheet } from '@/components/sheet'
 import { useToast } from '@/components/toast'
@@ -100,6 +100,31 @@ export function PaoControl({
     d.decantedAt && new Date(d.decantedAt).toDateString() === todayStr).length
 
   const batchOf = (id: string | null) => batches.find((b) => b.id === id) ?? null
+
+  // ── `?do=decant` ОТКРЫВАЕТ ФОРМУ РОЗЛИВА СРАЗУ ───────────────────────
+  //
+  // Кнопка «Розлив у дозатор» на карточке засоба ведёт сюда этим адресом.
+  // Приём и порядок те же, что у `?scan=1` на складе и `?new=1` на приёмке:
+  // человек нажал «розлив» — заставлять его искать ту же кнопку второй раз
+  // на этом экране значит отменить смысл первого нажатия.
+  //
+  // Открываем ТОЛЬКО когда открытая банка ровно одна. Две и больше — это
+  // выбор, и делать его за человека нельзя: розлив списывает объём
+  // и заводит новую ёмкость, то есть ошибка стоит банки в реестре,
+  // которой нет на полке. Ноль открытых — открывать нечего, и экран
+  // честно показывает список с кнопкой «Відкрити».
+  //
+  // Признак снимается из адреса СРАЗУ: иначе повторное нажатие на карточке
+  // ведёт на тот же адрес, компонент не перемонтируется, и второй раз
+  // форма не откроется. `history.replaceState`, а не `router.replace`, —
+  // серверный рендер ради чистки параметра не нужен.
+  const sp = useSearchParams()
+  useEffect(() => {
+    if (sp.get('do') !== 'decant') return
+    const openedJars = containers.filter((c) => c.parentId === null && c.status === 'opened')
+    if (canOpen && openedJars.length === 1) setDecantOf(openedJars[0])
+    window.history.replaceState(null, '', `/app/inventory/materials/${material.id}/pao`)
+  }, [sp, canOpen, containers, material.id])
 
   async function open(c: Container) {
     setBusy(c.id)
