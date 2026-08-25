@@ -2770,5 +2770,14 @@
   "profile.nudge.phone": "Телефон не вказано. Без нього з вами не звʼяжуться, якщо щось із замовленням.",
   "profile.nudge.phone.action": "Додати",
   "profile.nudge.photo": "Додайте фото — вас впізнають у команді та в записах.",
-  "profile.nudge.photo.action": "Обрати"
+  "profile.nudge.photo.action": "Обрати",
+  "team.hero.label": "У КОМАНДІ",
+  "team.hero.logic": "Тут ви пускаєте людей у кабінет і вирішуєте, що кожному видно. Роль дає готовий набір, окремі дозволи його уточнюють.",
+  "team.hero.active": "з доступом",
+  "team.hero.blocked": "закрито",
+  "team.hero.invites": "запрошення",
+  "team.section.templates": "Шаблони доступу",
+  "team.section.more": "Ще про доступ",
+  "team.danger.access": "Закрити доступ",
+  "team.danger.both": "Доступ і володіння"
 }

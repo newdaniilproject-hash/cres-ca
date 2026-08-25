@@ -10,7 +10,9 @@ import { SecurityLog, type SecurityEvent } from './security-log'
 import { DataAccessLog, type DataAccessRow } from './data-access-log'
 import { maskText } from '@/lib/redact'
 import { Fold } from '@/components/fold'
-import { IconChevronRight, IconClose, IconUsers } from '@/components/icons'
+import { IconChevronRight, IconClose, IconPlus, IconUsers } from '@/components/icons'
+import { Sheet } from '@/components/sheet'
+import { QuickFab } from '@/components/quick-fab'
 
 // ── Что здесь и почему именно так ─────────────────────────────────────────
 //
@@ -382,6 +384,32 @@ export function TeamClient(props: {
   // до кнопок доступа («закрити доступ», «завершити сеанси») надо было
   // пролистать экран прав, которые в девяти случаях из десяти не трогают.
   const [permsOpen, setPermsOpen] = useState<Record<string, boolean>>({})
+  // Разбивка героя на телефоне. Это ФИЛЬТР списка, а не украшение:
+  // число на экране обязано иметь выход (проверка 2).
+  const [who, setWho] = useState<'all' | 'active' | 'blocked' | 'invites'>('all')
+  // Приглашение на телефоне — шторка, а не форма, раскрытая всегда.
+  const [inviteSheet, setInviteSheet] = useState(false)
+  // Служебные разделы внизу. Открыт РОВНО ОДИН: правило живёт
+  // у родителя, `components/fold.tsx` о соседях не знает (проверка 6).
+  const [openSection, setOpenSection] = useState<string | null>(null)
+  // Открытая «небезпечна» дверь в карточке человека. Ключ включает
+  // раскладку: одна и та же карточка рисуется и списком, и панелью.
+  const [dangerOpen, setDangerOpen] = useState<string | null>(null)
+  const toggleSection = (k: string) =>
+    setOpenSection((v) => (v === k ? null : k))
+
+  // Счёт по ДОСТУПУ В КАБІНЕТ, а не по «работает ли мастер»: этот экран
+  // про то, кого пустили, а не кто сегодня в смене. Погашенная карточка
+  // мастера и отпуск — состояния из «Записів», и смешивать их здесь
+  // значит завести вторую правду о том, кто заблокирован.
+  const blockedCount = props.members.filter((m) => m.blocked_at).length
+  const activeCount = props.members.length - blockedCount
+  const shownMembers = props.members.filter((m) => {
+    if (who === 'blocked') return !!m.blocked_at
+    if (who === 'active') return !m.blocked_at
+    if (who === 'invites') return false
+    return true
+  })
   const togglePermsOpen = (key: string) =>
     setPermsOpen((s) => ({ ...s, [key]: !s[key] }))
 
@@ -833,6 +861,11 @@ export function TeamClient(props: {
     const { self, outranksMe, editable, dangerous, rolePerms, permKey, shownPerms, granted }
       = memberFlags(m)
     const ns = dense ? 'w' : 'm'
+    // Владение передают только владельцу и только не себе. Условие
+    // названо один раз: подпись двери и её содержимое обязаны
+    // совпадать, иначе дверь обещает то, чего за ней нет.
+    const canTransfer = props.myRole === 'owner' && knowMe && !self
+      && m.role !== 'owner' && !m.blocked_at
     const cols3 = dense ? '' : 'sm:grid-cols-3'
     const cols2 = dense ? '' : 'sm:grid-cols-2'
 
@@ -931,6 +964,12 @@ export function TeamClient(props: {
                   )
                 })}
               </div>
+              {/* Предупреждение о разрыве сеансов стоит ЗДЕСЬ, у самих
+                  переключателей роли, а не строкой над списком команды.
+                  Над списком оно объясняло последствие действия, которого
+                  на том экране нет: человек читал его до того, как что-то
+                  выбрал, и оно ничего не значило. */}
+              <p className="field-hint mt-2">{t('team.members.desc')}</p>
             </div>
 
             <div className={`grid gap-3 ${cols2}`}>
@@ -1129,78 +1168,99 @@ export function TeamClient(props: {
           </div>
         )}
 
-        {/* Опасная зона. Обе кнопки — ТОЛЬКО про доступ
-            (`blocked_at`). Кнопки «не працює» здесь нет
-            намеренно: `staff.blocked_at` правят исключительно
-            block_member/unblock_member (0081), поэтому она
-            делала бы ровно то же самое вторым именем. */}
-        {dangerous && (
-          m.blocked_at ? (
-            <div>
-              <button type="button" className="btn-secondary t-sm"
-                      disabled={busy === `unblock:${m.user_id}`}
-                      onClick={() => unblock(m)}>
-                {t('team.block.unblock')}
-              </button>
-              <p className="field-hint">{t('team.block.unblockHint')}</p>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-1">
-              <div className="flex flex-wrap items-end gap-2">
-                <div className={`grow ${dense ? '' : 'sm:max-w-xs'}`}>
-                  <label className="field-label" htmlFor={`${ns}-block-${m.user_id}`}>
-                    {t('team.block.reason.label')}
-                  </label>
-                  <input className="input" id={`${ns}-block-${m.user_id}`}
-                         value={blockReason[m.user_id] ?? ''}
-                         onChange={(e) => setBlockReason(
-                           (r) => ({ ...r, [m.user_id]: e.target.value }))}
-                         placeholder={t('team.block.reason.placeholder')} />
-                </div>
-                <button type="button" className="btn-danger t-sm"
-                        disabled={busy === `block:${m.user_id}`}
-                        onClick={() => block(m)}>
-                  {t('team.block.submit')}
-                </button>
-              </div>
-              <p className="field-hint">{t('team.block.hint')}</p>
-            </div>
-          )
-        )}
+        {/* ── ОПАСНОЕ — В СВЁРНУТОЕ ──────────────────────────────
+            Отзыв владельца 25.08.2026: раздел «сложен». Карточка
+            человека держала шесть блоков подряд, и два из них —
+            «закрити доступ» с полем причины и «передати володіння»
+            со словом-подтверждением — это действия раз в жизни,
+            стоявшие тем же весом, что смена роли.
 
-        {/* Передача владения. Слово-подтверждение, а не «ви впевнені»:
-            действие необратимо для нажавшего — он станет админом
-            и вернуть себе владение уже не сможет. Владельцу
-            владение не передают: база на это отвечает «ви вже
-            власник», и предлагать такое нельзя. */}
-        {props.myRole === 'owner' && knowMe && !self
-         && m.role !== 'owner' && !m.blocked_at && (
-          <div className="card-flat flex flex-col gap-2">
-            <p className="t-md">{t('team.transfer.title')}</p>
-            <p className="t-sm prose-muted">{t('team.transfer.desc')}</p>
-            {/* Подстановка внутри жирного — два ключа, «до» и
-                «после». Разметку в словарь класть нельзя, а резать
-                строку по `{name}` значит завести свой шаблонизатор
-                ради одного места. */}
-            <label className="field-label" htmlFor={`${ns}-own-${m.user_id}`}>
-              {t('team.transfer.confirm.pre')}{' '}
-              <b>{m.email ?? m.full_name}</b>{' '}
-              {t('team.transfer.confirm.post')}
-            </label>
-            <input className="input" id={`${ns}-own-${m.user_id}`}
-                   value={transferTo[m.user_id] ?? ''}
-                   autoComplete="off"
-                   onChange={(e) => setTransferTo(
-                     (prev) => ({ ...prev, [m.user_id]: e.target.value }))} />
-            <div>
-              <button type="button" className="btn-danger t-sm"
-                      disabled={(transferTo[m.user_id] ?? '') !== (m.email ?? m.full_name ?? '')
-                                || busy === `own:${m.user_id}`}
-                      onClick={() => transfer(m)}>
-                {t('team.transfer.submit')}
-              </button>
+            Ровно то же уже снято на экране профиля: «вийти на всіх
+            пристроях» и «видалити акаунт» ушли под ту же дверь.
+            Здесь дверь одна на оба действия и своя у каждого
+            человека — ключ включает раскладку (`ns`), иначе одна
+            и та же карточка на телефоне и на широком экране делила
+            бы состояние и открывалась бы в обоих сразу. */}
+        {(dangerous || canTransfer) && (
+          <Fold title={canTransfer ? t('team.danger.both') : t('team.danger.access')}
+                open={dangerOpen === `${ns}:${m.user_id}`}
+                onToggle={() => setDangerOpen(
+                  (v) => (v === `${ns}:${m.user_id}` ? null : `${ns}:${m.user_id}`))}>
+            <div className="flex flex-col gap-3">
+            {/* Опасная зона. Обе кнопки — ТОЛЬКО про доступ
+                (`blocked_at`). Кнопки «не працює» здесь нет
+                намеренно: `staff.blocked_at` правят исключительно
+                block_member/unblock_member (0081), поэтому она
+                делала бы ровно то же самое вторым именем. */}
+            {dangerous && (
+              m.blocked_at ? (
+                <div>
+                  <button type="button" className="btn-secondary t-sm"
+                          disabled={busy === `unblock:${m.user_id}`}
+                          onClick={() => unblock(m)}>
+                    {t('team.block.unblock')}
+                  </button>
+                  <p className="field-hint">{t('team.block.unblockHint')}</p>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-1">
+                  <div className="flex flex-wrap items-end gap-2">
+                    <div className={`grow ${dense ? '' : 'sm:max-w-xs'}`}>
+                      <label className="field-label" htmlFor={`${ns}-block-${m.user_id}`}>
+                        {t('team.block.reason.label')}
+                      </label>
+                      <input className="input" id={`${ns}-block-${m.user_id}`}
+                             value={blockReason[m.user_id] ?? ''}
+                             onChange={(e) => setBlockReason(
+                               (r) => ({ ...r, [m.user_id]: e.target.value }))}
+                             placeholder={t('team.block.reason.placeholder')} />
+                    </div>
+                    <button type="button" className="btn-danger t-sm"
+                            disabled={busy === `block:${m.user_id}`}
+                            onClick={() => block(m)}>
+                      {t('team.block.submit')}
+                    </button>
+                  </div>
+                  <p className="field-hint">{t('team.block.hint')}</p>
+                </div>
+              )
+            )}
+
+            {/* Передача владения. Слово-подтверждение, а не «ви впевнені»:
+                действие необратимо для нажавшего — он станет админом
+                и вернуть себе владение уже не сможет. Владельцу
+                владение не передают: база на это отвечает «ви вже
+                власник», и предлагать такое нельзя. */}
+            {canTransfer && (
+              <div className="card-flat flex flex-col gap-2">
+                <p className="t-md">{t('team.transfer.title')}</p>
+                <p className="t-sm prose-muted">{t('team.transfer.desc')}</p>
+                {/* Подстановка внутри жирного — два ключа, «до» и
+                    «после». Разметку в словарь класть нельзя, а резать
+                    строку по `{name}` значит завести свой шаблонизатор
+                    ради одного места. */}
+                <label className="field-label" htmlFor={`${ns}-own-${m.user_id}`}>
+                  {t('team.transfer.confirm.pre')}{' '}
+                  <b>{m.email ?? m.full_name}</b>{' '}
+                  {t('team.transfer.confirm.post')}
+                </label>
+                <input className="input" id={`${ns}-own-${m.user_id}`}
+                       value={transferTo[m.user_id] ?? ''}
+                       autoComplete="off"
+                       onChange={(e) => setTransferTo(
+                         (prev) => ({ ...prev, [m.user_id]: e.target.value }))} />
+                <div>
+                  <button type="button" className="btn-danger t-sm"
+                          disabled={(transferTo[m.user_id] ?? '') !== (m.email ?? m.full_name ?? '')
+                                    || busy === `own:${m.user_id}`}
+                          onClick={() => transfer(m)}>
+                    {t('team.transfer.submit')}
+                  </button>
+                </div>
+              </div>
+            )}
             </div>
-          </div>
+          </Fold>
         )}
       </>
     )
@@ -1251,6 +1311,101 @@ export function TeamClient(props: {
   ]
   const pickedMember = props.members.find((m) => m.user_id === picked) ?? null
 
+  // Тело формы приглашения. Отдельной переменной, а не вторым куском
+  // разметки: широкий экран рисует его карточкой, телефон — шторкой
+  // под плавающей кнопкой. Копия разъехалась бы с оригиналом молча.
+  const inviteBody = (
+    <>
+
+          <form onSubmit={invite} className="flex flex-col gap-4">
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
+              <div>
+                <label className="field-label" htmlFor="invite-email">
+                  {t('team.invite.email.label')}
+                </label>
+                {/* Подсказка в поле — такая же строка интерфейса, как подпись:
+                    в русском примере имя другое, в английском — другое. */}
+                <input required type="email" className="input" id="invite-email" value={inviteEmail}
+                       onChange={(e) => setInviteEmail(e.target.value)}
+                       placeholder={t('team.invite.email.placeholder')} />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="invite-days">
+                  {t('team.invite.days.label')}
+                </label>
+                {/* «7» — число, а не текст: в словарь оно не едет. */}
+                <input type="number" min={1} max={365} className="input sm:w-28" id="invite-days"
+                       value={inviteDays} onChange={(e) => setInviteDays(e.target.value)}
+                       placeholder={inviteRole === 'inspector' ? '7' : t('team.invite.days.placeholder')} />
+              </div>
+              <button className="btn-primary" disabled={busy === 'invite'}>
+                {busy === 'invite' ? t('team.invite.submitBusy') : t('team.invite.submit')}
+              </button>
+            </div>
+
+            {/* ── РОЛЬ СПИСКОМ, А НЕ ВЫПАДАЮЩИМ ПОЛЕМ ──────────────────
+                Роль и есть «пресет прав»: она приносит свой набор из
+                `role_grants`. Пока она лежала в `select`, объяснение
+                набора (`role.hint.*`) показывалось ПОСЛЕ выбора — то
+                есть человек выбирал вслепую и узнавал, что выдал, уже
+                выдав. Разворачиваем: все наборы видны разом, выбор —
+                одно касание, и роль, которую база всё равно отклонит,
+                видно погашенной, а не спрятанной.
+
+                Радиокнопки настоящие, а не плитки с обработчиком:
+                стрелки, Tab и чтение с экрана работают сами, и ни одной
+                новой строки в globals.css это не стоит. */}
+            <div>
+              <p className="field-label">{t('common.role')}</p>
+              <div className="grid gap-x-4 sm:grid-cols-2">
+                {assignableRoles.map((r) => {
+                  // Роль, чей набор прав шире моего, отказывает не сейчас,
+                  // а через трое суток и приглашённому (0081, п. 5): роль
+                  // и права проверяются В МОМЕНТ ПРИЁМА. Отложенный отказ
+                  // чужому человеку — худший вид отказа, поэтому гасим.
+                  const off = !invitable.has(r)
+                  return (
+                    <label key={r} className="flex items-start gap-2 py-1"
+                           style={{ minHeight: 'var(--tap-min)' }}>
+                      <input type="radio" name="invite-role" value={r} className="mt-1 shrink-0"
+                             checked={inviteRole === r} disabled={off}
+                             onChange={() => setInviteRole(r)} />
+                      <span>
+                        <span className={`t-sm ${off ? 'prose-muted' : 'font-semibold'}`}>
+                          {/* Строка с подстановкой: собирать её сложением
+                              («подпись» + « — понад ваш доступ») нельзя —
+                              порядок слов в языках разный, и склейка
+                              ломается на первом же переводе. */}
+                          {off ? t('team.beyond', { name: roleLabel(t, r) }) : roleLabel(t, r)}
+                        </span>
+                        <span className="field-hint block">{roleHint(t, r)}</span>
+                      </span>
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+          </form>
+
+          {inviteLink && (
+            <div className="card-flat mt-4 flex flex-col gap-2">
+              <p className="t-md">{t('team.invite.linkReady')}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <code className="t-sm break-all">{inviteLink}</code>
+                <button type="button" className="btn-secondary t-sm" onClick={() => void copyLink()}>
+                  {copied ? t('common.copied') : t('common.copy')}
+                </button>
+              </div>
+              <p className="t-sm prose-muted">
+                {mailState === 'sending' && t('team.invite.mail.sending')}
+                {mailState === 'sent' && t('team.invite.mail.sent')}
+                {mailState === 'failed' && t('team.invite.mail.failed')}
+              </p>
+            </div>
+          )}
+    </>
+  )
+
   return (
     <div className="flex flex-col gap-5 pb-8">
       {/* role="alert" — отказ базы приходит после нажатия где-то ниже
@@ -1300,9 +1455,66 @@ export function TeamClient(props: {
         )}
       </div>
 
+      {/* ── С ЧЕМ СЮДА ЗАХОДЯТ ───────────────────────────────────────
+          Отзыв владельца 25.08.2026: «раздел команда вообще мне не
+          понятен и сложен — в чём его логика?».
+
+          Логика была, но экран её не показывал. Сверху стояла ФОРМА
+          приглашения — действие, которое в салоне делают несколько раз
+          в год, — а ответ на вопрос «кто у меня работает и что каждому
+          можно» лежал третьим блоком. Ниже шли ещё пять служебных
+          разделов той же весовой категории: шаблоны, сеансы и три
+          журнала. Восемь одинаковых карточек подряд — это не экран,
+          а полотно.
+
+          Теперь сверху ответ: сколько человек, сколько с доступом,
+          сколько закрыто, сколько приглашений ждут. Разбивка — это
+          ФИЛЬТР списка, а не подпись: число, которое никуда не ведёт,
+          читается как сломанная кнопка (проверка 2).
+
+          Одна строка словами оставлена намеренно, хотя описания экранов
+          с продукта сняты (решение 19.08.2026). Снято было «крупное имя
+          раздела плюс серая строка о том же» — повтор подписи нижней
+          панели. Здесь другое: человек прямо спросил, в чём логика,
+          и ответ на это структурой не заменяется. Строка одна и стоит
+          внутри карточки, а не над экраном. */}
+      <section className="hero rise-1 lg:hidden">
+        <span className="eyebrow block">{t('team.hero.label')}</span>
+        <span className="hero-value mt-1 block">{t.number(props.members.length)}</span>
+        <p className="t-sm mt-1 prose-muted">{t('team.hero.logic')}</p>
+
+        <div className="mt-3 grid grid-cols-3 gap-1">
+          {([
+            { key: 'active', n: activeCount, label: t('team.hero.active'), tone: 'emerald' },
+            { key: 'blocked', n: blockedCount, label: t('team.hero.blocked'), tone: 'rose' },
+            { key: 'invites', n: props.invites.length, label: t('team.hero.invites'), tone: 'amber' },
+          ] as const).map((x) => {
+            const on = who === x.key
+            return (
+              <button key={x.key} type="button" className="hero-stat" data-tone={x.tone}
+                      aria-pressed={on} disabled={x.n === 0}
+                      onClick={() => setWho(on ? 'all' : x.key)}>
+                <span aria-hidden className="hero-dot" />
+                <span className="min-w-0">
+                  <span className="t-md block" style={{ fontWeight: 700 }}>{t.number(x.n)}</span>
+                  <span className="t-xs block truncate prose-muted">{x.label}</span>
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      </section>
+
       {/* ── Приглашение ─────────────────────────────────────────────── */}
+      {/* На телефоне форма переехала в шторку под плавающей кнопкой:
+          она занимала первый экран ради действия, которое делают
+          несколько раз в год. На широком экране всё как было —
+          там она появляется по кнопке в шапке и больше нигде. */}
+      {/* Тело формы — ОДНО на обе раскладки: широкий экран рисует его
+          карточкой, телефон — шторкой. Вторая копия разъехалась бы
+          с первой на первой же правке (проверка 9). */}
       {props.canWrite && (
-        <section className={`card rise-1 ${inviting ? '' : 'lg:hidden'}`}>
+        <section className={`card rise-1 ${inviting ? 'hidden lg:block' : 'hidden'}`}>
           <h2 className="t-lg mb-1">{t('team.invite.title')}</h2>
           <p className="t-md mb-4 prose-muted">{t('team.invite.desc')}</p>
 
@@ -1398,7 +1610,7 @@ export function TeamClient(props: {
       {/* ── Незакрытые приглашения (узкий экран) ────────────────────── */}
       {/* На широком они живут вкладкой «Запрошення» той же таблицы:
           иначе один и тот же список стоял бы на экране дважды. */}
-      {props.invites.length > 0 && (
+      {props.invites.length > 0 && who !== 'active' && who !== 'blocked' && (
         <section className="card rise-2 !p-0 lg:hidden">
           <div className="p-5 pb-3">
             <h2 className="t-lg">{t('team.pending.title')}</h2>
@@ -1439,10 +1651,9 @@ export function TeamClient(props: {
       <section className="card rise-3 !p-0 lg:hidden">
         <div className="p-5 pb-3">
           <h2 className="t-lg">{t('team.members.title')}</h2>
-          <p className="t-sm prose-muted">{t('team.members.desc')}</p>
         </div>
 
-        {props.members.length === 0 && (
+        {shownMembers.length === 0 && (
           <div className="empty px-5 pb-5">
             {/* Значок — символ, а не текст: `aria-hidden`, в словарь не едет. */}
             <span className="empty-icon" aria-hidden>◎</span>
@@ -1451,7 +1662,7 @@ export function TeamClient(props: {
           </div>
         )}
 
-        {props.members.map((m) => {
+        {shownMembers.map((m) => {
           const { self, live } = memberFlags(m)
           const isOpen = open === m.user_id
 
@@ -1721,277 +1932,328 @@ export function TeamClient(props: {
         </div>
       </div>
 
-      {/* ── Шаблоны прав ────────────────────────────────────────────── */}
-      {props.canWrite && (
-        <section className="card rise-3">
-          <h2 className="t-lg mb-1">{t('team.templates.title')}</h2>
-          <p className="t-md mb-4 prose-muted">{t('team.templates.desc')}</p>
+      {/* ── ВСЁ СЛУЖЕБНОЕ — В СВЁРНУТОЕ ──────────────────────────────
+          Здесь стояли ПЯТЬ карточек подряд той же весовой категории,
+          что и список команды: шаблоны, сеансы и три журнала. Именно
+          они и делали экран «сложным» — до работы с человеком надо было
+          пролистать полотно из того, что открывают в день
+          разбирательства, а не каждый день.
 
-          {props.templates.length === 0 && (
-            <p className="t-sm prose-muted">{t('team.templates.empty')}</p>
-          )}
+          Ничего не удалено и не спрятано: у двери есть счётчик, и по
+          нему видно, стоит ли открывать. Открыта РОВНО ОДНА — ключ
+          держит родитель, `components/fold.tsx` о соседях не знает
+          и знать не должен (проверка 6). */}
+      <div className="flex flex-col gap-4">
+        {/* ── Шаблоны прав ────────────────────────────────────────────── */}
+        {props.canWrite && (
+          <Fold title={t('team.section.templates')} count={props.templates.length}
+                open={openSection === 'tpl'} onToggle={() => toggleSection('tpl')}>
+          <section className="card rise-3">
+            <h2 className="t-lg mb-1">{t('team.templates.title')}</h2>
+            <p className="t-md mb-4 prose-muted">{t('team.templates.desc')}</p>
 
-          {props.templates.map((tpl) => {
-            const tRolePerms = permsByRole[tpl.role] ?? new Set<string>()
-            const tOpen = openTpl === tpl.id
-            const tplKey = `tpl:${tpl.id}`
-            const tPerms: Record<string, boolean> =
-              savedPerms[tplKey] ?? tpl.permissions ?? {}
-            return (
-              // Граница — на обёртке, а не на `.row`: правило
-              // `.row:last-child` гасит её у последнего ребёнка, а `.row`
-              // здесь всегда единственный ребёнок своего div, поэтому
-              // список шаблонов шёл вообще без разделителей.
-              <div key={tpl.id} className="border-b last:border-b-0"
-                   style={{ borderColor: 'var(--color-border)' }}>
-                <div className="row">
-                  {/* Две строки текста дают около 38px — ниже --tap-min.
-                      Высота задаётся здесь, а не отступами: отступы
-                      раздули бы строку списка. */}
-                  <button type="button" className="min-w-0 grow text-left"
-                          style={{ minHeight: 'var(--tap-min)' }}
-                          aria-expanded={tOpen}
-                          onClick={() => setOpenTpl(tOpen ? null : tpl.id)}>
-                    {/* Имя шаблона придумал человек — это данные. */}
-                    <span className="t-md block truncate">{tpl.name}</span>
-                    {/* Три величины — тремя бейджами, а не строкой через
-                        точки: роль, потолок скидки и число отклонений
-                        отвечают на разные вопросы, и склеенные подряд
-                        читались как одна фраза. */}
-                    <span className="mt-1 flex flex-wrap gap-1.5">
-                      <span className="badge t-xs">{roleLabel(t, tpl.role)}</span>
-                      <span className="badge t-xs">
-                        {tpl.cap_pct !== null
-                          ? t('team.templates.capTo', { pct: t.percent(tpl.cap_pct) })
-                          : t('team.templates.capByRole')}
+            {props.templates.length === 0 && (
+              <p className="t-sm prose-muted">{t('team.templates.empty')}</p>
+            )}
+
+            {props.templates.map((tpl) => {
+              const tRolePerms = permsByRole[tpl.role] ?? new Set<string>()
+              const tOpen = openTpl === tpl.id
+              const tplKey = `tpl:${tpl.id}`
+              const tPerms: Record<string, boolean> =
+                savedPerms[tplKey] ?? tpl.permissions ?? {}
+              return (
+                // Граница — на обёртке, а не на `.row`: правило
+                // `.row:last-child` гасит её у последнего ребёнка, а `.row`
+                // здесь всегда единственный ребёнок своего div, поэтому
+                // список шаблонов шёл вообще без разделителей.
+                <div key={tpl.id} className="border-b last:border-b-0"
+                     style={{ borderColor: 'var(--color-border)' }}>
+                  <div className="row">
+                    {/* Две строки текста дают около 38px — ниже --tap-min.
+                        Высота задаётся здесь, а не отступами: отступы
+                        раздули бы строку списка. */}
+                    <button type="button" className="min-w-0 grow text-left"
+                            style={{ minHeight: 'var(--tap-min)' }}
+                            aria-expanded={tOpen}
+                            onClick={() => setOpenTpl(tOpen ? null : tpl.id)}>
+                      {/* Имя шаблона придумал человек — это данные. */}
+                      <span className="t-md block truncate">{tpl.name}</span>
+                      {/* Три величины — тремя бейджами, а не строкой через
+                          точки: роль, потолок скидки и число отклонений
+                          отвечают на разные вопросы, и склеенные подряд
+                          читались как одна фраза. */}
+                      <span className="mt-1 flex flex-wrap gap-1.5">
+                        <span className="badge t-xs">{roleLabel(t, tpl.role)}</span>
+                        <span className="badge t-xs">
+                          {tpl.cap_pct !== null
+                            ? t('team.templates.capTo', { pct: t.percent(tpl.cap_pct) })
+                            : t('team.templates.capByRole')}
+                        </span>
+                        <span className="badge t-xs">
+                          {Object.keys(tPerms).length === 0
+                            ? t('team.templates.noPerms')
+                            : t.plural('team.templates.permCount', Object.keys(tPerms).length)}
+                        </span>
                       </span>
-                      <span className="badge t-xs">
-                        {Object.keys(tPerms).length === 0
-                          ? t('team.templates.noPerms')
-                          : t.plural('team.templates.permCount', Object.keys(tPerms).length)}
-                      </span>
-                    </span>
-                  </button>
-                  <button type="button" className="btn-ghost t-sm"
-                          disabled={busy === `tpl-del:${tpl.id}`}
-                          onClick={() => deleteTemplate(tpl.id)}>
-                    {t('common.delete')}
-                  </button>
-                </div>
-
-                {tOpen && (
-                  <div className="card-flat mb-3 flex flex-col gap-3">
-                    <div className="sm:max-w-[12rem]">
-                      <label className="field-label" htmlFor={`tpl-cap-${tpl.id}`}>
-                        {t('team.field.cap.label')}
-                      </label>
-                      <input type="number" min={0} max={100} className="input"
-                             id={`tpl-cap-${tpl.id}`}
-                             defaultValue={tpl.cap_pct ?? ''}
-                             placeholder={t('team.field.cap.placeholder', {
-                               n: t.number(capByRole[tpl.role] ?? 0),
-                             })}
-                             disabled={busy === `tpl-cap:${tpl.id}`}
-                             onBlur={(e) => saveTemplateCap(tpl, e.target.value)} />
-                    </div>
-                    <div>
-                      <p className="field-label">{t('team.templates.perms.label')}</p>
-                      <p className="field-hint mb-2">
-                        {t('team.templates.perms.hint', { role: roleLabel(t, tpl.role) })}
-                        {!iHaveStar && ` ${t('team.templates.perms.hintNotMine')}`}
-                      </p>
-                      {/* Ключ занятости — на КАЖДУЮ галочку, а не на шаблон
-                          целиком: с общим ключом гасла вся сетка разом,
-                          хотя записывается одна. */}
-                      <PermGrid
-                        perms={allPerms}
-                        cols="sm:grid-cols-2 lg:grid-cols-4"
-                        isOn={(p) => tPerms[p] ?? tRolePerms.has(p)}
-                        isOverridden={(p) => tPerms[p] !== undefined}
-                        disabledFor={(p) => busy === `tpl-perm:${tpl.id}:${p}`}
-                        // Та же защита, что и в карточке участника: выдать
-                        // можно только своё (0081). Здесь её не было вовсе,
-                        // и шаблон принимал права шире собственных — отказ
-                        // приезжал лишь при применении, к другому человеку.
-                        mutedFor={(p) => !iHaveStar && !myPerms.has(p)}
-                        onToggle={(p, next) => queuePerms(
-                          tplKey, `tpl-perm:${tpl.id}:${p}`,
-                          tPerms, tpl.role, p, next,
-                          (perms) => supabase.from('permission_templates')
-                            .update({ permissions: perms }).eq('id', tpl.id))} />
-                    </div>
+                    </button>
+                    <button type="button" className="btn-ghost t-sm"
+                            disabled={busy === `tpl-del:${tpl.id}`}
+                            onClick={() => deleteTemplate(tpl.id)}>
+                      {t('common.delete')}
+                    </button>
                   </div>
-                )}
-              </div>
-            )
-          })}
 
-          <form onSubmit={createTemplate} className="mt-4 flex flex-col gap-3">
-            <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
-              <div>
-                <label className="field-label" htmlFor="tpl-name">
-                  {t('team.templates.new.name.label')}
-                </label>
-                <input required className="input" id="tpl-name" value={tplName}
-                       onChange={(e) => setTplName(e.target.value)}
-                       placeholder={t('team.templates.new.name.placeholder')} />
+                  {tOpen && (
+                    <div className="card-flat mb-3 flex flex-col gap-3">
+                      <div className="sm:max-w-[12rem]">
+                        <label className="field-label" htmlFor={`tpl-cap-${tpl.id}`}>
+                          {t('team.field.cap.label')}
+                        </label>
+                        <input type="number" min={0} max={100} className="input"
+                               id={`tpl-cap-${tpl.id}`}
+                               defaultValue={tpl.cap_pct ?? ''}
+                               placeholder={t('team.field.cap.placeholder', {
+                                 n: t.number(capByRole[tpl.role] ?? 0),
+                               })}
+                               disabled={busy === `tpl-cap:${tpl.id}`}
+                               onBlur={(e) => saveTemplateCap(tpl, e.target.value)} />
+                      </div>
+                      <div>
+                        <p className="field-label">{t('team.templates.perms.label')}</p>
+                        <p className="field-hint mb-2">
+                          {t('team.templates.perms.hint', { role: roleLabel(t, tpl.role) })}
+                          {!iHaveStar && ` ${t('team.templates.perms.hintNotMine')}`}
+                        </p>
+                        {/* Ключ занятости — на КАЖДУЮ галочку, а не на шаблон
+                            целиком: с общим ключом гасла вся сетка разом,
+                            хотя записывается одна. */}
+                        <PermGrid
+                          perms={allPerms}
+                          cols="sm:grid-cols-2 lg:grid-cols-4"
+                          isOn={(p) => tPerms[p] ?? tRolePerms.has(p)}
+                          isOverridden={(p) => tPerms[p] !== undefined}
+                          disabledFor={(p) => busy === `tpl-perm:${tpl.id}:${p}`}
+                          // Та же защита, что и в карточке участника: выдать
+                          // можно только своё (0081). Здесь её не было вовсе,
+                          // и шаблон принимал права шире собственных — отказ
+                          // приезжал лишь при применении, к другому человеку.
+                          mutedFor={(p) => !iHaveStar && !myPerms.has(p)}
+                          onToggle={(p, next) => queuePerms(
+                            tplKey, `tpl-perm:${tpl.id}:${p}`,
+                            tPerms, tpl.role, p, next,
+                            (perms) => supabase.from('permission_templates')
+                              .update({ permissions: perms }).eq('id', tpl.id))} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+
+            <form onSubmit={createTemplate} className="mt-4 flex flex-col gap-3">
+              <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
+                <div>
+                  <label className="field-label" htmlFor="tpl-name">
+                    {t('team.templates.new.name.label')}
+                  </label>
+                  <input required className="input" id="tpl-name" value={tplName}
+                         onChange={(e) => setTplName(e.target.value)}
+                         placeholder={t('team.templates.new.name.placeholder')} />
+                </div>
+                <div>
+                  <label className="field-label" htmlFor="tpl-role">{t('common.role')}</label>
+                  <select className="select" id="tpl-role" value={tplRole}
+                          onChange={(e) => setTplRole(e.target.value)}>
+                    {assignableRoles.map((r) => (
+                      <option key={r} value={r}>{roleLabel(t, r)}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="field-label" htmlFor="tpl-new-cap">
+                    {t('team.templates.new.cap.label')}
+                  </label>
+                  <input type="number" min={0} max={100} className="input sm:w-24" id="tpl-new-cap"
+                         value={tplCap} onChange={(e) => setTplCap(e.target.value)}
+                         placeholder={t('team.templates.new.cap.placeholder')} />
+                </div>
               </div>
+
+              {/* Дозволы НОВОГО шаблона — здесь же, а не «потом отредактируете».
+                  Шаблон, созданный пустым, применяется как чистая роль, и первое
+                  же применение сотрёт человеку то, ради чего шаблон и заводили. */}
               <div>
-                <label className="field-label" htmlFor="tpl-role">{t('common.role')}</label>
-                <select className="select" id="tpl-role" value={tplRole}
-                        onChange={(e) => setTplRole(e.target.value)}>
-                  {assignableRoles.map((r) => (
-                    <option key={r} value={r}>{roleLabel(t, r)}</option>
-                  ))}
-                </select>
+                <p className="field-label">{t('team.templates.new.perms.label')}</p>
+                <p className="field-hint mb-2">
+                  {t('team.templates.new.perms.hint', { role: roleLabel(t, tplRole) })}
+                </p>
+                <PermGrid
+                  perms={allPerms}
+                  cols="sm:grid-cols-2 lg:grid-cols-4"
+                  isOn={(p) => tplPerms[p] ?? (permsByRole[tplRole]?.has(p) ?? false)}
+                  isOverridden={(p) => tplPerms[p] !== undefined}
+                  disabledFor={() => false}
+                  mutedFor={(p) => !iHaveStar && !myPerms.has(p)}
+                  onToggle={(p, next) =>
+                    setTplPerms(togglePermIn(tplPerms, tplRole, p, next))} />
               </div>
+
               <div>
-                <label className="field-label" htmlFor="tpl-new-cap">
-                  {t('team.templates.new.cap.label')}
-                </label>
-                <input type="number" min={0} max={100} className="input sm:w-24" id="tpl-new-cap"
-                       value={tplCap} onChange={(e) => setTplCap(e.target.value)}
-                       placeholder={t('team.templates.new.cap.placeholder')} />
+                <button className="btn-secondary" disabled={busy === 'tpl-new'}>
+                  {t('team.templates.new.submit')}
+                </button>
               </div>
+            </form>
+          </section>
+          </Fold>
+        )}
+
+        {/* Счётчик — сумма строк за дверью. Без него заголовок
+            не отвечает на «стоит ли открывать» (проверка 5). */}
+        <Fold title={t('team.section.more')}
+              count={props.sessions.length + props.audit.length
+                     + props.security.length + props.access.length}
+              open={openSection === 'more'} onToggle={() => toggleSection('more')}>
+          <div className="flex flex-col gap-4">
+          {/* ── Все сеансы ──────────────────────────────────────────────── */}
+          {/* ⚠️ Заголовок раздела называется «Сеанси» ДОСЛОВНО, и это не
+              стилистика. Шаблон письма о входе с нового устройства (0085,
+              `notification_templates`, событие `security.new_device`) говорит
+              человеку: «відкрийте Команда → Сеанси і завершіть сеанс». Путь
+              из письма обязан существовать и называться так же — иначе письмо
+              отправляет туда, чего нет, и читается как обман. Раздел назывался
+              «Активні сеанси», и это расхождение закрыто здесь, а не в базе:
+              шаблон лежит в `notification_templates`, где его вправе
+              переопределить арендатор, а заголовок экрана — наш. */}
+          <section className="card rise-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="t-lg">{t('team.sessions.title')}</h2>
+              {props.canWrite && props.sessions.length > 0 && (
+                <button type="button" className="btn-secondary t-sm"
+                        disabled={busy === 'sess:all'}
+                        onClick={() => endSessions(null)}>
+                  {t('team.sessions.endAll')}
+                </button>
+              )}
             </div>
-
-            {/* Дозволы НОВОГО шаблона — здесь же, а не «потом отредактируете».
-                Шаблон, созданный пустым, применяется как чистая роль, и первое
-                же применение сотрёт человеку то, ради чего шаблон и заводили. */}
-            <div>
-              <p className="field-label">{t('team.templates.new.perms.label')}</p>
-              <p className="field-hint mb-2">
-                {t('team.templates.new.perms.hint', { role: roleLabel(t, tplRole) })}
+            {props.sessions.length === 0 ? (
+              <p className="t-md prose-muted mt-2">{t('team.sessions.empty')}</p>
+            ) : (
+              <p className="t-sm prose-muted mt-2">
+                {t.plural('team.sessions.count', props.sessions.length)}.
+                {' '}{t('team.sessions.details')}
               </p>
-              <PermGrid
-                perms={allPerms}
-                cols="sm:grid-cols-2 lg:grid-cols-4"
-                isOn={(p) => tplPerms[p] ?? (permsByRole[tplRole]?.has(p) ?? false)}
-                isOverridden={(p) => tplPerms[p] !== undefined}
-                disabledFor={() => false}
-                mutedFor={(p) => !iHaveStar && !myPerms.has(p)}
-                onToggle={(p, next) =>
-                  setTplPerms(togglePermIn(tplPerms, tplRole, p, next))} />
+            )}
+          </section>
+
+          {/* ── Журнал прав ─────────────────────────────────────────────── */}
+          {/* Пишется триггером на tenant_members с 0076, а видно его стало
+              только сейчас. Записи НЕИЗМЕНЯЕМЫ: ни правки, ни удаления —
+              ни через приложение, ни через панель базы. Именно поэтому строка
+              «Оля видала собі фінанси» тут и имеет вес. */}
+          <section className="card rise-3 !p-0">
+            <div className="flex flex-wrap items-center justify-between gap-2 p-5 pb-3">
+              <div>
+                <h2 className="t-lg">{t('team.audit.title')}</h2>
+                <p className="t-sm prose-muted">{t('team.audit.desc')}</p>
+              </div>
+              {props.audit.length > 0 && (
+                <button type="button" className="btn-secondary t-sm"
+                        aria-expanded={auditOpen}
+                        onClick={() => setAuditOpen(!auditOpen)}>
+                  {auditOpen
+                    ? t('team.audit.collapse')
+                    : t('team.audit.expand', { n: t.number(props.audit.length) })}
+                </button>
+              )}
             </div>
 
-            <div>
-              <button className="btn-secondary" disabled={busy === 'tpl-new'}>
-                {t('team.templates.new.submit')}
-              </button>
-            </div>
-          </form>
-        </section>
+            {props.audit.length === 0 && (
+              <p className="t-md prose-muted px-5 pb-5">{t('team.audit.empty')}</p>
+            )}
+
+            {auditOpen && props.audit.map((a) => (
+              <div key={a.id} className="row items-start px-5">
+                <div className="min-w-0">
+                  <p className="t-md">
+                    <b>{a.actor_name ?? t('team.audit.system')}</b>
+                    {' → '}
+                    {a.target_name ?? t('team.audit.member')}
+                  </p>
+                  <p className="t-xs prose-muted">{t.dateTime(a.at)}</p>
+
+                  {a.role_before !== a.role_after && (
+                    <p className="t-sm">
+                      {t('team.audit.roleChange', {
+                        before: a.role_before ? roleLabel(t, a.role_before) : '—',
+                        after: a.role_after ? roleLabel(t, a.role_after) : '—',
+                      })}
+                    </p>
+                  )}
+                  {(a.perms_added ?? []).length > 0 && (
+                    <p className="t-sm" style={{ color: 'var(--color-success)' }}>
+                      + {(a.perms_added ?? []).join(', ')}
+                    </p>
+                  )}
+                  {(a.perms_removed ?? []).length > 0 && (
+                    <p className="t-sm" style={{ color: 'var(--color-danger)' }}>
+                      − {(a.perms_removed ?? []).join(', ')}
+                    </p>
+                  )}
+                  {a.note && <p className="t-sm prose-muted">{a.note}</p>}
+                </div>
+                <span className={`${ACTION_TONE[a.action] ?? 'badge'} shrink-0`}>
+                  {actionLabel(t, a.action)}
+                </span>
+              </div>
+            ))}
+          </section>
+
+          {/* ── Журнал безопасности ─────────────────────────────────────── */}
+          {/* Рядом с журналом доступов и сразу после него: оба отвечают на
+              вопрос «что тут происходило», только один про действия своих,
+              а другой про попытки — в том числе чужие. Своим файлом, потому
+              что это отдельный механизм со своей функцией чтения (0085),
+              а не ещё одна секция этого экрана. */}
+          <SecurityLog events={props.security} />
+
+          {/* ── Журнал доступа к данным ─────────────────────────────────── */}
+          {/* Третий журнал и третий вопрос. Первые два отвечают «кто кому что
+              выдал» и «кто ломился». Этот — «кто СМОТРЕЛ»: открытая карточка
+              и выгруженный список не меняют ни строки и потому не попадают
+              ни в один журнал изменений. Без него на вопрос «откуда у
+              конкурента телефоны моих клиентов» ответить нечем. */}
+          <DataAccessLog rows={props.access} />
+          </div>
+        </Fold>
+      </div>
+
+      {/* ── Запросити в команду ──────────────────────────────────────
+          На телефоне это плавающая кнопка со шторкой, а не форма,
+          раскрытая всегда. Форма из четырёх полей занимала первый
+          экран ради действия, которое в салоне делают несколько раз
+          в год, — а ответ «кто у меня работает» из-за неё уезжал
+          третьим блоком.
+
+          Пункт ОДИН, поэтому `QuickFab` рисует широкую кнопку
+          с подписью, а не раскрывающийся стос: «меню» из одного
+          пункта — лишнее нажатие на пустом месте. */}
+      {props.canWrite && (
+        <div className="lg:hidden">
+          <QuickFab actions={[{
+            key: 'invite',
+            label: t('team.invite.title'),
+            icon: IconPlus,
+            onClick: () => setInviteSheet(true),
+          }]} />
+          <Sheet open={inviteSheet} onClose={() => setInviteSheet(false)}
+                 title={t('team.invite.title')}>
+            <p className="t-md mb-4 prose-muted">{t('team.invite.desc')}</p>
+            {inviteBody}
+          </Sheet>
+        </div>
       )}
-
-      {/* ── Все сеансы ──────────────────────────────────────────────── */}
-      {/* ⚠️ Заголовок раздела называется «Сеанси» ДОСЛОВНО, и это не
-          стилистика. Шаблон письма о входе с нового устройства (0085,
-          `notification_templates`, событие `security.new_device`) говорит
-          человеку: «відкрийте Команда → Сеанси і завершіть сеанс». Путь
-          из письма обязан существовать и называться так же — иначе письмо
-          отправляет туда, чего нет, и читается как обман. Раздел назывался
-          «Активні сеанси», и это расхождение закрыто здесь, а не в базе:
-          шаблон лежит в `notification_templates`, где его вправе
-          переопределить арендатор, а заголовок экрана — наш. */}
-      <section className="card rise-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="t-lg">{t('team.sessions.title')}</h2>
-          {props.canWrite && props.sessions.length > 0 && (
-            <button type="button" className="btn-secondary t-sm"
-                    disabled={busy === 'sess:all'}
-                    onClick={() => endSessions(null)}>
-              {t('team.sessions.endAll')}
-            </button>
-          )}
-        </div>
-        {props.sessions.length === 0 ? (
-          <p className="t-md prose-muted mt-2">{t('team.sessions.empty')}</p>
-        ) : (
-          <p className="t-sm prose-muted mt-2">
-            {t.plural('team.sessions.count', props.sessions.length)}.
-            {' '}{t('team.sessions.details')}
-          </p>
-        )}
-      </section>
-
-      {/* ── Журнал прав ─────────────────────────────────────────────── */}
-      {/* Пишется триггером на tenant_members с 0076, а видно его стало
-          только сейчас. Записи НЕИЗМЕНЯЕМЫ: ни правки, ни удаления —
-          ни через приложение, ни через панель базы. Именно поэтому строка
-          «Оля видала собі фінанси» тут и имеет вес. */}
-      <section className="card rise-3 !p-0">
-        <div className="flex flex-wrap items-center justify-between gap-2 p-5 pb-3">
-          <div>
-            <h2 className="t-lg">{t('team.audit.title')}</h2>
-            <p className="t-sm prose-muted">{t('team.audit.desc')}</p>
-          </div>
-          {props.audit.length > 0 && (
-            <button type="button" className="btn-secondary t-sm"
-                    aria-expanded={auditOpen}
-                    onClick={() => setAuditOpen(!auditOpen)}>
-              {auditOpen
-                ? t('team.audit.collapse')
-                : t('team.audit.expand', { n: t.number(props.audit.length) })}
-            </button>
-          )}
-        </div>
-
-        {props.audit.length === 0 && (
-          <p className="t-md prose-muted px-5 pb-5">{t('team.audit.empty')}</p>
-        )}
-
-        {auditOpen && props.audit.map((a) => (
-          <div key={a.id} className="row items-start px-5">
-            <div className="min-w-0">
-              <p className="t-md">
-                <b>{a.actor_name ?? t('team.audit.system')}</b>
-                {' → '}
-                {a.target_name ?? t('team.audit.member')}
-              </p>
-              <p className="t-xs prose-muted">{t.dateTime(a.at)}</p>
-
-              {a.role_before !== a.role_after && (
-                <p className="t-sm">
-                  {t('team.audit.roleChange', {
-                    before: a.role_before ? roleLabel(t, a.role_before) : '—',
-                    after: a.role_after ? roleLabel(t, a.role_after) : '—',
-                  })}
-                </p>
-              )}
-              {(a.perms_added ?? []).length > 0 && (
-                <p className="t-sm" style={{ color: 'var(--color-success)' }}>
-                  + {(a.perms_added ?? []).join(', ')}
-                </p>
-              )}
-              {(a.perms_removed ?? []).length > 0 && (
-                <p className="t-sm" style={{ color: 'var(--color-danger)' }}>
-                  − {(a.perms_removed ?? []).join(', ')}
-                </p>
-              )}
-              {a.note && <p className="t-sm prose-muted">{a.note}</p>}
-            </div>
-            <span className={`${ACTION_TONE[a.action] ?? 'badge'} shrink-0`}>
-              {actionLabel(t, a.action)}
-            </span>
-          </div>
-        ))}
-      </section>
-
-      {/* ── Журнал безопасности ─────────────────────────────────────── */}
-      {/* Рядом с журналом доступов и сразу после него: оба отвечают на
-          вопрос «что тут происходило», только один про действия своих,
-          а другой про попытки — в том числе чужие. Своим файлом, потому
-          что это отдельный механизм со своей функцией чтения (0085),
-          а не ещё одна секция этого экрана. */}
-      <SecurityLog events={props.security} />
-
-      {/* ── Журнал доступа к данным ─────────────────────────────────── */}
-      {/* Третий журнал и третий вопрос. Первые два отвечают «кто кому что
-          выдал» и «кто ломился». Этот — «кто СМОТРЕЛ»: открытая карточка
-          и выгруженный список не меняют ни строки и потому не попадают
-          ни в один журнал изменений. Без него на вопрос «откуда у
-          конкурента телефоны моих клиентов» ответить нечем. */}
-      <DataAccessLog rows={props.access} />
     </div>
   )
 }
