@@ -49,6 +49,8 @@ import { QuickFab } from '@/components/quick-fab'
 
 type Member = {
   user_id: string; full_name: string | null; email: string | null
+  /** Готова публічна адреса фото (0130/0132) або порожньо. Збирає сторінка. */
+  avatar_url?: string | null
   role: string; permissions: Record<string, boolean> | null
   discount_cap_pct: number | null; effective_cap_pct: number
   blocked_at: string | null; blocked_reason: string | null
@@ -346,6 +348,26 @@ function PermGrid({
         </div>
       ))}
     </div>
+  )
+}
+
+/**
+ * Кружок людини: фото, якщо воно є, інакше перша літера імені.
+ * ОДИН на обидва місця (рядок таблиці і панель) — дві копії розійшлися б.
+ *
+ * `img`, а не `next/image`: адреса приходить зі сховища з міткою версії
+ * після заміни фото, і оптимізатор Next віддав би попереднє.
+ */
+function Face({ m, size, font }: { m: Member; size: number; font: number }) {
+  return (
+    <span aria-hidden className="list-anchor" data-tone="accent"
+          style={{ width: size, height: size, fontSize: font, fontWeight: 650 }}>
+      {m.avatar_url
+        // eslint-disable-next-line @next/next/no-img-element
+        ? <img src={m.avatar_url} alt="" width={size} height={size}
+               style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        : (m.full_name ?? m.email ?? '?').trim().charAt(0).toUpperCase()}
+    </span>
   )
 }
 
@@ -1798,14 +1820,11 @@ export function TeamClient(props: {
                             onClick={() => setPicked(
                               picked === m.user_id ? null : m.user_id)}>
                       <span className="flex min-w-0 items-center gap-3">
-                        {/* Аватар — буква имени: колонки под фото
-                            у участника нет (`staff.avatar` пуста и
-                            загрузки к ней ещё нет), а пустой серый
-                            кружок был бы честнее только на вид. */}
-                        <span aria-hidden className="list-anchor" data-tone="accent"
-                              style={{ width: 36, height: 36, fontWeight: 650 }}>
-                          {(m.full_name ?? m.email ?? '?').trim().charAt(0).toUpperCase()}
-                        </span>
+                        {/* Фото людини, якщо вона його поставила (0130,
+                            у список приносить 0132). Немає — перша
+                            літера імені, як було: порожній сірий кружок
+                            чесніший тільки на вигляд. */}
+                        <Face m={m} size={36} font={15} />
                         <span className="min-w-0">
                           {/* Имя и почта — данные, не переводятся. */}
                           <span className="block truncate font-semibold"
@@ -1857,11 +1876,7 @@ export function TeamClient(props: {
           {webTab !== 'invites' && pickedMember && (
             <aside className="wpanel">
               <div className="flex items-start justify-between gap-3">
-                <span aria-hidden className="list-anchor" data-tone="accent"
-                      style={{ width: 66, height: 66, fontSize: 24, fontWeight: 700 }}>
-                  {(pickedMember.full_name ?? pickedMember.email ?? '?')
-                    .trim().charAt(0).toUpperCase()}
-                </span>
+                <Face m={pickedMember} size={66} font={24} />
                 <button type="button" className="btn-icon"
                         aria-label={t('common.close.aria')}
                         onClick={() => setPicked(null)}>

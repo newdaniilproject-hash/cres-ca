@@ -315,6 +315,12 @@ export function AppShell(props: {
   shopName?: string
   /** Имя человека — первая строка шапки шторки профиля (хендофф). */
   userName?: string
+  /**
+   * Готовый публичный адрес своего фото (0130) или пустая строка.
+   * Собирает СЕРВЕРНЫЙ макет кабинета: оболочка клиентская, и заводить
+   * в ней клиента Supabase ради склейки строки незачем.
+   */
+  avatarUrl?: string
   /** Его роль в заведении — вторая строка там же. */
   role?: string
   /** Кнопка справа в шапке. Читается и рисуется — см. `AppShellInner`. */
@@ -337,8 +343,26 @@ export function AppShell(props: {
   )
 }
 
+/**
+ * Кружок аватара: фото, если оно есть, иначе первая буква имени.
+ * ОДИН на три места (шапка телефона, шапка десктопа, выпадающее меню) —
+ * три копии разъехались бы на первой правке.
+ *
+ * `img`, а не `next/image`: адрес приходит из хранилища с меткой версии
+ * после замены фото, и оптимизатор Next отдал бы прошлое по тому же ключу.
+ */
+function Avatar({ url, initial }: { url: string; initial: string }) {
+  if (!url) return <>{initial || <IconUser size={18} />}</>
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={url} alt="" width={40} height={40}
+         style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+  )
+}
+
 function AppShellInner({
-  modules, registry, perms, tenantId, shopName = '', userName = '', role = '', action, children,
+  modules, registry, perms, tenantId, shopName = '', userName = '', avatarUrl = '',
+  role = '', action, children,
 }: {
   modules?: TenantModule[]
   registry?: NavModule[]
@@ -346,6 +370,7 @@ function AppShellInner({
   tenantId?: string
   shopName?: string
   userName?: string
+  avatarUrl?: string
   role?: string
   action?: React.ReactNode
   children: React.ReactNode
@@ -633,7 +658,7 @@ function AppShellInner({
           <button type="button" onClick={() => setDrop((v) => !v)}
                   className="flex items-center gap-2.5 rounded-xl px-2 py-1.5"
                   aria-expanded={drop} aria-label={t('app.chrome.avatar.aria')}>
-            <span className="avatarbtn pointer-events-none">{initial || <IconUser size={18} />}</span>
+            <span className="avatarbtn pointer-events-none"><Avatar url={avatarUrl} initial={initial} /></span>
             <span className="hidden min-w-0 text-left xl:block">
               <span className="block truncate" style={{ fontSize: 14, fontWeight: 700 }}>{shopName}</span>
             </span>
@@ -650,7 +675,7 @@ function AppShellInner({
           <div className="webdrop hidden lg:block">
             <div className="mb-1 flex items-center gap-2.5 border-b px-2.5 pb-2.5 pt-1"
                  style={{ borderColor: 'var(--color-border)' }}>
-              <span className="avatarbtn pointer-events-none">{initial || <IconUser size={18} />}</span>
+              <span className="avatarbtn pointer-events-none"><Avatar url={avatarUrl} initial={initial} /></span>
               <span className="min-w-0">
                 <span className="block truncate" style={{ fontSize: 14, fontWeight: 700 }}>{shopName}</span>
               </span>
@@ -800,7 +825,7 @@ function AppShellInner({
 
             <button type="button" onClick={() => setMenu(true)}
                     aria-label={t('app.chrome.avatar.aria')} className="avatarbtn shrink-0">
-              {initial || <IconUser size={18} />}
+              <Avatar url={avatarUrl} initial={initial} />
             </button>
           </div>
 
@@ -839,7 +864,18 @@ function AppShellInner({
                   onClick={() => setGoing(tab.href)}
                   data-active={active(tab)}>
               {/* 26px — размер из README; было 22. */}
-              <span aria-hidden><tab.icon size={26} /></span>
+              {/* У «Профілю» вместо значка — СВОЁ ФОТО, если оно есть.
+                  Отзыв владельца 25.08.2026: «фото обновилось но не
+                  везде». Так себя ведёт всё, где у человека есть
+                  портрет: вкладка «я» показывает меня, а не силуэт.
+                  Нет фото — остаётся значок, пустого кружка не бывает. */}
+              <span aria-hidden className={tab.href === '/app/profile' && avatarUrl
+                ? 'bottomnav-photo' : undefined}>
+                {tab.href === '/app/profile' && avatarUrl
+                  // eslint-disable-next-line @next/next/no-img-element
+                  ? <img src={avatarUrl} alt="" width={26} height={26} />
+                  : <tab.icon size={26} />}
+              </span>
               {labelOf(t, tab.label)}
             </Link>
           ))}
@@ -858,14 +894,21 @@ function AppShellInner({
             подписки была бы утверждением, которого база не подтверждает.
             Появится биллинг — появится и она. */}
         <div className="mb-3 flex items-center gap-3">
-          <span aria-hidden className="flex shrink-0 items-center justify-center"
+          <span aria-hidden className="flex shrink-0 items-center justify-center overflow-hidden"
                 style={{
                   width: 52, height: 52, borderRadius: 999,
                   background: 'var(--color-accent-soft)',
                   color: 'var(--color-accent-ink)',
                   fontSize: 19, fontWeight: 700,
                 }}>
-            {(userName || shopName || '·').trim().charAt(0).toUpperCase()}
+            {/* `img`, а не `next/image`: адрес приходит из хранилища
+                с меткой версии после замены фото, и оптимизатор Next
+                отдал бы прошлое фото по тому же ключу. */}
+            {avatarUrl
+              // eslint-disable-next-line @next/next/no-img-element
+              ? <img src={avatarUrl} alt="" width={52} height={52}
+                     style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              : (userName || shopName || '·').trim().charAt(0).toUpperCase()}
           </span>
           <span className="min-w-0">
             <span className="block truncate" style={{ fontSize: 16, fontWeight: 700 }}>
