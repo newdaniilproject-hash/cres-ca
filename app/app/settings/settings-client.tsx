@@ -9,7 +9,7 @@ import type { T } from '@/lib/i18n/translate'
 import { dbErrorText } from '@/lib/errors/db'
 import {
   IconGear, IconBag, IconDoc, IconUsers, IconDownload, IconLock,
-  IconChevronRight, IconClose, IconLayers,
+  IconBell, IconChevronRight, IconClose, IconLayers,
 } from '@/components/icons'
 
 type Shop = {
@@ -42,7 +42,7 @@ const roleLabel = (t: T, r: string): string =>
 // приходит модулем), а не задан константой: раздел в списке, за которым
 // на этом экране ничего не стоит, — это сломанная навигация, ровно как
 // колокол, который ничего не открывает.
-type SectionKey = 'public' | 'shop' | 'presets' | 'team' | 'export' | 'security'
+type SectionKey = 'public' | 'shop' | 'presets' | 'notify' | 'team' | 'export' | 'security'
 
 // Витрина — отдельный модуль (`storefront`), а страница настроек модуля
 // не требует: в панели «Магазин» им не помечен, потому что здесь же
@@ -62,8 +62,15 @@ type SectionKey = 'public' | 'shop' | 'presets' | 'team' | 'export' | 'security'
 // лишний доступ — нет.
 export function SettingsClient({
   shop, canWrite, team, canSeeTeam, hasStorefront = false, presets = [], brand = null,
+  notify = null,
 }: {
   shop: Shop; canWrite: boolean; team: Member[]
+  /**
+   * Налаштування сповіщень (0129) або null, якщо рядка ще немає —
+   * а його немає доти, доки людина нічого не змінювала. null означає
+   * ті самі умовчання, що зашиті в `enqueue_expiry_for`.
+   */
+  notify?: { expiryEmail: boolean; expiryPush: boolean; recipients: string } | null
   /**
    * Готові набори довідників (0122). Приходять пропом із серверної
    * сторінки: список пресетів — це продукт, а не дані закладу, і клієнт
@@ -93,6 +100,7 @@ export function SettingsClient({
   const [address, setAddress] = useState(shop.address ?? '')
   const [phone, setPhone] = useState(shop.contact_phone ?? '')
   const [state, setState] = useState<'idle' | 'busy' | 'saved' | 'error'>('idle')
+  const [notifyBusy, setNotifyBusy] = useState(false)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
   const [brandColor, setBrandColor] = useState(brand ?? '')
@@ -427,6 +435,92 @@ export function SettingsClient({
    * і після заповнення — повторний виклик нічого не подвоює, і саме це
    * написано під нею: інакше її бояться натиснути вдруге.
    */
+  // ── НАЛАШТУВАННЯ СПОВІЩЕНЬ (ТЗ 2, право адміністратора) ──────────────────
+  //
+  // ТЗ перелічує серед прав адміністратора «налаштування сповіщень», і до
+  // 25.08.2026 такого екрана не існувало: отримувачі обчислювались
+  // усередині функції як «всі, у кого stock.read», канали були прибиті
+  // намертво. У салоні з чотирма майстрами попередження о шостій ранку
+  // дзвонило в чотирьох телефонах разом, і сказати «шліть тільки мені»
+  // не було чим.
+  //
+  // ⚠️ ПОРОГІВ 14 І 7 ТУТ НЕМАЄ, І ЦЕ РІШЕННЯ. Вони названі в ТЗ 3.2 і є
+  // частиною того, що ми обіцяємо перевірці. Заклад, який поставить собі
+  // «за 1 день», отримає формально працюючу систему і зіпсований сенс —
+  // попередження, коли зробити вже нічого не можна. Відповідати за це
+  // будемо ми, бо поле дали ми. Даними тут стає справа закладу (кому
+  // і куди), кодом лишається вимога регламенту (коли).
+  function notifyBody() {
+    // Відсутній рядок = ті самі умовчання, що зашиті в `enqueue_expiry_for`.
+    // Показуємо їх як обране, а не як порожнечу: людина має бачити, що
+    // система робить СЬОГОДНІ, а не гадати.
+    const cur = notify ?? { expiryEmail: true, expiryPush: true, recipients: 'stock_read' }
+
+    async function save(patch: Partial<typeof cur>) {
+      const next = { ...cur, ...patch }
+      setNotifyBusy(true)
+      const { error } = await supabase.from('notification_settings').upsert({
+        tenant_id: shop.id,
+        expiry_email: next.expiryEmail,
+        expiry_push: next.expiryPush,
+        expiry_recipients: next.recipients,
+      }, { onConflict: 'tenant_id' })
+      setNotifyBusy(false)
+      if (error) { setError(dbErrorText(t, error)); return }
+      // Значення приходить пропом із сервера — без оновлення екран показав
+      // би старе, і наступне натискання відправило б застарілий набір.
+      router.refresh()
+    }
+
+    return (
+      <div className="flex flex-col gap-4">
+        <p className="field-hint">{t('settings.notify.hint')}</p>
+
+        <div>
+          <p className="field-label">{t('settings.notify.channels')}</p>
+          {/* Зона натискання — РЯДКОМ, а не розміром квадратика. */}
+          <label className="t-sm flex items-center gap-2"
+                 style={{ minHeight: 'var(--tap-min)' }}>
+            <input type="checkbox" checked={cur.expiryEmail} disabled={notifyBusy}
+                   onChange={(e) => void save({ expiryEmail: e.target.checked })} />
+            {t('settings.notify.email')}
+          </label>
+          <label className="t-sm flex items-center gap-2"
+                 style={{ minHeight: 'var(--tap-min)' }}>
+            <input type="checkbox" checked={cur.expiryPush} disabled={notifyBusy}
+                   onChange={(e) => void save({ expiryPush: e.target.checked })} />
+            {t('settings.notify.push')}
+          </label>
+          {!cur.expiryEmail && !cur.expiryPush && (
+            // Мовчазне «нічого не обрано» тут коштує дорого: попередження
+            // про термін придатності — те, заради чого куплено систему.
+            <p className="field-error">{t('settings.notify.allOff')}</p>
+          )}
+        </div>
+
+        <div>
+          <p className="field-label">{t('settings.notify.who')}</p>
+          {(['stock_read', 'owner_only'] as const).map((v) => (
+            <label key={v} className="flex items-start gap-2 py-1"
+                   style={{ minHeight: 'var(--tap-min)' }}>
+              <input type="radio" name="notify-who" className="mt-1 shrink-0"
+                     checked={cur.recipients === v} disabled={notifyBusy}
+                     onChange={() => void save({ recipients: v })} />
+              <span>
+                <span className="t-sm font-semibold">{t(`settings.notify.who.${v}`)}</span>
+                <span className="field-hint block">{t(`settings.notify.who.${v}.hint`)}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+
+        {/* Пороги названі вголос і як НЕзмінні: інакше перше питання
+            власника буде «а де тут поміняти на три дні». */}
+        <p className="field-hint">{t('settings.notify.days')}</p>
+      </div>
+    )
+  }
+
   function presetsBody() {
     if (presets.length === 0) {
       return <p className="t-sm" style={{ color: 'var(--color-muted)' }}>
@@ -593,6 +687,13 @@ export function SettingsClient({
       bg: 'var(--color-accent-soft)', fg: 'var(--color-accent-ink)',
       body: () => presetsBody(),
     }] : []),
+    ...(canWrite ? [{
+      key: 'notify' as const,
+      title: t('settings.notify.title'), desc: t('settings.notify.desc'),
+      icon: <IconBell size={20} />,
+      bg: 'var(--tone-amber-soft)', fg: 'var(--tone-amber)',
+      body: () => notifyBody(),
+    }] : []),
     {
       key: 'team',
       title: t('settings.team.title'), desc: t('settings.team.desc'),
@@ -715,6 +816,22 @@ export function SettingsClient({
             с панелью справа, и «Команда» — её законный раздел, а не
             дубль пункта навигации. Тела `teamBody` это не касается —
             оно одно на обе раскладки и зовётся панелью. */}
+
+        {/* Сповіщення (ТЗ 2, право адміністратора).
+
+            ⚠️ Розділи на телефоні і на широкому екрані малюються РІЗНИМИ
+            місцями: масив `sections` читає лише розкладка `lg`, а тут
+            стоять власні картки. Це вже коштувало помилки в цьому ж
+            заході — секцію додали в масив, і на телефоні її не було
+            зовсім. Заводячи новий розділ, правити треба ОБИДВА місця;
+            тіло при цьому одне (`notifyBody`) і розійтись не може. */}
+        {canWrite && (
+          <section className="card rise-3">
+            <h2 className="t-lg mb-1">{t('settings.notify.title')}</h2>
+            <p className="t-sm mb-3 prose-muted">{t('settings.notify.desc')}</p>
+            {notifyBody()}
+          </section>
+        )}
 
         {/* Ваши данные: выгрузка заведения.
 
