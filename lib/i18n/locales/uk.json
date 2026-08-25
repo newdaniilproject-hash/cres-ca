@@ -1693,7 +1693,7 @@
   "settings.public.title": "Ваша сторінка",
   "settings.public.desc": "Це посилання — у шапку Instagram: клієнти записуються самі.",
   "settings.public.published": "опубліковано",
-  "settings.public.draft": "чернетка — відкриється після перевірки",
+  "settings.public.draft": "не опубліковано",
   "settings.shop.name.label": "Назва",
   "settings.shop.tagline.label": "Підпис (одним рядком)",
   "settings.shop.tagline.placeholder": "Брейди та афрокоси · центр міста",
@@ -2779,5 +2779,14 @@
   "team.section.templates": "Шаблони доступу",
   "team.section.more": "Ще про доступ",
   "team.danger.access": "Закрити доступ",
-  "team.danger.both": "Доступ і володіння"
+  "team.danger.both": "Доступ і володіння",
+  "settings.public.what": "Це ваша сторінка для покупця: послуги, ціни і кнопка «Записатися». Окремий сайт для неї не потрібен.",
+  "settings.public.publish": "Показувати покупцям",
+  "settings.public.publishHint": "Вимкнено — сторінка відкривається тільки вам. Увімкнено — її бачать усі, знаходить пошук і можна записатися.",
+  "settings.public.ig.title": "Посилання для шапки Instagram",
+  "settings.public.ig.why": "Замовлення й записи, що прийшли за цим посиланням, рахуються як приведені вами — комісії з них немає.",
+  "settings.public.block.title": "Поки що покупець нічого не побачить",
+  "settings.public.block.empty": "немає жодної опублікованої послуги чи товару",
+  "settings.public.block.about": "не заповнено опис закладу",
+  "settings.public.block.suspended": "заклад призупинено — напишіть у підтримку"
 }

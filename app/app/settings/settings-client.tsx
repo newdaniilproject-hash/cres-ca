@@ -9,7 +9,7 @@ import type { T } from '@/lib/i18n/translate'
 import { dbErrorText } from '@/lib/errors/db'
 import {
   IconGear, IconBag, IconDoc, IconUsers, IconDownload, IconLock,
-  IconBell, IconChevronRight, IconClose, IconLayers,
+  IconBell, IconChevronRight, IconClose, IconLayers, IconAlert,
 } from '@/components/icons'
 
 type Shop = {
@@ -62,7 +62,7 @@ type SectionKey = 'public' | 'shop' | 'presets' | 'notify' | 'team' | 'export' |
 // лишний доступ — нет.
 export function SettingsClient({
   shop, canWrite, team, canSeeTeam, hasStorefront = false, presets = [], brand = null,
-  notify = null,
+  notify = null, offeringCount = 0,
 }: {
   shop: Shop; canWrite: boolean; team: Member[]
   /**
@@ -88,11 +88,20 @@ export function SettingsClient({
    */
   canSeeTeam: boolean
   hasStorefront?: boolean
+  /**
+   * Скільки позицій заклад показує покупцеві. Потрібно, щоб сказати
+   * чесно, чому вітрина ще порожня: сторінка без жодної позиції
+   * відкривається, але робити на ній нічого.
+   */
+  offeringCount?: number
 }) {
   const t = useT()
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
 
+  const [published, setPublished] = useState(shop.storefront_enabled)
+  const [pubBusy, setPubBusy] = useState(false)
+  const [igCopied, setIgCopied] = useState(false)
   const [name, setName] = useState(shop.name)
   const [tagline, setTagline] = useState(shop.tagline ?? '')
   const [description, setDescription] = useState(shop.description ?? '')
@@ -143,6 +152,64 @@ export function SettingsClient({
   }
 
   const publicUrl = `${typeof location !== 'undefined' ? location.origin : ''}/t/${shop.slug}`
+  // Адрес для шапки Instagram. Метка `?from=ig` — это НЕ украшение
+  // и не аналитика «для интереса»: переход по ней помечает заказ или
+  // запись как «продавец привёл сам» (0105, КОНСПЕКТЫ М24), а с таких
+  // заказов комиссия не берётся. То есть это буквально то, ради чего
+  // витрина продавцу и нужна, — и до сих пор этой ссылки в продукте
+  // не было НИГДЕ: механика была построена, а положить ссылку в шапку
+  // человеку предлагалось угадать самому.
+  const igUrl = `${publicUrl}?from=ig`
+
+  // ── ЧЕГО НЕ ХВАТАЕТ, ЧТОБЫ ВИТРИНА РАБОТАЛА ─────────────────────────
+  //
+  // Публикация — это не один флаг. Функция `storefront` отдаёт страницу
+  // только при `status = 'active' AND storefront_enabled`, а страница
+  // без единой позиции открывается, но покупателю на ней делать нечего.
+  // Поэтому препятствия названы ЯВНО и по одному, а не сведены в общее
+  // «щось не так»: человек должен видеть, что именно чинить.
+  const blockers: string[] = []
+  // `draft` СЮДЫ НЕ ВХОДИТ намеренно: переключатель ниже сам поднимает
+  // заведение из черновика (0131), то есть это не препятствие, а часть
+  // того же действия. Называть препятствием то, что чинится тем же
+  // нажатием, — значит пугать человека собственной кнопкой.
+  //
+  // А вот `suspended` и `archived` человек не снимет ничем: это состояния
+  // платформы, и 0131 запрещает выходить из них изнутри. Их назвать надо —
+  // иначе включённый тумблер и пустая страница выглядят как поломка.
+  if (shop.status === 'suspended' || shop.status === 'archived') {
+    blockers.push(t('settings.public.block.suspended'))
+  }
+  if (offeringCount === 0) blockers.push(t('settings.public.block.empty'))
+  if (!shop.tagline && !shop.description) blockers.push(t('settings.public.block.about'))
+
+  // Переключатель публикации. Прямой UPDATE: RLS уже требует
+  // `settings.write` (`tenants_member_update`), и своей функции здесь
+  // не нужно — публикация не рождает движений и ничего не закрывает
+  // навсегда, в отличие от блокировки участника.
+  async function togglePublished(next: boolean) {
+    setPubBusy(true)
+    // ЗАОДНО ПОДНИМАЕМ ЗАВЕДЕНИЕ ИЗ ЧЕРНОВИКА, и это не «заодно».
+    // `register_tenant` создаёт заклад со статусом `draft`, а
+    // `create_order`, `create_booking` и `storefront` отказывают всем,
+    // кроме `active`. Статус не менял НИ ОДИН файл приложения — то есть
+    // новый продавец получал заведение, в котором витрина не работает
+    // и заказы не принимаются, и починить это из продукта было нечем.
+    //
+    // Для человека это ОДНО действие: «показувати покупцям». Два тумблера
+    // («активувати» и «опублікувати») там, где смысл один, — это ребус.
+    // Обратный переход `active → draft` запрещён сторожем 0131: скрыть
+    // витрину надо флагом, для того он и заведён.
+    const { error } = await supabase.from('tenants')
+      .update(next && shop.status === 'draft'
+        ? { storefront_enabled: true, status: 'active' }
+        : { storefront_enabled: next })
+      .eq('id', shop.id)
+    setPubBusy(false)
+    if (error) { setError(dbErrorText(t, error)); return }
+    setPublished(next)
+    router.refresh()
+  }
 
   async function save(e: React.FormEvent) {
     e.preventDefault()
@@ -184,32 +251,111 @@ export function SettingsClient({
    */
   function publicBody(withState = true) {
     return (
-      <div className="flex flex-wrap items-center gap-2">
-        {/* Адрес витрины — данные, а не текст. */}
-        <code className="card-flat t-md !px-3 !py-2 break-all">{publicUrl}</code>
-        {/* Кнопка без ответа читается как сломанная: буфер обмена ничего
-            не показывает сам. Отсюда состояние `copied`. */}
-        <button type="button" className="btn-secondary t-sm"
-                onClick={() => {
-                  void navigator.clipboard.writeText(publicUrl)
-                  setCopied(true)
-                  setTimeout(() => setCopied(false), 2000)
-                }}>
-          {copied ? t('common.copied') : t('common.copy')}
-        </button>
-        {/* «Переглянути сторінку» из §18. Не дубль копирования: адрес
-            рядом лежит ТЕКСТОМ и не открывается нажатием, то есть
-            посмотреть на свою витрину отсюда было нельзя вовсе —
-            приходилось копировать и вставлять в адресную строку. */}
-        <a href={publicUrl} target="_blank" rel="noreferrer"
-           className="btn-secondary t-sm">
-          {t('settings.public.open')}
-        </a>
-        {withState && (shop.storefront_enabled ? (
-          <span className="badge-success">{t('settings.public.published')}</span>
-        ) : (
-          <span className="badge-warn">{t('settings.public.draft')}</span>
-        ))}
+      <div className="flex flex-col gap-4">
+        {/* ── ЧТО ЭТО ВООБЩЕ ТАКОЕ ─────────────────────────────────
+            Отзыв владельца 25.08.2026: «страницы магазин… не понятно
+            какую цель и пользу несут». Экран показывал адрес, кнопку
+            «копіювати» и метку «чернетка» — и ни слова о том, что за
+            этим адресом лежит и зачем его копировать. */}
+        <p className="t-sm prose-muted">{t('settings.public.what')}</p>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Адрес витрины — данные, а не текст. */}
+          <code className="card-flat t-md !px-3 !py-2 break-all">{publicUrl}</code>
+          {/* Кнопка без ответа читается как сломанная: буфер обмена ничего
+              не показывает сам. Отсюда состояние `copied`. */}
+          <button type="button" className="btn-secondary t-sm"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(publicUrl)
+                    setCopied(true)
+                    setTimeout(() => setCopied(false), 2000)
+                  }}>
+            {copied ? t('common.copied') : t('common.copy')}
+          </button>
+          {/* «Переглянути сторінку» из §18. Не дубль копирования: адрес
+              рядом лежит ТЕКСТОМ и не открывается нажатием, то есть
+              посмотреть на свою витрину отсюда было нельзя вовсе —
+              приходилось копировать и вставлять в адресную строку. */}
+          <a href={publicUrl} target="_blank" rel="noreferrer"
+             className="btn-secondary t-sm">
+            {t('settings.public.open')}
+          </a>
+          {withState && (published ? (
+            <span className="badge-success">{t('settings.public.published')}</span>
+          ) : (
+            <span className="badge-warn">{t('settings.public.draft')}</span>
+          ))}
+        </div>
+
+        {/* ── ПУБЛИКАЦИЯ ───────────────────────────────────────────
+            ⚠️ ЭТОГО ПЕРЕКЛЮЧАТЕЛЯ НЕ БЫЛО ВООБЩЕ. `storefront_enabled`
+            не писал НИ ОДИН файл приложения (проверено поиском
+            25.08.2026): флаг ставили руками через панель базы, а
+            в продукте он только ЧИТАЛСЯ. То есть витрину нельзя было
+            опубликовать из кабинета никак — экран показывал ссылку,
+            по которой покупатель видел «магазин не знайдено», и метку
+            «чернетка» без единого способа её снять.
+
+            Своей функции здесь не нужно: RLS уже требует
+            `settings.write` (`tenants_member_update`), публикация
+            не рождает движений и ничего не закрывает навсегда —
+            в отличие от блокировки участника, которая идёт функцией
+            ради неизменяемого журнала. */}
+        {canWrite && (
+          <div>
+            {/* Тем же переключателем, что и каналы уведомлений ниже:
+                два вида тумблера на одном экране читаются как два
+                разных механизма. Зона нажатия — СТРОКОЙ, а не
+                размером квадратика (проверка 1). */}
+            <label className="flex items-start gap-2"
+                   style={{ minHeight: 'var(--tap-min)' }}>
+              <input type="checkbox" className="mt-1 shrink-0"
+                     checked={published} disabled={pubBusy}
+                     onChange={(e) => void togglePublished(e.target.checked)} />
+              <span className="min-w-0">
+                <span className="t-md block">{t('settings.public.publish')}</span>
+                <span className="field-hint block">{t('settings.public.publishHint')}</span>
+              </span>
+            </label>
+          </div>
+        )}
+
+        {/* ── ЧЕГО НЕ ХВАТАЕТ ──────────────────────────────────────
+            Показывается, только пока есть что чинить, и перечисляет
+            препятствия ПОИМЁННО. Общее «щось не так» отправило бы
+            человека искать причину самому. */}
+        {blockers.length > 0 && (
+          <div className="nudge">
+            <span aria-hidden className="nudge-icon"><IconAlert size={18} /></span>
+            <span className="t-sm min-w-0 flex-1">
+              <b>{t('settings.public.block.title')}</b>
+              <span className="mt-1 block">{blockers.join('; ')}.</span>
+            </span>
+          </div>
+        )}
+
+        {/* ── ССЫЛКА ДЛЯ ШАПКИ INSTAGRAM ───────────────────────────
+            Механика атрибуции (0105, М24) построена и работает,
+            а САМОЙ ССЫЛКИ в продукте не было: человеку предлагалось
+            догадаться дописать `?from=ig` руками. Здесь она названа
+            и объяснена в одну строку — переход по ней делает заказ
+            «своим», то есть бескомиссионным. Это и есть польза
+            витрины, о которой спрашивал владелец. */}
+        <div className="card-flat flex flex-col gap-2">
+          <p className="t-md" style={{ fontWeight: 650 }}>{t('settings.public.ig.title')}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <code className="t-sm break-all">{igUrl}</code>
+            <button type="button" className="btn-secondary t-sm"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(igUrl)
+                      setIgCopied(true)
+                      setTimeout(() => setIgCopied(false), 2000)
+                    }}>
+              {igCopied ? t('common.copied') : t('common.copy')}
+            </button>
+          </div>
+          <p className="field-hint">{t('settings.public.ig.why')}</p>
+        </div>
       </div>
     )
   }
@@ -796,7 +942,12 @@ export function SettingsClient({
           {hasStorefront && (
             <>
               <div className="divider my-4" />
-              <p className="t-sm mb-2 prose-muted">{t('settings.public.desc')}</p>
+              {/* Пояснение здесь БОЛЬШЕ НЕ ПОВТОРЯЕТСЯ: `settings.public.desc`
+                  стоял строкой над телом, а тело теперь начинается со своей
+                  строки «что это такое». Два объяснения подряд об одном
+                  и том же — второй показ одной величины (проверка 3).
+                  `desc` остался подписью раздела в списке на широком
+                  экране, где тела не видно. */}
               {publicBody(false)}
             </>
           )}
