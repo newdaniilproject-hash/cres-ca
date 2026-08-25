@@ -81,6 +81,16 @@ export default async function SettingsPage() {
     .eq('is_active', true)
     .order('position')
 
+  // Скільки послуг/товарів заклад показує покупцеві. Потрібно, щоб
+  // сказати ЧЕСНО, чому вітрина ще порожня: сторінка без жодної позиції
+  // відкривається, але покупцеві на ній робити нічого, і «опублікувати»
+  // без цього — обіцянка, якої продукт не виконає.
+  const { count: offeringCount } = await supabase
+    .from('offerings')
+    .select('id', { count: 'exact', head: true })
+    .eq('tenant_id', m.tenantId)
+    .eq('status', 'active')
+
   type PresetRow = {
     code: string; title: string; description: string | null
     kind: string | null; position: number
@@ -104,6 +114,7 @@ export default async function SettingsPage() {
         // и починка описана прямо в комментарии к пропу: «одна строка
         // в page.tsx». Вот она.
         hasStorefront={hasModule(m, 'storefront')}
+        offeringCount={offeringCount ?? 0}
         // Пресет пропонується тільки той, що підходить виду закладу:
         // салону не потрібен набір категорій магазину товарів. `kind: null`
         // — підходить будь-якому.

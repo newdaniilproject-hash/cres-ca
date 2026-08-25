@@ -27,6 +27,38 @@ export function PwaProvider() {
   const t = useT()
   const toast = useToast()
 
+  // ── Держим экран вертикальным, насколько это может веб ──────────────
+  //
+  // Решение владельца 25.08.2026: «наше приложение только вертикальное
+  // на телефоне». Настоящий замок стоит в бинаре — `screenOrientation`
+  // в манифесте Android и `UISupportedInterfaceOrientations` в Info.plist,
+  // и он вступает в силу ТОЛЬКО с новой сборкой в Codemagic: уже
+  // установленное приложение продолжает вертеться со старым бинарём.
+  //
+  // Эта строка — то, что может сам сайт, и покрывает она не всё:
+  //   • обёртка Android и установленный PWA — замок срабатывает;
+  //   • вкладка обычного браузера — API требует полноэкранного режима
+  //     и бросает; ловим и молчим, это не поломка;
+  //   • iOS Safari и веб-вью на iOS — `screen.orientation.lock` там
+  //     не реализован ВООБЩЕ, ни одной версией. На айфоне вертикальность
+  //     даёт только новая сборка приложения, и обещать иное нельзя.
+  //
+  // Повторяем при каждом повороте: система может снять замок, когда
+  // приложение уходило в фон.
+  useEffect(() => {
+    const lock = () => {
+      try {
+        const so = screen.orientation as ScreenOrientation & {
+          lock?: (o: string) => Promise<void>
+        }
+        void so?.lock?.('portrait').catch(() => { /* не поддержано */ })
+      } catch { /* не поддержано */ }
+    }
+    lock()
+    screen.orientation?.addEventListener?.('change', lock)
+    return () => screen.orientation?.removeEventListener?.('change', lock)
+  }, [])
+
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return
     const onLoad = () => {
