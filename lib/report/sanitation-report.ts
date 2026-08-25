@@ -96,7 +96,8 @@ export type ReportData = {
   cleaning: Array<{ performed_at: string; cleaning_tasks: Named; profiles: Person }>
   cycles: Array<{
     device: string; temperature_c: number; duration_minutes: number
-    indicator_ok: boolean; performed_at: string; profiles: Person
+    indicator_ok: boolean; indicator_note: string | null
+    performed_at: string; profiles: Person
   }>
   cards: Array<{ title: string; version: number; steps: unknown; created_at: string }>
 }
@@ -272,10 +273,13 @@ export function reportHtml(x: ReportData): string {
       n: '6', title: 'Журнал стерилізації інструментів',
       note: 'Фіксуються всі цикли, зокрема невдалі — за показником індикатора.',
       body: table(
-        ['Пристрій', 'Температура', 'Тривалість', 'Індикатор', 'Дата', 'Виконавець'],
+        ['Пристрій', 'Температура', 'Тривалість', 'Індикатор', 'Колір', 'Дата', 'Виконавець'],
         x.cycles.map((r) => [
           or(r.device), `${r.temperature_c} °C`, `${r.duration_minutes} хв`,
           r.indicator_ok ? 'успішно' : '<span class="warn">провал</span>',
+          // Колонка кольору окремо від «успішно/провал»: ТЗ 3.3 просить
+          // саме результат КОЛЬОРУ, і перевірка порівнює його з еталоном.
+          or(r.indicator_note),
           dt(r.performed_at), who(r.profiles),
         ]),
       ),

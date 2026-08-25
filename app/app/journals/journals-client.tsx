@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { enqueue, isNetworkError } from '@/lib/offline/queue'
+import { enqueue, isNetworkError, newKey } from '@/lib/offline/queue'
 import { useToast } from '@/components/toast'
 import { useT } from '@/lib/i18n/client'
 import type { T } from '@/lib/i18n/translate'
@@ -65,7 +65,8 @@ type HistoryRow = { id: string; at: string; performer: string | null }
 
 type Cycle = {
   id: string; device: string; temperature_c: number
-  duration_minutes: number; indicator_ok: boolean; performed_at: string
+  duration_minutes: number; indicator_ok: boolean; indicator_note: string | null
+  performed_at: string
   performer: string | null
 }
 type AuditRow = {
@@ -294,6 +295,10 @@ export function JournalsClient({
   const [device, setDevice] = useState('сухожарова шафа')
   const [temp, setTemp] = useState('180'); const [mins, setMins] = useState('60')
   const [indicator, setIndicator] = useState(true)
+  // ТЗ 3.3 просить «результат КОЛЬОРУ індикатора», а не «так/ні». Колонка
+  // `indicator_note` існує з 0014 і не писалась ніким; булеве поле не може
+  // зафіксувати колір, а саме його дивиться перевірка.
+  const [indNote, setIndNote] = useState('')
   const [newTask, setNewTask] = useState('')
 
   // ── История отметок по пункту чек-листа ──────────────────────────────────
@@ -352,9 +357,16 @@ export function JournalsClient({
 
   async function markTask(taskId: string) {
     setBusy(taskId); setErr('')
+    // ⚠️ КЛЮЧ ГЕНЕРУЄТЬСЯ ТУТ — ДО ПЕРШОЇ СПРОБИ, а не в момент досилки.
+    // У цьому вся суть (0128): мережа рветься і ПІСЛЯ того, як база
+    // записала відмітку — транзакція пройшла, відповідь не доїхала.
+    // Новий ключ на момент досилки означав би другий рядок у журналі,
+    // якого не можна видалити.
+    const key = newKey()
     try {
       const { error } = await supabase.from('cleaning_entries').insert({
         tenant_id: tenantId, task_id: taskId, performed_by: userId,
+        idempotency_key: key,
       })
       if (error) throw new Error(error.message)
     } catch (e) {
@@ -368,7 +380,7 @@ export function JournalsClient({
         // строка экрана. Переводить её при досылке было бы нечем — в очереди
         // лежит текст, а не ключ.
         await enqueue(t('journals.offline.cleaning.label'), {
-          kind: 'journal.cleaning', tenantId, taskId, userId,
+          kind: 'journal.cleaning', idempotencyKey: key, tenantId, taskId, userId,
         })
         setOffDone((prev) => new Set(prev).add(taskId))
         toast.info(t('journals.offline.saved'), t('journals.offline.cleaning.desc'))
@@ -399,9 +411,11 @@ export function JournalsClient({
     e.preventDefault()
     setBusy('solution'); setErr('')
     const expiresAt = new Date(Date.now() + Number(hours) * 36e5).toISOString()
+    const key = newKey()
     try {
       const { error } = await supabase.from('sanitation_solutions').insert({
         tenant_id: tenantId, agent_name: agent, concentration: conc,
+        idempotency_key: key,
         // Порожнє поле кладеться як NULL, а не як порожній рядок: у звіті
         // «—» друкується саме за NULL, і рядок нульової довжини дав би
         // порожню клітинку, яку читають як зіпсовану вёрстку.
@@ -415,7 +429,7 @@ export function JournalsClient({
         // Назва засобу подставляется данными, поэтому строка с подстановкой,
         // а не склейка: порядок слов в других языках другой.
         await enqueue(t('journals.offline.solution.label', { agent }), {
-          kind: 'journal.solution', tenantId, userId,
+          kind: 'journal.solution', idempotencyKey: key, tenantId, userId,
           agentName: agent, concentration: conc,
           registration: reg.trim() || null,
           volume: Number(vol) || null, expiresAt,
@@ -434,19 +448,22 @@ export function JournalsClient({
   async function addCycle(e: React.FormEvent) {
     e.preventDefault()
     setBusy('cycle'); setErr('')
+    const key = newKey()
     try {
       const { error } = await supabase.from('sterilization_cycles').insert({
         tenant_id: tenantId, device, temperature_c: Number(temp),
         duration_minutes: Number(mins), indicator_ok: indicator, performed_by: userId,
+        indicator_note: indNote.trim() || null,
+        idempotency_key: key,
       })
       if (error) throw new Error(error.message)
     } catch (ex) {
       setBusy(null)
       if (isNetworkError(ex)) {
         await enqueue(t('journals.offline.cycle.label', { device }), {
-          kind: 'journal.sterilization', tenantId, userId, device,
+          kind: 'journal.sterilization', idempotencyKey: key, tenantId, userId, device,
           temperatureC: Number(temp), durationMinutes: Number(mins),
-          indicatorOk: indicator,
+          indicatorOk: indicator, indicatorNote: indNote.trim() || null,
         })
         toast.info(t('journals.offline.saved'), t('journals.offline.cycle.desc'))
         return
@@ -602,11 +619,29 @@ export function JournalsClient({
         <input required type="number" min="1" className="input"
                value={mins} onChange={(e) => setMins(e.target.value)} />
       </div>
-      <label className="t-md flex items-center gap-2 sm:col-span-2">
+      <label className="t-md flex items-center gap-2 sm:col-span-2"
+             style={{ minHeight: 'var(--tap-min)' }}>
         <input type="checkbox" checked={indicator}
                onChange={(e) => setIndicator(e.target.checked)} />
         {t('journals.cycle.indicator.label')}
       </label>
+      {/* ── КОЛІР ІНДИКАТОРА СЛОВАМИ (ТЗ 3.3) ─────────────────────────────
+          ТЗ просить «результат КОЛЬОРУ індикатора». Булеве «успішно/провал»
+          цього не фіксує: перевірку цікавить, у що саме перефарбувалась
+          смужка, і саме це людина порівнює з еталоном на упаковці.
+          Колонка `indicator_note` існує з 0014 і не писалась ніким —
+          знайдено аудитом 25.08.2026.
+
+          Необовʼязкове, і з тієї ж причини, що й реєстрація розчину:
+          обовʼязкове поле, яке нічим заповнити, обходять крапкою.
+          Порожньо — чесно; крапка — ні. */}
+      <div className="sm:col-span-2">
+        <label className="field-label">{t('journals.cycle.indicatorNote.label')}</label>
+        <input className="input" value={indNote}
+               placeholder={t('journals.cycle.indicatorNote.placeholder')}
+               onChange={(e) => setIndNote(e.target.value)} />
+        <p className="field-hint">{t('journals.cycle.indicatorNote.hint')}</p>
+      </div>
       <button className="btn-primary self-end sm:col-span-2 sm:justify-self-start"
               disabled={busy === 'cycle'}>
         {t('journals.cycle.submit')}
@@ -1444,6 +1479,8 @@ export function JournalsClient({
                         [t('journals.cycle.mins.label'), t.number(c.duration_minutes)],
                         [t('journals.web.table.indicator'),
                           c.indicator_ok ? t('journals.cycle.ok') : t('journals.cycle.fail')],
+                        [t('journals.cycle.indicatorNote.label'),
+                          c.indicator_note ?? t('common.noValue')],
                         [t('journals.web.table.performer'),
                           <Performer key="p" name={c.performer} />],
                       ],

@@ -130,7 +130,7 @@ export async function GET(request: Request) {
       .eq('tenant_id', m.tenantId).gte('performed_at', from)
       .order('performed_at', { ascending: false }).limit(500),
     supabase.from('sterilization_cycles')
-      .select('device, temperature_c, duration_minutes, indicator_ok, performed_at, performed_by')
+      .select('device, temperature_c, duration_minutes, indicator_ok, indicator_note, performed_at, performed_by')
       .eq('tenant_id', m.tenantId).gte('performed_at', from)
       .order('performed_at', { ascending: false }),
     supabase.from('tech_cards')
@@ -209,6 +209,7 @@ export async function GET(request: Request) {
     cycles: (cycles.data ?? []).map((r) => ({
       device: r.device, temperature_c: r.temperature_c,
       duration_minutes: r.duration_minutes, indicator_ok: r.indicator_ok,
+      indicator_note: r.indicator_note,
       performed_at: r.performed_at,
       profiles: person(r.performed_by),
     })),
