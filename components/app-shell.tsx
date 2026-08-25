@@ -304,6 +304,13 @@ export function AppShell(props: {
    * вложенные вызовы AppShell не режут меню, которое собрал layout.
    */
   perms?: string[]
+  /**
+   * Идентификатор заведения. Нужен ровно одному месту оболочки —
+   * очистке очереди уведомлений в колоколе (0125): функция базы
+   * принимает его параметром. Не передан — кнопки очистки нет,
+   * остальное работает как прежде.
+   */
+  tenantId?: string
   /** Имя заведения — заголовок экрана «Сьогодні». */
   shopName?: string
   /** Имя человека — первая строка шапки шторки профиля (хендофф). */
@@ -331,11 +338,12 @@ export function AppShell(props: {
 }
 
 function AppShellInner({
-  modules, registry, perms, shopName = '', userName = '', role = '', action, children,
+  modules, registry, perms, tenantId, shopName = '', userName = '', role = '', action, children,
 }: {
   modules?: TenantModule[]
   registry?: NavModule[]
   perms?: string[]
+  tenantId?: string
   shopName?: string
   userName?: string
   role?: string
@@ -613,7 +621,7 @@ function AppShellInner({
           <GlobalSearch modules={modules} perms={perms} />
         </div>
         <div className="flex items-center gap-2 pr-7">
-          <NotifyBell tenantPerms={perms ?? []} />
+          <NotifyBell tenantPerms={perms ?? []} tenantId={tenantId} />
           <button type="button" onClick={() => setDrop((v) => !v)}
                   className="flex items-center gap-2.5 rounded-xl px-2 py-1.5"
                   aria-expanded={drop} aria-label={t('app.chrome.avatar.aria')}>
@@ -750,7 +758,7 @@ function AppShellInner({
               </Link>
             )}
 
-            <NotifyBell tenantPerms={perms ?? []} />
+            <NotifyBell tenantPerms={perms ?? []} tenantId={tenantId} />
 
             {/* ── ПОИСК СТРОКОЙ ПОСЕРЕДИНЕ ─────────────────────────
                 Строка — приглашение, значок молчит (отзыв владельца

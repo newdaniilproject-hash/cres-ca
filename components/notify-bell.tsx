@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Sheet } from '@/components/sheet'
+import { useToast } from '@/components/toast'
+import { dbErrorText } from '@/lib/errors/db'
 import { useT } from '@/lib/i18n/client'
 import { IconBell, IconClock } from '@/components/icons'
 
@@ -36,16 +38,46 @@ type Row = {
   payload: Record<string, unknown>
 }
 
-export function NotifyBell({ tenantPerms }: { tenantPerms: string[] }) {
+export function NotifyBell({ tenantPerms, tenantId }: {
+  tenantPerms: string[]
+  /** Нужен только для очистки очереди (0125). Нет — кнопки нет. */
+  tenantId?: string
+}) {
   const t = useT()
+  const toast = useToast()
   const [open, setOpen] = useState(false)
   const [count, setCount] = useState(0)
   const [rows, setRows] = useState<Row[] | null>(null)
+  const [busy, setBusy] = useState(false)
 
   // Политика чтения очереди (0011) пускает по `customers.read` либо
   // к своим строкам. Без права спрашивать незачем — вернётся пусто,
   // а запрос уйдёт.
   const may = tenantPerms.includes('*') || tenantPerms.includes('customers.read')
+  // ── ОЧИСТКА — ОТДЕЛЬНОЕ ПРАВО, А НЕ ТО ЖЕ, ЧТО ЧТЕНИЕ ───────────────
+  //
+  // Отмена отправки — действие над тем, что уйдёт клиенту, то есть
+  // настройка заведения. Право ЧИТАТЬ список не даёт права его гасить:
+  // иначе любой, кому открыты клиенты, снимал бы чужие напоминания.
+  // То же условие стоит и в самой функции (0125) — здесь оно только
+  // прячет кнопку, а границей доступа остаётся база.
+  const mayClear = Boolean(tenantId)
+    && (tenantPerms.includes('*') || tenantPerms.includes('settings.write'))
+
+  async function reload() {
+    const c = createClient()
+    const [{ count: n }, { data }] = await Promise.all([
+      c.from('notification_outbox').select('id', { count: 'exact', head: true })
+        .eq('status', 'pending'),
+      c.from('notification_outbox')
+        .select('id, event, channel, send_after, payload')
+        .eq('status', 'pending')
+        .order('send_after', { ascending: true })
+        .limit(30),
+    ])
+    setCount(n ?? 0)
+    setRows((data ?? []) as Row[])
+  }
 
   useEffect(() => {
     if (!may) return
@@ -70,6 +102,26 @@ export function NotifyBell({ tenantPerms }: { tenantPerms: string[] }) {
       .then(({ data }) => { if (alive) setRows((data ?? []) as Row[]) })
     return () => { alive = false }
   }, [open, rows])
+
+  // Просроченные — те, чей срок отправки уже прошёл. Ровно их и гасит
+  // функция; считаем здесь по тем же строкам, чтобы кнопка называла
+  // ЧИСЛО, а не обещала «очистити все» и оставила половину списка.
+  const overdue = (rows ?? []).filter((r) => new Date(r.send_after) <= new Date()).length
+
+  async function dismiss() {
+    if (!tenantId) return
+    setBusy(true)
+    const { data, error } = await createClient()
+      .rpc('dismiss_notifications', { p_tenant_id: tenantId })
+    setBusy(false)
+    if (error) {
+      // Отказ базы — обезличенной подписью, не сырым текстом Postgres (М25).
+      toast.error(t('app.chrome.bell.clearError'), dbErrorText(t, error))
+      return
+    }
+    await reload()
+    toast.success(t('app.chrome.bell.cleared', { n: t.number(Number(data ?? 0)) }))
+  }
 
   if (!may) return null
 
@@ -99,7 +151,30 @@ export function NotifyBell({ tenantPerms }: { tenantPerms: string[] }) {
         )}
       </button>
 
-      <Sheet open={open} onClose={() => setOpen(false)} title={t('app.chrome.bell.sheetTitle')}>
+      {/* ── «Очистити прострочені» ────────────────────────────────
+          Отзыв владельца 25.08.2026: «добавить возможность очищать
+          уведомления там, где 99+». Кнопка в прижатой к низу полосе
+          (`footer`), а не в списке: она относится ко всему списку,
+          а не к строке, и не должна уезжать вместе с прокруткой.
+
+          ⚠️ ГАСИТ ТОЛЬКО ПРОСРОЧЕННОЕ, и подпись это называет числом.
+          В очереди лежат напоминания за 24 и 2 часа до записи — со
+          временем отправки В БУДУЩЕМ; кнопка «очистити все» тихо
+          отменила бы напоминание завтрашнему клиенту. Экран стал бы
+          чище, а человек не пришёл бы на процедуру. Правило то же,
+          что и в функции 0125, и оно там, а не только здесь.
+
+          Нечего гасить — кнопки нет вовсе: орган управления, который
+          ничего не изменит, читается как сломанный. */}
+      <Sheet open={open} onClose={() => setOpen(false)} title={t('app.chrome.bell.sheetTitle')}
+             footer={mayClear && overdue > 0 ? (
+               <button type="button" className="btn-secondary w-full" disabled={busy}
+                       onClick={() => void dismiss()}>
+                 {busy
+                   ? t('common.saving')
+                   : t('app.chrome.bell.clear', { n: t.number(overdue) })}
+               </button>
+             ) : undefined}>
         <NotifyList t={t} rows={rows} />
       </Sheet>
     </>
