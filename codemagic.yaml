@@ -275,6 +275,25 @@ workflows:
           /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes array" App/Info.plist 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes:0 string remote-notification" App/Info.plist 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Print :UIBackgroundModes" App/Info.plist
+          # ── ТОЛЬКО ВЕРТИКАЛЬНО ──────────────────────────────────────
+          # Решение владельца 25.08.2026: «удали возможность поворота
+          # экрана, наше приложение только вертикальное на телефоне».
+          #
+          # Массив ПЕРЕСОЗДАЁТСЯ (Delete + Add), а не дополняется: `cap add
+          # ios` кладёт в шаблон все четыре ориентации, и `Add` поверх
+          # существующего массива молча ничего не делает — landscape остался
+          # бы на месте, а лог выглядел бы успешным.
+          #
+          # Ключ для iPad (`~ipad`) задаётся тем же одним значением
+          # намеренно: приложение вертикальное, а не «вертикальное
+          # на телефоне и как получится на планшете».
+          /usr/libexec/PlistBuddy -c "Delete :UISupportedInterfaceOrientations" App/Info.plist 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations array" App/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations:0 string UIInterfaceOrientationPortrait" App/Info.plist
+          /usr/libexec/PlistBuddy -c "Delete :UISupportedInterfaceOrientations~ipad" App/Info.plist 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations~ipad array" App/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations~ipad:0 string UIInterfaceOrientationPortrait" App/Info.plist
+          /usr/libexec/PlistBuddy -c "Print :UISupportedInterfaceOrientations" App/Info.plist
 
       - name: Глубокие ссылки — схема cresca://
         script: |
