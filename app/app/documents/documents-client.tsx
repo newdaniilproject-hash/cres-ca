@@ -47,6 +47,10 @@ const AT: Intl.DateTimeFormatOptions = {
 type Material = {
   id: string; name: string; unit: string
   brand: string | null; isCosmetic: boolean
+  /** Код нотифікації МОЗ — це СЛОВА постачальника (ТЗ 3.1). */
+  notificationCode: string | null
+  /** Коли підтверджено ДОКУМЕНТОМ (0106). null — лише слова. */
+  notificationConfirmedAt: string | null
 }
 type Doc = {
   id: string; materialId: string; kind: DocKind
@@ -484,7 +488,13 @@ export function DocumentsClient({
             const docs = byMaterial.get(m.id) ?? []
             return (
               <section key={m.id} className="card rise-2 flex flex-col gap-3">
-                <div className="flex flex-wrap items-center justify-between gap-3">
+                {/* Мітки — РЯДКОМ ПІД назвою, а не праворуч від неї.
+                    Праворуч їх ставили, поки мітка була одна; з двома
+                    вони вставали рваними сходинками, бо вирівнювались
+                    по правому краю різної довжини. Це той самий випадок,
+                    що й з крапками-роздільниками: на 390px усе, що
+                    переноситься, треба класти рядком. */}
+                <div className="flex flex-col gap-2">
                   <div>
                     {/* Название ведёт в карточку засоба. Для инспектора это
                         единственный вход в реестр: раздел «Склад» ему закрыт
@@ -507,11 +517,37 @@ export function DocumentsClient({
                       переносилась под название и съедала строку у каждого
                       засоба. Остался жёлтый — единственный, который зовёт
                       что-то сделать. */}
-                  {m.isCosmetic && docs.length === 0 && (
-                    <span className="badge-warn shrink-0">
-                      {t('documents.badge.needDocs')}
-                    </span>
-                  )}
+                  <span className="flex flex-wrap gap-1.5">
+                    {m.isCosmetic && docs.length === 0 && (
+                      <span className="badge-warn">
+                        {t('documents.badge.needDocs')}
+                      </span>
+                    )}
+                    {/* ── СТАН НОТИФІКАЦІЇ МОЗ (ТЗ 2 і 3.1) ───────────
+                        Це ГОЛОВНИЙ екран інспектора, і ТЗ 2 називає серед
+                        того, що він відкриває, «нотифікації МОЗ». Досі
+                        екран показував назву, бренд і документи — щоб
+                        дізнатись стан, перевіряючий мав зайти в кожну
+                        картку окремо. Знайдено рендером 25.08.2026.
+
+                        Три стани, а не два, бо їх справді три:
+                        підтверджено ДОКУМЕНТОМ (0106) — зелене; є лише
+                        код, тобто СЛОВА постачальника, — жовте; немає
+                        нічого — червоне. Різницю між кодом і документом
+                        перевірка й дивиться першою; звести їх в одне
+                        значить відповісти не на те питання.
+
+                        Тільки косметиці: у гумок і шпильок нотифікації
+                        не буває, і «немає коду» на них читалось би як
+                        порушення там, де його немає. */}
+                    {m.isCosmetic && (
+                      m.notificationConfirmedAt
+                        ? <span className="badge-success">{t('documents.moz.ok')}</span>
+                        : m.notificationCode
+                          ? <span className="badge-warn">{t('documents.moz.codeOnly')}</span>
+                          : <span className="badge-danger">{t('documents.moz.none')}</span>
+                    )}
+                  </span>
                 </div>
 
                 {docs.length === 0 ? (
@@ -567,7 +603,7 @@ export function DocumentsClient({
                                 в форме загрузки и в колонке «Тип» таблицы
                                 широкого экрана. */}
                             <span className="tabular t-xs prose-muted mt-0.5 block truncate">
-                              {d.size !== null ? `${fmtSize(t, d.size)} · ` : ''}
+                              {d.size !== null ? `${fmtSize(t, d.size)} — ` : ''}
                               {t('documents.doc.added', { date: t.date(d.createdAt, DAY) })}
                             </span>
                           </span>
@@ -623,7 +659,7 @@ export function DocumentsClient({
             {/* Назва і бренд засобу — данные заклада, не переводятся. */}
             {materials.map((m) => (
               <option key={m.id} value={m.id}>
-                {m.name}{m.brand ? ` · ${m.brand}` : ''}
+                {m.name}{m.brand ? ` — ${m.brand}` : ''}
               </option>
             ))}
           </select>

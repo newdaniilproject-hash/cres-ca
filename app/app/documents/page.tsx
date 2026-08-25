@@ -50,8 +50,14 @@ export default async function DocumentsPage() {
   const [{ data: materials, error: materialsError }, { data: docs, error: docsError },
          { data: actors }] =
     await Promise.all([
+      // ⚠️ `notification_code` і `notification_confirmed_at` тут ОБОВʼЯЗКОВІ,
+      // і це не «заодно». Це ГОЛОВНИЙ екран інспектора (див. шапку файла),
+      // а ТЗ 2 називає серед того, що він відкриває, «реєстр косметики,
+      // НОТИФІКАЦІЇ МОЗ». Досі екран показував назву, бренд і документи —
+      // тобто щоб дізнатись стан нотифікації, перевіряючий мав зайти
+      // в кожну картку окремо. Знайдено рендером 25.08.2026.
       supabase.from('compliance_materials')
-        .select('id, name, unit, brand, is_cosmetic')
+        .select('id, name, unit, brand, is_cosmetic, notification_code, notification_confirmed_at')
         .eq('tenant_id', m.tenantId)
         .eq('is_active', true)
         .order('name')
@@ -88,6 +94,8 @@ export default async function DocumentsPage() {
           unit: mt.unit,
           brand: mt.brand,
           isCosmetic: mt.is_cosmetic,
+          notificationCode: mt.notification_code,
+          notificationConfirmedAt: mt.notification_confirmed_at,
         }))}
         documents={(docs ?? []).map((d) => ({
           id: d.id,
