@@ -51,7 +51,12 @@ export async function GET(request: Request) {
   const supabase = await createClient()
   let q = supabase
     .from('material_containers')
-    .select('id, code, use_by, opened_at, status, volume, unit, opened_by, created_by, materials(name), material_batches(batch_number)')
+    // `decanted_at` — момент РОЗЛИВУ, и он не то же самое, что `opened_at`.
+    // ТЗ 3.2 называет на наклейке именно «дату розливу», и `container_label()`
+    // в базе берёт `coalesce(decanted_at, opened_at)`. Пока роут тянул только
+    // `opened_at`, у дозатора, разлитого из уже вскрытой банки, на бумаге
+    // стояла дата вскрытия РОДИТЕЛЯ — то есть более ранняя, чем сам розлив.
+    .select('id, code, use_by, opened_at, decanted_at, status, volume, unit, opened_by, created_by, materials(name), material_batches(batch_number)')
     .eq('tenant_id', m.tenantId)
     .in('status', ['sealed', 'opened'])
     .order('created_at', { ascending: false })
@@ -99,7 +104,11 @@ export async function GET(request: Request) {
       material: (c.materials as unknown as { name: string })?.name ?? '',
       batch: (c.material_batches as unknown as { batch_number: string } | null)?.batch_number ?? null,
       useBy: c.use_by,
-      openedAt: c.opened_at,
+      // Тот же порядок, что у `container_label()` в базе: розлив, а если
+      // ёмкость не разливалась — вскрытие. Две сборки одной наклейки уже
+      // разъезжались (найдено аудитом 25.08.2026), и сходятся они только
+      // тем, что считают одно и то же одинаково.
+      openedAt: c.decanted_at ?? c.opened_at,
       volume: c.volume != null ? Number(c.volume) : null,
       unit: c.unit,
       // Кто вскрыл; если ещё не вскрыта — кто завёл. Порядок именно такой:

@@ -50,7 +50,17 @@ export default async function AppHome() {
   const seeContainers = can(m, 'compliance.read') && hasModule(m, 'compliance') // compliance_containers (0035)
   const seeSettings = can(m, 'settings.read')
   const seeOrders = can(m, 'orders.read') && hasModule(m, 'orders')
-  const seeFinance = can(m, 'finance.read') && hasModule(m, 'finance')
+  // ⚠️ `finances.read`, ВО МНОЖЕСТВЕННОМ. Здесь стояло `finance.read` —
+  // права с таким ключом в `role_grants` нет вовсе, и проверка возвращала
+  // false у всех, кроме владельца: у него в токене `"*"`, и `tenant_can`
+  // пропускает что угодно. То есть у владельца карточка была, у менеджера
+  // и бухгалтера — никогда, и без единой ошибки на экране.
+  //
+  // Модуль при этом называется `finance`, в единственном, и это НЕ ошибка:
+  // модуль и право — разные оси с разными именами (см. «Доступ: роли
+  // и модули»). Похожесть имён и есть ловушка; реестр модулей ссылается
+  // на правильное `finances.read`, а этот экран расходился с ним молча.
+  const seeFinance = can(m, 'finances.read') && hasModule(m, 'finance')
   // Нагадування — это НАСТОЯЩАЯ очередь уведомлений (напоминания за 24ч/2ч
   // к записям), а не выдуманный список: политика чтения — customers.read.
   const seeReminders = can(m, 'customers.read')

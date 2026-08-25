@@ -45,7 +45,7 @@ export default async function JournalsPage() {
       // нельзя: список обрезан тридцатью строками, и карточка журнала
       // на десктопе обещала бы «30 записів» салону, у которого их пятьсот.
       supabase.from('sanitation_solutions')
-        .select('id, agent_name, concentration, volume, unit, prepared_at, expires_at, prepared_by',
+        .select('id, agent_name, registration, concentration, volume, unit, prepared_at, expires_at, prepared_by',
                 { count: 'exact' })
         .eq('tenant_id', m.tenantId).order('prepared_at', { ascending: false }).limit(30),
       supabase.from('cleaning_tasks')

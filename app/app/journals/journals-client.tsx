@@ -52,7 +52,7 @@ function sameLocalDay(a: string, b: string): boolean {
 // нет»: сами колонки `prepared_by` / `performed_by` объявлены `not null`.
 // Разница видна на экране: см. `Performer` ниже.
 type Solution = {
-  id: string; agent_name: string; concentration: string
+  id: string; agent_name: string; registration: string | null; concentration: string
   volume: number; unit: string; prepared_at: string; expires_at: string
   performer: string | null
 }
@@ -283,6 +283,8 @@ export function JournalsClient({
 
   // формы
   const [agent, setAgent] = useState(''); const [conc, setConc] = useState('')
+  // Номер реєстрації засобу в Україні (ТЗ 3.3). Порожній рядок = «не вказано».
+  const [reg, setReg] = useState('')
   const [vol, setVol] = useState(''); const [hours, setHours] = useState('24')
   // Назва пристрою — ЗНАЧЕНИЕ, которое уедет в журнал стерилизации и оттуда
   // в отчёт для проверяющего, а не подпись на экране. Поэтому оно не в
@@ -400,6 +402,10 @@ export function JournalsClient({
     try {
       const { error } = await supabase.from('sanitation_solutions').insert({
         tenant_id: tenantId, agent_name: agent, concentration: conc,
+        // Порожнє поле кладеться як NULL, а не як порожній рядок: у звіті
+        // «—» друкується саме за NULL, і рядок нульової довжини дав би
+        // порожню клітинку, яку читають як зіпсовану вёрстку.
+        registration: reg.trim() || null,
         volume: Number(vol), prepared_by: userId, expires_at: expiresAt,
       })
       if (error) throw new Error(error.message)
@@ -411,17 +417,18 @@ export function JournalsClient({
         await enqueue(t('journals.offline.solution.label', { agent }), {
           kind: 'journal.solution', tenantId, userId,
           agentName: agent, concentration: conc,
+          registration: reg.trim() || null,
           volume: Number(vol) || null, expiresAt,
         })
         toast.info(t('journals.offline.saved'), t('journals.offline.solution.desc'))
-        setAgent(''); setConc(''); setVol('')
+        setAgent(''); setConc(''); setVol(''); setReg('')
         return
       }
       setErr(dbErrorText(t, ex))
       return
     }
     setBusy(null); setAdding(false)
-    setAgent(''); setConc(''); setVol(''); router.refresh()
+    setAgent(''); setConc(''); setVol(''); setReg(''); router.refresh()
   }
 
   async function addCycle(e: React.FormEvent) {
@@ -533,6 +540,29 @@ export function JournalsClient({
         <input required className="input" placeholder={t('journals.solution.agent.placeholder')}
                value={agent} onChange={(e) => setAgent(e.target.value)} />
       </div>
+      {/* ── РЕЄСТРАЦІЯ ЗАСОБУ В УКРАЇНІ (ТЗ 3.3) ─────────────────────────
+          ТЗ вимагає «фіксація назви засобу (ІЗ ПЕРЕВІРКОЮ РЕЄСТРАЦІЇ
+          В УКРАЇНІ)». Колонка `registration` існує з 0014, звіт для
+          перевірки її друкує окремою колонкою — а ввести її з продукту
+          було НІКУДИ: форма мала чотири поля, і INSERT її не передавав.
+          Тобто в звіті, який несуть на перевірку, у цій колонці стояв
+          прочерк у кожному рядку, зробленому руками майстра.
+
+          Автоматичної звірки немає і не буде поки що: відкритого реєстру
+          дезінфекційних засобів з API в Україні не існує — та сама
+          причина, що й у нотифікацій МОЗ. Обіцяти автопідстановку не можна.
+          Тому поле ручне, необовʼязкове і з підказкою, ЗВІДКИ брати номер.
+
+          Необовʼязкове навмисно: майстер готує розчин біля крісла, і
+          обовʼязкове поле, номера для якого немає під рукою, він обійде
+          введенням крапки — після чого журнал стане гіршим, ніж з порожнім
+          полем. Порожнеча в звіті чесна, крапка — ні. */}
+      <div className="sm:col-span-2">
+        <label className="field-label">{t('journals.solution.reg.label')}</label>
+        <input className="input" placeholder={t('journals.solution.reg.placeholder')}
+               value={reg} onChange={(e) => setReg(e.target.value)} />
+        <p className="field-hint">{t('journals.solution.reg.hint')}</p>
+      </div>
       <div>
         <label className="field-label">{t('journals.solution.conc.label')}</label>
         <input required className="input" placeholder={t('journals.solution.conc.placeholder')}
@@ -622,6 +652,9 @@ export function JournalsClient({
       // готовят: подставленная старая дата означала бы просроченный
       // раствор в момент создания.
       setAgent(lastSolution.agent_name)
+      // Номер реєстрації переноситься разом із назвою: це той самий засіб,
+      // і його реєстрація не змінюється від того, що розчин новий.
+      setReg(lastSolution.registration ?? '')
       setConc(lastSolution.concentration)
       setVol(String(lastSolution.volume))
       setHours(String(Math.max(1, Math.round(
@@ -1293,6 +1326,11 @@ export function JournalsClient({
                         title: s.agent_name,
                         rows: [
                           [t('journals.entry.at'), t.dateTime(s.prepared_at, AT)],
+                          // Реєстрація — у картці, а не в рядку списку:
+                          // це реквізит для перевірки, а не те, за чим
+                          // майстер знаходить розчин очима.
+                          [t('journals.solution.reg.label'),
+                            s.registration ?? t('common.noValue')],
                           [t('journals.solution.conc.label'), s.concentration],
                           [t('journals.web.table.volume'),
                             `${t.number(Number(s.volume))} ${s.unit}`],
