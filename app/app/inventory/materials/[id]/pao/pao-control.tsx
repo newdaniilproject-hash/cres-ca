@@ -14,6 +14,7 @@ import type { Key } from '@/lib/i18n/dict'
 import { EXPIRY_KEY } from '../../../inventory-client'
 import { EXPIRY_BADGE, daysLeft, expiryState } from '@/lib/expiry'
 import { IconLabel, IconQr } from '@/components/icons'
+import { ReportLink } from '@/components/report-link'
 
 type Container = {
   id: string; code: string; status: string
@@ -404,8 +405,8 @@ export function PaoControl({
                 </>
               )}
               {canPrint && (
-                <a href={`/app/inventory/labels?ids=${c.id}`} target="_blank" rel="noreferrer"
-                   className="btn-ghost t-sm">{t('inventory.pao.print')}</a>
+                <ReportLink href={`/app/inventory/labels?ids=${c.id}`}
+                   className="btn-ghost t-sm">{t('inventory.pao.print')}</ReportLink>
               )}
             </div>
 
@@ -502,8 +503,8 @@ export function PaoControl({
             </div>
             <p className="field-hint">{t('inventory.pao.label.hint')}</p>
             <div className="flex flex-wrap gap-2">
-              <a href={`/app/inventory/labels?ids=${label.id}`} target="_blank" rel="noreferrer"
-                 className="btn-primary">{t('inventory.pao.label.print')}</a>
+              <ReportLink href={`/app/inventory/labels?ids=${label.id}`}
+                 className="btn-primary">{t('inventory.pao.label.print')}</ReportLink>
               <button type="button" className="btn-ghost" onClick={() => setLabel(null)}>
                 {t('inventory.common.close')}
               </button>

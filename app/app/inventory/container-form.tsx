@@ -7,6 +7,7 @@ import { useT } from '@/lib/i18n/client'
 import { dbErrorText } from '@/lib/errors/db'
 import { IconBox } from '@/components/icons'
 import { UNITS, type RefItem } from './material-form'
+import { ReportLink } from '@/components/report-link'
 
 export type MaterialOption = { id: string; name: string; unit: string; pao: number | null }
 export type BatchOption = { id: string; materialId: string; number: string; expiry: string }
@@ -254,10 +255,10 @@ export function ContainerForm({
             <div className="card-flat rise sm:col-span-2">
               <p className="t-lg">{t('inventory.containerForm.created.title', { code: made })}</p>
               <p className="t-md mt-1 prose-muted">{t('inventory.containerForm.created.desc')}</p>
-              <a href="/app/inventory/labels" target="_blank" rel="noreferrer"
+              <ReportLink href="/app/inventory/labels"
                  className="btn-secondary mt-3 t-sm">
                 {t('inventory.action.printLabels')}
-              </a>
+              </ReportLink>
             </div>
           )}
 

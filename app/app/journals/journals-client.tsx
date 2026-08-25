@@ -15,6 +15,7 @@ import {
   IconLayers, IconList,
   IconPlus, IconRepeat, IconScissors,
 } from '@/components/icons'
+import { ReportLink } from '@/components/report-link'
 
 // Дата и время записи журнала — «16 серп., 14:05». Это НАБОР ОПЦИЙ,
 // а не своя `fmt`: форматирует по-прежнему `t.dateTime`, то есть язык
@@ -796,10 +797,9 @@ export function JournalsClient({
           <Link href="/app/techcards" className="btn-secondary">
             {t('journals.links.techcards')}
           </Link>
-          <a href="/app/journals/report" target="_blank" rel="noreferrer"
-             className="btn-primary">
+          <ReportLink href="/app/journals/report" className="btn-primary">
             {t('journals.report.open')}
-          </a>
+          </ReportLink>
         </div>
       </div>
 
@@ -960,10 +960,9 @@ export function JournalsClient({
               не зависит: это документ для Держпродспоживслужби
               (lib/report/sanitation-report.ts). На lg та же ссылка стоит
               в хедере экрана, поэтому второй раз здесь её нет. */}
-          <a href="/app/journals/report" target="_blank" rel="noreferrer"
-             className="btn-secondary mt-2">
+          <ReportLink href="/app/journals/report" className="btn-secondary mt-2">
             {t('journals.report.open')}
-          </a>
+          </ReportLink>
 
           {/* Раздел F требует примечание про Audit Log именно здесь,
               на оглавлении: оно отвечает на вопрос «а можно ли это
