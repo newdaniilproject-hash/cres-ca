@@ -7,6 +7,7 @@ import { useT } from '@/lib/i18n/client'
 import type { T } from '@/lib/i18n/translate'
 import { noteIfImmutable } from '@/lib/security-log'
 import { dbErrorText } from '@/lib/errors/db'
+import { CardRunner } from './card-runner'
 import {
   IconBack, IconCalendar, IconClipboard, IconLayers, IconPlus, IconScissors,
 } from '@/components/icons'
@@ -62,6 +63,25 @@ type Step = {
   solution: string
   proportion: string
   minutes: string
+  /**
+   * ⚠️ ЧАС ВИТРИМКИ І ТЕМПЕРАТУРА — ВИМОГА ТЗ 3.4, І ВОНИ ТУТ БУЛИ
+   * ВТРАЧЕНІ. ТЗ називає складом техкарти «використані розчини,
+   * пропорції, ЧАС ВИТРИМКИ»; міграція 0040 кладе їх окремими ключами
+   * (`hold_minutes`, `temperature_c`) саме для того, щоб інтерфейс міг
+   * показати таймер. Але `normalizeSteps` їх не читав — тобто дані
+   * лежали в базі і не доходили до екрана.
+   *
+   * Гірше: форма правки зберігає карту З НОРМАЛІЗОВАНИХ кроків. Кожна
+   * правка пресетної карти МОВЧКИ СТИРАЛА витримку і температуру —
+   * «20 хвилин, понад 30 не тримати» зникало з регламенту, за яким
+   * готують волокно клієнту.
+   *
+   * `minutes` і `hold_minutes` — РІЗНІ величини, і плутати їх не можна:
+   * перша каже, скільки крок займає загалом, друга — скільки саме
+   * тримати, і рівно її веде таймер.
+   */
+  holdMinutes: string
+  temperature: string
   note: string
 }
 
@@ -76,7 +96,10 @@ type Draft = {
   steps: Step[]
 }
 
-const EMPTY_STEP: Step = { step: '', solution: '', proportion: '', minutes: '', note: '' }
+const EMPTY_STEP: Step = {
+  step: '', solution: '', proportion: '', minutes: '',
+  holdMinutes: '', temperature: '', note: '',
+}
 
 // Читаем ТРИ поколения ключей, иначе история версий — ради которой таблица
 // и версионная — покажется пустой:
@@ -94,6 +117,10 @@ function normalizeSteps(raw: unknown): Step[] {
       solution: String(o.solution ?? o.detail ?? ''),
       proportion: String(o.proportion ?? ''),
       minutes: o.minutes == null ? '' : String(o.minutes),
+      // Ключі з міграції 0040. Старі покоління карт їх не мають —
+      // тоді поле порожнє, і ні таймера, ні рядка температури не буде.
+      holdMinutes: o.hold_minutes == null ? '' : String(o.hold_minutes),
+      temperature: o.temperature_c == null ? '' : String(o.temperature_c),
       note: String(o.note ?? ''),
     }
   })
@@ -114,11 +141,13 @@ type Tab = 'all' | 'linked' | 'general'
 // На телефоне он внутри карточки, на вебе — под строкой таблицы. Вторая
 // копия разъехалась бы с первой на первой правке (урок М43, «картка
 // учасника»), а расходятся такие пары всегда и молча.
-function VersionList({ t, group, openVersion, setOpenVersion }: {
+function VersionList({ t, group, openVersion, setOpenVersion, onRun }: {
   t: T
   group: Group
   openVersion: string | null
   setOpenVersion: (id: string | null) => void
+  /** Відкрити покроковий режим за цією версією карти. */
+  onRun: (v: { title: string; steps: Step[] }) => void
 }) {
   return (
     <div className="flex flex-col">
@@ -148,6 +177,19 @@ function VersionList({ t, group, openVersion, setOpenVersion }: {
                   : t('techcards.version.archived')}
               </span>
             </div>
+            {open && steps.length > 0 && (
+              // ── ГОЛОВНА ДІЯ КАРТИ ─────────────────────────────────
+              // Карта існує, щоб за нею ПРАЦЮВАЛИ, а не щоб її читали:
+              // ТЗ 3.4 називає її регламентом «для забезпечення безпеки
+              // клієнта та запобігання алергічним реакціям». Список
+              // кроків нижче лишається — за ним звіряються і його
+              // друкує звіт для перевірки, — але першою тут стоїть
+              // кнопка, з якої починають роботу.
+              <button type="button" className="btn-primary mb-3 w-full"
+                      onClick={() => onRun({ title: group.title, steps })}>
+                {t('techcards.run.start')}
+              </button>
+            )}
             {open && (
               <ol className="t-md flex flex-col gap-2 pb-3 pl-5">
                 {steps.length === 0 && (
@@ -159,11 +201,24 @@ function VersionList({ t, group, openVersion, setOpenVersion }: {
                 {steps.map((s, i) => (
                   <li key={i}>
                     <span className="font-medium">{i + 1}. {s.step}</span>
-                    {s.minutes && (
-                      <span className="prose-muted">
-                        {' · '}{t('techcards.step.minutesShort', { n: s.minutes })}
-                      </span>
-                    )}
+                    {/* Тривалість кроку і ВИТРИМКА — різні величини
+                        (див. тип `Step`), і стоять вони порізно з зазором,
+                        без крапки-роздільника. */}
+                    <span className="ml-3 inline-flex flex-wrap items-baseline gap-x-3 prose-muted">
+                      {s.minutes && (
+                        <span>{t('techcards.step.minutesShort', { n: s.minutes })}</span>
+                      )}
+                      {s.holdMinutes && (
+                        <span>
+                          {t('techcards.run.hold')} {t('techcards.step.minutesShort', { n: s.holdMinutes })}
+                        </span>
+                      )}
+                      {s.temperature && (
+                        <span className="tabular">
+                          {t('techcards.run.temp', { n: s.temperature })}
+                        </span>
+                      )}
+                    </span>
                     {(s.solution || s.proportion) && (
                       <p className="t-xs prose-muted">
                         {s.solution}
@@ -192,6 +247,8 @@ export function TechCardsClient({
   const router = useRouter()
   const [draft, setDraft] = useState<Draft | null>(null)
   const [openVersion, setOpenVersion] = useState<string | null>(null)
+  // Карта, за якою зараз працюють. `null` — покроковий режим закрито.
+  const [run, setRun] = useState<{ title: string; steps: Step[] } | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   // Вкладка, открытая карточка и шаг визарда — только веб-версия.
@@ -343,6 +400,11 @@ export function TechCardsClient({
         solution: s.solution.trim() || null,
         proportion: s.proportion.trim() || null,
         minutes: s.minutes.trim() === '' ? null : Number(s.minutes),
+        // Записуються тими самими ключами, якими їх кладе 0040: інакше
+        // наступне читання карти їх не знайде, а пресет і карта, заведена
+        // руками, розійдуться у формі зберігання.
+        hold_minutes: s.holdMinutes.trim() === '' ? null : Number(s.holdMinutes),
+        temperature_c: s.temperature.trim() === '' ? null : Number(s.temperature),
         note: s.note.trim() || null,
       }))
       .filter((s) => s.step.length > 0)
@@ -687,6 +749,25 @@ export function TechCardsClient({
                          value={step.minutes}
                          onChange={(e) => patchStep(i, { minutes: e.target.value })} />
                 </div>
+                {/* Витримка і температура — вимога ТЗ 3.4 («час витримки»)
+                    і єдине, що веде таймер на екрані роботи за картою.
+                    Без цих полів у формі кожна правка пресетної карти
+                    СТИРАЛА б їх, бо збереження йде з нормалізованих
+                    кроків — саме так вони й губились до 25.08.2026. */}
+                <div>
+                  <label className="field-label">{t('techcards.step.hold.label')}</label>
+                  <input className="input" type="number" min="1"
+                         placeholder={t('techcards.step.hold.placeholder')}
+                         value={step.holdMinutes}
+                         onChange={(e) => patchStep(i, { holdMinutes: e.target.value })} />
+                </div>
+                <div>
+                  <label className="field-label">{t('techcards.step.temp.label')}</label>
+                  <input className="input" type="number"
+                         placeholder={t('techcards.step.temp.placeholder')}
+                         value={step.temperature}
+                         onChange={(e) => patchStep(i, { temperature: e.target.value })} />
+                </div>
                 <div>
                   <label className="field-label">{t('techcards.step.note.label')}</label>
                   <input className="input" placeholder={t('techcards.step.note.placeholder')}
@@ -928,7 +1009,8 @@ export function TechCardsClient({
                   <h2 className="webh2">{t('techcards.webitem.tab.history')}</h2>
                   <div className="mt-2">
                     <VersionList t={t} group={webGroup}
-                                 openVersion={openVersion} setOpenVersion={setOpenVersion} />
+                                 openVersion={openVersion} setOpenVersion={setOpenVersion}
+                                 onRun={setRun} />
                   </div>
                 </div>
               )}
@@ -1155,7 +1237,8 @@ export function TechCardsClient({
                 {open && (
                   <div className="card flex flex-col gap-3">
                     <VersionList t={t} group={g}
-                                 openVersion={openVersion} setOpenVersion={setOpenVersion} />
+                                 openVersion={openVersion} setOpenVersion={setOpenVersion}
+                                 onRun={setRun} />
                     {canWrite && (
                       <button className="btn-secondary self-start" disabled={draft !== null}
                               onClick={() => startNextVersion(g)}>
@@ -1191,6 +1274,12 @@ export function TechCardsClient({
       <p className={`field-hint rise-3 ${webGroup || draft ? 'lg:hidden' : ''}`}>
         {t('techcards.footer')}
       </p>
+
+      {/* Покроковий режим — шторкою знизу, як усе, що людина РОБИТЬ.
+          Компонент монтується завжди, а не за умовою: інакше кожне
+          відкриття починало б його з нуля разом із таймером. */}
+      <CardRunner open={run !== null} onClose={() => setRun(null)}
+                  title={run?.title ?? ''} steps={run?.steps ?? []} />
     </div>
   )
 }

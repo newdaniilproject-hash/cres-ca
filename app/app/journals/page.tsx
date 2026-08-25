@@ -45,7 +45,7 @@ export default async function JournalsPage() {
       // нельзя: список обрезан тридцатью строками, и карточка журнала
       // на десктопе обещала бы «30 записів» салону, у которого их пятьсот.
       supabase.from('sanitation_solutions')
-        .select('id, agent_name, concentration, volume, unit, prepared_at, expires_at, prepared_by',
+        .select('id, agent_name, registration, concentration, volume, unit, prepared_at, expires_at, prepared_by',
                 { count: 'exact' })
         .eq('tenant_id', m.tenantId).order('prepared_at', { ascending: false }).limit(30),
       supabase.from('cleaning_tasks')
@@ -55,7 +55,7 @@ export default async function JournalsPage() {
         .select('task_id, performed_at, performed_by').eq('tenant_id', m.tenantId)
         .gte('performed_at', new Date(new Date().setHours(0, 0, 0, 0)).toISOString()),
       supabase.from('sterilization_cycles')
-        .select('id, device, temperature_c, duration_minutes, indicator_ok, performed_at, performed_by',
+        .select('id, device, temperature_c, duration_minutes, indicator_ok, indicator_note, performed_at, performed_by',
                 { count: 'exact' })
         .eq('tenant_id', m.tenantId).order('performed_at', { ascending: false }).limit(30),
       // Имена исполнителей. Отдельным запросом, а не вложенной связью

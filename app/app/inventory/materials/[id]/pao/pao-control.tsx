@@ -1,8 +1,8 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Sheet } from '@/components/sheet'
 import { useToast } from '@/components/toast'
@@ -14,6 +14,7 @@ import type { Key } from '@/lib/i18n/dict'
 import { EXPIRY_KEY } from '../../../inventory-client'
 import { EXPIRY_BADGE, daysLeft, expiryState } from '@/lib/expiry'
 import { IconLabel, IconQr } from '@/components/icons'
+import { ReportLink } from '@/components/report-link'
 
 type Container = {
   id: string; code: string; status: string
@@ -100,6 +101,48 @@ export function PaoControl({
     d.decantedAt && new Date(d.decantedAt).toDateString() === todayStr).length
 
   const batchOf = (id: string | null) => batches.find((b) => b.id === id) ?? null
+
+  // ── `?do=decant` ОТКРЫВАЕТ ФОРМУ РОЗЛИВА СРАЗУ ───────────────────────
+  //
+  // Кнопка «Розлив у дозатор» на карточке засоба ведёт сюда этим адресом.
+  // Приём и порядок те же, что у `?scan=1` на складе и `?new=1` на приёмке:
+  // человек нажал «розлив» — заставлять его искать ту же кнопку второй раз
+  // на этом экране значит отменить смысл первого нажатия.
+  //
+  // ── ОТКУДА БЕРЁТСЯ БАНКА ─────────────────────────────────────────────
+  //
+  // Два источника, и они дают разную уверенность:
+  //
+  //   `?c=<id>` — человек ОТСКАНИРОВАЛ конкретную банку и нажал «Розлив»
+  //     на результате скана. Двусмысленности нет вовсе: он держит её
+  //     в руке. Открываем форму над ней.
+  //   без `c` — нажали «Розлив у дозатор» на карточке засоба, где банка
+  //     не выбиралась. Открываем ТОЛЬКО когда открытая ровно одна: две
+  //     и больше — это выбор, и делать его за человека нельзя. Розлив
+  //     списывает объём и ЗАВОДИТ новую ёмкость, то есть ошибка стоит
+  //     банки в реестре, которой нет на полке.
+  //
+  // В обоих случаях банка сверяется со списком экрана, а не берётся
+  // из адреса на веру: чужой или устаревший идентификатор иначе открыл
+  // бы форму над пустотой.
+  //
+  // Признак снимается из адреса СРАЗУ: иначе повторное нажатие ведёт
+  // на тот же адрес, компонент не перемонтируется, и второй раз форма
+  // не откроется. `history.replaceState`, а не `router.replace`, —
+  // серверный рендер ради чистки параметра не нужен.
+  const sp = useSearchParams()
+  useEffect(() => {
+    if (sp.get('do') !== 'decant') return
+    if (canOpen) {
+      const wanted = sp.get('c')
+      const openedJars = containers.filter((c) => c.parentId === null && c.status === 'opened')
+      const target = wanted
+        ? openedJars.find((c) => c.id === wanted) ?? null
+        : (openedJars.length === 1 ? openedJars[0] : null)
+      if (target) setDecantOf(target)
+    }
+    window.history.replaceState(null, '', `/app/inventory/materials/${material.id}/pao`)
+  }, [sp, canOpen, containers, material.id])
 
   async function open(c: Container) {
     setBusy(c.id)
@@ -208,7 +251,15 @@ export function PaoControl({
     }
 
     // Наклейку берём у базы, а не собираем на экране: пять реквизитов
-    // ТЗ отдаёт функция container_label, и она же печатается на бумаге.
+    // ТЗ отдаёт функция container_label.
+    //
+    // ⚠️ ЗДЕСЬ СТОЯЛО «и она же печатается на бумаге» — НЕПРАВДА до
+    // 25.08.2026, и предупреждение ниже описывало ровно то, что уже
+    // случилось. Лист печатает `lib/report/labels.ts`, и у него не было
+    // поля мастера вовсе. Две сборки разъехались — просто вторая жила
+    // не на экране, а в принтере, поэтому расхождения никто не видел.
+    // Обе теперь считают дату одинаково (`decanted_at ?? opened_at`)
+    // и печатают все пять реквизитов; правя одну, проверь вторую.
     const { data: text } = await supabase.rpc('container_label', { p_container_id: child.id })
     setBusy(null)
     setDecantOf(null)
@@ -217,9 +268,10 @@ export function PaoControl({
     router.refresh()
   }
 
-  // Наклейку любой ёмкости отдаёт база одной строкой — тем же вызовом,
-  // что печатается на бумаге. Собирать её второй раз на экране нельзя:
-  // две сборки разъедутся, а реквизитов ровно пять и они из ТЗ.
+  // Наклейку любой ёмкости отдаёт база одной строкой. Собирать её второй
+  // раз на экране нельзя: две сборки разъедутся, а реквизитов ровно пять
+  // и они из ТЗ. Предупреждение не теоретическое — см. выше: с листом
+  // печати они уже разъезжались, и стоило это пятого реквизита на бумаге.
   async function showLabel(c: Container) {
     setBusy(c.id)
     const { data, error } = await supabase.rpc('container_label', { p_container_id: c.id })
@@ -353,8 +405,8 @@ export function PaoControl({
                 </>
               )}
               {canPrint && (
-                <a href={`/app/inventory/labels?ids=${c.id}`} target="_blank" rel="noreferrer"
-                   className="btn-ghost t-sm">{t('inventory.pao.print')}</a>
+                <ReportLink href={`/app/inventory/labels?ids=${c.id}`}
+                   className="btn-ghost t-sm">{t('inventory.pao.print')}</ReportLink>
               )}
             </div>
 
@@ -451,8 +503,8 @@ export function PaoControl({
             </div>
             <p className="field-hint">{t('inventory.pao.label.hint')}</p>
             <div className="flex flex-wrap gap-2">
-              <a href={`/app/inventory/labels?ids=${label.id}`} target="_blank" rel="noreferrer"
-                 className="btn-primary">{t('inventory.pao.label.print')}</a>
+              <ReportLink href={`/app/inventory/labels?ids=${label.id}`}
+                 className="btn-primary">{t('inventory.pao.label.print')}</ReportLink>
               <button type="button" className="btn-ghost" onClick={() => setLabel(null)}>
                 {t('inventory.common.close')}
               </button>

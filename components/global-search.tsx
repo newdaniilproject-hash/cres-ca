@@ -48,6 +48,12 @@ type Hit = {
   section: Section
 }
 
+// Разделитель величин в подписи строки. Точка-разделитель снята решением
+// владельца 25.08.2026 по всему продукту: на 390px подпись переносится,
+// и точка оказывается в начале второй строки, читаясь как маркер списка.
+// Тире переносится вместе со значением.
+const SEP = ' — '
+
 type Section = 'materials' | 'catalog' | 'customers' | 'orders'
 
 const ICON: Record<Section, (p: { size?: number }) => React.ReactElement> = {
@@ -146,7 +152,7 @@ export function GlobalSearch({
           href: `/app/inventory/materials/${r.id}`,
           title: r.name as string,
           note: [r.brand, `${t.number(Number(r.current_stock))} ${r.unit}`]
-            .filter(Boolean).join(' · '),
+            .filter(Boolean).join(SEP),
           section: 'materials' as const,
         }))
       })())
@@ -165,7 +171,7 @@ export function GlobalSearch({
           note: [
             t(r.kind === 'service' ? 'app.search.kind.service' : 'app.search.kind.good'),
             r.price != null ? t.money(Number(r.price)) : '',
-          ].filter(Boolean).join(' · '),
+          ].filter(Boolean).join(SEP),
           section: 'catalog' as const,
         }))
       })())
@@ -209,8 +215,8 @@ export function GlobalSearch({
         return (data ?? []).map((r) => ({
           id: r.id as string,
           href: `/app/orders/${r.id}`,
-          title: `№${r.number} · ${r.contact_name}`,
-          note: [t.money(Number(r.total)), t.date(r.created_at as string)].join(' · '),
+          title: `№${r.number} — ${r.contact_name}`,
+          note: [t.money(Number(r.total)), t.date(r.created_at as string)].join(SEP),
           section: 'orders' as const,
         }))
       })())

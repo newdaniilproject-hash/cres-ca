@@ -9,6 +9,7 @@ import type { T } from '@/lib/i18n/translate'
 import { SecurityLog, type SecurityEvent } from './security-log'
 import { DataAccessLog, type DataAccessRow } from './data-access-log'
 import { maskText } from '@/lib/redact'
+import { Fold } from '@/components/fold'
 import { IconChevronRight, IconClose, IconUsers } from '@/components/icons'
 
 // ── Что здесь и почему именно так ─────────────────────────────────────────
@@ -99,6 +100,80 @@ const isRole = (r: string): r is Role => (ROLES as readonly string[]).includes(r
 
 const roleLabel = (t: T, r: string): string => (isRole(r) ? t(`role.${r}`) : r)
 const roleHint = (t: T, r: string): string => (isRole(r) ? t(`role.hint.${r}`) : '')
+
+// ── Ключ права и подпись к нему — тоже разные вещи, и здесь это дороже ──────
+//
+// Причина та же, что у ролей выше, но цена больше: роль человек видит одну,
+// а прав двадцать одно, и до 25.08.2026 они лежали ПЛОСКИМ СПИСКОМ
+// СЛУЖЕБНЫХ КЛЮЧЕЙ — `compliance.journal.write`, `customers.contacts`,
+// `stock.consume`, — развёрнутым на карточке каждого участника. Владелец
+// салона читает это как строки конфигурации, а не как «заповнювати
+// санітарні журнали», и раздаёт доступ наугад: либо лишнее, либо ничего.
+//
+// Список НЕ является источником правды о том, какие права существуют.
+// Правда — `role_grants` в базе, и галочки строятся из неё (`allPerms`).
+// Здесь только подписи, и право без подписи показывается СВОИМ КЛЮЧОМ —
+// ровно как роль без подписи. Так новое право видно в тот же день, когда
+// его завели миграцией, а не после правки словаря.
+const PERMS = [
+  'stock.read', 'stock.write', 'stock.consume',
+  'compliance.read', 'compliance.write', 'compliance.journal.write',
+  'catalog.read', 'catalog.write',
+  'orders.read', 'orders.write',
+  'customers.read', 'customers.write', 'customers.contacts',
+  'finances.read', 'finances.write',
+  'storefront.read', 'storefront.write',
+  'team.read', 'team.write',
+  'settings.read', 'settings.write',
+] as const
+type Perm = (typeof PERMS)[number]
+const isPerm = (p: string): p is Perm => (PERMS as readonly string[]).includes(p)
+const permLabel = (t: T, p: string): string => (isPerm(p) ? t(`perm.${p}`) : p)
+
+// Раздел права — это ПЕРВЫЙ СЕГМЕНТ КЛЮЧА, а не второй справочник:
+// `compliance.journal.write` относится к соответствию по тому же признаку,
+// по которому `compliance.read`. Отдельная таблица «право → раздел»
+// разошлась бы с ключами на первом же новом праве, причём молча.
+//
+// Массив ниже задаёт только ПОРЯДОК разделов сверху вниз (склад первым —
+// это продукт), а не их список. Незнакомый раздел не теряется: он уходит
+// в конец под своим служебным именем.
+const PERM_GROUPS = [
+  'stock', 'compliance', 'catalog', 'orders',
+  'customers', 'finances', 'storefront', 'team', 'settings',
+] as const
+type PermGroup = (typeof PERM_GROUPS)[number]
+const isPermGroup = (g: string): g is PermGroup =>
+  (PERM_GROUPS as readonly string[]).includes(g)
+const groupOf = (p: string): string => p.split('.')[0] ?? p
+const groupLabel = (t: T, g: string): string =>
+  (isPermGroup(g) ? t(`perm.group.${g}`) : g)
+
+function byGroup(perms: string[]): { group: string; perms: string[] }[] {
+  const map = new Map<string, string[]>()
+  for (const p of perms) {
+    const g = groupOf(p)
+    const list = map.get(g)
+    if (list) list.push(p)
+    else map.set(g, [p])
+  }
+  const known = PERM_GROUPS.filter((g) => map.has(g)) as readonly string[]
+  const rest = [...map.keys()].filter((g) => !isPermGroup(g)).sort()
+  return [...known, ...rest].map((g) => ({
+    group: g,
+    // Внутри раздела порядок ПО СМЫСЛУ, а не по алфавиту: «дивитись»
+    // раньше «правити», потому что второе включает первое, и человек
+    // читает список сверху вниз как нарастание доступа. `allPerms`
+    // приходит отсортированным по ключу, и там выходило
+    // «списувати · дивитись · заводити» — набор без логики.
+    // Незнакомое право уходит в конец, сохраняя свой порядок.
+    perms: (map.get(g) ?? []).slice().sort((a, b) => {
+      const ia = PERMS.indexOf(a as Perm)
+      const ib = PERMS.indexOf(b as Perm)
+      return (ia < 0 ? PERMS.length : ia) - (ib < 0 ? PERMS.length : ib)
+    }),
+  }))
+}
 
 // Журнал пишется триггером на `tenant_members` (0080), то есть события
 // `blocked`/`unblocked` в нём — ТОЛЬКО про доступ. Карточка мастера
@@ -207,6 +282,71 @@ function teamErrorText(t: T, raw: string): string {
   return t('team.error.generic')
 }
 
+// ── Сетка дозволов: ОДНА на три места ───────────────────────────────────────
+//
+// Галочки прав рисуются в карточке участника, в шаблоне доступа и в форме
+// нового шаблона. До 25.08.2026 это были три копии одной разметки, и они
+// уже разошлись: в карточке участника стояла защита «нельзя выдать то,
+// чего нет у тебя самого» (0081), а в форме шаблона её не было — то есть
+// шаблон можно было СОЗДАТЬ с правами шире собственных, и отказ приезжал
+// только в момент применения, к другому человеку и в другой день.
+//
+// Поэтому компонент один, а разница выражена пропсами. Правило проекта
+// «добавление поля требует правки одного файла» здесь читается как
+// «добавление права не требует правки ни одного места на экране».
+function PermGrid({
+  perms, isOn, isOverridden, disabledFor, mutedFor, onToggle, cols,
+}: {
+  perms: string[]
+  isOn: (p: string) => boolean
+  isOverridden: (p: string) => boolean
+  /** Занятость записи по этому ключу. */
+  disabledFor: (p: string) => boolean
+  /** Право, которого нет у самого раздающего: включить нельзя, снять можно. */
+  mutedFor?: (p: string) => boolean
+  onToggle: (p: string, next: boolean) => void
+  cols: string
+}) {
+  const t = useT()
+  return (
+    <div className="flex flex-col gap-3">
+      {byGroup(perms).map(({ group, perms: list }) => (
+        <div key={group}>
+          {/* Раздел подписан, но НЕ сворачивается: вложенный аккордеон
+              внутри уже свёрнутой секции — это два нажатия до галочки,
+              то есть ровно та глубина, ради ухода от которой всё
+              и затевалось. */}
+          <p className="eyebrow mb-1">{groupLabel(t, group)}</p>
+          <div className={`grid gap-x-4 ${cols}`}>
+            {list.map((p) => {
+              const on = isOn(p)
+              const muted = !on && (mutedFor?.(p) ?? false)
+              return (
+                // Зона нажатия — не размер квадратика: строка держит
+                // --tap-min, иначе с телефона в список из двадцати прав
+                // попасть нельзя.
+                <label key={p} className="t-sm flex items-center gap-2"
+                       style={{ minHeight: 'var(--tap-min)' }}>
+                  <input type="checkbox" checked={on} className="shrink-0"
+                         disabled={disabledFor(p) || muted}
+                         onChange={(e) => onToggle(p, e.target.checked)} />
+                  {/* Подпись, а не ключ. Ключ остаётся у права без
+                      подписи — см. `permLabel`. */}
+                  <span className={isOverridden(p) ? 'font-semibold'
+                    : muted ? 'prose-muted' : ''}>{permLabel(t, p)}</span>
+                  {isOverridden(p) && (
+                    <span className="badge t-xs shrink-0">{t('team.perms.override')}</span>
+                  )}
+                </label>
+              )
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function TeamClient(props: {
   tenantId: string; myUserId: string | null; myRole: string
   canWrite: boolean
@@ -237,6 +377,13 @@ export function TeamClient(props: {
   // Журнал свёрнут по умолчанию: двести строк истории над экраном, где
   // работают каждый день, превращают его в ленту, а не в инструмент.
   const [auditOpen, setAuditOpen] = useState(false)
+  // Раскрыта ли секция «Додаткові права» — по участнику и по раскладке.
+  // Свёрнута по умолчанию: двадцать одна галочка под ролью означала, что
+  // до кнопок доступа («закрити доступ», «завершити сеанси») надо было
+  // пролистать экран прав, которые в девяти случаях из десяти не трогают.
+  const [permsOpen, setPermsOpen] = useState<Record<string, boolean>>({})
+  const togglePermsOpen = (key: string) =>
+    setPermsOpen((s) => ({ ...s, [key]: !s[key] }))
 
   // Без своего id опасные действия не показываются НИКОМУ. Иначе `self`
   // не срабатывает ни на ком, и человек видит «заблокувати доступ»
@@ -303,9 +450,36 @@ export function TeamClient(props: {
   }
 
   const myRank = rank(props.myRole)
-  // Роль, вышестоящую за собственную, база всё равно не пустит
-  // (`role_rank` в create_invitation, сторож в 0081). Список сокращаем
-  // здесь, чтобы человек не выбирал то, что гарантированно откажут.
+
+  // ── ЧОМУ РОЛЕЙ СІМ, А ТЗ НАЗИВАЄ ТРИ ─────────────────────────────────
+  //
+  // Питання власника 25.08.2026. ТЗ описує САЛОН, а ролі живуть
+  // у ПЛАТФОРМІ: тими самими `role_grants` користуються магазин одягу,
+  // автозапчастини і майстер манікюру. Три ролі ТЗ покриті повністю —
+  // Адміністратор це `owner` і `admin`, Майстер — `operator`,
+  // Інспектор — `inspector`; решта існують для інших видів закладу.
+  //
+  // ⚠️ НАБІР РОЛЕЙ ОДНАКОВИЙ ДЛЯ ВСІХ ЗАКЛАДІВ, І ФІЛЬТРУВАТИ ЙОГО
+  // НЕ МОЖНА. Рішення власника 25.08.2026: «все виды ролей должны быть
+  // одинаковы для всех, всё должно быть универсально, чтобы
+  // переиспользовать можно было».
+  //
+  // Тут була спроба ховати ролі, «суть яких у вимкненому модулі»
+  // (`manager` без `orders`, `accountant` без `finance`), і вона знята
+  // тим самим днем. Причина глибша за смак: така карта — це ДРУГЕ
+  // джерело правди про те, що означає роль, і живе воно в коді, тоді
+  // як перше живе даними в `role_grants`. Вони розійдуться в день,
+  // коли ролі видадуть ще один дозвіл, і розійдуться мовчки.
+  // Правило проекту про це прямо: права — дані, а не код.
+  //
+  // Порожній розділ у роли, яка не підходить закладу, — не поломка:
+  // його і так відсікає `hasModule` на кожному екрані, і відсікає
+  // однаково для всіх.
+  //
+  // Роль, вищу за власну, база все одно не пустить (`role_rank`
+  // у create_invitation, сторож у 0081). Ось це скорочення лишається:
+  // воно не про заклад, а про того, хто запрошує, і повторює правило
+  // бази, а не заводить своє.
   const assignableRoles = ROLE_ORDER.filter((r) => rank(r) <= myRank && r !== 'owner')
 
   // Приглашение проверяется НА МОМЕНТ ПРИЁМА (0081, п. 5): роль, чей
@@ -677,9 +851,12 @@ export function TeamClient(props: {
                 <p className="t-sm">
                   <b>{t('team.state.noAccess.title')}</b>{' '}
                   {t('common.since', { date: t.dateTime(m.blocked_at) })}
-                  {/* Причина — то, что набрал человек. Не переводится. */}
-                  {m.blocked_reason ? ` · ${m.blocked_reason}` : ''}
                 </p>
+                {/* Причина — ОТДЕЛЬНОЙ строкой, а не через точку-разделитель
+                    (требование владельца 25.08.2026). Точка сцепляла дату
+                    с фразой, которую набрал человек, и длинная причина
+                    превращала строку состояния в абзац без начала. */}
+                {m.blocked_reason && <p className="t-sm">{m.blocked_reason}</p>}
                 <p className="field-hint">{t('team.state.noAccess.hint')}</p>
               </div>
             )}
@@ -689,8 +866,10 @@ export function TeamClient(props: {
                 <p className="t-sm">
                   <b>{t('team.state.notWorking.title')}</b>{' '}
                   {t('common.since', { date: t.dateTime(m.staff_blocked_at) })}
-                  {m.staff_blocked_reason ? ` · ${m.staff_blocked_reason}` : ''}
                 </p>
+                {m.staff_blocked_reason && (
+                  <p className="t-sm">{m.staff_blocked_reason}</p>
+                )}
                 <p className="field-hint">
                   {t('team.state.notWorking.hint')}{' '}
                   {m.blocked_at
@@ -716,31 +895,45 @@ export function TeamClient(props: {
         {self && <p className="field-hint">{t('team.hint.self')}</p>}
 
         {editable ? (
-          <div className={`grid gap-3 ${cols3}`}>
+          <>
+            {/* Роль списком, а не выпадающим полем — по той же причине,
+                что и в приглашении: набор роли обязан быть виден ДО
+                выбора, а не после. Разметка одна на оба места намеренно;
+                «здесь компактнее» — это ровно то, из-за чего два экрана
+                одного действия начинают выглядеть как два разных. */}
             <div>
-              <label className="field-label" htmlFor={`${ns}-role-${m.user_id}`}>
-                {t('common.role')}
-              </label>
-              {/* Текущая роль обязана быть в списке, даже если она
-                  выше моей: иначе select покажет чужое значение
-                  и первое же касание понизит человека молча.
-                  Гасим и роли, чей набор шире моего: смена роли
-                  выдаёт человеку её права, а «нельзя выдать то,
-                  чего нет у тебя» база проверяет и здесь (0081). */}
-              <select className="select" id={`${ns}-role-${m.user_id}`} value={m.role}
-                      disabled={busy === `role:${m.user_id}`}
-                      onChange={(e) => setRole(m, e.target.value)}>
-                {[...new Set([m.role, ...assignableRoles])].map((r) => (
-                  <option key={r} value={r}
-                          disabled={r !== m.role && (!assignableRoles.includes(r)
-                            || notMine(r, m.permissions, m.role, m.permissions).length > 0)}>
-                    {roleLabel(t, r)}
-                  </option>
-                ))}
-              </select>
-              <p className="field-hint">{roleHint(t, m.role)}</p>
+              <p className="field-label">{t('common.role')}</p>
+              <div className={`grid gap-x-4 ${cols2}`}>
+                {/* Текущая роль обязана быть в списке, даже если она
+                    выше моей: иначе выбранным окажется чужое значение
+                    и первое же касание понизит человека молча.
+                    Гасим и роли, чей набор шире моего: смена роли
+                    выдаёт человеку её права, а «нельзя выдать то,
+                    чего нет у тебя» база проверяет и здесь (0081). */}
+                {[...new Set([m.role, ...assignableRoles])].map((r) => {
+                  const off = r !== m.role && (!assignableRoles.includes(r)
+                    || notMine(r, m.permissions, m.role, m.permissions).length > 0)
+                  return (
+                    <label key={r} className="flex items-start gap-2 py-1"
+                           style={{ minHeight: 'var(--tap-min)' }}>
+                      <input type="radio" name={`${ns}-role-${m.user_id}`} value={r}
+                             className="mt-1 shrink-0"
+                             checked={m.role === r}
+                             disabled={off || busy === `role:${m.user_id}`}
+                             onChange={() => setRole(m, r)} />
+                      <span>
+                        <span className={`t-sm ${off ? 'prose-muted' : 'font-semibold'}`}>
+                          {roleLabel(t, r)}
+                        </span>
+                        <span className="field-hint block">{roleHint(t, r)}</span>
+                      </span>
+                    </label>
+                  )
+                })}
+              </div>
             </div>
 
+            <div className={`grid gap-3 ${cols2}`}>
             <div>
               <label className="field-label" htmlFor={`${ns}-cap-${m.user_id}`}>
                 {t('team.field.cap.label')}
@@ -773,7 +966,8 @@ export function TeamClient(props: {
                      onBlur={(e) => setExpiry(m, e.target.value)} />
               <p className="field-hint">{t('team.field.expiry.hint')}</p>
             </div>
-          </div>
+            </div>
+          </>
         ) : (
           // Раскрытая карточка без права записи (у роли manager
           // есть team.read и нет team.write) показывала пустоту —
@@ -841,66 +1035,67 @@ export function TeamClient(props: {
           </div>
         )}
 
-        {/* Точечная выдача */}
+        {/* ── Точечная выдача ────────────────────────────────────────────
+            Свёрнута. Роль уже отвечает на вопрос «что этому человеку
+            можно», и в подавляющем большинстве случаев её и достаточно;
+            здесь живут ОТКЛОНЕНИЯ от неё, и их число вынесено в
+            заголовок — то есть видно, есть ли внутри что смотреть,
+            не открывая. */}
         {editable ? (
-          <div>
-            <p className="field-label">{t('team.perms.label')}</p>
-            <p className="field-hint mb-2">
+          <Fold title={t('team.perms.label')}
+                count={Object.keys(shownPerms).length || undefined}
+                open={!!permsOpen[`${ns}:${m.user_id}`]}
+                onToggle={() => togglePermsOpen(`${ns}:${m.user_id}`)}>
+            <p className="field-hint">
               {t('team.perms.hint')}
               {!iHaveStar && ` ${t('team.perms.hintNotMine')}`}
             </p>
-            <div className={`grid gap-x-4 ${cols2}`}>
-              {allPerms.map((p) => {
-                const base = rolePerms.has(p)
-                const val = shownPerms[p] ?? base
-                const overridden = shownPerms[p] !== undefined
-                // Снять можно любое право, выдать — только своё
-                // (0081). Поэтому запрет ровно на включение.
-                const cannotGive = !val && !iHaveStar && !myPerms.has(p)
-                return (
-                  // Зона нажатия — не размер квадратика: строка
-                  // держит --tap-min, иначе с телефона в список
-                  // из двадцати прав попасть нельзя.
-                  <label key={p} className="t-sm flex items-center gap-2"
-                         style={{ minHeight: 'var(--tap-min)' }}>
-                    <input type="checkbox" checked={val} className="shrink-0"
-                           disabled={busy === `perm:${m.user_id}:${p}` || cannotGive}
-                           onChange={(e) => queuePerms(
-                             permKey, `perm:${m.user_id}:${p}`,
-                             shownPerms, m.role, p, e.target.checked,
-                             (perms) => supabase.from('tenant_members')
-                               .update({ permissions: perms })
-                               .eq('tenant_id', props.tenantId)
-                               .eq('user_id', m.user_id))} />
-                    {/* `p` — ключ права (`stock.read`). Служебное
-                        значение: не переводится ни здесь, ни ниже. */}
-                    <span className={overridden ? 'font-semibold'
-                      : cannotGive ? 'prose-muted' : ''}>{p}</span>
-                    {overridden && (
-                      <span className="badge t-xs">{t('team.perms.override')}</span>
-                    )}
-                  </label>
-                )
-              })}
-            </div>
-          </div>
+            <PermGrid
+              perms={allPerms}
+              cols={cols2}
+              isOn={(p) => shownPerms[p] ?? rolePerms.has(p)}
+              isOverridden={(p) => shownPerms[p] !== undefined}
+              disabledFor={(p) => busy === `perm:${m.user_id}:${p}`}
+              // Снять можно любое право, выдать — только своё (0081).
+              // Поэтому запрет ровно на включение.
+              mutedFor={(p) => !iHaveStar && !myPerms.has(p)}
+              onToggle={(p, next) => queuePerms(
+                permKey, `perm:${m.user_id}:${p}`,
+                shownPerms, m.role, p, next,
+                (perms) => supabase.from('tenant_members')
+                  .update({ permissions: perms })
+                  .eq('tenant_id', props.tenantId)
+                  .eq('user_id', m.user_id))} />
+          </Fold>
         ) : (
-          <div>
-            <p className="field-label">{t('team.granted.label')}</p>
+          <Fold title={t('team.granted.label')}
+                count={granted.length || undefined}
+                open={!!permsOpen[`${ns}:${m.user_id}`]}
+                onToggle={() => togglePermsOpen(`${ns}:${m.user_id}`)}>
             {granted.length === 0 ? (
               <p className="t-sm prose-muted">{t('team.granted.none')}</p>
             ) : (
-              <div className="flex flex-wrap gap-1.5">
-                {granted.map((p) => (
-                  <span key={p}
-                        className={shownPerms[p] !== undefined ? 'badge-accent' : 'badge'}>
-                    {p}
-                  </span>
+              // Здесь тоже по разделам, а не одним ворохом: список того,
+              // что человеку можно, читают, чтобы ответить на вопрос
+              // про конкретный раздел («он вообще склад видит?»).
+              <div className="flex flex-col gap-2">
+                {byGroup(granted).map(({ group, perms: list }) => (
+                  <div key={group}>
+                    <p className="eyebrow mb-1">{groupLabel(t, group)}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {list.map((p) => (
+                        <span key={p}
+                              className={shownPerms[p] !== undefined ? 'badge-accent' : 'badge'}>
+                          {permLabel(t, p)}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
             )}
             <p className="field-hint">{t('team.granted.hint')}</p>
-          </div>
+          </Fold>
         )}
 
         {/* Сеансы этого человека */}
@@ -909,11 +1104,20 @@ export function TeamClient(props: {
             <p className="field-label">{t('team.sessions.title')}</p>
             {(sessionsByUser[m.user_id] ?? []).map((s) => (
               // Строка устройства и адрес — данные, а не текст.
-              <p key={s.session_id} className="t-sm prose-muted">
-                {s.device?.slice(0, 60) ?? t('team.sessions.unknownDevice')}
-                {' · '}{s.ip ?? '—'}{' · '}
-                {t('team.sessions.lastSeen', { date: t.dateTime(s.last_seen) })}
-              </p>
+              //
+              // Две строки вместо одной через точки. Строка устройства
+              // и без того длинная («Mozilla/5.0 (iPhone; CPU iPhone OS…»),
+              // и с точками она переносилась в середине адреса — читалось
+              // как одна каша из трёх разных величин.
+              <div key={s.session_id} className="mb-1">
+                <p className="t-sm prose-muted">
+                  {s.device?.slice(0, 60) ?? t('team.sessions.unknownDevice')}
+                </p>
+                <p className="field-hint">
+                  {t('team.sessions.lastSeen', { date: t.dateTime(s.last_seen) })}
+                  {s.ip ? ` — ${s.ip}` : ''}
+                </p>
+              </div>
             ))}
             {dangerous && (
               <button type="button" className="btn-secondary t-sm mt-2"
@@ -1102,52 +1306,75 @@ export function TeamClient(props: {
           <h2 className="t-lg mb-1">{t('team.invite.title')}</h2>
           <p className="t-md mb-4 prose-muted">{t('team.invite.desc')}</p>
 
-          <form onSubmit={invite} className="grid gap-3 sm:grid-cols-[1fr_auto_auto_auto] sm:items-end">
-            <div>
-              <label className="field-label" htmlFor="invite-email">
-                {t('team.invite.email.label')}
-              </label>
-              {/* Подсказка в поле — такая же строка интерфейса, как подпись:
-                  в русском примере имя другое, в английском — другое. */}
-              <input required type="email" className="input" id="invite-email" value={inviteEmail}
-                     onChange={(e) => setInviteEmail(e.target.value)}
-                     placeholder={t('team.invite.email.placeholder')} />
+          <form onSubmit={invite} className="flex flex-col gap-4">
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
+              <div>
+                <label className="field-label" htmlFor="invite-email">
+                  {t('team.invite.email.label')}
+                </label>
+                {/* Подсказка в поле — такая же строка интерфейса, как подпись:
+                    в русском примере имя другое, в английском — другое. */}
+                <input required type="email" className="input" id="invite-email" value={inviteEmail}
+                       onChange={(e) => setInviteEmail(e.target.value)}
+                       placeholder={t('team.invite.email.placeholder')} />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="invite-days">
+                  {t('team.invite.days.label')}
+                </label>
+                {/* «7» — число, а не текст: в словарь оно не едет. */}
+                <input type="number" min={1} max={365} className="input sm:w-28" id="invite-days"
+                       value={inviteDays} onChange={(e) => setInviteDays(e.target.value)}
+                       placeholder={inviteRole === 'inspector' ? '7' : t('team.invite.days.placeholder')} />
+              </div>
+              <button className="btn-primary" disabled={busy === 'invite'}>
+                {busy === 'invite' ? t('team.invite.submitBusy') : t('team.invite.submit')}
+              </button>
             </div>
-            <div>
-              <label className="field-label" htmlFor="invite-role">{t('common.role')}</label>
-              {/* Роль, чей набор прав шире моего, отказывает не сейчас,
-                  а через трое суток и приглашённому (0081, п. 5): роль
-                  и права проверяются В МОМЕНТ ПРИЁМА. Отложенный отказ
-                  чужому человеку — худший вид отказа, поэтому гасим. */}
-              <select className="select" id="invite-role" value={inviteRole}
-                      onChange={(e) => setInviteRole(e.target.value)}>
-                {assignableRoles.map((r) => (
-                  <option key={r} value={r} disabled={!invitable.has(r)}>
-                    {/* Строка с подстановкой: собирать её сложением
-                        («подпись» + « — понад ваш доступ») нельзя — порядок
-                        слов в языках разный, и склейка ломается первой же. */}
-                    {invitable.has(r)
-                      ? roleLabel(t, r)
-                      : t('team.beyond', { name: roleLabel(t, r) })}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="field-label" htmlFor="invite-days">
-                {t('team.invite.days.label')}
-              </label>
-              {/* «7» — число, а не текст: в словарь оно не едет. */}
-              <input type="number" min={1} max={365} className="input sm:w-28" id="invite-days"
-                     value={inviteDays} onChange={(e) => setInviteDays(e.target.value)}
-                     placeholder={inviteRole === 'inspector' ? '7' : t('team.invite.days.placeholder')} />
-            </div>
-            <button className="btn-primary" disabled={busy === 'invite'}>
-              {busy === 'invite' ? t('team.invite.submitBusy') : t('team.invite.submit')}
-            </button>
-          </form>
 
-          <p className="field-hint mt-2">{roleHint(t, inviteRole)}</p>
+            {/* ── РОЛЬ СПИСКОМ, А НЕ ВЫПАДАЮЩИМ ПОЛЕМ ──────────────────
+                Роль и есть «пресет прав»: она приносит свой набор из
+                `role_grants`. Пока она лежала в `select`, объяснение
+                набора (`role.hint.*`) показывалось ПОСЛЕ выбора — то
+                есть человек выбирал вслепую и узнавал, что выдал, уже
+                выдав. Разворачиваем: все наборы видны разом, выбор —
+                одно касание, и роль, которую база всё равно отклонит,
+                видно погашенной, а не спрятанной.
+
+                Радиокнопки настоящие, а не плитки с обработчиком:
+                стрелки, Tab и чтение с экрана работают сами, и ни одной
+                новой строки в globals.css это не стоит. */}
+            <div>
+              <p className="field-label">{t('common.role')}</p>
+              <div className="grid gap-x-4 sm:grid-cols-2">
+                {assignableRoles.map((r) => {
+                  // Роль, чей набор прав шире моего, отказывает не сейчас,
+                  // а через трое суток и приглашённому (0081, п. 5): роль
+                  // и права проверяются В МОМЕНТ ПРИЁМА. Отложенный отказ
+                  // чужому человеку — худший вид отказа, поэтому гасим.
+                  const off = !invitable.has(r)
+                  return (
+                    <label key={r} className="flex items-start gap-2 py-1"
+                           style={{ minHeight: 'var(--tap-min)' }}>
+                      <input type="radio" name="invite-role" value={r} className="mt-1 shrink-0"
+                             checked={inviteRole === r} disabled={off}
+                             onChange={() => setInviteRole(r)} />
+                      <span>
+                        <span className={`t-sm ${off ? 'prose-muted' : 'font-semibold'}`}>
+                          {/* Строка с подстановкой: собирать её сложением
+                              («подпись» + « — понад ваш доступ») нельзя —
+                              порядок слов в языках разный, и склейка
+                              ломается на первом же переводе. */}
+                          {off ? t('team.beyond', { name: roleLabel(t, r) }) : roleLabel(t, r)}
+                        </span>
+                        <span className="field-hint block">{roleHint(t, r)}</span>
+                      </span>
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+          </form>
 
           {inviteLink && (
             <div className="card-flat mt-4 flex flex-col gap-2">
@@ -1190,7 +1417,7 @@ export function TeamClient(props: {
                   {/* Числительное: 1 день / 2 дні / 5 днів. Было
                       сокращение «дн.», которое не склоняется, — теперь
                       форма выбирается по остатку. */}
-                  {i.access_days ? ` · ${t.plural('team.pending.days', i.access_days)}` : ''}
+                  {i.access_days ? ` — ${t.plural('team.pending.days', i.access_days)}` : ''}
                 </p>
               </div>
               {props.canWrite && (
@@ -1251,7 +1478,7 @@ export function TeamClient(props: {
                   </p>
                   <p className="t-xs prose-muted truncate">
                     {m.email}
-                    {live > 0 && ` · ${t.plural('team.member.sessions', live)}`}
+                    {live > 0 && ` — ${t.plural('team.member.sessions', live)}`}
                   </p>
                 </div>
                 {/* Перенос по строке — потому что на 390px четыре бейджа
@@ -1285,7 +1512,11 @@ export function TeamClient(props: {
                     data-active={webTab === tab.key}
                     style={{ minHeight: 'var(--tap-min)' }}
                     onClick={() => setWebTab(tab.key)}>
-              {tab.label} · <span className="tabular">{t.number(tab.n)}</span>
+              {/* Число — пилюлей, а не через точку-разделитель: точки сняты
+                  решением владельца 25.08.2026, и здесь пилюля к тому же
+                  отделяет количество от названия вкладки лучше знака. */}
+              {tab.label}{' '}
+              <span className="count-pill tabular">{t.number(tab.n)}</span>
             </button>
           ))}
         </div>
@@ -1523,16 +1754,22 @@ export function TeamClient(props: {
                           onClick={() => setOpenTpl(tOpen ? null : tpl.id)}>
                     {/* Имя шаблона придумал человек — это данные. */}
                     <span className="t-md block truncate">{tpl.name}</span>
-                    <span className="t-xs prose-muted block">
-                      {roleLabel(t, tpl.role)}
-                      {' · '}
-                      {tpl.cap_pct !== null
-                        ? t('team.templates.capTo', { pct: t.percent(tpl.cap_pct) })
-                        : t('team.templates.capByRole')}
-                      {' · '}
-                      {Object.keys(tPerms).length === 0
-                        ? t('team.templates.noPerms')
-                        : t.plural('team.templates.permCount', Object.keys(tPerms).length)}
+                    {/* Три величины — тремя бейджами, а не строкой через
+                        точки: роль, потолок скидки и число отклонений
+                        отвечают на разные вопросы, и склеенные подряд
+                        читались как одна фраза. */}
+                    <span className="mt-1 flex flex-wrap gap-1.5">
+                      <span className="badge t-xs">{roleLabel(t, tpl.role)}</span>
+                      <span className="badge t-xs">
+                        {tpl.cap_pct !== null
+                          ? t('team.templates.capTo', { pct: t.percent(tpl.cap_pct) })
+                          : t('team.templates.capByRole')}
+                      </span>
+                      <span className="badge t-xs">
+                        {Object.keys(tPerms).length === 0
+                          ? t('team.templates.noPerms')
+                          : t.plural('team.templates.permCount', Object.keys(tPerms).length)}
+                      </span>
                     </span>
                   </button>
                   <button type="button" className="btn-ghost t-sm"
@@ -1563,32 +1800,25 @@ export function TeamClient(props: {
                         {t('team.templates.perms.hint', { role: roleLabel(t, tpl.role) })}
                         {!iHaveStar && ` ${t('team.templates.perms.hintNotMine')}`}
                       </p>
-                      <div className="grid gap-x-4 sm:grid-cols-2 lg:grid-cols-4">
-                        {allPerms.map((p) => {
-                          const base = tRolePerms.has(p)
-                          const val = tPerms[p] ?? base
-                          const overridden = tPerms[p] !== undefined
-                          return (
-                            <label key={p} className="t-sm flex items-center gap-2"
-                                   style={{ minHeight: 'var(--tap-min)' }}>
-                              {/* Ключ занятости — на КАЖДУЮ галочку, а не
-                                  на шаблон целиком: с общим ключом гасла
-                                  вся сетка разом, хотя записывается одна. */}
-                              <input type="checkbox" checked={val} className="shrink-0"
-                                     disabled={busy === `tpl-perm:${tpl.id}:${p}`}
-                                     onChange={(e) => queuePerms(
-                                       tplKey, `tpl-perm:${tpl.id}:${p}`,
-                                       tPerms, tpl.role, p, e.target.checked,
-                                       (perms) => supabase.from('permission_templates')
-                                         .update({ permissions: perms }).eq('id', tpl.id))} />
-                              <span className={overridden ? 'font-semibold' : ''}>{p}</span>
-                              {overridden && (
-                                <span className="badge t-xs">{t('team.perms.override')}</span>
-                              )}
-                            </label>
-                          )
-                        })}
-                      </div>
+                      {/* Ключ занятости — на КАЖДУЮ галочку, а не на шаблон
+                          целиком: с общим ключом гасла вся сетка разом,
+                          хотя записывается одна. */}
+                      <PermGrid
+                        perms={allPerms}
+                        cols="sm:grid-cols-2 lg:grid-cols-4"
+                        isOn={(p) => tPerms[p] ?? tRolePerms.has(p)}
+                        isOverridden={(p) => tPerms[p] !== undefined}
+                        disabledFor={(p) => busy === `tpl-perm:${tpl.id}:${p}`}
+                        // Та же защита, что и в карточке участника: выдать
+                        // можно только своё (0081). Здесь её не было вовсе,
+                        // и шаблон принимал права шире собственных — отказ
+                        // приезжал лишь при применении, к другому человеку.
+                        mutedFor={(p) => !iHaveStar && !myPerms.has(p)}
+                        onToggle={(p, next) => queuePerms(
+                          tplKey, `tpl-perm:${tpl.id}:${p}`,
+                          tPerms, tpl.role, p, next,
+                          (perms) => supabase.from('permission_templates')
+                            .update({ permissions: perms }).eq('id', tpl.id))} />
                     </div>
                   </div>
                 )}
@@ -1633,22 +1863,15 @@ export function TeamClient(props: {
               <p className="field-hint mb-2">
                 {t('team.templates.new.perms.hint', { role: roleLabel(t, tplRole) })}
               </p>
-              <div className="grid gap-x-4 sm:grid-cols-2 lg:grid-cols-4">
-                {allPerms.map((p) => {
-                  const base = permsByRole[tplRole]?.has(p) ?? false
-                  const val = tplPerms[p] ?? base
-                  const overridden = tplPerms[p] !== undefined
-                  return (
-                    <label key={p} className="t-sm flex items-center gap-2"
-                           style={{ minHeight: 'var(--tap-min)' }}>
-                      <input type="checkbox" checked={val} className="shrink-0"
-                             onChange={(e) =>
-                               setTplPerms(togglePermIn(tplPerms, tplRole, p, e.target.checked))} />
-                      <span className={overridden ? 'font-semibold' : ''}>{p}</span>
-                    </label>
-                  )
-                })}
-              </div>
+              <PermGrid
+                perms={allPerms}
+                cols="sm:grid-cols-2 lg:grid-cols-4"
+                isOn={(p) => tplPerms[p] ?? (permsByRole[tplRole]?.has(p) ?? false)}
+                isOverridden={(p) => tplPerms[p] !== undefined}
+                disabledFor={() => false}
+                mutedFor={(p) => !iHaveStar && !myPerms.has(p)}
+                onToggle={(p, next) =>
+                  setTplPerms(togglePermIn(tplPerms, tplRole, p, next))} />
             </div>
 
             <div>

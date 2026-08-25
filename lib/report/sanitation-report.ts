@@ -57,7 +57,10 @@ export type ReportData = {
   days: number
   materials: Array<{
     name: string; brand: string | null; country_of_origin: string | null
-    inci: string | null; notification_code: string | null; pao_months: number | null
+    inci: string | null; notification_code: string | null
+    /** Коли підтверджено ДОКУМЕНТОМ (0106). null — лише слова постачальника. */
+    notification_confirmed_at: string | null
+    pao_months: number | null
     unit: string
     /**
      * Остаток — СКЛАДСКОЕ сведение, а не санитарное: его отдаёт `materials`
@@ -96,7 +99,8 @@ export type ReportData = {
   cleaning: Array<{ performed_at: string; cleaning_tasks: Named; profiles: Person }>
   cycles: Array<{
     device: string; temperature_c: number; duration_minutes: number
-    indicator_ok: boolean; performed_at: string; profiles: Person
+    indicator_ok: boolean; indicator_note: string | null
+    performed_at: string; profiles: Person
   }>
   cards: Array<{ title: string; version: number; steps: unknown; created_at: string }>
 }
@@ -197,12 +201,23 @@ export function reportHtml(x: ReportData): string {
       n: '1', title: 'Реєстр косметичних засобів і матеріалів',
       note: 'Відповідно до Технічного регламенту на косметичну продукцію (постанова КМУ № 65).',
       body: table(
-        ['Назва', 'Бренд', 'Країна', 'Код нотифікації МОЗ', 'PAO, міс',
+        ['Назва', 'Бренд', 'Країна', 'Код нотифікації МОЗ', 'Підтверджено', 'PAO, міс',
          ...(showStock ? ['Залишок'] : [])],
         x.materials.map((m) => [
           esc(m.name) + (m.is_cosmetic ? ' <span class="tag">косметика</span>' : ''),
           or(m.brand), or(m.country_of_origin),
           m.notification_code ? esc(m.notification_code) : '<span class="warn">не вказано</span>',
+          // КОД — це слова постачальника, ПІДТВЕРДЖЕННЯ — документ (0106).
+          // Різниця між ними і є те, що перевірка дивиться першим, і саме
+          // її документ мовчав: 0107 додала цю колонку у функцію, яку ніхто
+          // не викликає. Прочерк ставиться лише некосметиці — у неї
+          // нотифікації не буває, і «не підтверджено» на шампуні для рук
+          // читалось би як порушення там, де його немає.
+          !m.is_cosmetic
+            ? '—'
+            : m.notification_confirmed_at
+              ? esc(dt(m.notification_confirmed_at))
+              : '<span class="warn">не підтверджено</span>',
           m.pao_months != null ? String(m.pao_months) : '—',
           // Ноль вместо отсутствующего остатка не подставляется нигде:
           // см. объяснение у поля `current_stock`.
@@ -272,10 +287,13 @@ export function reportHtml(x: ReportData): string {
       n: '6', title: 'Журнал стерилізації інструментів',
       note: 'Фіксуються всі цикли, зокрема невдалі — за показником індикатора.',
       body: table(
-        ['Пристрій', 'Температура', 'Тривалість', 'Індикатор', 'Дата', 'Виконавець'],
+        ['Пристрій', 'Температура', 'Тривалість', 'Індикатор', 'Колір', 'Дата', 'Виконавець'],
         x.cycles.map((r) => [
           or(r.device), `${r.temperature_c} °C`, `${r.duration_minutes} хв`,
           r.indicator_ok ? 'успішно' : '<span class="warn">провал</span>',
+          // Колонка кольору окремо від «успішно/провал»: ТЗ 3.3 просить
+          // саме результат КОЛЬОРУ, і перевірка порівнює його з еталоном.
+          or(r.indicator_note),
           dt(r.performed_at), who(r.profiles),
         ]),
       ),

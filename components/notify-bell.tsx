@@ -67,8 +67,11 @@ export function NotifyBell({ tenantPerms, tenantId }: {
   async function reload() {
     const c = createClient()
     const [{ count: n }, { data }] = await Promise.all([
+      // Тем же условием, что и первый счёт выше: значок обязан показывать
+      // одно и то же число до очистки и после неё.
       c.from('notification_outbox').select('id', { count: 'exact', head: true })
-        .eq('status', 'pending'),
+        .eq('status', 'pending')
+        .lte('send_after', new Date().toISOString()),
       c.from('notification_outbox')
         .select('id, event, channel, send_after, payload')
         .eq('status', 'pending')
@@ -79,6 +82,24 @@ export function NotifyBell({ tenantPerms, tenantId }: {
     setRows((data ?? []) as Row[])
   }
 
+  // ── СЧЁТЧИК СЧИТАЕТ ТО, ЧТО ТРЕБУЕТ ВНИМАНИЯ СЕЙЧАС ─────────────────
+  //
+  // Отзыв владельца 25.08.2026: «99+» и «просто складируются непонятные
+  // сообщения». Число было честным арифметически и бессмысленным
+  // по сути: каждая заведённая банка ставит в очередь ДВА предупреждения
+  // о сроке — за 14 и за 7 дней, — и оба лежат со временем отправки
+  // в будущем. Сорок банок — восемьдесят строк, и значок навсегда
+  // показывает «99+», не сообщая ничего.
+  //
+  // Теперь считается только ПРОСРОЧЕННОЕ (`send_after <= now()`) — то,
+  // что уже должно было уйти и не ушло. Это ровно то же множество,
+  // которое гасит кнопка очистки, и то же, что человек может сделать
+  // прямо сейчас. Совпадение не случайно: значок, кнопка и функция 0125
+  // обязаны говорить об одном множестве, иначе «Очистити (3)» при
+  // значке «99+» читается как поломка.
+  //
+  // Будущие напоминания при этом никуда не делись — они в списке,
+  // отдельной группой «Заплановані».
   useEffect(() => {
     if (!may) return
     let alive = true
@@ -86,6 +107,7 @@ export function NotifyBell({ tenantPerms, tenantId }: {
       .from('notification_outbox')
       .select('id', { count: 'exact', head: true })
       .eq('status', 'pending')
+      .lte('send_after', new Date().toISOString())
       .then(({ count: n }) => { if (alive && n) setCount(n) })
     return () => { alive = false }
   }, [may])
@@ -189,18 +211,74 @@ function toneOf(event: string): string {
   return 'blue'
 }
 
-// Подписи известных событий. Ключей мало намеренно: список пополняется
-// по мере того, как события реально начинают ставиться в очередь, —
-// заводить подпись под то, чего никто не шлёт, значит держать словарь
-// строк, которых не увидят.
+// ── Подписи событий ─────────────────────────────────────────────────────────
+//
+// ⚠️ ЗДЕСЬ БЫЛ ДЕФЕКТ, И ОН ВИДЕН НА ЭКРАНЕ. Отзыв владельца 25.08.2026:
+// «непонятно, что написано на английском языке, непонятно для чего».
+// В списке стояло `cosmetics.expiry_14d` тридцать раз подряд.
+//
+// Причина: карта знала ЧЕТЫРЕ ключа, и ни один из них не совпадал с тем,
+// что база реально ставит в очередь. `expiry.warning` и `booking.reminder`
+// не ставит никто — настоящие коды `cosmetics.expiry_14d`,
+// `booking.reminder_24h` и так далее. То есть запасной путь «показать
+// код как есть» работал ВСЕГДА, а не в редком случае.
+//
+// Отсюда правило: карта собрана по коду миграций (grep по
+// `enqueue_notification`), а не по догадке о том, как события могли бы
+// называться. Список закрытый и полный на 25.08.2026; появится новое
+// событие — подпись заводится вместе с ним, в том же коммите.
 function eventLabel(t: ReturnType<typeof useT>, event: string): string {
   const known: Record<string, string> = {
-    'booking.reminder': t('app.chrome.bell.event.bookingReminder'),
+    'cosmetics.expiry_14d': t('app.chrome.bell.event.expiry14'),
+    'cosmetics.expiry_7d': t('app.chrome.bell.event.expiry7'),
+    'booking.reminder_24h': t('app.chrome.bell.event.bookingReminder24h'),
+    'booking.reminder_2h': t('app.chrome.bell.event.bookingReminder2h'),
     'booking.created': t('app.chrome.bell.event.bookingCreated'),
+    'booking.cancelled': t('app.chrome.bell.event.bookingCancelled'),
+    'seller.booking_created': t('app.chrome.bell.event.sellerBooking'),
+    'seller.order_created': t('app.chrome.bell.event.sellerOrder'),
     'order.created': t('app.chrome.bell.event.orderCreated'),
-    'expiry.warning': t('app.chrome.bell.event.expiry'),
+    'order.confirmed': t('app.chrome.bell.event.orderConfirmed'),
+    'order.shipped': t('app.chrome.bell.event.orderShipped'),
+    'order.delivered': t('app.chrome.bell.event.orderDelivered'),
+    'order.cancelled': t('app.chrome.bell.event.orderCancelled'),
+    'stock.reorder_digest': t('app.chrome.bell.event.reorder'),
   }
   return known[event] ?? event
+}
+
+// ── О ЧЁМ уведомление, а не только какого оно рода ──────────────────────────
+//
+// Тридцать строк «Термін придатності — 14 днів» подряд не лучше тридцати
+// строк `cosmetics.expiry_14d`: они по-прежнему неразличимы. Различает их
+// то, что уже лежит в `payload` и до 25.08.2026 не показывалось вовсе, —
+// название засоба, код наклейки, имя клиента, время записи.
+//
+// Части возвращаются СПИСКОМ, а не склеенной строкой с точкой: точки-
+// разделители владелец снял с экрана склада тем же днём, и заводить их
+// заново здесь значило бы развести два правила по двум экранам.
+function detailOf(t: ReturnType<typeof useT>, r: Row): string[] {
+  const p = r.payload ?? {}
+  const s = (k: string) => {
+    const v = p[k]
+    return typeof v === 'string' && v.trim() ? v.trim()
+      : typeof v === 'number' ? String(v)
+        : null
+  }
+  const useBy = s('use_by')
+  const number = s('number')
+  const count = s('count')
+  const parts = r.event.startsWith('cosmetics.expiry')
+    ? [s('material'), s('code'),
+       useBy ? t('app.chrome.bell.useBy', { date: t.date(useBy) }) : null]
+    : r.event.startsWith('booking.') || r.event === 'seller.booking_created'
+      ? [s('title'), s('name'), s('when')]
+      : r.event.startsWith('order.') || r.event === 'seller.order_created'
+        ? [number ? `№ ${number}` : null, s('name')]
+        : r.event === 'stock.reorder_digest'
+          ? [count ? t('inventory.registry.count.many', { n: count }) : null]
+          : []
+  return parts.filter((x): x is string => Boolean(x))
 }
 
 // ── Содержимое шторки ───────────────────────────────────────────────────────
@@ -211,6 +289,14 @@ function eventLabel(t: ReturnType<typeof useT>, event: string): string {
 // приходит пропом — второй `useT()` внутри дал бы тот же результат, но
 // стенд не смог бы подставить строки, которых ещё нет в словаре.
 export function NotifyList({ t, rows }: { t: ReturnType<typeof useT>; rows: Row[] | null }) {
+  // Граница «уже пора» берётся ОДИН раз на отрисовку, а не в каждой строке:
+  // иначе соседние строки сравнивались бы с разными моментами времени,
+  // и строка на границе могла попасть в обе группы или ни в одну.
+  const nowTs = Date.now()
+  const overdue = (r: Row) => new Date(r.send_after).getTime() <= nowTs
+  const now = (rows ?? []).filter(overdue)
+  const later = (rows ?? []).filter((r) => !overdue(r))
+
   return (
     <>
     {rows === null ? (
@@ -227,47 +313,78 @@ export function NotifyList({ t, rows }: { t: ReturnType<typeof useT>; rows: Row[
       </div>
     ) : (
       <>
-        {/* Строка счёта, как в макете. «Прочитати всі» рядом с ней НЕТ
-            и быть пока не может: у `notification_outbox` нет признака
-            прочитанного — есть `pending` / `sent`. Кнопка, которая
-            ничего не меняет в базе, — это та же мёртвая навигация,
-            ради которой колокол вообще показывает настоящую очередь,
-            а не выдуманную ленту. */}
-        <p className="t-sm mb-3 prose-muted">
-          {t('app.chrome.bell.pending', { n: t.number(rows.length) })}
-        </p>
-        <div className="flex flex-col gap-2">
-          {rows.map((r) => (
-            // Карточками с зазором, а не сплошным списком с линейками:
-            // у строки две-три величины, и в сплошном списке соседние
-            // уведомления слипаются в одно.
-            <div key={r.id} className="list-card">
-              {/* Тон плашки — по СМЫСЛУ события, а не по порядку строки:
-                  срок годности красный, напоминание жёлтое, остальное
-                  нейтрально-синее. Четыре одинаковых значка читаются
-                  как один блок, и глаз не находит тревожный. */}
-              <span className="stat-tile-icon shrink-0" data-tone={toneOf(r.event)}>
-                <IconClock size={17} />
-              </span>
-              <span className="min-w-0 flex-1">
-                {/* Название события — служебный код (`booking.reminder`),
-                    и человеку он ничего не говорит. Переводим по словарю,
-                    а незнакомое показываем как есть: молчать о письме,
-                    которое уйдёт клиенту, хуже, чем показать его код. */}
-                <span className="t-md block truncate">{eventLabel(t, r.event)}</span>
-                {/* Канал (`email` / `push`) отсюда убран: это значение
-                    перечисления, служебное имя нашей очереди, и человеку
-                    оно не отвечает ни на один вопрос. Остаётся время —
-                    единственное, что ему тут нужно знать. */}
-                <span className="t-sm block truncate" style={{ color: 'var(--color-faint)' }}>
-                  {t.date(r.send_after, {
-                    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
-                  })}
-                </span>
+        {/* ── ДВЕ ГРУППЫ, А НЕ ОДНА ЛЕНТА ──────────────────────────
+            «Готові до відправки» — то, что уже должно было уйти
+            и не ушло: это и есть число на значке, и ровно это гасит
+            кнопка внизу. «Заплановані» — напоминания со временем
+            отправки в будущем; их нельзя ни «прочитать», ни погасить
+            кнопкой, потому что снять ещё не отправленное оповещение
+            это не «прочитано», а «отменено» (правило функции 0125).
+
+            Без этого деления список выглядел как свалка: тридцать
+            строк, из которых ни одна не отличалась от другой и ни
+            с одной ничего нельзя было сделать. */}
+        {([
+          ['now', t('app.chrome.bell.group.now'), now],
+          ['later', t('app.chrome.bell.group.later'), later],
+        ] as const).filter(([, , list]) => list.length > 0).map(([key, title, list]) => (
+          <div key={key} className={key === 'later' && now.length > 0 ? 'mt-4' : ''}>
+            <div className="section-head">
+              <p className="eyebrow">{title}</p>
+              <span className="tabular t-xs" style={{ color: 'var(--color-faint)' }}>
+                {t.number(list.length)}
               </span>
             </div>
-          ))}
-        </div>
+            <div className="flex flex-col gap-2">
+              {list.map((r) => {
+                const detail = detailOf(t, r)
+                return (
+                  // Карточками с зазором, а не сплошным списком с линейками:
+                  // у строки две-три величины, и в сплошном списке соседние
+                  // уведомления слипаются в одно.
+                  <div key={r.id} className="list-card items-start">
+                    {/* Тон плашки — по СМЫСЛУ события, а не по порядку строки:
+                        срок годности красный, напоминание жёлтое, остальное
+                        нейтрально-синее. Четыре одинаковых значка читаются
+                        как один блок, и глаз не находит тревожный. */}
+                    <span className="stat-tile-icon shrink-0" data-tone={toneOf(r.event)}>
+                      <IconClock size={17} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-baseline gap-3">
+                        <span className="t-md min-w-0 flex-1">{eventLabel(t, r.event)}</span>
+                        {/* Время отправки — справа и мелким: оно уточняет
+                            строку, а не называет её. Канал (`email` / `push`)
+                            не показывается вовсе: это значение перечисления,
+                            служебное имя нашей очереди. */}
+                        <span className="tabular t-xs shrink-0" style={{ color: 'var(--color-faint)' }}>
+                          {t.date(r.send_after, {
+                            day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+                          })}
+                        </span>
+                      </span>
+                      {/* ЧТО ИМЕННО просрочено или кому уйдёт письмо —
+                          из `payload`. Части стоят порознь с зазором,
+                          без точек-разделителей: их владелец снял
+                          с экрана склада тем же днём. Названия засобів
+                          и имена клиентов — данные арендатора. */}
+                      {detail.length > 0 && (
+                        <span className="mt-0.5 flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+                          {detail.map((part, i) => (
+                            <span key={part + i} className="t-sm"
+                                  style={{ color: i === 0 ? 'var(--color-muted)' : 'var(--color-faint)' }}>
+                              {part}
+                            </span>
+                          ))}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        ))}
       </>
         )}
     </>

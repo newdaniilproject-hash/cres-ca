@@ -66,6 +66,15 @@ export default async function SettingsPage() {
     .from('tenant_branding').select('brand_color')
     .eq('tenant_id', m.tenantId).maybeSingle()
 
+  // Налаштування сповіщень (0129). Рядка може не бути — і це нормальний
+  // стан: доки заклад нічого не міняв, діють умовчання, зашиті
+  // в `enqueue_expiry_for`. Екран показує їх як обране, щоб людина бачила,
+  // що система робить сьогодні, а не порожні поля.
+  const { data: notifyRow } = await supabase
+    .from('notification_settings')
+    .select('expiry_email, expiry_push, expiry_recipients')
+    .eq('tenant_id', m.tenantId).maybeSingle()
+
   const { data: presetRows } = await supabase
     .from('presets')
     .select('code, title, description, kind, position')
@@ -99,6 +108,13 @@ export default async function SettingsPage() {
         // салону не потрібен набір категорій магазину товарів. `kind: null`
         // — підходить будь-якому.
         brand={(brandRow as { brand_color: string | null } | null)?.brand_color ?? null}
+        notify={notifyRow
+          ? {
+            expiryEmail: (notifyRow as { expiry_email: boolean }).expiry_email,
+            expiryPush: (notifyRow as { expiry_push: boolean }).expiry_push,
+            recipients: (notifyRow as { expiry_recipients: string }).expiry_recipients,
+          }
+          : null}
         presets={((presetRows ?? []) as PresetRow[])
           .filter((p) => p.kind == null || p.kind === shop.kind)
           .map((p) => ({ code: p.code, title: p.title, description: p.description }))}

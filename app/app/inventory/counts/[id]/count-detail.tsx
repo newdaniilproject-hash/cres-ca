@@ -360,15 +360,21 @@ export function CountDetail({
           с тем, что стоит рядом. */}
       {lines.length > 0 && (
         <div className="scroll-x rise-2 -mx-4 flex gap-2 px-4 pb-1 sm:mx-0 sm:px-0">
+          {/* Назва фільтра і ЧИСЛО — дві різні величини: перша каже,
+              що покаже фільтр, друге — скільки там рядків. Крапка між
+              ними жила в СЛОВНИКУ («Усі · 12»), тобто пережила б будь-яке
+              прибирання з розмітки. Тепер число — окремою плашкою, як
+              у підзаголовках груп складу. */}
           {([
-            ['all', t('inventory.count.filter.all', { n: t.number(lines.length) })],
-            ['todo', t('inventory.count.filter.todo', { n: t.number(lines.length - filled) })],
-            ['diff', t('inventory.count.filter.diff', { n: t.number(mismatches) })],
-          ] as const).map(([key, label]) => (
+            ['all', t('inventory.count.filter.all'), lines.length],
+            ['todo', t('inventory.count.filter.todo'), lines.length - filled],
+            ['diff', t('inventory.count.filter.diff'), mismatches],
+          ] as const).map(([key, label, n]) => (
             <button key={key} type="button"
                     className={`${filter === key ? 'chip-active' : 'chip'} shrink-0`}
                     onClick={() => setFilter(key)}>
               {label}
+              <span className="count-pill">{t.number(n)}</span>
             </button>
           ))}
         </div>

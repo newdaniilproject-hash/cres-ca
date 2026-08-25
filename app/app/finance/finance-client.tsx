@@ -76,6 +76,15 @@ const DAY_OPTS: Intl.DateTimeFormatOptions = {
 }
 const day = (t: T, s: string) => t.date(`${s}T00:00:00`, DAY_OPTS)
 
+// Подпись группы журнала. Короче полной даты и с днём недели: год
+// повторять у каждой группы незачем (он уже назван диапазоном периода
+// выше), а вот «сб» отвечает на вопрос, который в салоне задают
+// постоянно, — в какие дни идут деньги.
+const DAY_HEAD_OPTS: Intl.DateTimeFormatOptions = {
+  weekday: 'short', day: 'numeric', month: 'long',
+}
+const dayHead = (t: T, s: string) => t.date(`${s}T00:00:00`, DAY_HEAD_OPTS)
+
 // ── CRESKO Web §15 ──────────────────────────────────────────────────────
 // Вкладки вида. Значение служебное (по нему идёт отбор), переводится подпись.
 const VIEWS = ['all', 'income', 'expense', 'analytics'] as const
@@ -439,8 +448,41 @@ export function FinanceClient({
   const dir = (d: { up: boolean } | null): 'up' | 'down' | 'flat' =>
     d === null ? 'flat' : d.up ? 'up' : 'down'
 
-  // Что показывает таблица десктопа: вкладка сужает уже загруженное окно.
-  const shown = view === 'all' ? records : records.filter((r) => r.kind === view)
+  // Что показывает список: вкладка сужает уже загруженное окно.
+  const shown = view === 'all' || view === 'analytics'
+    ? records
+    : records.filter((r) => r.kind === view)
+
+  // ── ЖУРНАЛ ГРУППИРУЕТСЯ ПО ДНЯМ ─────────────────────────────────────────
+  //
+  // Бриф владельца 20.08.2026, П2: «сплошной список транзакций без
+  // группировки». Это не украшение — это единственное, что отвечает
+  // на вопрос, с которым в финансы и заходят: «сколько сегодня вышло».
+  // Раньше дата стояла подписью под КАЖДОЙ строкой, то есть повторялась
+  // столько раз, сколько было записей в этот день, и всё равно не давала
+  // итога дня: его приходилось складывать глазами.
+  //
+  // Итог дня считается ПО ПОКАЗАННЫМ записям, а не по всем: если сверху
+  // выбраны «Витрати», строка дня обязана называть расход этого дня,
+  // а не разницу, которой на экране не видно.
+  //
+  // Порядок дней не пересортировывается: он приходит с сервера
+  // (`occurred_on desc`), и вторая сортировка здесь разошлась бы с ним
+  // на записях одного дня.
+  const byDay = useMemo(() => {
+    const out: { day: string; total: number; rows: typeof shown }[] = []
+    for (const r of shown) {
+      const last = out[out.length - 1]
+      const delta = r.kind === 'income' ? r.amount : -r.amount
+      if (last && last.day === r.occurredOn) {
+        last.total += delta
+        last.rows.push(r)
+      } else {
+        out.push({ day: r.occurredOn, total: delta, rows: [r] })
+      }
+    }
+    return out
+  }, [shown])
   // Колонки таблицы транзакций — из хендоффа §15 дословно. Пятая, шеврон
   // 18px, есть только у того, кто имеет право писать: строка со стрелкой,
   // которая ничего не открывает, — сломанная навигация.
@@ -522,9 +564,6 @@ export function FinanceClient({
         {day(t, from)} — {day(t, to)}
       </p>
 
-      {/* Вкладки вида — только lg. На телефоне их нет намеренно: полоса
-          периода уже стоит выше, и вторая полоса чипов рядом с ней
-          превращает первый экран в набор переключателей. */}
       <div className="wtabs hidden lg:flex">
         {VIEWS.map((v) => (
           <button key={v} type="button" className="wtab" data-active={view === v}
@@ -592,6 +631,32 @@ export function FinanceClient({
       {/* Тексты отказов базы подставляются как есть; из словаря — рамка. */}
       {error && <p className="field-error rise">{t('finance.error.load', { message: error })}</p>}
       {err && <p className="field-error rise">{err}</p>}
+
+      {/* ── ВКЛАДКИ ВИДА НА ТЕЛЕФОНЕ ─────────────────────────────────────
+          Бриф владельца 20.08.2026 просит ДВЕ вещи: чипы-фильтры по типу
+          над списком и вынос P&L с маржой в отдельную вкладку. Здесь это
+          ОДНА полоса, а не две: набор `VIEWS` уже содержит и то, и другое,
+          и делать рядом «Усі/Доходи/Витрати» плюс «Журнал/Аналітика»
+          значило бы завести два переключателя, из которых один всегда
+          гасит смысл второго («Витрати» + «Аналітика» — это что?).
+
+          Прежняя запись здесь гласила, что вкладок на телефоне нет
+          намеренно, потому что полоса периода уже стоит выше. Отменено
+          брифом: полосы всё равно две, но вторая стоит НЕ рядом с первой,
+          а вплотную к списку, которым она и управляет.
+
+          Выбор десктопа и телефона общий (`view`) — это одно состояние
+          одного экрана, а не два переключателя, которые разъедутся при
+          повороте планшета. */}
+      <div className="scroll-x rise-1 -mx-4 flex items-center gap-2 px-4 pb-1 lg:hidden">
+        {VIEWS.map((v) => (
+          <button key={v} type="button"
+                  className={`${view === v ? 'chip-active' : 'chip'} shrink-0`}
+                  onClick={() => setView(v)}>
+            {t(`finance.web.tab.${v}`)}
+          </button>
+        ))}
+      </div>
 
       {/* ═══ Аналітика (М46): P&L помесячно и маржа позиций — lg ════════
           Живёт ВКЛАДКОЙ, а не отдельным экраном: это те же деньги
@@ -865,13 +930,15 @@ export function FinanceClient({
       {/* Журнал — отдельными карточками, как везде в кабинете.
           На широком экране его заменяет таблица выше — двух списков
           одних и тех же записей на экране быть не должно. */}
-      <div className="contents lg:hidden">
-      {records.length === 0 ? (
+      <div className={view === 'analytics' ? 'hidden' : 'contents lg:hidden'}>
+      {shown.length === 0 ? (
         <section className="card rise-2">
           <div className="empty">
             <span className="empty-icon"><IconMoney size={24} /></span>
-            <p className="empty-title">{t('finance.empty')}</p>
-            {canWrite && (
+            <p className="empty-title">
+              {records.length === 0 ? t('finance.empty') : t('finance.web.table.empty')}
+            </p>
+            {canWrite && records.length === 0 && (
               <button type="button" className="btn-primary"
                       onClick={() => setAdding(true)}>{t('finance.add.cta')}</button>
             )}
@@ -879,7 +946,25 @@ export function FinanceClient({
         </section>
       ) : (
         <div className="rise-2 flex flex-col gap-2">
-          {records.map((r) => {
+          {byDay.map((g) => (
+          <div key={g.day} className="flex flex-col gap-2">
+            {/* Заголовок дня с итогом. Липкий — как подзаголовки категорий
+                на складе: при прокрутке длинного месяца человек обязан
+                видеть, какой день он сейчас читает.
+
+                Итог со знаком: «+» и «−» здесь не украшение, а разница
+                между «в этот день заработали» и «в этот день потратили»,
+                и цвет один и тот же вопрос дублирует — на случай, когда
+                цвет не читается. */}
+            <div className="group-head">
+              <span className="group-head-title">{dayHead(t, g.day)}</span>
+              <span className="tabular t-sm shrink-0"
+                    style={{ color: g.total < 0 ? 'var(--color-danger)'
+                      : g.total > 0 ? 'var(--color-success)' : 'var(--color-muted)' }}>
+                {g.total > 0 ? '+' : g.total < 0 ? '−' : ''}{t.money(Math.abs(g.total))}
+              </span>
+            </div>
+            {g.rows.map((r) => {
             const category = r.categoryId ? catById.get(r.categoryId) : undefined
             return (
               <div key={r.id} className="card !p-0">
@@ -895,20 +980,27 @@ export function FinanceClient({
                         <span className="badge-accent">{t('finance.record.fromOrder')}</span>
                       )}
                     </span>
-                    <span className="tabular t-xs mt-0.5 block prose-muted">
-                      {day(t, r.occurredOn)}
-                      {category && r.note ? ` · ${r.note}` : ''}
-                      {r.orderId && (
-                        <>
-                          {' · '}
-                          <Link href={`/app/orders/${r.orderId}`} className="underline">
-                            {r.orderNumber !== null
-                              ? t('finance.record.orderNumber', { number: r.orderNumber })
-                              : t('finance.record.orderLink')}
-                          </Link>
-                        </>
-                      )}
-                    </span>
+                    {/* Даты в строке БОЛЬШЕ НЕТ: её называет заголовок дня
+                        над группой, и повторять её у каждой записи значит
+                        печатать одно и то же слово по пять раз подряд.
+                        Заметка и ссылка на заказ — разными строками,
+                        без точек-разделителей (решение владельца
+                        25.08.2026): заметку пишет человек, и длинная
+                        фраза, склеенная точкой с номером заказа,
+                        читалась как одно предложение. */}
+                    {category && r.note && (
+                      <span className="t-xs mt-0.5 block prose-muted">{r.note}</span>
+                    )}
+                    {r.orderId && (
+                      <span className="t-xs mt-0.5 block">
+                        <Link href={`/app/orders/${r.orderId}`}
+                              className="underline prose-muted">
+                          {r.orderNumber !== null
+                            ? t('finance.record.orderNumber', { number: r.orderNumber })
+                            : t('finance.record.orderLink')}
+                        </Link>
+                      </span>
+                    )}
                   </span>
                   <span className="tabular t-md shrink-0"
                         style={{ color: r.kind === 'income' ? 'var(--color-success)' : 'var(--color-danger)' }}>
@@ -963,16 +1055,20 @@ export function FinanceClient({
                 )}
               </div>
             )
-          })}
+            })}
+          </div>
+          ))}
         </div>
       )}
       </div>
 
       {/* ── Аналітика на телефоне — те же данные картками (М46).
-          Паритет: на десктопе это вкладка, второй вкладочной полосы
-          телефону не заводим — блоки стоят после журнала, куда за ними
-          и листают. */}
-      <section className="rise-2 lg:hidden">
+          Теперь ВКЛАДКОЙ, как и на десктопе (бриф владельца 20.08.2026,
+          П2.4): раньше эти два блока стояли продолжением журнала и
+          «появлялись резко, как из другого приложения» — до них надо
+          было пролистать все транзакции периода, не зная, что они там
+          есть. */}
+      <section className={view === 'analytics' ? 'rise-2 lg:hidden' : 'hidden'}>
         <h2 className="display mb-3 t-xl">{t('finance.pnl.title')}</h2>
         {pnl.length === 0 ? (
           <div className="empty card">{t('finance.pnl.empty')}</div>
@@ -981,15 +1077,26 @@ export function FinanceClient({
             {pnl.map((r) => (
               <div key={r.bucket} className="row px-4">
                 <span className="min-w-0">
-                  <span className="t-md block capitalize">
+                  {/* `first-letter:uppercase`, а не `capitalize`: последнее
+                      поднимает КАЖДОЕ слово, и украинское «серпень 2026 р.»
+                      превращалось в «Серпень 2026 Р.» — заглавная «Р»
+                      с точкой читается как инициал. */}
+                  <span className="t-md block first-letter:uppercase">
                     {t.date(`${r.bucket}T00:00:00`, { month: 'long', year: 'numeric' })}
                   </span>
+                  {/* Три величины тремя строками, а не одной через точки
+                      (решение владельца 25.08.2026): суммы длинные, и
+                      склеенная строка переносилась в середине числа —
+                      «6 000,00 ₴ · змінні 1 250,00» на двух строках
+                      читается как одна сумма. */}
                   <span className="tabular t-xs mt-0.5 block prose-muted">
-                    {t('finance.pnl.row.detail', {
-                      income: t.money(r.income),
-                      fixed: t.money(r.expenseFixed),
-                      variable: t.money(r.expenseVariable),
-                    })}
+                    {t('finance.pnl.income')}: {t.money(r.income)}
+                  </span>
+                  <span className="tabular t-xs block prose-muted">
+                    {t('finance.pnl.fixed')}: {t.money(r.expenseFixed)}
+                  </span>
+                  <span className="tabular t-xs block prose-muted">
+                    {t('finance.pnl.variable')}: {t.money(r.expenseVariable)}
                   </span>
                 </span>
                 <span className="tabular t-md shrink-0"
@@ -1003,7 +1110,7 @@ export function FinanceClient({
         <p className="field-hint mt-2">{t('finance.pnl.hint')}</p>
       </section>
 
-      <section className="rise-2 lg:hidden">
+      <section className={view === 'analytics' ? 'rise-2 lg:hidden' : 'hidden'}>
         <h2 className="display mb-3 t-xl">{t('finance.margin.title')}</h2>
         {margins.length === 0 ? (
           <div className="empty card">{t('finance.margin.empty')}</div>
@@ -1013,18 +1120,32 @@ export function FinanceClient({
               <div key={r.variantId} className="row px-4">
                 <span className="min-w-0">
                   <span className="t-md block truncate">{r.title}</span>
-                  <span className="tabular t-xs mt-0.5 block prose-muted">
+                  {/* Вариант и себестоимость — двумя строками, а не через
+                      точки: обе величины длинные, и склеенные они
+                      переносились в середине суммы. */}
+                  <span className="t-xs mt-0.5 block truncate prose-muted">
                     {r.variantName}
-                    {' · '}
-                    {t('finance.margin.cost')}: {t.money(r.unitCost)}
-                    {r.missingCosts > 0 && <> · {t('finance.margin.incomplete')}</>}
                   </span>
+                  <span className="tabular t-xs block prose-muted">
+                    {t('finance.margin.cost')}: {t.money(r.unitCost)}
+                  </span>
+                  {r.missingCosts > 0 && (
+                    <span className="badge-warn t-xs mt-1 inline-flex">
+                      {t('finance.margin.incomplete')}
+                    </span>
+                  )}
                 </span>
-                <span className="tabular t-md shrink-0"
-                      style={{ color: r.margin !== null && r.margin < 0
-                        ? 'var(--color-danger)' : undefined }}>
-                  {r.margin === null ? t('common.noValue')
-                    : `${t.money(r.margin)}${r.marginPct === null ? '' : ` · ${t.percent(r.marginPct)}`}`}
+                <span className="shrink-0 text-right">
+                  <span className="tabular t-md block"
+                        style={{ color: r.margin !== null && r.margin < 0
+                          ? 'var(--color-danger)' : undefined }}>
+                    {r.margin === null ? t('common.noValue') : t.money(r.margin)}
+                  </span>
+                  {r.margin !== null && r.marginPct !== null && (
+                    <span className="tabular t-xs block prose-muted">
+                      {t.percent(r.marginPct)}
+                    </span>
+                  )}
                 </span>
               </div>
             ))}
@@ -1033,7 +1154,12 @@ export function FinanceClient({
         <p className="field-hint mt-2">{t('finance.margin.hint')}</p>
       </section>
 
-      <p className="field-hint">{t('finance.hint')}</p>
+      {/* Подпись про неизменяемость — про ЖУРНАЛ, и во вкладке аналитики
+          ей делать нечего: она объясняет кнопку «Зворотний запис»,
+          которой там нет. На широком экране журнал виден всегда. */}
+      <p className={view === 'analytics' ? 'field-hint hidden lg:block' : 'field-hint'}>
+        {t('finance.hint')}
+      </p>
 
       {/* ── Новая запись ─────────────────────────────────────── */}
       <Sheet open={adding} onClose={() => setAdding(false)} title={t('finance.add.cta')}>

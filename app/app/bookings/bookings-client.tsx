@@ -199,7 +199,8 @@ export function BookingsClient({
       ) : view === 'calendar' ? (
         <MonthGrid bookings={bookings} month={month} />
       ) : (
-        <DayTimeline bookings={bookings} day={day} />
+        <DayTimeline bookings={bookings} day={day}
+                     tenantId={tenantId} canWrite={canWrite} />
       )}
     </div>
   )

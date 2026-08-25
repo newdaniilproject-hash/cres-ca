@@ -83,6 +83,10 @@ export type QueuedAction =
     }
   | {
       kind: 'journal.cleaning'
+      // Ключ, згенерований ЕКРАНОМ до першої спроби (0128). Без нього
+      // досилка після обірваної відповіді подвоювала рядок у журналі,
+      // який неможливо видалити.
+      idempotencyKey: string
       tenantId: string
       taskId: string
       // Кто выполнил. В колонке performed_by стоит NOT NULL без
@@ -92,16 +96,20 @@ export type QueuedAction =
     }
   | {
       kind: 'journal.sterilization'
+      idempotencyKey: string
       tenantId: string
       userId: string
       device: string
       temperatureC: number
       durationMinutes: number
       indicatorOk: boolean
+      /** Колір індикатора словами — ТЗ 3.3 просить саме результат кольору. */
+      indicatorNote?: string | null
       note?: string | null
     }
   | {
       kind: 'journal.solution'
+      idempotencyKey: string
       tenantId: string
       userId: string
       agentName: string
@@ -217,6 +225,23 @@ export function newKey(): string {
 // navigator.onLine ловит явный офлайн, тексты — случай «wifi есть,
 // интернета нет»: Chrome говорит "Failed to fetch", Safari — "Load
 // failed", остальное — вариации со словом network.
+/**
+ * Порушення унікальності (SQLSTATE 23505). Для черги це не помилка,
+ * а доказ того, що дія вже зафіксована: ключ ідемпотентності однаковий
+ * лише в тієї самої дії (0100 — розлив, 0128 — санітарні журнали).
+ *
+ * Розбір і за кодом, і за текстом: `supabase-js` віддає помилку обʼєктом
+ * з полем `code`, але той самий збій, кинутий як `new Error(error.message)`
+ * (так роблять екрани), доїжджає сюди вже без коду — самим текстом
+ * PostgREST. Одного шляху мало.
+ */
+export function isDuplicateKey(e: unknown): boolean {
+  const code = (e as { code?: unknown } | null)?.code
+  if (code === '23505') return true
+  const m = e instanceof Error ? e.message : String(e ?? '')
+  return /duplicate key value|23505/i.test(m)
+}
+
 export function isNetworkError(e: unknown): boolean {
   if (typeof navigator !== 'undefined' && !navigator.onLine) return true
   const m = e instanceof Error ? e.message : String(e ?? '')
@@ -325,6 +350,7 @@ async function send(supabase: SupabaseClient, rec: QueuedRecord): Promise<void> 
   if (a.kind === 'journal.cleaning') {
     const { error } = await supabase.from('cleaning_entries').insert({
       tenant_id: a.tenantId,
+      idempotency_key: a.idempotencyKey,
       task_id: a.taskId,
       performed_by: a.userId,
       note: a.note ?? null,
@@ -338,11 +364,13 @@ async function send(supabase: SupabaseClient, rec: QueuedRecord): Promise<void> 
   if (a.kind === 'journal.sterilization') {
     const { error } = await supabase.from('sterilization_cycles').insert({
       tenant_id: a.tenantId,
+      idempotency_key: a.idempotencyKey,
       performed_by: a.userId,
       device: a.device,
       temperature_c: a.temperatureC,
       duration_minutes: a.durationMinutes,
       indicator_ok: a.indicatorOk,
+      indicator_note: a.indicatorNote ?? null,
       note: a.note ?? null,
       performed_at: new Date(rec.at).toISOString(),
     })
@@ -352,6 +380,7 @@ async function send(supabase: SupabaseClient, rec: QueuedRecord): Promise<void> 
   if (a.kind === 'journal.solution') {
     const { error } = await supabase.from('sanitation_solutions').insert({
       tenant_id: a.tenantId,
+      idempotency_key: a.idempotencyKey,
       prepared_by: a.userId,
       agent_name: a.agentName,
       registration: a.registration ?? null,
@@ -390,6 +419,24 @@ export async function flush(supabase: SupabaseClient): Promise<FlushResult> {
       await drop(rec.id)
       sent++
     } catch (e) {
+      // ── ПОВТОР КЛЮЧА — ЦЕ УСПІХ, А НЕ ПОМИЛКА ──────────────────────────
+      //
+      // Заради цього випадку ключ і заведено (0128). Сценарій: майстер
+      // відмітив дезінфекцію, база записала, ВІДПОВІДЬ не доїхала. Дія
+      // лягла в чергу, і при появі мережі досилається — а рядок уже там.
+      //
+      // Унікальне обмеження відповідає 23505, і це однозначне свідчення:
+      // «ця сама дія вже зафіксована». Знімаємо з черги і рахуємо як
+      // відправлену — бо вона й була відправлена, просто раніше.
+      //
+      // Саме тому обмеження, а не `on conflict do nothing`: те повертало б
+      // порожньо і в цьому випадку, і коли рядок не вставився через RLS,
+      // — два різні стани під одним виглядом.
+      if (isDuplicateKey(e)) {
+        await drop(rec.id)
+        sent++
+        continue
+      }
       failed++
       const message = e instanceof Error ? e.message : String(e)
       errors.push(`${rec.label}: ${message}`)

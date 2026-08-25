@@ -4,16 +4,18 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { enqueue, isNetworkError } from '@/lib/offline/queue'
+import { enqueue, isNetworkError, newKey } from '@/lib/offline/queue'
 import { useToast } from '@/components/toast'
 import { useT } from '@/lib/i18n/client'
 import type { T } from '@/lib/i18n/translate'
 import { dbErrorText } from '@/lib/errors/db'
 import { Sheet } from '@/components/sheet'
 import {
-  IconBack, IconBeaker, IconCheck, IconChevronRight, IconClipboard, IconDoc, IconList,
-  IconPlus, IconScissors,
+  IconBack, IconBeaker, IconCheck, IconChevronRight, IconClipboard, IconDoc,
+  IconLayers, IconList,
+  IconPlus, IconRepeat, IconScissors,
 } from '@/components/icons'
+import { ReportLink } from '@/components/report-link'
 
 // Дата и время записи журнала — «16 серп., 14:05». Это НАБОР ОПЦИЙ,
 // а не своя `fmt`: форматирует по-прежнему `t.dateTime`, то есть язык
@@ -36,12 +38,23 @@ const DAY: Intl.DateTimeFormatOptions = {
   day: '2-digit', month: '2-digit', year: 'numeric',
 }
 
+// Один ли это календарный день. Сравнение в МЕСТНОМ поясе браузера,
+// а не по строке ISO: строка приходит в UTC, и раствор, приготовленный
+// в 23:00 по Киеву, лежит в ней вчерашним днём.
+function sameLocalDay(a: string, b: string): boolean {
+  const x = new Date(a)
+  const y = new Date(b)
+  return x.getFullYear() === y.getFullYear()
+    && x.getMonth() === y.getMonth()
+    && x.getDate() === y.getDate()
+}
+
 // `performer` — имя исполнителя или null. Null значит «имя не достаётся»
 // (человека вывели из состава команды, оговорка 0083), а НЕ «исполнителя
 // нет»: сами колонки `prepared_by` / `performed_by` объявлены `not null`.
 // Разница видна на экране: см. `Performer` ниже.
 type Solution = {
-  id: string; agent_name: string; concentration: string
+  id: string; agent_name: string; registration: string | null; concentration: string
   volume: number; unit: string; prepared_at: string; expires_at: string
   performer: string | null
 }
@@ -54,7 +67,8 @@ type HistoryRow = { id: string; at: string; performer: string | null }
 
 type Cycle = {
   id: string; device: string; temperature_c: number
-  duration_minutes: number; indicator_ok: boolean; performed_at: string
+  duration_minutes: number; indicator_ok: boolean; indicator_note: string | null
+  performed_at: string
   performer: string | null
 }
 type AuditRow = {
@@ -272,6 +286,8 @@ export function JournalsClient({
 
   // формы
   const [agent, setAgent] = useState(''); const [conc, setConc] = useState('')
+  // Номер реєстрації засобу в Україні (ТЗ 3.3). Порожній рядок = «не вказано».
+  const [reg, setReg] = useState('')
   const [vol, setVol] = useState(''); const [hours, setHours] = useState('24')
   // Назва пристрою — ЗНАЧЕНИЕ, которое уедет в журнал стерилизации и оттуда
   // в отчёт для проверяющего, а не подпись на экране. Поэтому оно не в
@@ -281,6 +297,10 @@ export function JournalsClient({
   const [device, setDevice] = useState('сухожарова шафа')
   const [temp, setTemp] = useState('180'); const [mins, setMins] = useState('60')
   const [indicator, setIndicator] = useState(true)
+  // ТЗ 3.3 просить «результат КОЛЬОРУ індикатора», а не «так/ні». Колонка
+  // `indicator_note` існує з 0014 і не писалась ніким; булеве поле не може
+  // зафіксувати колір, а саме його дивиться перевірка.
+  const [indNote, setIndNote] = useState('')
   const [newTask, setNewTask] = useState('')
 
   // ── История отметок по пункту чек-листа ──────────────────────────────────
@@ -339,9 +359,16 @@ export function JournalsClient({
 
   async function markTask(taskId: string) {
     setBusy(taskId); setErr('')
+    // ⚠️ КЛЮЧ ГЕНЕРУЄТЬСЯ ТУТ — ДО ПЕРШОЇ СПРОБИ, а не в момент досилки.
+    // У цьому вся суть (0128): мережа рветься і ПІСЛЯ того, як база
+    // записала відмітку — транзакція пройшла, відповідь не доїхала.
+    // Новий ключ на момент досилки означав би другий рядок у журналі,
+    // якого не можна видалити.
+    const key = newKey()
     try {
       const { error } = await supabase.from('cleaning_entries').insert({
         tenant_id: tenantId, task_id: taskId, performed_by: userId,
+        idempotency_key: key,
       })
       if (error) throw new Error(error.message)
     } catch (e) {
@@ -355,7 +382,7 @@ export function JournalsClient({
         // строка экрана. Переводить её при досылке было бы нечем — в очереди
         // лежит текст, а не ключ.
         await enqueue(t('journals.offline.cleaning.label'), {
-          kind: 'journal.cleaning', tenantId, taskId, userId,
+          kind: 'journal.cleaning', idempotencyKey: key, tenantId, taskId, userId,
         })
         setOffDone((prev) => new Set(prev).add(taskId))
         toast.info(t('journals.offline.saved'), t('journals.offline.cleaning.desc'))
@@ -386,9 +413,15 @@ export function JournalsClient({
     e.preventDefault()
     setBusy('solution'); setErr('')
     const expiresAt = new Date(Date.now() + Number(hours) * 36e5).toISOString()
+    const key = newKey()
     try {
       const { error } = await supabase.from('sanitation_solutions').insert({
         tenant_id: tenantId, agent_name: agent, concentration: conc,
+        idempotency_key: key,
+        // Порожнє поле кладеться як NULL, а не як порожній рядок: у звіті
+        // «—» друкується саме за NULL, і рядок нульової довжини дав би
+        // порожню клітинку, яку читають як зіпсовану вёрстку.
+        registration: reg.trim() || null,
         volume: Number(vol), prepared_by: userId, expires_at: expiresAt,
       })
       if (error) throw new Error(error.message)
@@ -398,37 +431,41 @@ export function JournalsClient({
         // Назва засобу подставляется данными, поэтому строка с подстановкой,
         // а не склейка: порядок слов в других языках другой.
         await enqueue(t('journals.offline.solution.label', { agent }), {
-          kind: 'journal.solution', tenantId, userId,
+          kind: 'journal.solution', idempotencyKey: key, tenantId, userId,
           agentName: agent, concentration: conc,
+          registration: reg.trim() || null,
           volume: Number(vol) || null, expiresAt,
         })
         toast.info(t('journals.offline.saved'), t('journals.offline.solution.desc'))
-        setAgent(''); setConc(''); setVol('')
+        setAgent(''); setConc(''); setVol(''); setReg('')
         return
       }
       setErr(dbErrorText(t, ex))
       return
     }
     setBusy(null); setAdding(false)
-    setAgent(''); setConc(''); setVol(''); router.refresh()
+    setAgent(''); setConc(''); setVol(''); setReg(''); router.refresh()
   }
 
   async function addCycle(e: React.FormEvent) {
     e.preventDefault()
     setBusy('cycle'); setErr('')
+    const key = newKey()
     try {
       const { error } = await supabase.from('sterilization_cycles').insert({
         tenant_id: tenantId, device, temperature_c: Number(temp),
         duration_minutes: Number(mins), indicator_ok: indicator, performed_by: userId,
+        indicator_note: indNote.trim() || null,
+        idempotency_key: key,
       })
       if (error) throw new Error(error.message)
     } catch (ex) {
       setBusy(null)
       if (isNetworkError(ex)) {
         await enqueue(t('journals.offline.cycle.label', { device }), {
-          kind: 'journal.sterilization', tenantId, userId, device,
+          kind: 'journal.sterilization', idempotencyKey: key, tenantId, userId, device,
           temperatureC: Number(temp), durationMinutes: Number(mins),
-          indicatorOk: indicator,
+          indicatorOk: indicator, indicatorNote: indNote.trim() || null,
         })
         toast.info(t('journals.offline.saved'), t('journals.offline.cycle.desc'))
         return
@@ -522,6 +559,29 @@ export function JournalsClient({
         <input required className="input" placeholder={t('journals.solution.agent.placeholder')}
                value={agent} onChange={(e) => setAgent(e.target.value)} />
       </div>
+      {/* ── РЕЄСТРАЦІЯ ЗАСОБУ В УКРАЇНІ (ТЗ 3.3) ─────────────────────────
+          ТЗ вимагає «фіксація назви засобу (ІЗ ПЕРЕВІРКОЮ РЕЄСТРАЦІЇ
+          В УКРАЇНІ)». Колонка `registration` існує з 0014, звіт для
+          перевірки її друкує окремою колонкою — а ввести її з продукту
+          було НІКУДИ: форма мала чотири поля, і INSERT її не передавав.
+          Тобто в звіті, який несуть на перевірку, у цій колонці стояв
+          прочерк у кожному рядку, зробленому руками майстра.
+
+          Автоматичної звірки немає і не буде поки що: відкритого реєстру
+          дезінфекційних засобів з API в Україні не існує — та сама
+          причина, що й у нотифікацій МОЗ. Обіцяти автопідстановку не можна.
+          Тому поле ручне, необовʼязкове і з підказкою, ЗВІДКИ брати номер.
+
+          Необовʼязкове навмисно: майстер готує розчин біля крісла, і
+          обовʼязкове поле, номера для якого немає під рукою, він обійде
+          введенням крапки — після чого журнал стане гіршим, ніж з порожнім
+          полем. Порожнеча в звіті чесна, крапка — ні. */}
+      <div className="sm:col-span-2">
+        <label className="field-label">{t('journals.solution.reg.label')}</label>
+        <input className="input" placeholder={t('journals.solution.reg.placeholder')}
+               value={reg} onChange={(e) => setReg(e.target.value)} />
+        <p className="field-hint">{t('journals.solution.reg.hint')}</p>
+      </div>
       <div>
         <label className="field-label">{t('journals.solution.conc.label')}</label>
         <input required className="input" placeholder={t('journals.solution.conc.placeholder')}
@@ -561,11 +621,29 @@ export function JournalsClient({
         <input required type="number" min="1" className="input"
                value={mins} onChange={(e) => setMins(e.target.value)} />
       </div>
-      <label className="t-md flex items-center gap-2 sm:col-span-2">
+      <label className="t-md flex items-center gap-2 sm:col-span-2"
+             style={{ minHeight: 'var(--tap-min)' }}>
         <input type="checkbox" checked={indicator}
                onChange={(e) => setIndicator(e.target.checked)} />
         {t('journals.cycle.indicator.label')}
       </label>
+      {/* ── КОЛІР ІНДИКАТОРА СЛОВАМИ (ТЗ 3.3) ─────────────────────────────
+          ТЗ просить «результат КОЛЬОРУ індикатора». Булеве «успішно/провал»
+          цього не фіксує: перевірку цікавить, у що саме перефарбувалась
+          смужка, і саме це людина порівнює з еталоном на упаковці.
+          Колонка `indicator_note` існує з 0014 і не писалась ніким —
+          знайдено аудитом 25.08.2026.
+
+          Необовʼязкове, і з тієї ж причини, що й реєстрація розчину:
+          обовʼязкове поле, яке нічим заповнити, обходять крапкою.
+          Порожньо — чесно; крапка — ні. */}
+      <div className="sm:col-span-2">
+        <label className="field-label">{t('journals.cycle.indicatorNote.label')}</label>
+        <input className="input" value={indNote}
+               placeholder={t('journals.cycle.indicatorNote.placeholder')}
+               onChange={(e) => setIndNote(e.target.value)} />
+        <p className="field-hint">{t('journals.cycle.indicatorNote.hint')}</p>
+      </div>
       <button className="btn-primary self-end sm:col-span-2 sm:justify-self-start"
               disabled={busy === 'cycle'}>
         {t('journals.cycle.submit')}
@@ -588,6 +666,55 @@ export function JournalsClient({
 
   // Что открывает кнопка «Додати запис» этого журнала. У аудита такой
   // кнопки нет вовсе: его строки пишет триггер, руками туда не пишут.
+  // ── Есть ли что повторять ────────────────────────────────────────────
+  //
+  // Только у двух журналов из трёх: у прибирання повторять нечего —
+  // там и так одна кнопка «Виконано» на пункт чек-листа.
+  //
+  // Списки приходят отсортированными по убыванию времени (`page.tsx`),
+  // поэтому последняя запись — нулевая. Второй сортировки здесь нет
+  // намеренно: она разошлась бы с первой в день, когда порядок в запросе
+  // поменяют, и кнопка молча начала бы подставлять старое.
+  const lastSolution = solutions[0] ?? null
+  const lastCycle = cycles[0] ?? null
+  const repeatable = canWrite && (
+    (tab === 'solutions' && lastSolution !== null)
+    || (tab === 'sterilization' && lastCycle !== null))
+
+  function repeatLast() {
+    if (tab === 'solutions' && lastSolution) {
+      // Назва засобу, концентрація і об'єм — дані орендаря, переносятся
+      // как есть. Срок годности раствора считается от МОМЕНТА записи,
+      // поэтому переносится не дата, а число часов, на которое его
+      // готовят: подставленная старая дата означала бы просроченный
+      // раствор в момент создания.
+      setAgent(lastSolution.agent_name)
+      // Номер реєстрації переноситься разом із назвою: це той самий засіб,
+      // і його реєстрація не змінюється від того, що розчин новий.
+      setReg(lastSolution.registration ?? '')
+      setConc(lastSolution.concentration)
+      setVol(String(lastSolution.volume))
+      setHours(String(Math.max(1, Math.round(
+        (new Date(lastSolution.expires_at).getTime()
+          - new Date(lastSolution.prepared_at).getTime()) / 36e5))))
+      return
+    }
+    if (tab === 'sterilization' && lastCycle) {
+      setDevice(lastCycle.device)
+      setTemp(String(lastCycle.temperature_c))
+      setMins(String(lastCycle.duration_minutes))
+      // Индикатор НЕ переносится: это результат конкретного цикла,
+      // и подставлять его прошлым значением значит подсказать ответ
+      // на вопрос проверки. Мастер смотрит цвет и отмечает сам.
+      setIndicator(false)
+    }
+  }
+
+  // Сколько пунктов чек-листа отмечено сегодня. Считается по тому же
+  // признаку, что рисует строку, — включая отметки, ушедшие в офлайн-
+  // очередь: иначе строка говорила бы «виконано», а счётчик над ней нет.
+  const doneCount = tasks.filter((x) => x.doneToday || offDone.has(x.id)).length
+
   const addForm = tab === 'cleaning' ? taskForm
     : tab === 'solutions' ? solutionForm
       : tab === 'sterilization' ? cycleForm : null
@@ -658,13 +785,21 @@ export function JournalsClient({
               на `/app/journals`, и без этой ссылки раздел недостижим
               вовсе (аудит 19.08.2026). Это ЕДИНСТВЕННЫЙ вход, а не
               второй — потому он здесь, а не «заодно». */}
+          {/* Той самий випадок, що й техкарти, і знайдений тим самим
+              способом (аудит ТЗ 25.08.2026): `/app/documents` існував
+              без жодного посилання. Для інспектора це ГОЛОВНИЙ екран —
+              реєстр косметики без комерції, — і без цього рядка ТЗ 2
+              не виконується: «відкриває реєстр косметики, нотифікації
+              МОЗ». Обидві розкладки ведуть в одне місце. */}
+          <Link href="/app/documents" className="btn-secondary">
+            {t('journals.links.documents')}
+          </Link>
           <Link href="/app/techcards" className="btn-secondary">
             {t('journals.links.techcards')}
           </Link>
-          <a href="/app/journals/report" target="_blank" rel="noreferrer"
-             className="btn-primary">
+          <ReportLink href="/app/journals/report" className="btn-primary">
             {t('journals.report.open')}
-          </a>
+          </ReportLink>
         </div>
       </div>
 
@@ -768,6 +903,39 @@ export function JournalsClient({
             </Link>
           ))}
 
+          {/* ── РЕЄСТР КОСМЕТИКИ І ДОКУМЕНТИ ────────────────────────────
+              Знайдено аудитом ТЗ 25.08.2026: екран `/app/documents`
+              існував і був НІ З ЧИМ НЕ ЗВʼЯЗАНИЙ — жодного посилання
+              в усьому застосунку, і рядка в реєстрі модулів у нього
+              теж немає.
+
+              Ціна цього — порушення ТЗ 2 дослівно: «Інспектор …
+              відкриває реєстр косметики, НОТИФІКАЦІЇ МОЗ, журнали
+              дезінфекції та статуси придатності». Інспектор доходив
+              рівно до журналів: `/app/inventory` розвертає його
+              (там `stock.read`, якого в нього немає і не повинно бути
+              — 0035 закрив йому комерцію свідомо), а реєстр без
+              комерції жив саме тут, за адресою, яку ніхто не давав.
+              Єдиним способом показати перевіряючому склад косметики
+              лишався ПАПІР — у paperless-системі.
+
+              Відкривати йому `/app/inventory` не можна і не потрібно:
+              там ціни, постачальники й рухи. `/app/documents` читає
+              `compliance_materials` — той самий реєстр без комерції,
+              заради якого ці представлення й написані. */}
+          <Link href="/app/documents" className="list-card">
+            {/* Значок свій, а не `IconDoc` від «Дій» і не планшет від
+                прибирання: плашка тут — розпізнавальний знак рядка,
+                і повтор читався б як ще один журнал. */}
+            <span className="stat-tile-icon shrink-0" data-tone="blue">
+              <IconLayers size={18} />
+            </span>
+            <span className="t-md min-w-0 flex-1">{t('journals.links.documents')}</span>
+            <span aria-hidden className="shrink-0" style={{ color: 'var(--color-faint)' }}>
+              <IconChevronRight size={18} />
+            </span>
+          </Link>
+
           {/* Техкарти — экран ТОГО ЖЕ модуля соответствия, но своего
               пункта в навигации у него нет: реестр модулей ведёт на
               `/app/journals`, и без этой строки раздел недостижим
@@ -792,10 +960,9 @@ export function JournalsClient({
               не зависит: это документ для Держпродспоживслужби
               (lib/report/sanitation-report.ts). На lg та же ссылка стоит
               в хедере экрана, поэтому второй раз здесь её нет. */}
-          <a href="/app/journals/report" target="_blank" rel="noreferrer"
-             className="btn-secondary mt-2">
+          <ReportLink href="/app/journals/report" className="btn-secondary mt-2">
             {t('journals.report.open')}
-          </a>
+          </ReportLink>
 
           {/* Раздел F требует примечание про Audit Log именно здесь,
               на оглавлении: оно отвечает на вопрос «а можно ли это
@@ -837,19 +1004,95 @@ export function JournalsClient({
           чек-листа — настройка заклада, её трогают раз в жизни, и кричать
           громче отметки «Виконано» она не имеет права (CLAUDE.md: акцент —
           дефицитный ресурс). */}
-      {chosen !== null && addForm !== null && (
-        <button type="button"
-                className={`${tab === 'cleaning' ? 'btn-secondary' : 'btn-primary'} rise-1 lg:hidden`}
-                onClick={() => { setErr(''); setAdding(true) }}>
-          <IconPlus size={18} />
-          {addTitle}
-        </button>
+      {/* ── «ПОВТОРИТИ ОСТАННЄ» ──────────────────────────────────
+          Отзыв владельца 25.08.2026 дословно: «это должно занимать пару
+          секунд, иначе это делать не будут». Он прав, и это не придирка
+          к оформлению: журнал, который дорого заполнять, заполняют
+          задним числом перед проверкой — то есть он перестаёт быть
+          доказательством и становится сочинением.
+
+          Из трёх журналов ТЗ 3.3 быстрым был один: прибирання — одна
+          кнопка «Відмітити». Дезрозчини и стерилізація требовали по
+          четыре поля НАБРАТЬ, хотя изо дня в день там одно и то же:
+          тот же засіб, та же концентрация, та же сухожаровая шкаф,
+          та же температура и время.
+
+          Поэтому кнопка подставляет прошлую запись и ОТКРЫВАЕТ ФОРМУ,
+          а не отправляет сразу. Разница принципиальная: санитарный
+          журнал неизменяем (0014 — нет политик UPDATE и DELETE плюс
+          триггер), и запись, созданная промахом пальца, останется
+          в нём навсегда. Два нажатия и ноль набора — это и есть
+          «пара секунд», а один слепой тап — это риск испортить
+          доказательство.
+
+          У стерилизации при этом переносится ВСЁ, кроме индикатора:
+          прибор, температура и время повторяются, а результат цвета
+          индикатора — единственное, что мастер обязан посмотреть
+          и отметить сам. Подставлять его прошлым значением значило бы
+          подсказать ответ на вопрос проверки. */}
+      {/* ⚠️ ПРИБИРАННЯ ЗДЕСЬ НЕТ, и это не пропуск. У остальных журналов
+          вход в действие — «додати запис», и его место сверху. У чек-листа
+          действие мастера — отметить пункт, оно уже в каждой строке, а эта
+          кнопка заводит НОВЫЙ ПУНКТ, то есть правит справочник заведения
+          (право `compliance.write`, не `compliance.journal.write`).
+          Настройка, которую трогают раз в жизни, стояла выше работы,
+          которую делают после каждого клиента, — и была первым, что
+          мастер видел, открыв журнал. Она переехала ПОД список. */}
+      {chosen !== null && addForm !== null && tab !== 'cleaning' && (
+        <div className="rise-1 flex flex-col gap-2 lg:hidden">
+          {repeatable && (
+            <button type="button" className="btn-primary"
+                    onClick={() => { setErr(''); repeatLast(); setAdding(true) }}>
+              <IconRepeat size={18} />
+              {t('journals.repeatLast')}
+            </button>
+          )}
+          <button type="button"
+                  className={repeatable ? 'btn-secondary' : 'btn-primary'}
+                  onClick={() => { setErr(''); setAdding(true) }}>
+            <IconPlus size={18} />
+            {addTitle}
+          </button>
+        </div>
       )}
 
       {err && <p className="field-error rise">{err}</p>}
 
       {tab === 'cleaning' && (
         <section className={`flex flex-col gap-4 ${chosen === null ? 'hidden lg:flex' : ''}`}>
+          {/* ── ОТВЕТ НА ВОПРОС, С КОТОРЫМ ОТКРЫВАЮТ ЧЕК-ЛИСТ ────────────
+              «Сколько мне ещё осталось». До 25.08.2026 его на экране
+              не было вовсе: семь одинаковых строк, и сосчитать
+              невыполненные можно было только глазами по каждой.
+
+              Считается по ТОМУ ЖЕ признаку, что рисует строку, включая
+              отметки, отправленные офлайн (`offDone`), — иначе мастер
+              без сети видел бы «виконано» на строке и старое число
+              в заголовке. */}
+          {tasks.length > 0 && (
+            <div className="card rise-1 lg:hidden">
+              <p className="eyebrow">{t('journals.cleaning.today')}</p>
+              <p className="hero-value tabular">
+                {t('journals.cleaning.progress', {
+                  done: t.number(doneCount), total: t.number(tasks.length),
+                })}
+              </p>
+              <div className="hero-bar mt-3">
+                <span style={{
+                  width: `${Math.round((doneCount / tasks.length) * 100)}%`,
+                  background: 'var(--color-success)',
+                }} />
+              </div>
+              <p className="field-hint mt-2">
+                {doneCount === tasks.length
+                  ? t('journals.cleaning.progress.allDone')
+                  : t('journals.cleaning.progress.left', {
+                    n: t.number(tasks.length - doneCount),
+                  })}
+              </p>
+            </div>
+          )}
+
           <div className="card rise-1 !p-0 lg:hidden">
             {tasks.length === 0 ? (
               <div className="empty">
@@ -857,29 +1100,44 @@ export function JournalsClient({
                   ? t('journals.cleaning.empty.manage')
                   : t('journals.cleaning.empty.read')}
               </div>
-            ) : tasks.map((task) => (
+            ) : tasks.map((task) => {
               // Параметр назван `task`, а не `t`: `t` — переводчик.
               // Название пункта чек-листа и его расписание — данные заклада,
               // они не переводятся.
-              <div key={task.id} className="row px-5">
+              const done = task.doneToday || offDone.has(task.id)
+              return (
+              // Выполненное ПРИГЛУШЕНО, а не спрятано и не переставлено
+              // вниз. Спрятать нельзя — журнал обязан показывать, что
+              // сделано; переставить нельзя — порядок пунктов задаёт
+              // заведение (`position`), и прыгающая при отметке строка
+              // сбивает палец на следующей. Тот же приём, что у нулевого
+              // остатка на складе: вес говорит «сюда смотреть не надо».
+              <div key={task.id} className="row px-5"
+                   style={done ? { opacity: 0.6 } : undefined}>
                 {/* Пункт чек-листа ОТКРЫВАЕТСЯ — это журнал, а не список
                     состояний на сегодня. Кнопкой, а не ссылкой: история
                     приезжает шторкой и своего адреса не имеет. */}
                 <button type="button" className="min-w-0 flex-1 text-left"
                         onClick={() => void openHistory(task)}>
                   <p className="t-md">{task.name}</p>
-                  {task.doneToday && task.doneAt ? (
-                    // Только час: отметка всегда СЕГОДНЯШНЯЯ (запрос
-                    // `entries` обрезан текущим днём), и дата рядом
-                    // с бейджем «сьогодні ✓» повторяла его словом.
-                    <p className="t-xs prose-muted">
-                      {t.dateTime(task.doneAt, TIME)} · <Performer name={task.donePerformer} />
-                    </p>
-                  ) : task.schedule ? (
+                  {/* Расписание показывается ВСЕГДА, а не только у
+                      неотмеченного. Оно отвечает на «как часто это надо
+                      делать» — вопрос, который не исчезает оттого, что
+                      сегодня пункт уже отмечен; а пропадающая строка
+                      к тому же дёргала высоту при каждой отметке. */}
+                  {task.schedule && (
                     <p className="t-xs prose-muted">{task.schedule}</p>
-                  ) : null}
+                  )}
+                  {/* Час и исполнитель — отдельной строкой, без точки
+                      между ними (решение владельца 25.08.2026). */}
+                  {task.doneToday && task.doneAt && (
+                    <p className="t-xs prose-muted">
+                      {t.dateTime(task.doneAt, TIME)}{' — '}
+                      <Performer name={task.donePerformer} />
+                    </p>
+                  )}
                 </button>
-                {task.doneToday || offDone.has(task.id) ? (
+                {done ? (
                   <span className="badge-success">{t('journals.cleaning.doneToday')}</span>
                 ) : canWrite ? (
                   <button className="btn-secondary t-sm" disabled={busy === task.id}
@@ -890,8 +1148,19 @@ export function JournalsClient({
                   <span className="badge">{t('journals.cleaning.notMarked')}</span>
                 )}
               </div>
-            ))}
+              )
+            })}
           </div>
+
+          {/* Заведение нового пункта чек-листа — ПОД списком: это правка
+              справочника заведения, а не работа мастера (см. выше). */}
+          {chosen !== null && canManage && (
+            <button type="button" className="btn-secondary rise-1 lg:hidden"
+                    onClick={() => { setErr(''); setAdding(true) }}>
+              <IconPlus size={18} />
+              {addTitle}
+            </button>
+          )}
 
           {/* ── CRESKO Web: чек-лист таблицей (только lg) ──────────
               Те же самые `tasks` и те же два действия, что у карточек
@@ -1084,22 +1353,61 @@ export function JournalsClient({
                       // название засоба переносом на 390px, а различают
                       // засоби по имени, а не по проценту.
                       title={s.agent_name}
+                      // Концентрація і виконавець — дві РІЗНІ величини,
+                      // і розділяє їх зазор, а не крапка: те саме правило,
+                      // яким владелец зняв крапки-роздільники зі складу
+                      // 25.08.2026. Правило не про один екран.
                       meta={(
-                        <>
-                          {s.concentration}{' · '}<Performer name={s.performer} />
-                        </>
+                        <span className="flex flex-wrap items-baseline gap-x-3">
+                          <span>{s.concentration}</span>
+                          <Performer name={s.performer} />
+                        </span>
                       )}
+                      // ── ЧАС, ДО ЯКОГО РОЗЧИН ПРИДАТНИЙ, — У РЯДКУ ────
+                      //
+                      // ТЗ 3.3 називає «термін придатності робочого
+                      // розчину» серед обов'язкових полів, і саме він —
+                      // питання, з яким майстер відкриває цей журнал:
+                      // «цим ще можна працювати?». Досі рядок казав
+                      // тільки «придатний», а година лежала в картці,
+                      // тобто за ще одним натисканням — і це на журналі,
+                      // який дивляться між клієнтами стоячи.
+                      //
+                      // У простроченого години немає навмисно: «непридатний»
+                      // — вичерпна відповідь, а година минулого дня поруч
+                      // із нею читається як пропозиція ще встигнути.
                       badge={(
-                        <span className={active ? 'badge-success' : 'badge'}>
-                          {active
-                            ? t('journals.solution.valid')
-                            : t('journals.solution.expired')}
+                        <span className="shrink-0 text-right">
+                          <span className={`${active ? 'badge-success' : 'badge'} block`}>
+                            {active
+                              ? t('journals.solution.valid')
+                              : t('journals.solution.expired')}
+                          </span>
+                          {active && (
+                            <span className="tabular t-xs mt-1 block prose-muted">
+                              {t('journals.solution.untilShort', {
+                                // День дописывается, если срок НЕ сегодня.
+                                // Голое «до 06:00» у раствора, который
+                                // держат сутки, читается как «шесть утра
+                                // уже прошло» — то есть ровно наоборот.
+                                time: t.dateTime(
+                                  s.expires_at,
+                                  sameLocalDay(s.expires_at, s.prepared_at) ? TIME : AT,
+                                ),
+                              })}
+                            </span>
+                          )}
                         </span>
                       )}
                       onOpen={() => setEntry({
                         title: s.agent_name,
                         rows: [
                           [t('journals.entry.at'), t.dateTime(s.prepared_at, AT)],
+                          // Реєстрація — у картці, а не в рядку списку:
+                          // це реквізит для перевірки, а не те, за чим
+                          // майстер знаходить розчин очима.
+                          [t('journals.solution.reg.label'),
+                            s.registration ?? t('common.noValue')],
                           [t('journals.solution.conc.label'), s.concentration],
                           [t('journals.web.table.volume'),
                             `${t.number(Number(s.volume))} ${s.unit}`],
@@ -1139,11 +1447,9 @@ export function JournalsClient({
                 {/* Назва пристрою — данные записи журнала. */}
                 <span className="truncate font-semibold"
                       style={{ color: 'var(--color-text)' }}>{c.device}</span>
-                <span className="tabular">
-                  {t('journals.cycle.line', {
-                    temp: t.number(c.temperature_c),
-                    mins: t.number(c.duration_minutes),
-                  })}
+                <span className="tabular flex flex-wrap items-baseline gap-x-2">
+                  <span>{t('journals.cycle.temp', { temp: t.number(c.temperature_c) })}</span>
+                  <span>{t('journals.cycle.mins', { mins: t.number(c.duration_minutes) })}</span>
                 </span>
                 <span className="tabular">{t.dateTime(c.performed_at, AT)}</span>
                 <span className="truncate"><Performer name={c.performer} /></span>
@@ -1196,13 +1502,11 @@ export function JournalsClient({
                     // Назва пристрою — данные записи журнала.
                     title={c.device}
                     meta={(
-                      <>
-                        {t('journals.cycle.line', {
-                          temp: t.number(c.temperature_c),
-                          mins: t.number(c.duration_minutes),
-                        })}
-                        {' · '}<Performer name={c.performer} />
-                      </>
+                      <span className="flex flex-wrap items-baseline gap-x-3">
+                        <span>{t('journals.cycle.temp', { temp: t.number(c.temperature_c) })}</span>
+                        <span>{t('journals.cycle.mins', { mins: t.number(c.duration_minutes) })}</span>
+                        <Performer name={c.performer} />
+                      </span>
                     )}
                     badge={(
                       <span className={c.indicator_ok ? 'badge-success' : 'badge-danger'}>
@@ -1217,6 +1521,8 @@ export function JournalsClient({
                         [t('journals.cycle.mins.label'), t.number(c.duration_minutes)],
                         [t('journals.web.table.indicator'),
                           c.indicator_ok ? t('journals.cycle.ok') : t('journals.cycle.fail')],
+                        [t('journals.cycle.indicatorNote.label'),
+                          c.indicator_note ?? t('common.noValue')],
                         [t('journals.web.table.performer'),
                           <Performer key="p" name={c.performer} />],
                       ],

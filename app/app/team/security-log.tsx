@@ -108,17 +108,22 @@ export function SecurityLog({ events }: { events: SecurityEvent[] }) {
               {/* Имя, а если человека мы не знаем — та почта, которую ВВЕЛИ
                   в поле входа. Она и есть главное в переборе адресов:
                   строка без имени означает попытку по чужой почте. */}
+              {/* Точки-разделители сняты решением владельца 25.08.2026:
+                  почта и строка устройства длинные, и склеенные точкой
+                  они переносились в середине значения. Каждая величина
+                  своей строкой. */}
               <p className="t-md">
                 <b>{e.actor_name ?? t('team.security.unknownActor')}</b>
-                {e.actor_email && e.actor_email !== e.actor_name && (
-                  <span className="prose-muted"> · {e.actor_email}</span>
-                )}
               </p>
+              {e.actor_email && e.actor_email !== e.actor_name && (
+                <p className="t-sm prose-muted">{e.actor_email}</p>
+              )}
               <p className="t-xs prose-muted">{t.dateTime(e.at)}</p>
 
               <p className="t-sm prose-muted">
                 {e.ip ? t('team.security.ip', { ip: e.ip }) : t('team.security.ipUnknown')}
-                {' · '}
+              </p>
+              <p className="t-sm prose-muted">
                 {e.user_agent
                   ? t('team.security.device', { device: e.user_agent })
                   : t('team.security.deviceUnknown')}

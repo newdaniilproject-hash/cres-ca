@@ -5,13 +5,14 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Sheet } from '@/components/sheet'
+import { Fold } from '@/components/fold'
 import { useToast } from '@/components/toast'
 import { useT } from '@/lib/i18n/client'
 import { MaterialForm, type MaterialInit, type RefItem } from '../../material-form'
 import { EXPIRY_KEY } from '../../inventory-client'
 import { EXPIRY_BADGE, expiryState } from '@/lib/expiry'
 import { dbErrorText } from '@/lib/errors/db'
-import { IconBox, IconDoc, IconQr } from '@/components/icons'
+import { IconBeaker, IconBox, IconDoc, IconQr } from '@/components/icons'
 // Подпись типа движения берётся ТАМ ЖЕ, где её берёт журнал движений:
 // второй список `receipt → прихід` разъехался бы с первым в тот день,
 // когда в enum добавят значение (правило «один источник правды»).
@@ -101,6 +102,18 @@ export function MaterialCard({
   // одна под другой, и переключатель прятал бы половину карточки за
   // лишним нажатием.
   const [tab, setTab] = useState<WebTab>('batches')
+  // ── Раскрытая секция телефона ────────────────────────────────────────
+  //
+  // Ключ ОДИН, а не набор: открыта ровно одна секция, нажатие на вторую
+  // закрывает первую — то же правило, что в реестре склада, и заведено
+  // оно тем же требованием владельца («чтобы не занимать полотно целое»).
+  //
+  // Стартовое значение `null` — все свёрнуты. На складе стартовой была
+  // «Потребує уваги», потому что там есть что кричать; здесь ответ
+  // на главный вопрос карточки (диюча партия и срок) стоит РАЗВЁРНУТЫМ
+  // всегда, вне акордеонов, и открывать сверх него нечего.
+  const [fold, setFold] = useState<string | null>(null)
+  const toggleFold = (key: string) => setFold((k) => (k === key ? null : key))
 
   // Действующая партия — та, что кончится раньше остальных ещё не
   // просроченных. Именно её номер и срок инспектор ждёт в карточке.
@@ -788,11 +801,18 @@ export function MaterialCard({
         </div>
         <h2 className="display t-2xl">{material.name}</h2>
         {/* Опис — 13px/muted (README), то есть `.t-base`, а не 12px:
-            подпись под именем и вторичный текст списка — разные роли. */}
-        <p className="t-base" style={{ color: 'var(--color-muted)' }}>
+            подпись под именем и вторичный текст списка — разные роли.
+
+            ⚠️ БЕЗ ТОЧКИ-РАЗДЕЛИТЕЛЯ. Владелец снял их 25.08.2026 на складе,
+            и правило не про один экран: бренд и категория — две РАЗНЫЕ
+            величины, и разделяет их зазор, а не знак препинания. */}
+        <p className="t-base flex flex-wrap items-baseline gap-x-3"
+           style={{ color: 'var(--color-muted)' }}>
           {/* Бренд и категория — данные арендатора. */}
-          {[material.brand, material.category].filter(Boolean).join(' · ')
-            || t('inventory.material.noCategory')}
+          {[material.brand, material.category].filter(Boolean).length > 0
+            ? [material.brand, material.category].filter(Boolean)
+                .map((v) => <span key={v}>{v}</span>)
+            : <span>{t('inventory.material.noCategory')}</span>}
         </p>
         {stock !== null && (
           <p className="tabular t-md">
@@ -812,38 +832,83 @@ export function MaterialCard({
         )}
       </section>
 
-      {/* ── Паспорт засоба (ТЗ 3.1) ──────────────────────────────
-          README, розділ C, блок 1: Бренд, Артикул, Категорія,
-          Країна-виробник — ровно четыре строки. INCI отсюда УБРАН
-          и стоит своей секцией ниже, как в спецификации: это абзац
-          состава, а не строка таблицы — в «ключ → значение» он занимал
-          пять строк высоты и ломал ритм остальных.
+      {/* ── ДІЇ ТЗ 3.2 — НА КАРТЦІ, А НЕ ЗА ДВЕРИМА ──────────────
+          Бриф і розбір 25.08.2026. ТЗ називає щоденною роботою майстра
+          вскриття банки і розлив у дозатор, а на картці їх не було
+          ВЗАГАЛІ: обидві лежали за рядком «Контроль відкриття та
+          фасування» — тобто про них треба було здогадатись. Шлях до
+          вскриття був у п'ять переходів.
 
-          Пятой строки «Одиниця» здесь больше нет: единица уже стоит
-          в «В наявності: 15 шт» шапки и в подписи «Собівартість за
-          одиницю» — третий её показ на одном экране ничего не добавлял. */}
-      <section className="rise-2 lg:hidden">
-        <p className="eyebrow mb-2">{t('inventory.material.passport.title')}</p>
-        <div className="kv">
-          <Row label={t('inventory.material.row.brand')} value={material.brand ?? '—'} />
-          <Row label={t('inventory.material.row.sku')} value={material.sku ?? '—'} mono />
-          <Row label={t('inventory.material.row.category')} value={material.category ?? '—'} />
-          <Row label={t('inventory.material.row.country')} value={material.country ?? '—'} />
-        </div>
+          Дії ВЕДУТЬ на екран контролю, а не виконують вскриття тут.
+          Причина не в ліні: банок у засоба буває кілька, і вибір «яку
+          саме» — це і є той екран. Робити другу копію вибору на картці
+          значить завести другу реалізацію вскриття зі своєю офлайн-чергою
+          і своїм записом у незмінюваний журнал; вони розійдуться.
+          Виграш тут у тому, що дію ВИДНО і названо її словами.
+
+          Розлив іде з наміром `?do=decant`: коли відкрита банка одна,
+          екран одразу відкриває форму розливу. Той самий приём, що
+          `?scan=1` на складі й `?new=1` на прийманні.
+
+          Рядка «Контроль відкриття та фасування» нижче більше немає —
+          він вів рівно сюди ж, і два входи в одне місце на одному екрані
+          це той самий дубляж, за який переробляли склад. */}
+      <section className="rise-2 grid grid-cols-2 gap-2 lg:hidden">
+        <Link href={`/app/inventory/materials/${material.id}/pao`} className="quick-tile">
+          <span className="quick-tile-icon"><IconQr size={18} /></span>
+          {t('inventory.container.open')}
+        </Link>
+        <Link href={`/app/inventory/materials/${material.id}/pao?do=decant`} className="quick-tile">
+          <span className="quick-tile-icon"><IconBeaker size={18} /></span>
+          {t('inventory.material.act.decant')}
+        </Link>
       </section>
 
-      {/* ── Партия и сроки ─────────────────────────────────────
-          Идёт СРАЗУ за паспортом, как в README (блок 1 → блок 2 →
-          два навигационных ряда → INCI → нотификация). Раньше между
-          ними стояли «Зберігання» и «Ваше» — то есть коммерция заведения
-          разрывала паспорт по Техрегламенту пополам, и инспектор искал
-          номер партии где-то под заметкой мастера. Оба блока целы
-          и переехали ниже нотификации. */}
+      {/* ── Нотифікація не підтверджена ──────────────────────────
+          Гучний блок ТІЛЬКИ тоді, коли справді нема чим підтвердити.
+          Код нотифікації — це слова постачальника, а перевірка дивиться
+          ДОКУМЕНТ (0106): тому тривожить саме відсутність документа,
+          а не відсутність коду.
+
+          Підтверджений стан сюди не потрапляє — він тихим рядком
+          у паспорті нижче. Зелена плашка на першому екрані щоразу,
+          коли все гаразд, — це шум, на тлі якого червона перестає
+          виділятись; те саме правило, що в реєстрі складу. */}
+      {material.isCosmetic && hasCompliance && !material.notificationConfirmedAt && (
+        <Link href={`/app/inventory/materials/${material.id}/docs`}
+              className="rise-2 flex items-center gap-3 lg:hidden"
+              style={{
+                background: 'var(--color-danger-soft)',
+                borderRadius: 'var(--radius-card)',
+                padding: 'var(--space-4)',
+                minHeight: 'var(--tap-min)',
+              }}>
+          <span aria-hidden className="hero-dot shrink-0"
+                style={{ background: 'var(--color-danger)' }} />
+          <span className="min-w-0 flex-1">
+            <span className="t-md block" style={{ color: 'var(--color-danger)' }}>
+              {t('inventory.material.moz.proof.missing')}
+            </span>
+            <span className="t-sm block" style={{ color: 'var(--color-danger)', opacity: 0.85 }}>
+              {t('inventory.material.moz.proof.open')}
+            </span>
+          </span>
+          <span aria-hidden style={{ color: 'var(--color-danger)' }}>›</span>
+        </Link>
+      )}
+
+      {/* ── Діюча партія і термін ────────────────────────────────
+          Єдиний блок, який лишається розгорнутим завжди: це відповідь
+          на питання, з яким відкривають картку. Решта — акордеонами.
+
+          ⚠️ ЗАДВОЄННЯ ЗНЯТО. Тут стояла таблиця діючої партії, а одразу
+          під нею — список «Усі партії», в якому та сама партія була
+          першим рядком. Тепер список живе в акордеоні і з'являється,
+          лише коли партій БІЛЬШЕ ОДНІЄЇ: при одній показувати «усі»
+          нічого. */}
       <section className="rise-2 lg:hidden">
         <div className="section-head">
           <p className="eyebrow">{t('inventory.material.batches.title')}</p>
-          {/* Кнопка добавления — одна на секцию: при пустом списке она
-              живёт в .empty-actions ниже, и вторая здесь была бы дублем. */}
           {canWrite && active && (
             <button type="button" className="btn-ghost t-sm"
                     onClick={() => setBatchEdit('new')}>
@@ -853,21 +918,16 @@ export function MaterialCard({
         </div>
 
         {active ? (
-          <>
-            {/* README, розділ C, блок 2 «Партія та терміни»:
-                Номер партії, Дата виробництва, Термін придатності,
-                PAO, Статус — статус кольором стану. */}
-            <div className="kv">
-              {/* Номер партии — данные арендатора, не переводится. */}
-              <Row label={t('inventory.material.row.batchNumber')} value={active.number} mono />
-              <Row label={t('inventory.material.row.made')} value={t.date(active.made)} mono />
-              <Row label={t('inventory.material.row.expiry')} value={t.date(active.expiry)} mono />
-              <Row label={t('inventory.material.row.pao')}
-                   value={material.paoMonths ? `${t.number(material.paoMonths)}M` : '—'} mono />
-              <Row label={t('inventory.material.row.status')}
-                   value={<span className={EXPIRY_BADGE[state]}>{t(EXPIRY_KEY[state])}</span>} />
-            </div>
-          </>
+          <div className="kv">
+            {/* Номер партії — дані орендаря, не перекладається. */}
+            <Row label={t('inventory.material.row.batchNumber')} value={active.number} mono />
+            <Row label={t('inventory.material.row.made')} value={t.date(active.made)} mono />
+            <Row label={t('inventory.material.row.expiry')} value={t.date(active.expiry)} mono />
+            <Row label={t('inventory.material.row.pao')}
+                 value={material.paoMonths ? `${t.number(material.paoMonths)}M` : '—'} mono />
+            <Row label={t('inventory.material.row.status')}
+                 value={<span className={EXPIRY_BADGE[state]}>{t(EXPIRY_KEY[state])}</span>} />
+          </div>
         ) : (
           <div className="card">
             <div className="empty">
@@ -885,19 +945,102 @@ export function MaterialCard({
             </div>
           </div>
         )}
+      </section>
 
-        {/* Список — от ПЕРВОЙ партии, а не от второй: строка списка —
-            единственный вход в правку (кнопка «Виправити партію N» снята
-            как дубль), и при одной партии он обязан существовать. */}
-        {batches.length > 0 && (
-          <div className="mt-3">
-            <p className="t-xs mb-2" style={{ color: 'var(--color-faint)' }}>
-              {t('inventory.material.batches.all', { n: t.number(batches.length) })}
-            </p>
-            {/* Отдельные карточки с зазором, а не строки на голом фоне:
-                прежний список висел без подложки и читался обрывком
-                таблицы выше. Ритм тот же, что у реестра склада
-                и у истории розливов (`.list-card`). */}
+      {/* ── Документи: підекран, а не акордеон ───────────────────
+          Файли відкриваються підписаним посиланням на п'ять хвилин
+          і мають свій екран завантаження і підтвердження. Розгортати
+          їх тут значить обіцяти вміст, якого на цьому екрані немає.
+          Двері в чужий модуль ховаються, а не показують відмову:
+          підекран стоїть на модулі `compliance`, картка — на `inventory`. */}
+      {hasCompliance && (
+        <Link href={`/app/inventory/materials/${material.id}/docs`}
+              className="card rise-3 row px-5 lg:hidden"
+              style={{ minHeight: 'var(--tap-min)' }}>
+          <span aria-hidden className="list-anchor" data-tone="accent">
+            <IconDoc size={18} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="t-md block">{t('inventory.material.docs.title')}</span>
+            {/* Скільки файлів і ЯКІ саме потрібні — дві різні величини,
+                і стоять вони порізно з зазором. У словнику вони були
+                склеєні крапкою в один рядок («2 файли · MSDS, сертифікати,
+                висновок СЕС»), тобто крапка-роздільник ховалась у перекладі
+                і пережила прибирання з розмітки. */}
+            <span className="t-xs flex flex-wrap items-baseline gap-x-2"
+                  style={{ color: 'var(--color-faint)' }}>
+              <span>
+                {docsCount > 0
+                  ? t.plural('inventory.material.docs.count', docsCount)
+                  : t('inventory.material.docs.none')}
+              </span>
+              <span>{t('inventory.material.docs.kinds')}</span>
+            </span>
+          </span>
+          <span className="flex shrink-0 items-center gap-2">
+            {material.isCosmetic && docsCount === 0 && (
+              <span className="badge-warn">{t('inventory.material.docs.needed')}</span>
+            )}
+            <span aria-hidden style={{ color: 'var(--color-faint)' }}>›</span>
+          </span>
+        </Link>
+      )}
+
+      {/* ── Решта картки — акордеонами, одна відкрита ────────────
+          Було вісім секцій одна під одною на 2,2 екрана. Тепер нижче
+          згину лежить оглавління: видно, ЩО є і СКІЛЬКИ всередині,
+          а розгортається рівно одна секція — те саме правило, що
+          в реєстрі складу, і той самий компонент (`components/fold.tsx`),
+          щоб липкий підзаголовок і поворот стрілки не розійшлись
+          між екранами. */}
+      <div className="rise-3 fab-clear flex flex-col gap-2 lg:hidden">
+
+        {/* Ємності цього засоба. До 25.08.2026 картка їх не показувала
+            зовсім — лише лічильник у рядку «Контроль відкриття»; щоб
+            побачити, яка банка вже відкрита і скільки їй лишилось,
+            треба було перейти на інший екран. */}
+        {containers.length > 0 && (
+          <Fold title={t('inventory.tab.containers')} count={containers.length}
+                open={fold === 'containers'} onToggle={() => toggleFold('containers')}>
+            <div className="flex flex-col gap-2">
+              {containers.map((c) => {
+                const s = expiryState(c.useBy)
+                return (
+                  <Link key={c.id} href={`/app/inventory/materials/${material.id}/pao`}
+                        className="list-card">
+                    <span className="list-card-thumb"><IconQr size={20} /></span>
+                    <span className="min-w-0 flex-1">
+                      {/* Код наліпки — дані орендаря. */}
+                      <span className="tabular t-md block truncate">{c.code}</span>
+                      <span className="t-sm mt-0.5 flex flex-wrap items-baseline gap-x-3">
+                        {c.useBy && (
+                          <span className={EXPIRY_BADGE[s]}>{t(EXPIRY_KEY[s])}</span>
+                        )}
+                        <span className="tabular" style={{ color: 'var(--color-faint)' }}>
+                          {c.useBy
+                            ? t('inventory.container.until', { date: t.date(c.useBy) })
+                            : t('inventory.container.sealed')}
+                        </span>
+                      </span>
+                    </span>
+                    {c.volume != null && (
+                      <span className="tabular t-sm shrink-0" style={{ color: 'var(--color-muted)' }}>
+                        {t.number(c.volume)} {c.unit ?? ''}
+                      </span>
+                    )}
+                  </Link>
+                )
+              })}
+            </div>
+          </Fold>
+        )}
+
+        {/* Список партій — тільки коли їх більше однієї: діюча вже
+            показана таблицею вище, і «усі партії» з одного рядка
+            повторювали б її слово в слово. */}
+        {batches.length > 1 && (
+          <Fold title={t('inventory.material.fold.batches')} count={batches.length}
+                open={fold === 'batches'} onToggle={() => toggleFold('batches')}>
             <div className="flex flex-col gap-2">
               {batches.map((b) => {
                 const s = expiryState(b.expiry)
@@ -911,8 +1054,8 @@ export function MaterialCard({
                     </span>
                   </>
                 )
-                // Читателю — div, а не выключенная кнопка: disabled-кнопка
-                // обещает действие, которого нет, и глушит прокрутку с фокусом.
+                // Читачеві — div, а не вимкнена кнопка: disabled-кнопка
+                // обіцяє дію, якої немає, і глушить прокрутку з фокусом.
                 return canWrite ? (
                   <button key={b.id} type="button" onClick={() => setBatchEdit(b)}
                           className="list-card">
@@ -923,199 +1066,125 @@ export function MaterialCard({
                 )
               })}
             </div>
-          </div>
-        )}
-      </section>
-
-      {/* ── Два подэкрана: документы и контроль вскрытия ─────── */}
-      {/* README, розділ C: два навігаційні рядки со ЗНАЧКАМИ на цветных
-          плашках — документы на `accentSoft`, контроль вскрытия на
-          `violetSoft`. Разные тона здесь не украшение: это два разных
-          по смыслу подэкрана (бумаги и физическая банка), и одинаковый
-          серый кружок у обоих читался как один пункт с переносом. */}
-      <section className="card rise-3 !p-0 lg:hidden">
-        {/* Дверь в чужой модуль прячется, а не показывает отказ: подэкран
-            документов стоит на модуле `compliance`, а карточка — на
-            `inventory`. */}
-        {hasCompliance && (
-          <Link href={`/app/inventory/materials/${material.id}/docs`}
-                className="row px-5" style={{ minHeight: 'var(--tap-min)' }}>
-            <span aria-hidden className="list-anchor" data-tone="accent">
-              <IconDoc size={18} />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="t-md block">{t('inventory.material.docs.title')}</span>
-              {/* README: підпис «N файлів». Числовой значок справа снят —
-                  он повторял то же число, что уже стоит в подписи. Значок
-                  остался только у косметики без документов: там он не
-                  повторяет счёт, а называет требование. */}
-              <span className="t-xs block" style={{ color: 'var(--color-faint)' }}>
-                {docsCount > 0
-                  ? t.plural('inventory.material.docs.count', docsCount)
-                  : t('inventory.material.docs.none')}
-              </span>
-            </span>
-            <span className="flex shrink-0 items-center gap-2">
-              {material.isCosmetic && docsCount === 0 && (
-                <span className="badge-warn">{t('inventory.material.docs.needed')}</span>
-              )}
-              <span aria-hidden style={{ color: 'var(--color-faint)' }}>›</span>
-            </span>
-          </Link>
+          </Fold>
         )}
 
-        <Link href={`/app/inventory/materials/${material.id}/pao`}
-              className="row px-5" style={{ minHeight: 'var(--tap-min)' }}>
-          <span aria-hidden className="list-anchor" data-tone="violet">
-            <IconQr size={18} />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="t-md block">{t('inventory.material.pao.title')}</span>
-            <span className="t-xs block" style={{ color: 'var(--color-faint)' }}>
-              {t('inventory.material.pao.desc')}
-            </span>
-          </span>
-          <span className="flex shrink-0 items-center gap-2">
-            {opened.length > 0 && (
-              <span className="badge-accent tabular">
-                {t('inventory.material.pao.opened', { n: t.number(opened.length) })}
-              </span>
-            )}
-            <span aria-hidden style={{ color: 'var(--color-faint)' }}>›</span>
-          </span>
-        </Link>
-      </section>
-
-      {/* ── Склад (INCI) ──────────────────────────────────────────
-          README, розділ C: своя секция, «текст 12px/1.6 muted у картці».
-          В таблице «ключ → значение» он занимал пять строк высоты
-          и ломал ритм остальных: это абзац состава, а не строка.
-          Показывается только у косметики и только если он заполнен —
-          пустая карточка с заголовком «Склад» сообщает лишь о том,
-          что мы про него помним. */}
-      {material.isCosmetic && material.inci && (
-        <section className="rise-3 lg:hidden">
-          <p className="eyebrow mb-2">{t('inventory.material.inci.title')}</p>
-          <div className="card">
-            {/* Кегль — 12px из шкалы (`.t-sm`), как задано в README.
-                Стоял `.t-xs`, то есть 10px, — это кегль БЕЙДЖА, и абзац
-                состава им набирать нельзя: INCI читают глазами, сверяя
-                с этикеткой. */}
-            <p className="t-sm prose-muted">{material.inci}</p>
-          </div>
-        </section>
-      )}
-
-      {/* ── Нотификация МОЗ ────────────────────────────────────────
-          README, розділ C: «внизу інфо-блок «Нотифікація МОЗ» на
-          accentSoft (код + дата реєстрації)». Раньше здесь стоял голый
-          бейдж без кода и без даты — то есть самого содержимого блока
-          не было, а инспектор спрашивает именно КОД.
-
-          Дублем экрана документов это не становится: там нотификацию
-          ПРАВЯТ и там её подтверждают документом, здесь она только
-          читается. Ссылка ведёт туда же, где действие. Блок целиком
-          снимается вместе с модулем `compliance`: без него подэкран
-          документов заведению не открыт. */}
-      {material.isCosmetic && hasCompliance && (
-        <section className="rise-3 lg:hidden">
-          <Link href={`/app/inventory/materials/${material.id}/docs`}
-                className="block"
-                style={{
-                  background: 'var(--color-accent-soft)',
-                  borderRadius: 'var(--radius-card)',
-                  padding: 'var(--space-4)',
-                }}>
-            <span className="eyebrow block">{t('inventory.docs.moz.title')}</span>
-            {material.notificationCode ? (
-              <>
-                {/* Код нотификации — данные арендатора. */}
-                <span className="tabular t-md mt-2 block">
-                  {t('inventory.docs.moz.code', { code: material.notificationCode })}
-                </span>
-                <span className="tabular t-sm block" style={{ color: 'var(--color-muted)' }}>
-                  {t('inventory.docs.moz.date', { date: t.date(material.notificationDate) })}
-                </span>
-              </>
-            ) : (
-              <span className="t-sm mt-2 block" style={{ color: 'var(--color-muted)' }}>
-                {t('inventory.docs.moz.noCode')}
-              </span>
-            )}
-            {/* Код — это слова поставщика, подтверждение — документ.
-                Проверка смотрит второе (0106), поэтому статус стоит
-                отдельной строкой, а не сливается с кодом. */}
-            <span className="mt-3 block">
-              <span className={material.notificationConfirmedAt ? 'badge-success' : 'badge-danger'}>
-                {material.notificationConfirmedAt
-                  ? t('inventory.material.moz.proof.ok', {
-                      date: t.date(material.notificationConfirmedAt),
-                    })
-                  : `${t('inventory.material.moz.proof.missing')} · ${t('inventory.material.moz.proof.open')}`}
-              </span>
-            </span>
-          </Link>
-        </section>
-      )}
-
-      {/* ── Зберігання і собівартість ──────────────────────────────
-          Коммерческая часть заведения, и потому НИЖЕ паспорта: README
-          держит подряд блок 1 → блок 2 → подэкраны → INCI → нотификацию,
-          а этот блок разрывал их пополам. У инспектора запрос
-          к `materials` вернул пустоту (stock === null), и блок
-          не рисуется вовсе — та же логика, что у строки «В наявності».
-          Перенос места — ТОЛЬКО кнопкой: она зовёт relocate_stock (0113)
-          и оставляет след в журнале движений, чего молчаливый селект
-          формы не делает. */}
-      {stock !== null && (
-        <section className="rise-3 lg:hidden">
-          <p className="eyebrow mb-2">{t('inventory.material.storage.title')}</p>
+        {/* Паспорт (ТЗ 3.1) плюс склад INCI і код нотифікації — одна
+            секція, бо це одна відповідь: «що це за засіб за документами».
+            Розводити їх по трьох підзаголовках означало три заголовки
+            над чотирма рядками кожен. */}
+        <Fold title={t('inventory.material.passport.title')}
+              open={fold === 'passport'} onToggle={() => toggleFold('passport')}>
           <div className="kv">
-            <Row label={t('inventory.material.location.label')}
-                 value={locationName ?? t('inventory.material.relocate.none')} />
-            {material.cost != null && (
-              <Row label={t('inventory.material.row.cost')}
-                   value={t.money(material.cost)} mono />
-            )}
+            <Row label={t('inventory.material.row.brand')} value={material.brand ?? '—'} />
+            <Row label={t('inventory.material.row.sku')} value={material.sku ?? '—'} mono />
+            <Row label={t('inventory.material.row.category')} value={material.category ?? '—'} />
+            <Row label={t('inventory.material.row.country')} value={material.country ?? '—'} />
           </div>
-          {material.cost != null && (
-            // С 0112 приёмка пересчитывает cost_per_unit сама — без этой
-            // строки владелец «чинит» цифру руками и ломает средневзвешенную.
-            <p className="field-hint mt-1">{t('inventory.material.cost.hint')}</p>
-          )}
-          {canWrite && (
-            <button type="button" className="btn-secondary mt-2"
-                    onClick={() => setRelocate(true)}>
-              {t('inventory.material.relocate.action')}
-            </button>
-          )}
-        </section>
-      )}
 
-      {/* ── Своё: заметка и произвольные поля ─────────────────────
-          Показывается только тому, кто их видит: инспектору эти колонки
-          не приходят вовсе (0111), и блок у него просто не рисуется. */}
-      {(material.note || Object.keys(material.attributes ?? {}).length > 0) && (
-        <section className="rise-3 lg:hidden">
-          <p className="eyebrow mb-2">{t('inventory.material.own.title')}</p>
-          {material.note && (
-            <div className="card mb-2">
-              {/* Кегль — из шкалы (t-sm), а не ручным calc: свой размер
-                  выпал бы из множителя --type-scale при первой правке. */}
-              <p className="t-sm" style={{ whiteSpace: 'pre-wrap' }}>
-                {material.note}
-              </p>
+          {/* INCI — абзац складу, а не рядок таблиці: у «ключ → значення»
+              він займав п'ять рядків висоти і ламав ритм решти. Кегль
+              13px (`.t-sm`) зі шкали: INCI читають очима, звіряючи
+              з етикеткою. */}
+          {material.isCosmetic && material.inci && (
+            <div className="card mt-2">
+              <p className="eyebrow mb-1">{t('inventory.material.inci.title')}</p>
+              <p className="t-sm prose-muted">{material.inci}</p>
             </div>
           )}
-          {Object.keys(material.attributes ?? {}).length > 0 && (
+
+          {/* Код нотифікації МОЗ. Гучним блоком нагорі стоїть тільки
+              ВІДСУТНІСТЬ підтвердження; сам код — довідка, і місце їй тут.
+              Посилання веде туди, де нотифікацію правлять і підтверджують. */}
+          {material.isCosmetic && hasCompliance && (
+            <Link href={`/app/inventory/materials/${material.id}/docs`}
+                  className="mt-2 block"
+                  style={{
+                    background: 'var(--color-accent-soft)',
+                    borderRadius: 'var(--radius-card)',
+                    padding: 'var(--space-4)',
+                  }}>
+              <span className="eyebrow block">{t('inventory.docs.moz.title')}</span>
+              {material.notificationCode ? (
+                <>
+                  {/* Код нотифікації — дані орендаря. */}
+                  <span className="tabular t-md mt-2 block">
+                    {t('inventory.docs.moz.code', { code: material.notificationCode })}
+                  </span>
+                  <span className="tabular t-sm block" style={{ color: 'var(--color-muted)' }}>
+                    {t('inventory.docs.moz.date', { date: t.date(material.notificationDate) })}
+                  </span>
+                </>
+              ) : (
+                <span className="t-sm mt-2 block" style={{ color: 'var(--color-muted)' }}>
+                  {t('inventory.docs.moz.noCode')}
+                </span>
+              )}
+              {material.notificationConfirmedAt && (
+                <span className="mt-3 block">
+                  <span className="badge-success">
+                    {t('inventory.material.moz.proof.ok', {
+                      date: t.date(material.notificationConfirmedAt),
+                    })}
+                  </span>
+                </span>
+              )}
+            </Link>
+          )}
+        </Fold>
+
+        {/* Комерційна частина закладу. Інспектору запит до `materials`
+            повертає порожнечу (stock === null) — і секції немає зовсім,
+            та сама логіка, що в рядка «В наявності». */}
+        {stock !== null && (
+          <Fold title={t('inventory.material.storage.title')}
+                open={fold === 'storage'} onToggle={() => toggleFold('storage')}>
             <div className="kv">
-              {Object.entries(material.attributes ?? {}).map(([k, v]) => (
-                <Row key={k} label={k} value={v} />
-              ))}
+              <Row label={t('inventory.material.location.label')}
+                   value={locationName ?? t('inventory.material.relocate.none')} />
+              {material.cost != null && (
+                <Row label={t('inventory.material.row.cost')}
+                     value={t.money(material.cost)} mono />
+              )}
             </div>
-          )}
-        </section>
-      )}
+            {material.cost != null && (
+              // З 0112 приймання перераховує cost_per_unit само — без цього
+              // рядка власник «лагодить» цифру руками і ламає середньозважену.
+              <p className="field-hint mt-1">{t('inventory.material.cost.hint')}</p>
+            )}
+            {canWrite && (
+              // Перенос місця — ТІЛЬКИ кнопкою: вона зве relocate_stock (0113)
+              // і лишає слід у журналі рухів, чого мовчазний селект не робить.
+              <button type="button" className="btn-secondary mt-2"
+                      onClick={() => setRelocate(true)}>
+                {t('inventory.material.relocate.action')}
+              </button>
+            )}
+          </Fold>
+        )}
+
+        {/* Показується тільки тому, хто їх бачить: інспектору ці колонки
+            не приходять зовсім (0111), і секції в нього просто немає. */}
+        {(material.note || Object.keys(material.attributes ?? {}).length > 0) && (
+          <Fold title={t('inventory.material.own.title')}
+                open={fold === 'own'} onToggle={() => toggleFold('own')}>
+            {material.note && (
+              <div className="card mb-2">
+                {/* Кегль зі шкали (t-sm), а не ручний calc: свій розмір
+                    випав би з множника --type-scale при першій правці. */}
+                <p className="t-sm" style={{ whiteSpace: 'pre-wrap' }}>{material.note}</p>
+              </div>
+            )}
+            {Object.keys(material.attributes ?? {}).length > 0 && (
+              <div className="kv">
+                {Object.entries(material.attributes ?? {}).map(([k, v]) => (
+                  <Row key={k} label={k} value={v} />
+                ))}
+              </div>
+            )}
+          </Fold>
+        )}
+      </div>
 
       {/* ── Правка карточки ──────────────────────────────────── */}
       <Sheet open={edit} onClose={() => setEdit(false)}

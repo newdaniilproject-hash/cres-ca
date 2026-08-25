@@ -21,7 +21,7 @@
 //
 // Запуск: node scripts/check-tokens.mjs
 
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
@@ -150,6 +150,100 @@ for (const [key, cssName] of RADII) {
   const a = tsRadius.get(key)
   const b = light.get(cssName)
   if (a !== b) problems.push(`радіус: ${key} = ${a}, а --${cssName} = ${b}`)
+}
+
+// ── Зайвий `*/` вимикає цілий блок правил, і мовчки ────────────────────────
+//
+// Оплачено 25.08.2026. Правило проти перетягування карток пальцем було
+// написано і не діяло: перед ним стояв закритий коментар, а далі — ще
+// один абзац і другий `*/`. Абзац став CSS-джерелом, зайвий `*/` —
+// сміттям, і Lightning CSS «відновився» тим, що з'їв `@media` і випустив
+// селектор `:is() .appshell` — порожній `:is()` не збігається НІ З ЧИМ.
+//
+// Ні `next build`, ні `tsc --noEmit` цього не бачать: файл валідний,
+// збірка зелена, а на телефоні картку так само можна тягнути. Знайшлось
+// це лише зчитуванням обчисленого стилю в браузері.
+//
+// Перевірка тупа і саме тому надійна: скільки відкритих коментарів,
+// стільки й закритих. Рівність не доводить, що кожен `*/` на своєму
+// місці, але ловить те, що сталось насправді.
+for (const [name, text] of [['globals.css', css]]) {
+  const opens = (text.match(/\/\*/g) ?? []).length
+  const closes = (text.match(/\*\//g) ?? []).length
+  if (opens !== closes) {
+    problems.push(
+      `${name}: коментарів відкрито ${opens}, закрито ${closes} — зайвий «*/» `
+      + 'вимикає блок правил мовчки (розбір у цьому файлі вище)',
+    )
+  }
+}
+
+// ── СТОРОЖ ТРЕТІЙ: ключ права, якого немає в role_grants ────────────────────
+//
+// Оплачено дефектом, знайденим аудитом 25.08.2026. На головному екрані
+// стояло `can(m, 'finance.read')` — права з таким ключем у `role_grants`
+// немає взагалі, там `finances.read`, у множині. Перевірка повертала
+// false у ВСІХ, крім власника: у нього в токені `"*"`, і `tenant_can`
+// пропускає будь-що. Тобто у власника картка фінансів була, у менеджера
+// й бухгалтера — ніколи, і без жодної помилки на екрані.
+//
+// Чому цього не бачить ні `tsc`, ні `next build`: аргумент `can()` — це
+// рядок, і будь-який рядок валідний. Помилка тиха за побудовою.
+//
+// Джерело правди — сіди `role_grants` у міграціях. Сторож бере ключі
+// звідти і звіряє з тим, що просить код. Не «список у скрипті»: список
+// у скрипті став би третім місцем, де живе та сама правда.
+// Права видаються міграціями НЕ однією формою: 0001 вставляє парами
+// ('admin','catalog.read'), 0039 — через unnest(array[…]), політики
+// згадують ключ усередині tenants_with('…'). Перший підхід ловив лише
+// першу форму і одразу дав ХИБНЕ спрацювання на `compliance.journal.write`
+// (право є, видане unnest-ом). Хибне спрацювання гірше за відсутність
+// сторожа: його вимикають, і разом із ним зникає справжня перевірка.
+//
+// Тому беремо всі рядки виду `щось.щось` з міграцій, крім тих, що
+// починаються іменем схеми. Набір виходить ширшим за справжній перелік
+// прав — і це свідомий обмін: сторож ловить ОПЕЧАТКУ (ключ, якого немає
+// в базі ніде), а не звіряє повний перелік. `finance.read` не зустрічається
+// в міграціях жодного разу, і саме тому був спійманий.
+const SCHEMAS = /^(public|auth|storage|extensions|net|cron|vault|graphql|pg_catalog|information_schema|realtime)\./
+const perms = new Set()
+for (const f of readdirSync(join(root, 'supabase/migrations'))) {
+  if (!f.endsWith('.sql')) continue
+  const sql = readFileSync(join(root, 'supabase/migrations', f), 'utf8')
+  for (const m of sql.matchAll(/'([a-z_]+\.[a-z_.]+)'/g)) {
+    if (!SCHEMAS.test(m[1])) perms.add(m[1])
+  }
+}
+
+// Ключі, які код просить у `can()` і `tenants_with()`.
+const asked = new Map()
+const walk = (dir) => {
+  for (const e of readdirSync(join(root, dir), { withFileTypes: true })) {
+    if (e.name === 'node_modules' || e.name.startsWith('.')) continue
+    const rel = `${dir}/${e.name}`
+    if (e.isDirectory()) { walk(rel); continue }
+    if (!/\.(ts|tsx)$/.test(e.name)) continue
+    const src = readFileSync(join(root, rel), 'utf8')
+    for (const m of src.matchAll(/\b(?:can|tenants_with)\(\s*(?:m|membership)?\s*,?\s*'([a-z_]+\.[a-z_.]+)'/g)) {
+      if (!asked.has(m[1])) asked.set(m[1], rel)
+    }
+  }
+}
+for (const d of ['app', 'lib', 'components']) walk(d)
+
+// Порожній набір ключів із міграцій означає, що зламався розбір, а не що
+// прав немає. Мовчазно «все зійшлося» тут гірше за падіння.
+if (perms.size === 0) {
+  problems.push('role_grants: не вдалося витягти жодного ключа права з міграцій — зламався розбір сторожа')
+} else {
+  for (const [key, where] of asked) {
+    if (!perms.has(key)) {
+      problems.push(
+        `${where}: право «${key}» не видається жодною міграцією. `
+        + 'Перевірка мовчки хибна у всіх, крім власника (у нього в токені «*»)',
+      )
+    }
+  }
 }
 
 if (problems.length > 0) {
