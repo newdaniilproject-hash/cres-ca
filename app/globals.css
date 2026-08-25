@@ -1229,6 +1229,71 @@ html.dark [data-brand] {
     font-size: max(16px, var(--text-base));
   }
   .searchfield input::placeholder { color: var(--color-faint); }
+  /* Родной крестик поля `type=search` убран у всех браузеров, где он
+     есть: он чистит поле, но НЕ закрывает выдачу — то есть половина
+     действия. Свой крестик делает и то, и другое. */
+  .searchfield input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+  .searchfield-clear {
+    @apply flex shrink-0 items-center justify-center rounded-full;
+    width: 26px; height: 26px;
+    color: var(--color-faint);
+    background: var(--color-surface-2);
+  }
+  .searchfield-clear:active { color: var(--color-text); }
+
+  /* ── Выдача поиска: падает ПОД полем шапки ──────────────────────
+     Решение владельца 25.08.2026 («вверху же строка поиска, там
+     и должно вписываться и выпадать результат поиска»).
+
+     Положение и высоту считает `components/global-search.tsx` от
+     живого поля и от `--kb`. Здесь только вид — числа в CSS
+     разошлись бы с вырезом устройства и с выбранным размером текста.
+
+     ⚠️ Панель живёт ПОРТАЛОМ в `body`, а не внутри шапки: у шапки
+     `backdrop-filter`, и она становится содержащим блоком для
+     `position: fixed` внутри себя (та же грабля, что у шторки
+     колокола). Не переносить обратно в разметку шапки. */
+  .search-scrim { position: fixed; inset: 0; z-index: 44; }
+  .search-panel {
+    position: fixed;
+    z-index: 45;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-card);
+    background: var(--color-surface);
+    box-shadow: var(--shadow-lift);
+    animation: search-in var(--dur-fast) var(--ease-out-soft) both;
+  }
+  @keyframes search-in {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .search-group {
+    position: sticky; top: 0; z-index: 1;
+    padding: 8px 14px 4px;
+    background: var(--color-surface);
+  }
+  .search-row {
+    padding-inline: 14px;
+    min-height: var(--tap-min);
+  }
+  .search-row:active { background: var(--color-surface-2); }
+
+  /* Поле поверх строки шапки на внутренних экранах. `.apphead` —
+     `position: sticky`, то есть позиционированный предок: абсолют
+     цепляется за него без всякого портала. Фон обязателен — под
+     полем остаются стрелка «назад» и имя экрана. */
+  .apphead-search-over {
+    position: absolute;
+    /* Справа остаётся ровно место аватара (44px зоны нажатия + зазор):
+       он единственный значок шапки, который поиск НЕ заслоняет —
+       выход из кабинета и настройки должны быть достижимы всегда. */
+    inset: calc(6px + env(safe-area-inset-top)) 60px 8px 16px;
+    display: flex; align-items: center; gap: 8px;
+    background: var(--color-bg);
+    z-index: 2;
+  }
 
   /* ── Компактный счётчик ──────────────────────────────────────
      Из прототипа: крупное ЦВЕТНОЕ число и мелкая подпись под ним.

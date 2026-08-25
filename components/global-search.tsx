@@ -1,13 +1,19 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { Sheet } from '@/components/sheet'
 import { useT } from '@/lib/i18n/client'
 import type { TenantModule } from '@/lib/tenant'
-import { IconSearch, IconBox, IconScissors, IconUsers, IconBag } from '@/components/icons'
+// Разбор `tstzrange` — ОБЩИЙ, а не свой: копия разошлась бы с оригиналом
+// на первом же изменении формата, и разошлась бы молча.
+import { parseRange } from '@/app/app/bookings/staff/range'
+import {
+  IconSearch, IconBox, IconScissors, IconUsers, IconBag,
+  IconCalendar, IconCheck, IconGear, IconClose,
+} from '@/components/icons'
 
 // ── Один поиск на весь кабинет ──────────────────────────────────────────────
 //
@@ -20,13 +26,28 @@ import { IconSearch, IconBox, IconScissors, IconUsers, IconBag } from '@/compone
 // на этой странице лежит, — значит человек обязан СНАЧАЛА угадать раздел,
 // а потом искать. «Оксана» — это клиент, «Оксана» в заказе и «Оксана»
 // в записи лежат в трёх разных экранах, и на складе её не найти вовсе.
-// Полей при этом становилось столько же, сколько экранов, и каждое
-// работало по своим правилам.
 //
-// Здесь одно поле и один ответ на вопрос «где это лежит»: разделы —
-// это уже результат поиска, а не его условие.
+// ── ПОЛЕ В ШАПКЕ, ВЫДАЧА ПАДАЕТ ВНИЗ. Решение владельца 25.08.2026 ──────────
 //
-// ЧТО ИЩЕТСЯ. Четыре раздела, и каждый спрашивается ТОЛЬКО если он открыт
+// Дословно: «внизу поиска быть не должно — вверху же строка поиска, там
+// и должно вписываться и выпадать результат поиска, и искать по всем
+// элементам системы, хоть расходник, хоть клиент, хоть что угодно».
+//
+// ОТМЕНЯЕТ прежнее устройство: строка в шапке была КНОПКОЙ в виде поля,
+// а печатали в шторке снизу. Прежний комментарий утверждал, что иначе
+// нельзя («у шапки backdrop-filter, клавиатура закроет выдачу»), — обе
+// причины настоящие, и обе решаются, а не обходятся:
+//
+//   1. `backdrop-filter` делает шапку содержащим блоком для `position:
+//      fixed` внутри неё. Поэтому выдача уходит ПОРТАЛОМ в `body` — тем же
+//      приёмом, что и шторки (`components/sheet.tsx`). Без портала панель
+//      открывалась бы внутри полоски шапки. Не убирать, считая лишним.
+//   2. Клавиатура закрывает низ экрана. Поэтому высота панели считается
+//      от НИЖНЕГО КРАЯ ПОЛЯ до верха клавиатуры: `--kb` меряет
+//      `components/keyboard-fit.tsx`, и без клавиатуры он равен нулю.
+//      Панель не «умещается как получится» — она ровно в свободном месте.
+//
+// ЧТО ИЩЕТСЯ. Семь разделов, и каждый спрашивается ТОЛЬКО если он открыт
 // этому человеку по обеим осям (CLAUDE.md → «Доступ: роли и модули»):
 // заведение купило модуль И у человека есть право. Спросить и показать
 // пусто — это не «безопасно»: RLS всё равно не отдаст чужого, но лишний
@@ -36,9 +57,18 @@ import { IconSearch, IconBox, IconScissors, IconUsers, IconBag } from '@/compone
 // в этом файле только экономит запросы и не пускает в выдачу разделы,
 // которых человек не видит в меню.
 //
+// РАЗДЕЛЫ ищутся БЕЗ ЗАПРОСА и первыми: список приходит из той же
+// навигации, что рисует панель и шторку профиля, то есть уже отфильтрован
+// по модулю и праву. «Фін» приводит в «Фінанси» мгновенно — это ровно
+// правило 6: мгновенность есть ОТСУТСТВИЕ запроса, а не быстрый запрос.
+//
 // ЦЕНА. Запрос уходит только после набора двух знаков и с задержкой:
 // поиск по мере набора без неё означает запрос на каждую букву, а до базы
 // в Ирландии не меньше сотни миллисекунд.
+
+type Section =
+  | 'nav' | 'materials' | 'containers' | 'catalog'
+  | 'customers' | 'orders' | 'bookings' | 'staff'
 
 type Hit = {
   id: string
@@ -46,6 +76,20 @@ type Hit = {
   title: string
   note: string
   section: Section
+  /** Только у разделов: их собственный значок из навигации. */
+  Icon?: (p: { size?: number }) => React.ReactElement
+}
+
+/**
+ * Пункт навигации, как его отдаёт оболочка. Уже отфильтрован по доступу.
+ * Значок приходит СВОЙ, а не общий: раздел в выдаче обязан выглядеть так
+ * же, как в панели и в шторке профиля, иначе человек ищет глазами тот
+ * значок, который запомнил, и не находит.
+ */
+export type SearchNavItem = {
+  href: string
+  title: string
+  Icon: (p: { size?: number }) => React.ReactElement
 }
 
 // Разделитель величин в подписи строки. Точка-разделитель снята решением
@@ -54,21 +98,33 @@ type Hit = {
 // Тире переносится вместе со значением.
 const SEP = ' — '
 
-type Section = 'materials' | 'catalog' | 'customers' | 'orders'
-
 const ICON: Record<Section, (p: { size?: number }) => React.ReactElement> = {
+  nav: IconGear,
   materials: IconBox,
+  containers: IconCheck,
   catalog: IconScissors,
   customers: IconUsers,
   orders: IconBag,
+  bookings: IconCalendar,
+  staff: IconUsers,
 }
 
 const SECTION_TITLE = {
+  nav: 'app.search.section.nav',
   materials: 'app.search.section.materials',
+  containers: 'app.search.section.containers',
   catalog: 'app.search.section.catalog',
   customers: 'app.search.section.customers',
   orders: 'app.search.section.orders',
+  bookings: 'app.search.section.bookings',
+  staff: 'app.search.section.staff',
 } as const
+
+/** Порядок разделов в выдаче. Разделы первыми — они без запроса. */
+const ORDER: Section[] = [
+  'nav', 'materials', 'containers', 'catalog',
+  'bookings', 'customers', 'orders', 'staff',
+]
 
 // PostgREST разбирает `or=(...)` строкой: запятая, скобка и звёздочка
 // в запросе человека сломали бы разбор, а `%` сделал бы любой запрос
@@ -76,11 +132,31 @@ const SECTION_TITLE = {
 // по этим знакам в именах и артикулах нет.
 const safe = (q: string) => q.replace(/[,()%*\\]/g, ' ').trim()
 
+/**
+ * Поиск по подстроке БЕЗ регистра и БЕЗ учёта раскладки — для разделов.
+ * Своя, а не `ilike` базы: разделы не в базе, они уже в памяти.
+ */
+const norm = (s: string) => s.toLocaleLowerCase('uk')
+
+/** Местный день записи в виде YYYY-MM-DD — экран записей ждёт его в `?day=`. */
+function localDay(iso: string): string {
+  const d = new Date(iso)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+
+
 export function GlobalSearch({
-  modules, perms, compact = false,
+  modules, perms, nav, compact = false,
 }: {
   modules?: TenantModule[]
   perms?: string[]
+  /**
+   * Разделы кабинета для поиска по названию. Приходят из оболочки уже
+   * отфильтрованными по модулю и праву — второй фильтр здесь разошёлся бы
+   * с меню молча.
+   */
+  nav?: SearchNavItem[]
   /**
    * Значком вместо строки. Только там, где строке не хватает места:
    * на внутренних экранах шапку уже занимают стрелка «назад» и имя
@@ -89,12 +165,21 @@ export function GlobalSearch({
   compact?: boolean
 }) {
   const t = useT()
+  const router = useRouter()
   const pathname = usePathname()
   const supabase = useMemo(() => createClient(), [])
+
+  // `open` — панель выдачи под полем. В сжатом виде это же состояние
+  // раскрывает само поле поверх шапки.
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
   const [hits, setHits] = useState<Hit[] | null>(null)
   const [busy, setBusy] = useState(false)
+  const [box, setBox] = useState<{ top: number; left: number; width: number } | null>(null)
+
+  const fieldRef = useRef<HTMLLabelElement | null>(null)
+  const inputRef = useRef<HTMLInputElement | null>(null)
+  const panelRef = useRef<HTMLDivElement | null>(null)
 
   const may = (mod: TenantModule, perm: string) =>
     (!modules || modules.includes(mod))
@@ -102,18 +187,86 @@ export function GlobalSearch({
 
   const sections = {
     materials: may('inventory', 'stock.read'),
+    // Ёмкость — это `compliance.read`, а НЕ `stock.read`, и это не
+    // придирка: политика `material_containers_read` стоит на
+    // `compliance.read`, и карточка `/app/inventory/containers/[id]`
+    // проверяет его же. Со `stock.read` запрос ушёл бы и вернул пусто —
+    // человек читал бы это как «такой банки у нас нет».
+    containers: may('inventory', 'compliance.read'),
     catalog: may('catalog', 'catalog.read'),
     customers: may('customers', 'customers.read'),
     orders: may('orders', 'orders.read'),
+    bookings: may('bookings', 'orders.read'),
+    staff: may('bookings', 'orders.read'),
   }
-  const anywhere = Object.values(sections).some(Boolean)
+  const anywhere = Object.values(sections).some(Boolean) || (nav?.length ?? 0) > 0
+
+  const close = useCallback(() => {
+    setOpen(false)
+    setQ('')
+    setHits(null)
+    inputRef.current?.blur()
+  }, [])
 
   // Смена экрана закрывает поиск: переход состоялся — мебель уходит сама.
-  useEffect(() => { setOpen(false) }, [pathname])
+  useEffect(() => { close() }, [pathname, close])
 
-  // Закрыли — забыли. Иначе следующее открытие показывает прошлую выдачу,
-  // и человек секунду читает чужой ответ на свой новый вопрос.
-  useEffect(() => { if (!open) { setQ(''); setHits(null) } }, [open])
+  // ── Где рисовать панель ─────────────────────────────────────────────
+  // Считаем от живого поля, а не от «высоты шапки»: высота меняется
+  // от выреза устройства, от того, есть ли на экране стрелка «назад»,
+  // и от выбранного человеком размера текста (`--type-scale`). Число
+  // в CSS разошлось бы с любым из трёх.
+  const place = useCallback(() => {
+    const el = fieldRef.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    const pad = 12
+    // На телефоне панель во всю ширину экрана, а не по ширине поля:
+    // поле делит строку с четырьмя значками, и выдача по его ширине
+    // резала бы каждую вторую подпись. На большом экране наоборот —
+    // панель ровно под полем: там поле по центру и широкое, а полоса
+    // выдачи во весь экран читалась бы как чужая шапка.
+    const wide = window.innerWidth >= 1024
+    const left = wide ? r.left : pad
+    const width = wide ? r.width : window.innerWidth - pad * 2
+    setBox({ top: r.bottom + 8, left, width })
+  }, [])
+
+  useLayoutEffect(() => { if (open) place() }, [open, place])
+
+  useEffect(() => {
+    if (!open) return
+    const onAny = () => place()
+    window.addEventListener('resize', onAny)
+    window.addEventListener('scroll', onAny, true)
+    window.visualViewport?.addEventListener('resize', onAny)
+    return () => {
+      window.removeEventListener('resize', onAny)
+      window.removeEventListener('scroll', onAny, true)
+      window.visualViewport?.removeEventListener('resize', onAny)
+    }
+  }, [open, place])
+
+  // Escape закрывает, как любой слой поверх страницы.
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [open, close])
+
+  // ── Разделы: без запроса ────────────────────────────────────────────
+  const navHits: Hit[] = useMemo(() => {
+    const term = norm(q.trim())
+    if (term.length < 2 || !nav) return []
+    return nav
+      .filter((n) => norm(n.title).includes(term))
+      .slice(0, 4)
+      .map((n) => ({
+        id: n.href, href: n.href, title: n.title, Icon: n.Icon,
+        note: t('app.search.goTo'), section: 'nav' as const,
+      }))
+  }, [q, nav, t])
 
   const seq = useRef(0)
   useEffect(() => {
@@ -154,6 +307,30 @@ export function GlobalSearch({
           note: [r.brand, `${t.number(Number(r.current_stock))} ${r.unit}`]
             .filter(Boolean).join(SEP),
           section: 'materials' as const,
+        }))
+      })())
+    }
+
+    if (sections.containers) {
+      // Ёмкость ищется по КОДУ наклейки — это то, что человек читает
+      // с банки глазами, когда сканер не сработал или телефон занят.
+      // Читаем из `compliance_containers`, а не из таблицы: то же
+      // представление, что и на экранах склада, — иначе инспектор
+      // получил бы пустоту вместо отказа (0083).
+      jobs.push((async () => {
+        const { data } = await supabase.from('compliance_containers')
+          .select('id, code, material_name, status, use_by, volume, unit')
+          .or(`code.ilike.${like},material_name.ilike.${like}`)
+          .limit(5)
+        return (data ?? []).map((r) => ({
+          id: r.id as string,
+          href: `/app/inventory/containers/${r.id}`,
+          title: `${r.code} ${SEP} ${r.material_name ?? ''}`.trim(),
+          note: [
+            r.volume != null ? `${t.number(Number(r.volume))} ${r.unit ?? ''}`.trim() : '',
+            r.use_by ? t('app.search.useBy', { date: t.date(r.use_by as string) }) : '',
+          ].filter(Boolean).join(SEP),
+          section: 'containers' as const,
         }))
       })())
     }
@@ -215,9 +392,55 @@ export function GlobalSearch({
         return (data ?? []).map((r) => ({
           id: r.id as string,
           href: `/app/orders/${r.id}`,
-          title: `№${r.number} — ${r.contact_name}`,
+          title: `№${r.number} ${SEP} ${r.contact_name}`,
           note: [t.money(Number(r.total)), t.date(r.created_at as string)].join(SEP),
           section: 'orders' as const,
+        }))
+      })())
+    }
+
+    if (sections.bookings) {
+      // Запись открывается ДНЁМ, а не своей карточкой: карточки записи
+      // отдельным адресом не существует, экран записей показывает день
+      // и в нём строку. Ведём в день записи (`?day=`), считая его
+      // в местном поясе — так же, как это делает переключатель дня.
+      const filter = digits
+        ? `contact_name.ilike.${like},number.eq.${term}`
+        : `contact_name.ilike.${like},title.ilike.${like}`
+      jobs.push((async () => {
+        const { data } = await supabase.from('v_bookings')
+          .select('id, number, period, status, title, contact_name, price')
+          .or(filter)
+          .order('created_at', { ascending: false })
+          .limit(5)
+        return (data ?? []).flatMap((r) => {
+          const start = parseRange(r.period as unknown as string).from
+          if (!start) return []
+          return [{
+            id: r.id as string,
+            href: `/app/bookings?day=${localDay(start)}`,
+            title: `${r.contact_name ?? ''} ${SEP} ${r.title ?? ''}`.trim(),
+            note: [t.dateTime(start), r.price != null ? t.money(Number(r.price)) : '']
+              .filter(Boolean).join(SEP),
+            section: 'bookings' as const,
+          }]
+        })
+      })())
+    }
+
+    if (sections.staff) {
+      jobs.push((async () => {
+        const { data } = await supabase.from('staff')
+          .select('id, name, title, is_active')
+          .or(`name.ilike.${like},title.ilike.${like}`)
+          .limit(5)
+        return (data ?? []).map((r) => ({
+          id: r.id as string,
+          href: `/app/bookings/staff/${r.id}`,
+          title: r.name as string,
+          note: [r.title, r.is_active ? '' : t('app.search.staffOff')]
+            .filter(Boolean).join(SEP),
+          section: 'staff' as const,
         }))
       })())
     }
@@ -228,93 +451,157 @@ export function GlobalSearch({
 
   if (!anywhere) return null
 
-  const order: Section[] = ['materials', 'catalog', 'customers', 'orders']
-  const groups = order
-    .map((s) => [s, (hits ?? []).filter((h) => h.section === s)] as const)
+  const all = [...navHits, ...(hits ?? [])]
+  const groups = ORDER
+    .map((s) => [s, all.filter((h) => h.section === s)] as const)
     .filter(([, rows]) => rows.length > 0)
 
-  return (
+  const short = q.trim().length < 2
+  // Разделы отвечают без запроса. Пока идёт запрос в базу, они УЖЕ видны,
+  // и скелетон рисуется под ними, а не вместо них: подменять готовый
+  // ответ заглушкой — это показывать меньше, чем знаешь.
+  const showSkeleton = busy && hits === null
+
+  const field = (
+    <label ref={fieldRef} className="searchfield min-w-0 flex-1">
+      <IconSearch size={18} />
+      <input
+        ref={inputRef}
+        type="search"
+        inputMode="search"
+        value={q}
+        onChange={(e) => { setQ(e.target.value); setOpen(true) }}
+        onFocus={() => setOpen(true)}
+        placeholder={t('app.search.short')}
+        aria-label={t('app.search.aria')}
+        // Родная крестик-кнопка `search` в Safari закрывает поле, но
+        // не закрывает выдачу — свою ставим сами, ниже.
+        style={{ fontSize: 'max(16px, var(--text-lg))' }}
+      />
+      {q ? (
+        <button type="button" className="searchfield-clear"
+                aria-label={t('app.search.clear')}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => { setQ(''); setHits(null); inputRef.current?.focus() }}>
+          <IconClose size={16} />
+        </button>
+      ) : null}
+    </label>
+  )
+
+  const panel = open && !short && box ? createPortal(
     <>
-      {/* Строка, а не значок (поправка владельца 19.08.2026: «поисковая
-          строка в хедере пропала»). Значок открывал тот же поиск, но
-          молчал о себе: строка — это ещё и приглашение искать.
-
-          Это КНОПКА в виде поля, а не поле. Печатать прямо в шапке
-          нельзя: у неё `backdrop-filter`, своя высота и липкое
-          положение, а поднявшаяся клавиатура закрыла бы выдачу.
-          Шторка держит поле, список и клавиатуру одним слоем —
-          так же сделаны телеграм и почта на телефоне. */}
-      {compact ? (
-        <button type="button" onClick={() => setOpen(true)}
-                aria-label={t('app.search.aria')} className="iconbtn shrink-0">
-          <IconSearch />
-        </button>
-      ) : (
-        <button type="button" onClick={() => setOpen(true)}
-                aria-label={t('app.search.aria')}
-                className="searchfield min-w-0 flex-1 text-left">
-          <IconSearch size={18} />
-          <span className="truncate" style={{ fontSize: 'max(15px, var(--text-lg))' }}>
-            {t('app.search.short')}
-          </span>
-        </button>
-      )}
-
-      <Sheet open={open} onClose={() => setOpen(false)} title={t('app.search.title')}>
-        <label className="searchfield mb-3">
-          <IconSearch size={18} />
-          {/* autoFocus здесь уместен: шторку открыли ровно затем, чтобы
-              набирать. Клавиатура на телефоне поднимется сама, а высота
-              шторки в dvh — поле не уедет под неё. */}
-          <input autoFocus type="search" inputMode="search" value={q}
-                 onChange={(e) => setQ(e.target.value)}
-                 placeholder={t('app.search.placeholder')} />
-        </label>
-
-        {q.trim().length < 2 ? (
-          <p className="field-hint">{t('app.search.hint')}</p>
-        ) : busy ? (
-          <div className="flex flex-col gap-2">
+      {/* Подложка. Не затемняет — выдача висит под полем, а не поверх
+          экрана, и затемнение читалось бы как модальное окно. Её работа
+          одна: тап мимо закрывает. */}
+      <div className="search-scrim" onMouseDown={close} onTouchStart={close} />
+      <div
+        ref={panelRef}
+        className="search-panel"
+        role="listbox"
+        style={{
+          top: box.top,
+          left: box.left,
+          width: box.width,
+          // Ровно свободное место: от низа поля до верха клавиатуры.
+          maxHeight: `calc(100dvh - ${box.top}px - var(--kb, 0px) - 12px)`,
+        }}
+      >
+        {showSkeleton && groups.length === 0 ? (
+          <div className="flex flex-col gap-2 p-2">
             {Array.from({ length: 3 }).map((_, i) => (
               <div key={i} className="skeleton-row px-1"><span /><span /><span /><span /></div>
             ))}
           </div>
         ) : groups.length === 0 ? (
-          <div className="empty">
-            <span className="empty-icon"><IconSearch size={24} /></span>
-            <p className="empty-title">{t('app.search.empty')}</p>
-            <p className="empty-desc">{t('app.search.emptyDesc')}</p>
+          <div className="p-4 text-center">
+            <p className="t-md" style={{ fontWeight: 650 }}>{t('app.search.empty')}</p>
+            <p className="t-xs mt-1" style={{ color: 'var(--color-faint)' }}>
+              {t('app.search.emptyDesc')}
+            </p>
           </div>
         ) : (
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col py-1">
             {groups.map(([section, rows]) => {
-              const Icon = ICON[section]
+              const Fallback = ICON[section]
               return (
                 <section key={section}>
-                  <p className="eyebrow mb-1">{t(SECTION_TITLE[section])}</p>
-                  <div className="flex flex-col">
-                    {rows.map((h) => (
-                      <Link key={h.href} href={h.href} className="row"
-                            onClick={() => setOpen(false)}
-                            style={{ minHeight: 'var(--tap-min)' }}>
-                        <span aria-hidden className="thumb-sm">
-                          <Icon size={18} />
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="t-md block truncate">{h.title}</span>
-                          <span className="t-xs block truncate"
-                                style={{ color: 'var(--color-faint)' }}>{h.note}</span>
-                        </span>
-                        <span aria-hidden style={{ color: 'var(--color-faint)' }}>›</span>
-                      </Link>
-                    ))}
-                  </div>
+                  <p className="eyebrow search-group">{t(SECTION_TITLE[section])}</p>
+                  {rows.map((h) => {
+                    const Icon = h.Icon ?? Fallback
+                    return (
+                    <Link key={`${section}:${h.href}`} href={h.href} className="row search-row"
+                          prefetch={section === 'nav'}
+                          onClick={() => {
+                            close()
+                            // Разделы кабинета `force-dynamic`: без тихого
+                            // обновления переход показал бы вчерашний кеш
+                            // (CLAUDE.md, правило 6).
+                            if (section === 'nav') router.refresh()
+                          }}>
+                      <span aria-hidden className="thumb-sm"><Icon size={18} /></span>
+                      <span className="min-w-0 flex-1">
+                        <span className="t-md block truncate">{h.title}</span>
+                        <span className="t-xs block truncate"
+                              style={{ color: 'var(--color-faint)' }}>{h.note}</span>
+                      </span>
+                      <span aria-hidden style={{ color: 'var(--color-faint)' }}>›</span>
+                    </Link>
+                    )
+                  })}
                 </section>
               )
             })}
+            {showSkeleton ? (
+              <div className="skeleton-row mx-3 my-2"><span /><span /><span /><span /></div>
+            ) : null}
           </div>
         )}
-      </Sheet>
+      </div>
+    </>,
+    document.body,
+  ) : null
+
+  // ── Сжатый вид ────────────────────────────────────────────────────
+  // На внутренних экранах место занято стрелкой «назад» и именем экрана.
+  // Значок РАСКРЫВАЕТ поле поверх строки шапки, а не открывает шторку:
+  // печатать человек обязан в шапке везде, а не только на корневых
+  // экранах, иначе поиск ведёт себя по-разному на соседних экранах.
+  if (compact) {
+    return (
+      <>
+        {open ? (
+          <div className="apphead-search-over">
+            {field}
+            {/* Выход из поиска ЗДЕСЬ, а не только тапом мимо: подложка
+                появляется вместе с выдачей, то есть с двух знаков.
+                Без этой кнопки раскрытое пустое поле было бы ловушкой —
+                закрыть его было бы нечем. */}
+            <button type="button" onClick={close} aria-label={t('app.search.close')}
+                    className="iconbtn shrink-0">
+              <IconClose />
+            </button>
+          </div>
+        ) : null}
+        {/* Значок остаётся в потоке и когда поле раскрыто: убрать его
+            значило бы схлопнуть ширину строки шапки, и стрелка «назад»
+            с именем экрана прыгнули бы под полем. Прячем видимость,
+            а не место. */}
+        <button type="button"
+                onClick={() => { setOpen(true); requestAnimationFrame(() => inputRef.current?.focus()) }}
+                aria-label={t('app.search.aria')} className="iconbtn shrink-0"
+                style={open ? { visibility: 'hidden' } : undefined}>
+          <IconSearch />
+        </button>
+        {panel}
+      </>
+    )
+  }
+
+  return (
+    <>
+      {field}
+      {panel}
     </>
   )
 }

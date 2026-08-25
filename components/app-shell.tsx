@@ -416,6 +416,14 @@ function AppShellInner({
   const stockTab = tabs.find((i) => i.href === '/app/inventory')
   const canScan = stockTab !== undefined && allowed(stockTab)
 
+  // Разделы для поиска. Отдаём УЖЕ отфильтрованный список — тот самый,
+  // из которого собраны панель и шторка профиля. Второй фильтр внутри
+  // поиска разошёлся бы с меню молча: поиск открывал бы раздел, которого
+  // человек в навигации не видит, или прятал бы тот, который видит.
+  const searchNav = [...all, PROFILE]
+    .filter(allowed)
+    .map((i) => ({ href: i.href, title: labelOf(t, i.label), Icon: i.icon }))
+
   // Называет ли экран нижняя панель. Если да — имени в шапке не нужно:
   // подпись под значком уже сказала, где мы (решение владельца
   // 19.08.2026). Сравнение точное, а не по префиксу: «Склад» подписан
@@ -618,7 +626,7 @@ function AppShellInner({
           </Link>
         </div>
         <div className="flex min-w-0 flex-1 justify-center px-6">
-          <GlobalSearch modules={modules} perms={perms} />
+          <GlobalSearch modules={modules} perms={perms} nav={searchNav} />
         </div>
         <div className="flex items-center gap-2 pr-7">
           <NotifyBell tenantPerms={perms ?? []} tenantId={tenantId} />
@@ -768,17 +776,19 @@ function AppShellInner({
                 (стрелка «назад») — там строка сжимается до значка,
                 иначе на 390px не помещается ни то, ни другое.
 
-                Само поле — не `input`, а КНОПКА в его виде: печатать
-                в шапке с backdrop-filter значит поднять клавиатуру
-                поверх содержимого; шторка держит поле, список
-                и клавиатуру в одном слое. */}
+                Поле — НАСТОЯЩИЙ `input`, и печатают прямо здесь
+                (решение владельца 25.08.2026, отменяет прежнее
+                «кнопка в виде поля плюс шторка снизу»). Выдача падает
+                под полем порталом в `body` — иначе `backdrop-filter`
+                шапки открыл бы её внутри самой полоски. Разбор —
+                в шапке `components/global-search.tsx`. */}
             {heading.back && heading.title && !inNav ? (
               <div className="min-w-0 flex-1">
                 <h1 className="apphead-title display truncate">{heading.title}</h1>
               </div>
             ) : null}
 
-            <GlobalSearch modules={modules} perms={perms}
+            <GlobalSearch modules={modules} perms={perms} nav={searchNav}
                           compact={Boolean(heading.back && heading.title && !inNav)} />
 
             {canScan && (
