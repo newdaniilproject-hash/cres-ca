@@ -2789,5 +2789,6 @@
   "settings.public.block.empty": "немає жодної опублікованої послуги чи товару",
   "settings.public.block.about": "не заповнено опис закладу",
   "settings.public.block.suspended": "заклад призупинено — напишіть у підтримку",
-  "profile.photo.sheet.title": "Фото профілю"
+  "profile.photo.sheet.title": "Фото профілю",
+  "app.chrome.menu.aria": "Розділи кабінету"
 }
