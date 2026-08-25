@@ -20,11 +20,24 @@ import { useT } from '@/lib/i18n/client'
 //
 // В обычном браузере это тоже работает и выглядит уместно — на телефоне
 // сайт ведёт себя так же. Отдельного «вебового» вида не заводим.
+//
+// ── ДВА КРАЯ, ОДИН КОМПОНЕНТ ───────────────────────────────────────────────
+//
+// `side="top"` открывает ту же шторку сверху. Заведено 20.08.2026 под
+// разбивку числа из карточки-героя: снизу открывается то, что человек
+// ДЕЛАЕТ (форма, выбор, подтверждение — под большой палец, с кнопкой
+// сохранения внизу), сверху — то, что он СМОТРИТ, не уходя с экрана.
+//
+// Вторым компонентом это делать нельзя, и причина не в экономии строк:
+// блокировка прокрутки под шторкой, портал в body, поправка на клавиатуру
+// и порог жеста — четыре места, каждое из которых уже стоило отладки.
+// Копия разъедется с оригиналом на первой же правке любого из них.
 export function Sheet({
   open,
   onClose,
   title,
   footer,
+  side = 'bottom',
   children,
 }: {
   open: boolean
@@ -32,6 +45,8 @@ export function Sheet({
   title?: string
   /** Прижатая к низу полоса действий: не уезжает вместе с содержимым. */
   footer?: React.ReactNode
+  /** Край, от которого шторка выезжает. Снизу — действия, сверху — данные. */
+  side?: 'bottom' | 'top'
   children: React.ReactNode
 }) {
   const t = useT()
@@ -95,6 +110,11 @@ export function Sheet({
   const [host, setHost] = useState<HTMLElement | null>(null)
   useEffect(() => { setHost(document.body) }, [])
 
+  // Знак жеста закрытия: нижнюю шторку закрывают вниз, верхнюю — вверх.
+  // Одним числом, а не парой веток в трёх обработчиках: ветки разъедутся
+  // на первой правке порога.
+  const away = side === 'top' ? -1 : 1
+
   function onTouchStart(e: React.TouchEvent) {
     // Тянуть можно только когда содержимое прокручено в самый верх:
     // иначе жест «вниз» — это прокрутка списка, а не закрытие.
@@ -104,7 +124,10 @@ export function Sheet({
 
   function onTouchMove(e: React.TouchEvent) {
     if (!start.current) return
-    const dy = e.touches[0].clientY - start.current.y
+    // `dy` считается В СТОРОНУ ЗАКРЫТИЯ, каким бы краем шторка ни была:
+    // ниже по коду порог и рывок сравниваются с одним положительным
+    // числом, а знак возвращается только в `transform`.
+    const dy = (e.touches[0].clientY - start.current.y) * away
     if (dy <= 0) { setDrag(0); return }
     // Сопротивление: шторка идёт за пальцем медленнее, и жест ощущается
     // как физический, а не как перетаскивание слоя.
@@ -124,7 +147,8 @@ export function Sheet({
   if (!open || !host) return null
 
   return createPortal(
-    <div className="sheet-layer" role="dialog" aria-modal="true" aria-label={title}>
+    <div className="sheet-layer" data-side={side}
+         role="dialog" aria-modal="true" aria-label={title}>
       <button
         type="button"
         aria-label={t('common.close.aria')}
@@ -136,7 +160,7 @@ export function Sheet({
         ref={panel}
         className="sheet"
         style={{
-          transform: drag ? `translateY(${drag}px)` : undefined,
+          transform: drag ? `translateY(${drag * away}px)` : undefined,
           transition: start.current ? 'none' : undefined,
         }}
         onTouchStart={onTouchStart}

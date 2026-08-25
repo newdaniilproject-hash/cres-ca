@@ -143,13 +143,33 @@ export function MovementsClient({
   // а не `router.replace`, — серверный рендер ради чистки параметра не
   // нужен. Без права записи форму не открываем: Sheet и так гейтится
   // canWrite, но признак из адреса всё равно вычищаем.
+  //
+  // ⚠️ ИЗМЕНЕНИЕ СОСЕДА, НАЗВАННОЕ ЯВНО (20.08.2026, экран склада).
+  // Вместе с `?new=1` принимаются `item` и `kind`: свайп по строке
+  // склада («Списати») ведёт сюда с уже выбранной позицией. Без этого
+  // жест теряет смысл — человек указал пальцем на засіб, а форма
+  // спрашивает его заново из списка в двести строк.
+  //
+  // Позиция ПРОВЕРЯЕТСЯ по списку, а не подставляется как есть: чужой
+  // или устаревший идентификатор в адресе иначе встал бы в поле выбора
+  // пустым значением, и кнопка «Зберегти» отказывала бы без объяснения.
   const sp = useSearchParams()
   useEffect(() => {
     if (sp.get('new') !== '1') return
-    if (canWrite) { setOpen(true); setErr('') }
+    if (canWrite) {
+      setOpen(true)
+      setErr('')
+      const wantKind = sp.get('kind') === 'goods' ? 'goods' : 'material'
+      const wantItem = sp.get('item') ?? ''
+      const pool = wantKind === 'goods' ? variants : materials
+      if (wantItem && pool.some((o) => o.id === wantItem)) {
+        setKind(wantKind)
+        setItemId(wantItem)
+      }
+    }
     window.history.replaceState(null, '',
       active === 'all' ? '/app/inventory/movements' : `/app/inventory/movements?type=${active}`)
-  }, [sp, canWrite, active])
+  }, [sp, canWrite, active, materials, variants])
 
   // Ключ идемпотентности живёт до успеха: двойное нажатие по кнопке
   // (обычное дело на телефоне) не спишет остаток дважды, а неудачная

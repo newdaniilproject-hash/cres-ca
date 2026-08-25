@@ -142,6 +142,14 @@
 
   --tap-min: 44px;
 
+  /* Высота липкой шапки кабинета (`.apphead`): её паддинги плюс
+     иконка-кнопка 40px. Токеном, а не числом по месту, потому что
+     на неё опирается ВТОРОЙ липкий слой — подзаголовки групп
+     в списках (`.group-head`). Разъехавшись, эти два числа дадут
+     либо щель с просвечивающим списком, либо подзаголовок,
+     наполовину уехавший под шапку. */
+  --apphead-h: calc(6px + var(--h-md) + 8px);
+
   /* Высота плавающей полосы главного действия (`.m-actionbar`):
      кнопка 52 плюс по 12 сверху и снизу. Токеном, а не числом по месту:
      на неё отступает прокручиваемая область, и разъехавшись, эти два
@@ -1450,6 +1458,220 @@ html.dark [data-brand] {
     text-align: right;
   }
 
+  /* ── Карточка-герой ──────────────────────────────────────────
+     Первый экран отвечает на ОДИН вопрос крупно, а не на четыре
+     мелко. Взято из переданных владельцем референсов (20.08.2026):
+     там первый блок — всегда одно большое число и под ним тонкая
+     полоса состояния, а не ряд равнозначных плиток.
+
+     Почему это не «ещё одна карточка»: у `.card` нет и не должно
+     быть крупного числа, а у `.metric` — места под полосу. Класс
+     общий, не складской: тем же составом («одно число + разбивка»)
+     живут финансы и записи, и заводить там второй такой блок
+     значило бы завести второй источник правды о его виде.
+
+     Радиус — ступень 16 (`--radius-calendar`): герой крупнее
+     карточки списка, и по правилу «радиус растёт вместе с объектом»
+     он берёт следующую ступень ЗАКРЫТОЙ шкалы, а не своё число. */
+  .hero {
+    @apply border;
+    padding: var(--space-4);
+    border-radius: var(--radius-calendar);
+    border-color: var(--color-border);
+    background: var(--color-surface);
+    box-shadow: var(--shadow-card);
+  }
+  .hero-value {
+    font-size: var(--text-3xl);
+    line-height: var(--lh-3xl);
+    font-weight: 750;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text);
+  }
+  /* Полоса состояния: доли одного целого, а не три отдельных полоски.
+     Зазор между долями — 2px, иначе соседние тона сливаются в один
+     градиент и доля перестаёт читаться. */
+  .hero-bar {
+    display: flex;
+    gap: 2px;
+    height: 6px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: var(--color-surface-2);
+  }
+  .hero-bar > span {
+    height: 100%;
+    border-radius: 999px;
+    transition: width var(--dur-base) var(--ease-out-soft);
+  }
+  /* Разбивка под полосой. Это КНОПКИ (нажатие фильтрует список),
+     поэтому зона нажатия честные 44px, а выбранное состояние видно
+     заливкой, а не одной рамкой на три плитки. */
+  .hero-stat {
+    @apply flex w-full items-center gap-2 text-left;
+    min-height: var(--tap-min);
+    padding: var(--space-2);
+    border-radius: var(--radius-control);
+    background: transparent;
+    transition: background var(--dur-fast);
+  }
+  .hero-stat:disabled { opacity: 0.45; }
+  .hero-stat[aria-pressed='true'] { background: var(--color-surface-2); }
+  .hero-dot {
+    width: 8px; height: 8px;
+    flex-shrink: 0;
+    border-radius: 999px;
+    background: var(--color-faint);
+  }
+  .hero-stat[data-tone='amber']   .hero-dot { background: var(--tone-amber); }
+  .hero-stat[data-tone='rose']    .hero-dot { background: var(--tone-rose); }
+  .hero-stat[data-tone='emerald'] .hero-dot { background: var(--tone-emerald); }
+
+  /* ── Липкий подзаголовок группы списка ───────────────────────
+     Список склада длиной в сотню позиций глазами не сканируется:
+     без группировки человек листает однородную ленту и не знает,
+     где он находится. Подзаголовок липнет ПОД шапкой кабинета —
+     отсюда `--apphead-h`, а не число по месту.
+
+     Он же кнопка сворачивания: группа, которую нельзя закрыть,
+     превращает «сто позиций» в «сто позиций и десять заголовков».
+     Размытие обязательно: под ним проезжают карточки, и на
+     непрозрачном фоне без размытия видно, как они «телепортируются»
+     под край. */
+  .group-head {
+    @apply sticky flex w-full items-center gap-2 text-left;
+    top: calc(var(--apphead-h) + env(safe-area-inset-top));
+    z-index: 5;
+    min-height: var(--tap-min);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-control);
+    background: color-mix(in srgb, var(--color-bg) 86%, transparent);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+  .group-head-title {
+    @apply min-w-0 flex-1 truncate font-bold uppercase;
+    font-size: var(--text-xs);
+    line-height: var(--lh-xs);
+    letter-spacing: 0.08em;
+    color: var(--color-muted);
+  }
+  /* Стрелка сворачивания. Поворотом ОДНОГО значка (`IconChevronRight`),
+     а не парой «вниз/вправо»: второй значок — второй источник правды
+     о состоянии группы, и они расходятся молча. Развёрнутая группа —
+     стрелка вниз, свёрнутая — вправо, как в списках настроек. */
+  .group-caret {
+    @apply flex shrink-0 items-center justify-center;
+    color: var(--color-faint);
+    transform: rotate(90deg);
+    transition: transform var(--dur-fast) var(--ease-out-soft);
+  }
+  .group-head[aria-expanded='false'] .group-caret { transform: none; }
+
+  /* ── Строка со скрытыми действиями (свайп) ───────────────────
+     Действие над позицией не должно стоить перехода в карточку
+     и возврата обратно. Действия лежат ПОД строкой и открываются
+     сдвигом влево; на широком экране ими не пользуются — там для
+     этого есть таблица с колонками.
+
+     `touch-action: pan-y` обязателен: без него горизонтальный жест
+     конкурирует с вертикальной прокруткой, и список «залипает».
+     Он же не мешает жесту «назад» — тот идёт вправо от края
+     (`components/swipe-back.tsx`), а здесь ловится только влево. */
+  .swipe-row {
+    position: relative;
+    border-radius: var(--radius-card);
+    overflow: hidden;
+    touch-action: pan-y;
+  }
+  .swipe-actions {
+    @apply absolute inset-y-0 right-0 flex items-stretch;
+    gap: 2px;
+  }
+  .swipe-action {
+    @apply flex flex-col items-center justify-center gap-1;
+    width: 72px;
+    font-size: calc(10px * var(--type-scale));
+    line-height: calc(13px * var(--type-scale));
+    font-weight: 600;
+    color: var(--color-accent-text);
+    background: var(--color-muted);
+  }
+  .swipe-action[data-tone='amber']  { background: var(--tone-amber); }
+  .swipe-action[data-tone='rose']   { background: var(--tone-rose); }
+  .swipe-action[data-tone='violet'] { background: var(--tone-violet); }
+  .swipe-action[data-tone='emerald']{ background: var(--tone-emerald); }
+  .swipe-action:active { filter: brightness(0.92); }
+  .swipe-face {
+    position: relative;
+    background: var(--color-surface);
+    transition: transform var(--dur-base) var(--ease-out-soft);
+    will-change: transform;
+  }
+
+  /* ── Стос быстрых действий у плавающей кнопки ────────────────
+     Плюс раскрывается в подписанные действия, а не ведёт в одно
+     из них. Причина — не мода: ряд плиток «Швидкі дії» занимал
+     полосу первого экрана постоянно, хотя нужен на секунду; а
+     безымянный «+», меняющий смысл под вкладкой, читать нельзя.
+
+     Появляются снизу вверх с задержкой по одному — так видно,
+     что это ОДИН орган управления раскрылся, а не всплыло меню. */
+  .fab-stack {
+    @apply fixed z-40 flex flex-col items-end gap-2;
+    /* Ровно над самой кнопкой: её низ (88px) плюс её рост (56px)
+       плюс зазор. Числа те же, что у `.fab` ниже, — они и обязаны
+       быть теми же, иначе стос налезет на кнопку. */
+    right: calc(16px + env(safe-area-inset-right));
+    bottom: calc(88px + 56px + var(--space-3) + env(safe-area-inset-bottom));
+  }
+  .fab-item {
+    @apply inline-flex items-center gap-2 border font-semibold;
+    height: 44px;
+    padding-inline: var(--space-3);
+    border-radius: 999px;
+    border-color: var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-text);
+    font-size: var(--text-sm);
+    box-shadow: var(--shadow-lift);
+    animation: fab-in var(--dur-base) var(--ease-out-soft) both;
+  }
+  .fab-item:active { transform: scale(0.97); }
+  .fab-item-icon {
+    width: 28px; height: 28px;
+    border-radius: 999px;
+    display: grid; place-items: center;
+    flex-shrink: 0;
+    background: var(--tone-blue-soft);
+    color: var(--tone-blue);
+  }
+  .fab-item-icon[data-tone='amber']   { background: var(--tone-amber-soft);   color: var(--tone-amber); }
+  .fab-item-icon[data-tone='rose']    { background: var(--tone-rose-soft);    color: var(--tone-rose); }
+  .fab-item-icon[data-tone='emerald'] { background: var(--tone-emerald-soft); color: var(--tone-emerald); }
+  .fab-item-icon[data-tone='violet']  { background: var(--tone-violet-soft);  color: var(--tone-violet); }
+  @keyframes fab-in {
+    from { opacity: 0; transform: translateY(10px) scale(0.96); }
+    to   { opacity: 1; transform: none; }
+  }
+  /* Затемнение под раскрытым стосом. Своё, а не `.sheet-backdrop`:
+     то затемнение под шторкой глухое (0.5), а здесь под ним обязан
+     читаться экран — человек выбирает действие ДЛЯ ТОГО, что видит. */
+  .fab-scrim {
+    @apply fixed inset-0 z-30;
+    background: color-mix(in srgb, var(--color-bg) 62%, transparent);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    animation: fade var(--dur-fast) both;
+  }
+  /* Крестик вместо плюса — поворотом того же значка. */
+  .fab-turn { transition: transform var(--dur-base) var(--ease-out-soft); }
+  .fab-turn[data-open='true'] { transform: rotate(45deg); }
+  /* Сама кнопка обязана остаться НАД затемнением: иначе раскрытый
+     стос нельзя закрыть тем же нажатием, которым его открыли. */
+  .fab-open { z-index: 40; }
+
   /* ── Плавающая кнопка ───────────────────────────────────────
      Главное действие экрана. Поднята над нижней панелью на её
      высоту плюс вырез — иначе на айфоне она садится ровно на
@@ -2131,6 +2353,52 @@ html[data-native] body:has(input:focus, textarea:focus) .bottomnav { display: no
 }
 .sheet-layer .sheet:not(:has(.sheet-foot)) .sheet-body {
   padding-bottom: calc(20px + env(safe-area-inset-bottom));
+}
+
+/* ── Шторка СВЕРХУ ────────────────────────────────────────────
+   Тот же компонент и тот же жест, только другой край. Заведена
+   не ради разнообразия: снизу открывается то, что человек ДЕЛАЕТ
+   (форма, выбор, подтверждение), а сверху — то, что он СМОТРИТ,
+   не уходя с экрана (разбивка числа из карточки-героя). Смешивать
+   нельзя: шторка снизу тянется под большой палец и там же стоит
+   кнопка сохранения, а справочная панель кнопки не имеет вовсе.
+
+   Всё, кроме края, наследуется от правил выше — поэтому здесь
+   переопределены ровно четыре вещи: край, скругление, граница
+   и направление входа. Второго компонента шторки не существует,
+   и заводить его нельзя: разъедутся жест, блокировка прокрутки
+   и поправка на клавиатуру — то есть три места, каждое из которых
+   уже стоило отладки.
+
+   Поправки на клавиатуру здесь нет намеренно: клавиатура растёт
+   снизу, а эта шторка прижата к верху и полей не содержит. */
+.sheet-layer[data-side='top'] .sheet {
+  top: 0;
+  bottom: auto;
+  padding: calc(8px + env(safe-area-inset-top)) 20px 20px;
+  border-top: 0;
+  border-bottom: 1px solid var(--color-border);
+  border-radius: 0 0 var(--radius-hero) var(--radius-hero);
+  animation: sheet-top-in var(--dur-base) var(--ease-out-soft) both;
+}
+/* Ручка у верхней шторки стоит ПОД содержимым: она показывает,
+   в какую сторону тянуть, а тянут её вверх. */
+.sheet-layer[data-side='top'] .sheet-grip {
+  order: 2;
+  margin: 12px auto 0;
+}
+.sheet-layer[data-side='top'] .sheet-body { padding-bottom: 0; }
+
+@keyframes sheet-top-in {
+  from { transform: translateY(-100%); }
+  to   { transform: none; }
+}
+@keyframes sheet-top-out {
+  from { transform: none; }
+  to   { transform: translateY(-100%); }
+}
+.sheet-layer[data-side='top'] .sheet.sheet-closing {
+  animation: sheet-top-out var(--dur-exit) var(--ease-out-soft) both;
 }
 
 /* ── Полоска уведомления сверху ───────────────────────────── */

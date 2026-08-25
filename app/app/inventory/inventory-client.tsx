@@ -9,6 +9,8 @@ import { ContainerForm, type BatchOption } from './container-form'
 import { RefsForm } from './refs-form'
 import { movementLabel } from './movements/movements-client'
 import { Sheet } from '@/components/sheet'
+import { QuickFab, type QuickAction } from '@/components/quick-fab'
+import { SwipeRow, type SwipeAction } from '@/components/swipe-row'
 import { enqueue, isNetworkError } from '@/lib/offline/queue'
 import { useToast } from '@/components/toast'
 import { useT } from '@/lib/i18n/client'
@@ -18,7 +20,7 @@ import { EXPIRY_BADGE, type ExpiryState, expiryState } from '@/lib/expiry'
 import { Scanner } from '@/components/scanner'
 import {
   IconAlert, IconArrows, IconBarcode, IconBeaker, IconBox, IconCheck,
-  IconClipboard, IconClock, IconClose, IconBag, IconInbox,
+  IconChevronRight, IconClipboard, IconClock, IconClose, IconBag, IconInbox,
   IconLayers, IconList, IconLow, IconMinus, IconPlus, IconQr, IconScan,
 } from '@/components/icons'
 
@@ -218,6 +220,18 @@ export function InventoryClient({
   const [moveBusy, setMoveBusy] = useState(false)
   const [camera, setCamera] = useState(initialScan)
   const inputRef = useRef<HTMLInputElement>(null)
+  // Разбивка запаса — ВЕРХНЕЙ шторкой. Снизу открывается то, что человек
+  // делает, сверху — то, что смотрит и закрывает, не уходя с экрана
+  // (`components/sheet.tsx`, `side`).
+  const [details, setDetails] = useState(false)
+  // Свёрнутые группы реєстру. Хранится множество СВЁРНУТЫХ, а не
+  // развёрнутых: группа, которой ещё нет в наборе (новая категория
+  // после приёмки), обязана появляться раскрытой, а не спрятанной.
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
+  // Засіб, выбранный свайпом по строке: шторка переноса открывается уже
+  // с ним. Иначе смысл жеста теряется — человек только что указал
+  // пальцем на позицию, а форма спрашивает её заново.
+  const [moveItem, setMoveItem] = useState<string>('')
 
   // ── Счётчики. Считаются по тем же порогам, что и рассылка, ──
   // иначе экран и письмо разойдутся: тут зелено, а письмо уже пришло.
@@ -245,6 +259,36 @@ export function InventoryClient({
       expired: items.filter((s) => s === 'expired').length,
     }
   }, [materials, containers, variants])
+
+  // ── Величины карточки-героя ──────────────────────────────────────────
+  //
+  // `hasValue` отвечает на вопрос «есть ли чему быть крупным числом».
+  // Ноль вместо неизвестной цены — утверждение «запас ничего не стоит»,
+  // и его никто не проверял: то же правило, по которому колонка «Сума»
+  // в таблице печатает прочерк, а не ноль. Без собівартості крупным
+  // идёт длина реєстру, а подпись называет, чего не хватает, — иначе
+  // владелец видит «0 ₴» и считает, что сломан склад, а не что пустое
+  // поле в карточках.
+  const stockCost = totals != null && totals.cost > 0 ? totals.cost : null
+  const hasValue = stockCost != null
+  // ВЕСЬ реєстр, а не текущий вид: карточка-герой отвечает за склад
+  // целиком, а «Реєстр · N позицій» под ней — за то, что видно сейчас.
+  // Это та же величина, что печатает подвал таблицы на широком экране
+  // («Показано 12 з 15»), и считается она здесь один раз на оба места.
+  // Товары без модуля каталога не считаются: их нет ни в одном списке.
+  const registryTotal =
+    materials.length + containers.length + (hasCatalog ? variants.length : 0)
+  // Знаменатель полосы состояний. Считается по тем же трём числам,
+  // что и сама полоса: четвёртое («Позицій») — итог, а не доля.
+  const stateTotal = stats.ok + stats.soon + stats.expired
+  const heroMeta = hasValue
+    ? [
+        t.plural('inventory.registry.count', registryTotal),
+        totals != null && totals.units > 0
+          ? t('inventory.hero.units', { n: t.number(totals.units) })
+          : null,
+      ].filter(Boolean).join(' · ')
+    : t('inventory.hero.noCost')
 
   // Условие плитки. Собрано ОДНОЙ функцией на все три списка: развести её
   // по спискам значит завести три определения слова «прострочено».
@@ -294,7 +338,25 @@ export function InventoryClient({
   // двоятся), а под «Прострочені» и «Закінчується» — и засоби, и банки.
   // Счётчики считают и то и другое, и это честно: нажатие на число
   // ставит фильтр, то есть у каждого числа есть выход.
-  const showContainers = tab === 'containers' || (tab === 'all' && flag !== 'all')
+  //
+  // ⚠️ ПОПРАВКА 20.08.2026, вместе с группой «Потребує уваги». Правило
+  // выше оставляло в спокойном виде ДЫРУ: горящая банка не показывалась
+  // нигде, пока человек не сообразит нажать «Прострочені». То есть
+  // группа, заведённая ради ответа «що горить», отвечала на него
+  // не полностью — а именно у банки срок горит чаще всего.
+  //
+  // Теперь в спокойном виде банки показываются, но ТОЛЬКО горящие:
+  // задвоения имён это не создаёт (здоровая банка по-прежнему не
+  // показывается рядом со своим засобом), а ответ становится полным.
+  const showContainers = tab === 'containers' || tab === 'all'
+  // В спокойном виде «Всі» из банок остаются только те, что просят
+  // внимания. На вкладке «Ємності» и под фильтром состояния — все,
+  // прошедшие фильтр: там их и пришли смотреть.
+  const calmView = tab === 'all' && flag === 'all'
+  const isAttention = (s: ExpiryState) => s === 'expired' || s === 'urgent' || s === 'soon'
+  const listedContainers = calmView
+    ? shownContainers.filter((c) => isAttention(expiryState(c.useBy)))
+    : shownContainers
   // ⚠️ Без модуля каталога товаров нет НИГДЕ, а не только на своей вкладке.
   // Вкладка «Товари» уже пряталась по `hasCatalog`, но вид «Всі» строки
   // товаров всё равно показывал — и каждая вела в `/app/catalog/<id>`,
@@ -305,7 +367,7 @@ export function InventoryClient({
 
   const visible =
     (showMaterials ? shownMaterials.length : 0)
-    + (showContainers ? shownContainers.length : 0)
+    + (showContainers ? listedContainers.length : 0)
     + (showGoods ? shownVariants.length : 0)
   const filtered = flag !== 'all'
   const emptyTenant = stats.total === 0
@@ -328,7 +390,7 @@ export function InventoryClient({
         }))
       : []),
     ...(showContainers
-      ? shownContainers.map((c) => ({
+      ? listedContainers.map((c) => ({
           key: `c-${c.id}`, kind: 'container' as const, state: expiryState(c.useBy), c,
         }))
       : []),
@@ -339,6 +401,85 @@ export function InventoryClient({
         }))
       : []),
   ].sort((a, b) => RANK[a.state] - RANK[b.state])
+
+  // ── ГРУППЫ РЕЄСТРУ ───────────────────────────────────────────────────
+  //
+  // Бриф владельца 20.08.2026, П4: «список из ~90 позиций одним потоком,
+  // без группировки, тяжело сканировать глазами» — группировать по
+  // категориям с липкими подзаголовками.
+  //
+  // Но плоский список тоже был решением, и оно записано выше: экран
+  // существует ради ответа «що горить», а в группах просроченная банка
+  // ложится внутрь своей категории и снова тонет. Поэтому обе вещи
+  // выполняются, а не одна вместо другой:
+  //
+  //   • «ПОТРЕБУЄ УВАГИ» — первая группа, собирает просроченное и
+  //     истекающее ИЗ ВСЕХ категорий. Свернуть её нельзя: это ответ
+  //     на главный вопрос экрана, а не раздел справочника;
+  //   • дальше категории по алфавиту, «Без категорії» последней —
+  //     иначе пустое поле продавца стояло бы во главе списка;
+  //   • при наложенном фильтре состояния группировки НЕТ вовсе. Там
+  //     весь список и есть один ответ, и делить его на подзаголовки
+  //     значит спрятать шесть строк за тремя заголовками.
+  //
+  // Сумма в подзаголовке — та же величина, что колонка «Сума» в таблице
+  // на широком экране (остаток × собівартість) и что «Топ категорії»
+  // в разбивке: три места, одно определение. Показывается, только если
+  // известна у ВСЕХ строк группы: сумма по половине позиций — это число,
+  // которое нельзя проверить, а выглядит оно как итог.
+  type Row = (typeof registry)[number]
+  const rowSum = (r: Row) =>
+    r.kind === 'material' ? (r.m.cost != null ? r.m.stock * r.m.cost : null)
+      : r.kind === 'goods' ? (r.v.tracked && r.v.cost != null ? r.v.stock * r.v.cost : null)
+        : null
+  const rowCategory = (r: Row) =>
+    r.kind === 'material' ? r.m.category
+      : r.kind === 'goods' ? r.v.category
+        : null
+
+  // Не `useMemo`: `registry` пересобирается каждой отрисовкой (это обычная
+  // константа), и запоминание по нему запоминало бы ничего, только
+  // обещая обратное следующему читателю.
+  const groups = buildGroups()
+  function buildGroups() {
+    const mk = (key: string, title: string, rows: Row[], pinned = false) => {
+      const sums = rows.map(rowSum)
+      return {
+        key, title, rows, pinned,
+        sum: sums.every((s) => s != null) ? sums.reduce((a, b) => a + (b ?? 0), 0) : null,
+      }
+    }
+    // Фильтр состояния уже сам себе ответ — подзаголовки ему не нужны.
+    if (flag !== 'all') return [mk('flat', '', registry)]
+
+    const attention: Row[] = []
+    const byCategory = new Map<string, Row[]>()
+    for (const r of registry) {
+      if (r.state === 'expired' || r.state === 'urgent' || r.state === 'soon') {
+        attention.push(r)
+        continue
+      }
+      // Ёмкость своей категории не имеет и иметь не может: она —
+      // вскрытая банка материнского засоба. Отдельная группа честнее
+      // прочерка, который читается как «не заполнено».
+      const name = r.kind === 'container'
+        ? t('inventory.tab.containers')
+        : rowCategory(r) ?? ''
+      const list = byCategory.get(name)
+      if (list) list.push(r); else byCategory.set(name, [r])
+    }
+
+    const rest = [...byCategory.entries()]
+      // Без категории — последней. Пустое поле продавца не имеет права
+      // стоять во главе его же склада.
+      .sort(([a], [b]) => (a === '' ? 1 : b === '' ? -1 : a.localeCompare(b)))
+      .map(([name, rows]) =>
+        mk(`c:${name}`, name || t('inventory.group.uncategorized'), rows))
+
+    return attention.length > 0
+      ? [mk('attention', t('inventory.group.attention'), attention, true), ...rest]
+      : rest
+  }
 
   // Короткая дата для плотных списков: «20 трав.». Через `t.date`,
   // а не своей сборкой — месяц называется на языке интерфейса.
@@ -525,6 +666,76 @@ export function InventoryClient({
       ? { onClick: () => setAdding('container'), label: t('inventory.action.addContainer') }
       : { onClick: () => setAdding('material'), label: t('inventory.action.addMaterial') }
 
+  // ── Швидкі дії: ОДИН орган управления вместо двух ────────────────────
+  //
+  // До 20.08.2026 входов в операции склада было два, в двух разных местах
+  // одного экрана: ряд плиток «Швидкі дії» под счётчиками (сканирование,
+  // приход, расход, перенос) и плавающая кнопка с заведением позиции.
+  // Ряд при этом стоял ПОСТОЯННО и занимал полосу первого экрана, хотя
+  // нужен на секунду.
+  //
+  // Теперь всё это — стос у плавающей кнопки (`components/quick-fab.tsx`),
+  // а ряд плиток с экрана снят. Первый экран отдан числам и списку.
+  //
+  // Порядок — снизу вверх по частоте: ближе всего к пальцу сканирование
+  // (мастер подходит сюда с банкой в руке), дальше всего — заведение
+  // новой позиции (работа администратора за столом).
+  const quickActions: QuickAction[] = [
+    fab.href
+      ? { key: 'create', label: fab.label, icon: IconPlus, tone: 'violet', href: fab.href }
+      : { key: 'create', label: fab.label, icon: IconPlus, tone: 'violet', onClick: fab.onClick },
+    { key: 'move', label: t('inventory.quick.move'), icon: IconArrows, tone: 'violet',
+      onClick: () => { setMoveItem(''); setAdding('move') } },
+    { key: 'writeOff', label: t('inventory.movements.action.writeOff'), icon: IconMinus, tone: 'amber',
+      href: '/app/inventory/movements?new=1' },
+    { key: 'receipt', label: t('inventory.quick.receipts'), icon: IconInbox, tone: 'emerald',
+      href: '/app/inventory/receipts?new=1' },
+    { key: 'scan', label: t('inventory.quick.scan'), icon: IconScan, tone: 'blue',
+      onClick: () => setCamera(true) },
+  ]
+
+  // ── Действия по свайпу строки ────────────────────────────────────────
+  //
+  // Бриф владельца, П4: «свайп по строке → быстрые действия вместо
+  // обязательного перехода в детальную карточку».
+  //
+  // «Відкрити» из списка брифа здесь НЕТ намеренно: строка и так
+  // открывается нажатием. Третья кнопка, повторяющая нажатие по той же
+  // строке, — ровно тот дубляж, из-за которого этот экран уже
+  // переделывался; жест нужен для того, чего нажатием не сделать.
+  //
+  // У ёмкости действия ДРУГИЕ и это не пробел: банку не «списывают»,
+  // её вскрывают, закрывают пустой или утилизируют — те же три перехода
+  // статуса, что и после сканирования, и той же функцией. Второго пути
+  // менять статус банки в продукте нет и заводить его нельзя.
+  function swipeFor(row: Row): SwipeAction[] {
+    if (row.kind === 'material') {
+      return [
+        { key: 'off', label: t('inventory.movements.action.writeOff'), icon: IconMinus, tone: 'amber',
+          onSelect: () => router.push(`/app/inventory/movements?new=1&item=${row.m.id}`) },
+        { key: 'move', label: t('inventory.quick.move'), icon: IconArrows, tone: 'violet',
+          onSelect: () => { setMoveItem(row.m.id); setAdding('move') } },
+      ]
+    }
+    if (row.kind === 'container') {
+      return row.c.status === 'sealed'
+        ? [{ key: 'open', label: t('inventory.container.openShort'), icon: IconCheck, tone: 'emerald',
+             onSelect: () => void openContainer(row.c.id, row.c.code) }]
+        : [
+          { key: 'finish', label: t('inventory.container.finished'), icon: IconCheck, tone: 'emerald',
+            onSelect: () => void finishContainer(row.c.id, row.c.code) },
+          { key: 'dispose', label: t('inventory.container.dispose'), icon: IconClose, tone: 'rose',
+            onSelect: () => void finishContainer(row.c.id, row.c.code, true) },
+        ]
+    }
+    // Товар без учёта остатка списывать не с чего: у него нет числа,
+    // которое движение могло бы уменьшить.
+    return row.v.tracked
+      ? [{ key: 'off', label: t('inventory.movements.action.writeOff'), icon: IconMinus, tone: 'amber',
+           onSelect: () => router.push(`/app/inventory/movements?new=1&kind=goods&item=${row.v.id}`) }]
+      : []
+  }
+
   // ── Остальные экраны раздела ─────────────────────────────────────────
   // Порядок — по частоте, а не по алфавиту. Печать наклеек показывается
   // только когда есть что печатать: пустой список печати — это лист
@@ -544,6 +755,161 @@ export function InventoryClient({
     { href: '/app/inventory/recipes', label: t('inventory.links.recipes'), icon: IconBeaker },
     { href: '/app/inventory/barcodes', label: t('inventory.links.barcodes'), icon: IconBarcode },
   ]
+
+  // ── Строка реєстру (телефон) ─────────────────────────────────────────
+  //
+  // Одна функция на все три вида записи и на обе раскладки списка
+  // (в группе и без групп). До 20.08.2026 это была ветка прямо внутри
+  // `map`, и вынести её пришлось ровно потому, что список перестал
+  // быть одним: копия ветки под второй список — три определения слова
+  // «строка склада», которые разъедутся на первой правке.
+  //
+  // ⚠️ НУЛЕВОЙ ОСТАТОК ПРИГЛУШАЕТСЯ, А НЕ ПРЯЧЕТСЯ (бриф, П4.2).
+  // Спрятанная позиция читается как «её нет в реестре» — и мастер
+  // заводит её второй раз; приглушённая говорит «она есть, но её
+  // нет на полке», а это разные вещи.
+  function renderRow(row: Row) {
+    // Метка состояния — ТОЛЬКО когда есть что сказать. Зелёное
+    // «Дійсний» на каждой здоровой строке — шум в чистом виде:
+    // список из двадцати засобів превращался в двадцать зелёных
+    // плашек, и на их фоне красная переставала выделяться.
+    const badge = row.state !== 'none' && row.state !== 'ok'
+      ? <span className={EXPIRY_BADGE[row.state]}>{t(EXPIRY_KEY[row.state])}</span>
+      : null
+    const empty = row.kind === 'material' ? row.m.stock <= 0
+      : row.kind === 'goods' ? (row.v.tracked && row.v.stock <= 0)
+        : row.c.volume != null && row.c.volume <= 0
+    const dim = empty ? { opacity: 0.6 } : undefined
+
+    const body = (() => {
+      if (row.kind === 'material') {
+        const mt = row.m
+        const low = mt.threshold > 0 && mt.stock <= mt.threshold
+        return (
+          <Link href={`/app/inventory/materials/${mt.id}`} className="list-card" style={dim}>
+            {/* Фото засоба (0111). Нет фото — значок, а не серый
+                прямоугольник: пустая рамка читается как «картинка
+                не загрузилась», то есть как поломка. */}
+            <span className="list-card-thumb">
+              {mt.imagePath
+                // eslint-disable-next-line @next/next/no-img-element
+                ? <img src={photoUrl(mt.imagePath)} alt=""
+                       style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                : <IconBox size={22} />}
+            </span>
+            <span className="min-w-0 flex-1">
+              {/* Название и номер партии — данные арендатора. */}
+              <span className="t-md clamp-2 block">{mt.name}</span>
+              {/* README: «Партія {batch} · до {дата}» и ничего больше.
+                  Бренд и PAO отсюда убраны намеренно: вчетвером они
+                  не помещались в строку и уезжали в многоточие — то есть
+                  не читалось НИЧЕГО, включая срок. Бренд — на карточке. */}
+              <span className="t-sm mt-0.5 block truncate prose-muted">
+                {[
+                  mt.batch ? t('inventory.materials.batch', { number: mt.batch }) : null,
+                  // Дата ПОЛНАЯ, а не «25 трав.», как в остальных плотных
+                  // списках: у срока годности год — половина смысла.
+                  mt.expiry ? t('inventory.materials.until', { date: t.date(mt.expiry) }) : null,
+                ].filter(Boolean).join(' · ') || '—'}
+              </span>
+              <span className="mt-1.5 flex flex-wrap items-center gap-2">
+                {badge}
+                {/* Остаток ТЕКСТОМ, а не плашкой (README): плашка справа
+                    читалась как второй бейдж состояния и спорила
+                    с настоящим. */}
+                <span className="tabular t-sm"
+                      style={{ color: low ? 'var(--color-warn)' : 'var(--color-muted)' }}>
+                  {t('inventory.registry.have', { qty: `${t.number(mt.stock)} ${mt.unit}` })}
+                </span>
+              </span>
+            </span>
+            <span aria-hidden style={{ color: 'var(--color-faint)' }}>›</span>
+          </Link>
+        )
+      }
+
+      if (row.kind === 'container') {
+        const c = row.c
+        return (
+          <div className="list-card" style={dim}>
+            {/* Ёмкость — это банка с QR-наклейкой, поэтому QR
+                в миниатюре: он же нарисован на самой банке. */}
+            <span className="list-card-thumb"><IconQr size={22} /></span>
+            <Link href={`/app/inventory/materials/${c.materialId}/pao`} className="min-w-0 flex-1">
+              <span className="t-md clamp-2 block">{c.material}</span>
+              <span className="t-sm mt-0.5 block truncate prose-muted">
+                {/* Строка READMEʼа «Партія · до дата» у банки читается
+                    как «код наліпки · до дати»: код наклеен на самой
+                    банке, и по нему её и опознают. */}
+                {[
+                  c.code,
+                  c.useBy
+                    ? t('inventory.container.until', { date: t.date(c.useBy) })
+                    : t('inventory.container.sealed'),
+                ].join(' · ')}
+              </span>
+              <span className="mt-1.5 flex flex-wrap items-center gap-2">
+                {badge}
+                {c.volume != null && (
+                  <span className="tabular t-sm prose-muted">
+                    {t('inventory.registry.have', {
+                      qty: `${t.number(c.volume)} ${c.unit ?? ''}`,
+                    })}
+                  </span>
+                )}
+              </span>
+            </Link>
+            {/* Кнопка «Відкрити» осталась на строке, хотя то же действие
+                лежит и под свайпом: вскрытие банки — самое частое
+                действие мастера у кресла, и прятать его за жест,
+                о котором надо догадаться, нельзя. Свайп здесь —
+                УСКОРЕНИЕ для того, кто уже знает, а не единственный
+                путь. У «Порожня» и «Утилізувати» второго входа
+                на строке нет намеренно: они редкие. */}
+            {c.status === 'sealed' ? (
+              <button className="btn-secondary t-sm shrink-0" disabled={busy === c.id}
+                      onClick={() => void openContainer(c.id, c.code)}>
+                {t('inventory.container.openShort')}
+              </button>
+            ) : (
+              <span aria-hidden style={{ color: 'var(--color-faint)' }}>›</span>
+            )}
+          </div>
+        )
+      }
+
+      // Строка товара ВЕДЁТ в карточку каталога. До 19.08.2026 товар был
+      // единственным элементом склада без входа: выглядел как расходник
+      // и ёмкость, но не открывался.
+      const v = row.v
+      const low = v.tracked && v.threshold > 0 && v.stock <= v.threshold
+      return (
+        <Link href={`/app/catalog/${v.offeringId}`} className="list-card" style={dim}>
+          <span className="list-card-thumb"><IconBag size={22} /></span>
+          <span className="min-w-0 flex-1">
+            <span className="t-md clamp-2 block">{v.title}</span>
+            <span className="t-sm mt-0.5 block truncate prose-muted">
+              {[
+                v.name,
+                v.reserved > 0 ? t('inventory.goods.reserved', { n: t.number(v.reserved) }) : null,
+              ].filter(Boolean).join(' · ')}
+            </span>
+            <span className="mt-1.5 flex flex-wrap items-center gap-2">
+              <span className="tabular t-sm"
+                    style={{ color: low ? 'var(--color-warn)' : 'var(--color-muted)' }}>
+                {v.tracked
+                  ? t('inventory.registry.have', { qty: `${t.number(v.stock)} ${v.unit}` })
+                  : t('inventory.goods.untracked')}
+              </span>
+            </span>
+          </span>
+          <span aria-hidden style={{ color: 'var(--color-faint)' }}>›</span>
+        </Link>
+      )
+    })()
+
+    return <SwipeRow key={row.key} actions={swipeFor(row)}>{body}</SwipeRow>
+  }
 
   return (
     <div className="flex flex-col gap-5">
@@ -695,23 +1061,115 @@ export function InventoryClient({
         </section>
       )}
 
+      {/* ── Картка-герой (телефон) ───────────────────────────────
+          Заведена 20.08.2026 по референсам владельца: первый экран
+          отвечает на ОДИН вопрос крупно, а не на четыре мелко.
+          Ряд из четырёх плиток-счётчиков она заменяет целиком.
+
+          ЧТО В НЕЙ ЧИСЛОМ. Вартість запасу — единственная величина
+          склада, которую владелец не может посчитать в уме и ради
+          которой открывает раздел не мастер, а он сам. Но если
+          собівартість не заведена ни у одной позиции, число было бы
+          нулём — то есть утверждением «запас ничего не стоит»,
+          которого никто не проверял (тем же правилом живёт колонка
+          «Сума» в таблице). Тогда крупным идёт длина реєстру,
+          а подпись честно говорит, чего не хватает.
+
+          ПОЛОСА — доли одного целого по СРОКУ ГОДНОСТИ, той же
+          меркой, что и рассылка предупреждений: экран и письмо
+          обязаны говорить одно и то же.
+
+          РАЗБИВКА ПОД ПОЛОСОЙ — ЭТО ФИЛЬТР. Здесь и только здесь:
+          статусные чипы, делавшие то же самое, из ряда ниже сняты.
+          У числа появился выход — нажал «Прострочені: 3» и видишь
+          эти три, — а у экрана перестало быть двух органов управления
+          одним и тем же.
+
+          Число без выхода — беда, о которой сообщили и не дали
+          способа её увидеть; поэтому же нулевое состояние отключено
+          (`disabled`), а не спрятано: пропадающая кнопка сдвигает
+          соседние, и ряд «прыгает» при каждом приходе. */}
+      <section className="hero rise-1 lg:hidden">
+        <button type="button" className="flex w-full items-start justify-between gap-3 text-left"
+                aria-haspopup="dialog" onClick={() => setDetails(true)}>
+          <span className="min-w-0">
+            <span className="eyebrow block">{hasValue
+              ? t('inventory.hero.value')
+              : t('inventory.hero.positions')}</span>
+            <span className="hero-value mt-1 block">{stockCost != null
+              ? t.money(stockCost)
+              : t.number(registryTotal)}</span>
+            <span className="t-sm mt-1 block truncate prose-muted">{heroMeta}</span>
+          </span>
+          {/* Указатель, а не кнопка «Деталі» словом: подпись рядом
+              с крупным числом спорила бы с ним за внимание, а сама
+              карточка и так нажимается целиком. */}
+          <span aria-hidden className="btn-icon shrink-0"><IconChevronRight size={18} /></span>
+        </button>
+
+        {/* Полосы нет, пока нечего делить: пустая дорожка под числом
+            читается как «данные не загрузились». */}
+        {stateTotal > 0 && (
+          <div className="hero-bar mt-4" aria-hidden>
+            {([
+              { key: 'ok', n: stats.ok, color: 'var(--tone-emerald)' },
+              { key: 'soon', n: stats.soon, color: 'var(--tone-amber)' },
+              { key: 'expired', n: stats.expired, color: 'var(--tone-rose)' },
+            ] as const).filter((s) => s.n > 0).map((s) => (
+              <span key={s.key}
+                    style={{ width: `${(s.n / stateTotal) * 100}%`, background: s.color }} />
+            ))}
+          </div>
+        )}
+
+        <div className="mt-2 grid grid-cols-3 gap-1">
+          {([
+            { key: 'ok', n: stats.ok, label: t('inventory.stats.short.ok'), tone: 'emerald' },
+            { key: 'soon', n: stats.soon, label: t('inventory.stats.short.soon'), tone: 'amber' },
+            { key: 'expired', n: stats.expired, label: t('inventory.stats.short.expired'), tone: 'rose' },
+          ] as const).map((s) => {
+            const on = flag === s.key
+            return (
+              <button key={s.key} type="button" className="hero-stat" data-tone={s.tone}
+                      aria-pressed={on} disabled={s.n === 0}
+                      onClick={() => setFlag(on ? 'all' : s.key)}>
+                <span aria-hidden className="hero-dot" />
+                <span className="min-w-0">
+                  <span className="tabular block font-bold"
+                        style={{ fontSize: 'var(--text-lg)', lineHeight: 'var(--lh-lg)' }}>
+                    {t.number(s.n)}
+                  </span>
+                  <span className="block truncate"
+                        style={{
+                          fontSize: 'calc(10px * var(--type-scale))',
+                          lineHeight: 'calc(13px * var(--type-scale))',
+                          color: 'var(--color-muted)',
+                        }}>
+                    {s.label}
+                  </span>
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      </section>
+
       {/* ── Чипы-фильтры ─────────────────────────────────────────
           Одной строкой с горизонтальной прокруткой. Перенос на вторую
           строку смешивал бы их с тем, что стоит рядом, — ровно так
           «+ Засіб» оказывался под «Товари» и читался как фильтр.
 
-          В ряду ДВЕ группы, и это из README: сначала нейтральные —
-          вид записи, — потом два СТАТУСНЫХ, «Прострочені» и
-          «Закінчуються», своим цветом (danger/warning на своём soft,
-          активный — белым на сплошном). Статусные чипы перенесли на
-          себя роль, которую до 19.08.2026 несли плитки-счётчики:
-          нажимаемое число — это ребус («почему одна плитка в рамке?»),
-          а пилюля читается как фильтр без объяснений. Плитки после
-          этого стали тем, чем и были задуманы, — четырьмя числами.
+          ⚠️ ЗДЕСЬ ТОЛЬКО ОДНА ОСЬ — ВИД ЗАПИСИ. Статусные чипы
+          («Прострочені», «Закінчуються») отсюда сняты 20.08.2026: тем
+          же фильтром управляет разбивка в карточке-герое выше, где
+          рядом с состоянием стоит его ЧИСЛО. Две пилюли и три плитки,
+          делающие одно и то же в двадцати пикселях друг от друга, —
+          тот самый дубляж, из-за которого экран уже переделывался.
 
-          Оси две и они НЕЗАВИСИМЫ: «Ємності» + «Прострочені» —
-          осмысленный вопрос («какие банки уже нельзя брать»), и
-          схлопывать их в один список значило бы отнять его. */}
+          Оси по-прежнему две и по-прежнему НЕЗАВИСИМЫ: «Ємності»
+          (здесь) + «Прострочені» (в герое) — осмысленный вопрос
+          («какие банки уже нельзя брать»), и схлопывать их в один
+          список значило бы отнять его. */}
       <div className="scroll-x rise-1 -mx-4 flex gap-2 px-4 pb-1 lg:hidden sm:mx-0 sm:px-0">
         {tabItems.map(([key, label]) => (
           <button key={key} onClick={() => switchTab(key)}
@@ -719,27 +1177,6 @@ export function InventoryClient({
             {label}
           </button>
         ))}
-        {/* Цвета — токенами и инлайном: у `.chip` нет статусных вариантов,
-            а заводить их в globals.css ради двух пилюль одного экрана
-            значит расширять общий словарь стилей под частный случай. */}
-        {([
-          { key: 'expired', label: t('inventory.stats.expired'),
-            ink: 'var(--color-danger)', soft: 'var(--color-danger-soft)' },
-          { key: 'soon', label: t('inventory.stats.soon'),
-            ink: 'var(--color-warn)', soft: 'var(--color-warn-soft)' },
-        ] as const).map((s) => {
-          const on = flag === s.key
-          return (
-            <button key={s.key} type="button" aria-pressed={on}
-                    onClick={() => setFlag(on ? 'all' : s.key)}
-                    className="chip shrink-0"
-                    style={on
-                      ? { background: s.ink, borderColor: s.ink, color: 'var(--color-accent-text)' }
-                      : { background: s.soft, borderColor: 'transparent', color: s.ink }}>
-              {s.label}
-            </button>
-          )
-        })}
       </div>
 
       {/* ── CRESKO Web: вкладки чертой (только lg) ───────────────
@@ -803,87 +1240,6 @@ export function InventoryClient({
             </button>
           )
         })}
-      </section>
-
-      {/* ── Счётчики ─────────────────────────────────────────────
-          По README: четыре в ряд, крупное число и мелкая подпись, без
-          значка. Четыре плитки со значками съедали треть первого
-          экрана, а число и так читается мгновенно.
-
-          Тон несёт смысл и не выбирается «для красоты»: rose — то,
-          что уже сломано, amber — то, что сломается, emerald — норма.
-          Первая плитка БЕЗ тона (README: «Позицій → `text`»): она
-          не состояние, а итог, и синий тут спорил бы с акцентом.
-          Тон постоянный, а не «серый, пока ноль»: плитка, меняющая
-          цвет вместе с числом, заставляет читать её дважды.
-
-          ⚠️ ЭТО ЧИСЛА, А НЕ КНОПКИ. Фильтр состояния уехал в статусные
-          чипы выше, и обратно его сюда не возвращать: одно и то же
-          действие в двух местах одного экрана — тот самый дубляж,
-          из-за которого экран переделывался. Нажимаемая плитка ещё
-          и сообщала об этом одной рамкой на четыре числа, то есть
-          не сообщала никак. На lg плитки другие (`.wmetric`) и там
-          нажатие осталось: у веб-раскладки нет ряда чипов. */}
-      <section className="rise-1 grid grid-cols-4 gap-2 lg:hidden">
-        {([
-          // Подписи КОРОТКИЕ и своими ключами. Четыре плитки в ряд на 390px
-          // дают около 86px на плитку, и «Мало на складі» переносится на две
-          // строки — плитка становится выше соседних, и ровный ряд ломается
-          // об одну подпись.
-          { key: 'total', n: stats.total, label: t('inventory.stats.short.total'), tone: undefined },
-          { key: 'ok', n: stats.ok, label: t('inventory.stats.short.ok'), tone: 'emerald' },
-          { key: 'soon', n: stats.soon, label: t('inventory.stats.short.soon'), tone: 'amber' },
-          { key: 'expired', n: stats.expired, label: t('inventory.stats.short.expired'), tone: 'rose' },
-        ] as const).map((s) => (
-          <div key={s.key} data-tone={s.tone} className="metric">
-            <span className="metric-value">{t.number(s.n)}</span>
-            <span className="metric-label">{s.label}</span>
-          </div>
-        ))}
-      </section>
-
-      {/* ── Швидкі дії ───────────────────────────────────────────
-          README: ЧЕТЫРЕ В РЯД, иконка-плашка 32px + подпись 10px.
-          Была уезжающая вбок лента — на 375px четвёртая плитка
-          оставалась за краем, и «Інвентаризація» существовала только
-          для того, кто догадался потянуть ряд пальцем.
-
-          Тона по README: Надходження — success, Списання — warning
-          (приход и расход разного знака), остальные нейтральные. */}
-      {/* На lg «Швидкі дії» скрыты: приймання уже в хедере экрана,
-          сканер — в шапке кабинета, а место этого блока в хендоффе
-          занимает правая рейка (отдельная работа). Дубли действий
-          на десктопе — тот же грех, за который переделывался телефон. */}
-      <section className="rise-2 lg:hidden">
-        <p className="eyebrow mb-2">{t('inventory.quick.title')}</p>
-        {/* ⚠️ ЗДЕСЬ ТОЛЬКО ДЕЙСТВИЯ, А НЕ ПЕРЕХОДЫ В РАЗДЕЛЫ.
-            Было наоборот: «Рухи» и «Інвентаризація» открывали ЭКРАНЫ,
-            то есть ряд «Швидкі дії» наполовину состоял из оглавления —
-            а оглавление раздела уже стоит ниже, картой «Ще у складі».
-            Теперь четыре из README: сканирование, приход, расход
-            и перенос. Первые две уводят на свои экраны с уже открытой
-            формой (`?new=1`) — тем же приёмом, каким `?scan=1` открывает
-            здесь камеру, — а не на список, где ту же кнопку надо
-            искать второй раз. «Рухи» и «Інвентаризація» никуда не
-            делись: они в «Ще у складі», где им и место. */}
-        <div className="quick-row">
-          <button type="button" className="quick-tile" onClick={() => setCamera(true)}>
-            <span className="quick-tile-icon" data-tone="blue"><IconScan size={18} /></span>
-            {t('inventory.quick.scan')}
-          </button>
-          <Link href="/app/inventory/receipts?new=1" className="quick-tile">
-            <span className="quick-tile-icon" data-tone="emerald"><IconPlus size={18} /></span>
-            {t('inventory.quick.receipts')}
-          </Link>
-          <Link href="/app/inventory/movements?new=1" className="quick-tile">
-            <span className="quick-tile-icon" data-tone="amber"><IconMinus size={18} /></span>
-            {t('inventory.movements.action.writeOff')}
-          </Link>
-          <button type="button" className="quick-tile" onClick={() => setAdding('move')}>
-            <span className="quick-tile-icon" data-tone="violet"><IconArrows size={18} /></span>
-            {t('inventory.quick.move')}
-          </button>
-        </div>
       </section>
 
       {/* ── Что сейчас отфильтровано ─────────────────────────────
@@ -971,142 +1327,55 @@ export function InventoryClient({
 
           {/* Карточки с зазором, а не одна карточка с разделителями:
               у строки миниатюра, два уровня текста и метка состояния —
-              в сплошном списке они слипаются (README, `.list-card`). */}
+              в сплошном списке они слипаются (README, `.list-card`).
+
+              ⚠️ ГРУППЫ, А НЕ ОДНА ЛЕНТА (бриф владельца 20.08.2026, П4).
+              Подзаголовок липнет под шапкой кабинета и сворачивается;
+              первой идёт несворачиваемая «Потребує уваги» — почему
+              именно так, разобрано у `buildGroups()`. */}
           <div className="flex flex-col gap-2">
-            {registry.map((row) => {
-              // Метка состояния — ТОЛЬКО когда есть что сказать. Зелёное
-              // «Дійсний» на каждой здоровой строке — шум в чистом виде:
-              // список из двадцати засобів превращался в двадцать зелёных
-              // плашек, и на их фоне красная переставала выделяться.
-              const badge = row.state !== 'none' && row.state !== 'ok'
-                ? <span className={EXPIRY_BADGE[row.state]}>{t(EXPIRY_KEY[row.state])}</span>
-                : null
-
-              if (row.kind === 'material') {
-                const mt = row.m
-                const low = mt.threshold > 0 && mt.stock <= mt.threshold
-                return (
-                  <Link key={row.key} href={`/app/inventory/materials/${mt.id}`}
-                        className="list-card">
-                    {/* Фото засоба (0111). Нет фото — значок, а не серый
-                        прямоугольник: пустая рамка читается как «картинка
-                        не загрузилась», то есть как поломка. */}
-                    <span className="list-card-thumb">
-                      {mt.imagePath
-                        // eslint-disable-next-line @next/next/no-img-element
-                        ? <img src={photoUrl(mt.imagePath)} alt=""
-                               style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        : <IconBox size={22} />}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      {/* Название и номер партии — данные арендатора. */}
-                      <span className="t-md clamp-2 block">{mt.name}</span>
-                      {/* README: «Партія {batch} · до {дата}» и ничего
-                          больше. Бренд и PAO отсюда убраны намеренно:
-                          вчетвером они не помещались в строку и уезжали
-                          в многоточие — то есть не читалось НИЧЕГО,
-                          включая срок. Бренд остался на карточке. */}
-                      <span className="t-sm mt-0.5 block truncate prose-muted">
-                        {[
-                          mt.batch ? t('inventory.materials.batch', { number: mt.batch }) : null,
-                          // Дата ПОЛНАЯ, а не «25 трав.», как в остальных
-                          // плотных списках: у срока годности год — половина
-                          // смысла, и «до 25 трав.» на просроченной банке
-                          // не отвечает на вопрос, просрочена она или нет.
-                          mt.expiry ? t('inventory.materials.until', { date: t.date(mt.expiry) }) : null,
-                        ].filter(Boolean).join(' · ') || '—'}
-                      </span>
-                      <span className="mt-1.5 flex flex-wrap items-center gap-2">
-                        {badge}
-                        {/* Остаток ТЕКСТОМ, а не плашкой (README):
-                            плашка справа читалась как второй бейдж
-                            состояния и спорила с настоящим. */}
-                        <span className="tabular t-sm"
-                              style={{ color: low ? 'var(--color-warn)' : 'var(--color-muted)' }}>
-                          {t('inventory.registry.have', {
-                            qty: `${t.number(mt.stock)} ${mt.unit}`,
-                          })}
-                        </span>
-                      </span>
-                    </span>
-                    <span aria-hidden style={{ color: 'var(--color-faint)' }}>›</span>
-                  </Link>
-                )
-              }
-
-              if (row.kind === 'container') {
-                const c = row.c
-                return (
-                  <div key={row.key} className="list-card">
-                    {/* Ёмкость — это банка с QR-наклейкой, поэтому QR
-                        в миниатюре: он же нарисован на самой банке. */}
-                    <span className="list-card-thumb"><IconQr size={22} /></span>
-                    <Link href={`/app/inventory/materials/${c.materialId}/pao`}
-                          className="min-w-0 flex-1">
-                      <span className="t-md clamp-2 block">{c.material}</span>
-                      <span className="t-sm mt-0.5 block truncate prose-muted">
-                        {/* Строка READMEʼа «Партія · до дата» у банки читается
-                            как «код наліпки · до дати»: код наклеен на самой
-                            банке, и по нему её и опознают. Дата вскрытия ушла
-                            на экран контроля PAO — в строку она не влезала,
-                            и уезжал в многоточие именно срок. */}
-                        {[
-                          c.code,
-                          c.useBy
-                            ? t('inventory.container.until', { date: t.date(c.useBy) })
-                            : t('inventory.container.sealed'),
-                        ].join(' · ')}
-                      </span>
-                      <span className="mt-1.5 flex flex-wrap items-center gap-2">
-                        {badge}
-                        {c.volume != null && (
-                          <span className="tabular t-sm prose-muted">
-                            {t('inventory.registry.have', {
-                              qty: `${t.number(c.volume)} ${c.unit ?? ''}`,
-                            })}
-                          </span>
-                        )}
-                      </span>
-                    </Link>
-                    {c.status === 'sealed' ? (
-                      <button className="btn-secondary t-sm shrink-0" disabled={busy === c.id}
-                              onClick={() => void openContainer(c.id, c.code)}>
-                        {t('inventory.container.openShort')}
-                      </button>
-                    ) : (
-                      <span aria-hidden style={{ color: 'var(--color-faint)' }}>›</span>
-                    )}
-                  </div>
-                )
-              }
-
-              // Строка товара ВЕДЁТ в карточку каталога. До 19.08.2026
-              // товар был единственным элементом склада без входа:
-              // выглядел как расходник и ёмкость, но не открывался.
-              const v = row.v
-              const low = v.tracked && v.threshold > 0 && v.stock <= v.threshold
+            {groups.map((g) => {
+              // Свёрнутость хранится множеством СВЁРНУТЫХ ключей, поэтому
+              // новая категория (появилась после приёмки) открыта сразу,
+              // а не спрятана только потому, что её никто не открывал.
+              const shown = g.pinned || !collapsed.has(g.key)
               return (
-                <Link key={row.key} href={`/app/catalog/${v.offeringId}`} className="list-card">
-                  <span className="list-card-thumb"><IconBag size={22} /></span>
-                  <span className="min-w-0 flex-1">
-                    <span className="t-md clamp-2 block">{v.title}</span>
-                    <span className="t-sm mt-0.5 block truncate prose-muted">
-                      {[
-                        v.name,
-                        v.reserved > 0 ? t('inventory.goods.reserved', { n: t.number(v.reserved) }) : null,
-                      ].filter(Boolean).join(' · ')}
-                    </span>
-                    <span className="mt-1.5 flex flex-wrap items-center gap-2">
-                      <span className="tabular t-sm"
-                            style={{ color: low ? 'var(--color-warn)' : 'var(--color-muted)' }}>
-                        {v.tracked
-                          ? t('inventory.registry.have', { qty: `${t.number(v.stock)} ${v.unit}` })
-                          : t('inventory.goods.untracked')}
+                <div key={g.key} className="flex flex-col gap-2">
+                  {g.title && (g.pinned ? (
+                    // Группа «Потребує уваги» не сворачивается: это ответ
+                    // на главный вопрос экрана, а не раздел справочника.
+                    // Поэтому она не кнопка — орган управления, который
+                    // ничего не переключает, читается как сломанный.
+                    <div className="group-head">
+                      <span aria-hidden className="hero-dot"
+                            style={{ background: 'var(--tone-rose)' }} />
+                      <span className="group-head-title">{g.title}</span>
+                      <span className="tabular t-xs shrink-0" style={{ color: 'var(--color-faint)' }}>
+                        {t.number(g.rows.length)}
                       </span>
-                    </span>
-                  </span>
-                  <span aria-hidden style={{ color: 'var(--color-faint)' }}>›</span>
-                </Link>
+                    </div>
+                  ) : (
+                    <button type="button" className="group-head" aria-expanded={shown}
+                            onClick={() => setCollapsed((prev) => {
+                              const next = new Set(prev)
+                              if (next.has(g.key)) next.delete(g.key); else next.add(g.key)
+                              return next
+                            })}>
+                      {/* Имя категории — данные арендатора. */}
+                      <span className="group-head-title">{g.title}</span>
+                      {/* Сначала СКОЛЬКО, потом НА СКОЛЬКО: число позиций
+                          отвечает на вопрос «стоит ли разворачивать»,
+                          а деньги — уже подробность. Обратный порядок
+                          читался как одна длинная сумма. */}
+                      <span className="tabular t-xs shrink-0" style={{ color: 'var(--color-faint)' }}>
+                        {[t.number(g.rows.length), g.sum != null ? t.money(g.sum) : null]
+                          .filter(Boolean).join(' · ')}
+                      </span>
+                      <span className="group-caret"><IconChevronRight size={16} /></span>
+                    </button>
+                  ))}
+                  {shown && g.rows.map(renderRow)}
+                </div>
               )
             })}
           </div>
@@ -1128,6 +1397,7 @@ export function InventoryClient({
             </div>
           )}
         </section>
+
 
         {/* ── CRESKO Web: таблица склада (только lg) ─────────────
             Колонки и ширины — из §8 ДОСЛОВНО: Товар (мініатюра 42px +
@@ -1347,7 +1617,11 @@ export function InventoryClient({
               <span className="tabular">
                 {t('inventory.web.table.shown', {
                   n: t.number(visible),
-                  total: t.number(materials.length + containers.length + variants.length),
+                  // `registryTotal`, а не сумма трёх массивов по месту:
+                  // без модуля каталога товаров нет ни в одном списке,
+                  // и «Показано 12 з 15» обещало бы три строки, которых
+                  // на экране не бывает ни при какой вкладке.
+                  total: t.number(registryTotal),
                 })}
               </span>
               {/* Денежные итоги — только на вкладке товаров, как и мобильные
@@ -1537,11 +1811,7 @@ export function InventoryClient({
           рядом с «Прийманням» (§8 — два действия в правом углу). Плавающая
           пилюля поверх таблицы — мобильный приём, и на широком экране она
           была бы вторым входом в то же самое. */}
-      {!(visible === 0 && emptyTenant) && (
-        fab.href
-          ? <Link href={fab.href} className="fab-wide lg:hidden">{fab.label}</Link>
-          : <button type="button" className="fab-wide lg:hidden" onClick={fab.onClick}>{fab.label}</button>
-      )}
+      {!(visible === 0 && emptyTenant) && <QuickFab actions={quickActions} />}
 
       {/* ── Формы заведения ──────────────────────────────────── */}
       <Sheet
@@ -1595,9 +1865,108 @@ export function InventoryClient({
         title={t('inventory.material.relocate.sheet')}
       >
         <MoveForm
+          key={moveItem || 'blank'}
+          initialMaterialId={moveItem}
           materials={materials} locations={locations} busy={moveBusy}
           onSave={(materialId, locationId, note) => void doRelocate(materialId, locationId, note)}
         />
+      </Sheet>
+
+      {/* ── Розбивка запасу: шторка СВЕРХУ ───────────────────────
+          То, что человек СМОТРИТ, а не делает: снизу открываются формы
+          с кнопкой сохранения под большим пальцем, сверху — справка,
+          которую закрывают тем же движением, каким открыли.
+
+          Содержимое здесь не выдумано под красивый блок: это ровно те
+          три карточки, что на широком экране стоят в правой рейке
+          (§8) и до 20.08.2026 с телефона были недоступны ВОВСЕ —
+          «Топ категорії за вартістю» и «Останні рухи» существовали
+          только для того, кто открыл кабинет на большом экране.
+          Один источник, две раскладки. */}
+      <Sheet open={details} side="top" onClose={() => setDetails(false)}
+             title={t('inventory.hero.details')}>
+        <div className="flex flex-col gap-4">
+          <div className="card-flat">
+            {([
+              [t('inventory.stats.total'), t.number(stats.total)],
+              ...(totals ? [
+                [t('inventory.goods.units'), t.number(totals.units)],
+                [t('inventory.goods.cost'), t.money(totals.cost)],
+                [t('inventory.goods.retail'), t.money(totals.retail)],
+              ] as [string, string][] : []),
+            ] as [string, string][]).map(([label, val]) => (
+              <div key={label} className="row">
+                <span className="t-sm prose-muted">{label}</span>
+                <span className="tabular t-md font-semibold">{val}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Полоска — доля от САМОЙ ДОРОГОЙ категории, а не от общей
+              суммы: доли от целого на четырёх строках дают четыре
+              одинаково коротких обрубка. Та же мерка, что в рейке. */}
+          {topCategories.length > 0 && (
+            <div>
+              <p className="eyebrow mb-2">{t('inventory.web.rail.topCategories')}</p>
+              {topCategories.map((c, i) => (
+                <div key={c.name} className={i === 0 ? '' : 'mt-3'}>
+                  <div className="flex items-baseline justify-between gap-2">
+                    {/* Имя категории — данные арендатора. */}
+                    <span className="t-sm min-w-0 truncate">{c.name}</span>
+                    <span className="tabular t-sm shrink-0 font-semibold">{t.money(c.sum)}</span>
+                  </div>
+                  <div className="mt-1.5 overflow-hidden"
+                       style={{ height: 5, borderRadius: 99, background: 'var(--color-surface-2)' }}>
+                    <div style={{
+                      height: '100%',
+                      width: `${Math.max(4, Math.round((c.sum / topCategories[0].sum) * 100))}%`,
+                      borderRadius: 99,
+                      background: BAR_TONE[i % BAR_TONE.length],
+                    }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Пустой журнал заголовка не получает: подпись над пустотой —
+              обещание данных, которых нет. */}
+          {movements.length > 0 && (
+            <div>
+              <p className="eyebrow mb-2">{t('inventory.web.rail.movements')}</p>
+              {movements.map((mv, i) => (
+                <div key={mv.id} className="flex items-center justify-between gap-3 py-2"
+                     style={{
+                       borderBottom: i === movements.length - 1
+                         ? undefined
+                         : '1px solid var(--color-border)',
+                     }}>
+                  <span className="min-w-0">
+                    <span className="t-sm block truncate font-semibold"
+                          style={{ color: MOVE_INK[mv.type] ?? 'var(--color-text)' }}>
+                      {movementLabel(t, mv.type)}
+                    </span>
+                    {/* Название позиции — данные арендатора. */}
+                    <span className="t-xs block truncate" style={{ color: 'var(--color-faint)' }}>
+                      {mv.title} · {t.dateTime(mv.createdAt, {
+                        day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+                      })}
+                    </span>
+                  </span>
+                  {/* Количество в журнале уже со знаком (0003). */}
+                  <span className="tabular t-sm shrink-0"
+                        style={{ color: MOVE_INK[mv.type] ?? 'var(--color-text)' }}>
+                    {mv.qty > 0 ? '+' : ''}{t.number(mv.qty)} {mv.unit}
+                  </span>
+                </div>
+              ))}
+              <Link href="/app/inventory/movements" className="btn-secondary mt-3 inline-flex"
+                    onClick={() => setDetails(false)}>
+                {t('inventory.web.rail.allMovements')}
+              </Link>
+            </div>
+          )}
+        </div>
       </Sheet>
 
       {/* ── Ручной ввод кода ─────────────────────────────────────
@@ -1639,16 +2008,22 @@ export function InventoryClient({
 // Своё состояние держит сама форма, а не экран: поля живут ровно столько,
 // сколько открыта шторка, и подниматься в родителя им незачем — иначе
 // закрытая шторка продолжала бы помнить наполовину заполненный перенос.
+// `initialMaterialId` приходит от свайпа по строке: человек уже указал
+// пальцем на позицию, и спрашивать её второй раз значит отменить смысл
+// жеста. Родитель монтирует форму заново (`key`), поэтому значение
+// читается один раз при создании состояния — эффект синхронизации
+// здесь был бы третьим местом, где живёт «что переносим».
 function MoveForm({
-  materials, locations, busy, onSave,
+  materials, locations, busy, onSave, initialMaterialId = '',
 }: {
   materials: Material[]
   locations: RefItem[]
   busy: boolean
+  initialMaterialId?: string
   onSave: (materialId: string, locationId: string, note: string) => void
 }) {
   const t = useT()
-  const [materialId, setMaterialId] = useState('')
+  const [materialId, setMaterialId] = useState(initialMaterialId)
   const [locationId, setLocationId] = useState('')
   const [note, setNote] = useState('')
 
