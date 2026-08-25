@@ -1622,6 +1622,68 @@ html.dark [data-brand] {
   .hero-stat[data-tone='rose']    .hero-dot { background: var(--tone-rose); }
   .hero-stat[data-tone='emerald'] .hero-dot { background: var(--tone-emerald); }
 
+  /* ── Фото человека и полоса «сделай это» ─────────────────────
+     Разложение из эталона, переданного владельцем 25.08.2026: круглое
+     фото крупно, кнопка правки — маленьким кружком на его краю.
+
+     Размер 96px, а не «побольше»: это следующая ступень после 66px
+     из хендоффа (карточка человека) и ещё помещается на 390px так,
+     что имя под ним не уезжает во вторую строку. */
+  .profile-photo {
+    position: relative;
+    display: grid; place-items: center;
+    width: 96px; height: 96px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: var(--color-accent-soft);
+    color: var(--color-accent-ink);
+    box-shadow: var(--shadow-card);
+  }
+  .profile-photo img { width: 100%; height: 100%; object-fit: cover; }
+  .profile-photo-letter { font-size: calc(34px * var(--type-scale)); font-weight: 700; }
+  /* Зона нажатия у кружка честные 44px, а видимый кружок — 32px:
+     сам значок маленький, но палец не обязан в него целиться
+     (проверка 1: зона берётся строкой, а не размером значка). */
+  .profile-photo-edit {
+    position: absolute;
+    right: -4px; bottom: -4px;
+    display: grid; place-items: center;
+    width: var(--tap-min); height: var(--tap-min);
+    color: var(--color-accent);
+  }
+  .profile-photo-edit::before {
+    content: '';
+    position: absolute;
+    width: 32px; height: 32px;
+    border-radius: 999px;
+    border: 2px solid var(--color-surface);
+    background: var(--color-accent);
+  }
+  .profile-photo-edit > * { position: relative; color: #fff; }
+  .profile-photo-edit:disabled { opacity: 0.5; }
+
+  /* Полоса «чего не хватает»: значок, текст, действие. Из эталона —
+     там это выделенная строка под шапкой с кнопкой справа.
+
+     Тон СВОЙ, а не `card`: полоса обязана отличаться от обычной
+     карточки, иначе она перестаёт быть заметной ровно тогда, когда
+     нужна. И не `danger`: это подсказка, а не поломка. */
+  .nudge {
+    @apply flex items-center gap-3 border;
+    padding: var(--space-3);
+    border-radius: var(--radius-card);
+    border-color: color-mix(in srgb, var(--tone-amber) 28%, transparent);
+    background: var(--tone-amber-soft);
+  }
+  .nudge-icon {
+    display: grid; place-items: center;
+    width: 34px; height: 34px;
+    flex-shrink: 0;
+    border-radius: var(--radius-control);
+    background: var(--color-surface);
+    color: var(--tone-amber);
+  }
+
   /* ── Липкий подзаголовок группы списка ───────────────────────
      Список склада длиной в сотню позиций глазами не сканируется:
      без группировки человек листает однородную ленту и не знает,

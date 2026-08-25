@@ -2,16 +2,18 @@
 
 import Link from 'next/link'
 import { afterSignOut } from '@/lib/where'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Sheet } from '@/components/sheet'
 import { ThemeToggle } from '@/components/theme'
 import { TextSize } from '@/components/text-size'
+import { LangSwitch } from '@/components/lang-switch'
+import { Fold } from '@/components/fold'
 import { useToast } from '@/components/toast'
 import { useConfirm } from '@/components/confirm'
 import { PasswordInput, PasswordStrength } from '@/components/auth-ui'
-import { IconExit, IconGear, IconLock, IconMail, IconUser } from '@/components/icons'
+import { IconAlert, IconExit, IconGear, IconLock, IconMail, IconPlus, IconUser } from '@/components/icons'
 import { humanAuthError } from '@/lib/auth-errors'
 import { dbErrorText } from '@/lib/errors/db'
 import { useT } from '@/lib/i18n/client'
@@ -32,54 +34,87 @@ type Role = (typeof ROLES)[number]
 const roleLabel = (t: T, r: string): string =>
   ((ROLES as readonly string[]).includes(r) ? t(`role.${r as Role}`) : r)
 
-// `onClick` превращает строку в кнопку с шевроном: имя и телефон теперь
-// правятся прямо отсюда, и строка обязана выглядеть нажимаемой — иначе
-// подсказка «имя печатается на наліпках» остаётся упрёком без выхода.
-function Row({ label, value, onClick }: {
-  label: string; value: React.ReactNode; onClick?: () => void
-}) {
-  const inner = (
-    <>
+// Тихая строка «подпись — значение» ВНУТРИ карточки-героя. Не кнопка:
+// правится всё одним входом («Редагувати дані»), а не по строке на поле.
+//
+// Отдельной карточки «Обліковий запис» здесь БОЛЬШЕ НЕТ, и это не
+// перестановка. Она повторяла шапку целиком: имя, почта и роль уже
+// названы выше, то есть половина экрана состояла из второго показа
+// того же самого (проверка 3 из «Как проходить экран»). Осталось ровно
+// то, чего в шапке не было, — почта и телефон.
+function Quiet({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex items-start justify-between gap-4"
+         style={{ paddingBlock: 'var(--space-2)' }}>
       <span className="t-sm shrink-0" style={{ color: 'var(--color-muted)' }}>{label}</span>
       {/* `break-words` — не оформление, а починка 20.08.2026: почта
           вроде `oksana.kovalchuk.zadorozhnia@example.com` это ОДНО слово
           без пробелов, и `min-w-0` его не ломает — он ужимает коробку,
           а не строку. На 390px такая почта расширяла страницу на 15px,
           и весь кабинет ездил вбок на экране профиля. */}
-      <span className="t-md min-w-0 break-words text-right">
-        {value}
-        {onClick && <span aria-hidden className="ml-2" style={{ color: 'var(--color-faint)' }}>›</span>}
-      </span>
-    </>
-  )
-  if (onClick) {
-    return (
-      <button type="button" onClick={onClick}
-              className="flex w-full items-start justify-between gap-4 text-left"
-              style={{ paddingBlock: 'var(--space-2)', minHeight: 'var(--tap-min)' }}>
-        {inner}
-      </button>
-    )
-  }
-  return (
-    <div className="flex items-start justify-between gap-4"
-         style={{ paddingBlock: 'var(--space-2)' }}>
-      {inner}
+      <span className="t-md min-w-0 break-words text-right">{value}</span>
     </div>
   )
 }
 
+/** Строка-действие со значком. Один вид на все действия экрана. */
+function ActionRow({ icon, title, desc, onClick, href, className = '' }: {
+  icon: React.ReactNode
+  title: string
+  desc: string
+  onClick?: () => void
+  href?: string
+  className?: string
+}) {
+  const inner = (
+    <>
+      <span className="flex min-w-0 items-center gap-3">
+        <span className="list-anchor">{icon}</span>
+        <span className="min-w-0">
+          <span className="t-md block">{title}</span>
+          <span className="t-xs block truncate" style={{ color: 'var(--color-faint)' }}>
+            {desc}
+          </span>
+        </span>
+      </span>
+      <span aria-hidden style={{ color: 'var(--color-faint)' }}>›</span>
+    </>
+  )
+  const cls = `row px-5 ${className}`
+  const style = { minHeight: 'var(--tap-min)' }
+  if (href) return <Link href={href} className={cls} style={style}>{inner}</Link>
+  return (
+    <button type="button" onClick={onClick} className={`${cls} w-full text-left`} style={style}>
+      {inner}
+    </button>
+  )
+}
+
 export function ProfileClient({
-  userId, email, name, phone, role, tenantName, tenantDraft, canSettings,
+  userId, tenantId, email, name, phone, avatarPath, role, tenantName, tenantDraft,
+  joinedAt, bookingsToday, bookingsWeek, canSettings,
 }: {
   userId: string
+  /** Нужен для пути файла: `<tenant_id>/avatars/<user_id>.<ext>` (0130). */
+  tenantId: string
   email: string
   name: string
   /** Телефон из `profiles.phone` — правится здесь же, шторкой. */
   phone: string
+  /** Путь файла в бакете `media`, а не полный адрес: домен меняется. */
+  avatarPath: string
   role: string
   tenantName: string
   tenantDraft: boolean
+  /** Когда человек появился в этом заведении. */
+  joinedAt: string | null
+  /**
+   * Мои записи. `null` — карточка мастера к учётной записи НЕ привязана,
+   * и тогда плиток нет вовсе: пустая плитка со счётчиком читается как
+   * «у меня ноль записей», а правда — «мы не знаем, какие ваши».
+   */
+  bookingsToday: number | null
+  bookingsWeek: number | null
   /** Есть ли `settings.read`. Считает сервер — см. `page.tsx`. */
   canSettings: boolean
 }) {
@@ -93,6 +128,7 @@ export function ProfileClient({
   const [mail, setMail] = useState(false)
   const [person, setPerson] = useState(false)
   const [kill, setKill] = useState(false)
+  const [more, setMore] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
 
   const [password, setPassword] = useState('')
@@ -103,6 +139,84 @@ export function ProfileClient({
   const [phoneVal, setPhoneVal] = useState(phone)
 
   const initial = (name || email).trim().charAt(0).toUpperCase()
+
+  // Публичный адрес фото. Бакет `media` раздаётся с CDN без подписи —
+  // так же, как фото товаров; подписывать аватар значило бы платить
+  // за подпись на каждой отрисовке экрана.
+  const [avatar, setAvatar] = useState(avatarPath)
+  // Метка версии живёт ОТДЕЛЬНО от пути, а не дописывается к нему.
+  // `getPublicUrl` кодирует свой аргумент целиком: путь с «?v=…» внутри
+  // превратился бы в имя файла со знаком вопроса, и картинка не нашлась бы.
+  const [bust, setBust] = useState(0)
+  const avatarSrc = avatar
+    ? supabase.storage.from('media').getPublicUrl(avatar).data.publicUrl
+      + (bust ? `?v=${bust}` : '')
+    : ''
+  const fileRef = useRef<HTMLInputElement | null>(null)
+
+  // ── Своё фото (0130) ────────────────────────────────────────────────
+  // Путь строго `<tenant_id>/avatars/<user_id>.<ext>` — политика хранилища
+  // сверяет ВСЕ ТРИ сегмента, и любой другой путь она отобьёт. Значит имя
+  // собирается здесь, а не приходит от выбора человека.
+  //
+  // `upsert: true` обязателен: второе фото ложится ПОВЕРХ первого, иначе
+  // в бакете копились бы файлы, а показывался всё равно один. Ради этого
+  // в 0130 заведена отдельная политика на UPDATE — без неё замена молча
+  // не проходила бы, а первая загрузка работала.
+  async function pickAvatar(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    // Поле обнуляем СРАЗУ: без этого выбор того же файла второй раз
+    // не вызывает `change`, и «попробовать ещё раз» не работает.
+    e.target.value = ''
+    if (!file) return
+    const ext = (file.name.split('.').pop() ?? 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '')
+    const path = `${tenantId}/avatars/${userId}.${ext || 'jpg'}`
+    setBusy('avatar')
+    const { error } = await supabase.storage.from('media')
+      .upload(path, file, { upsert: true, contentType: file.type })
+    if (error) { setBusy(null); toast.error(t('profile.photo.error'), error.message); return }
+    const { error: dbError } = await supabase.from('profiles')
+      .update({ avatar_url: path }).eq('id', userId)
+    setBusy(null)
+    if (dbError) { toast.error(t('profile.photo.error'), dbErrorText(t, dbError)); return }
+    // Тот же путь при замене — адрес не меняется, и браузер показал бы
+    // старый файл из кеша. Метка времени в запросе снимает это.
+    setAvatar(path)
+    setBust(Date.now())
+    toast.success(t('profile.photo.ok'))
+    router.refresh()
+  }
+
+  async function dropAvatar() {
+    setBusy('avatar')
+    // Сначала строка, потом файл: если упадёт удаление файла, экран уже
+    // не показывает фото, и человек не видит «удалил, а оно висит».
+    // Осиротевший файл в публичном бакете — меньшее зло, чем расхождение.
+    await supabase.from('profiles').update({ avatar_url: null }).eq('id', userId)
+    if (avatar) await supabase.storage.from('media').remove([avatar])
+    setBusy(null)
+    setAvatar('')
+    router.refresh()
+  }
+
+  // ── Чего не хватает ─────────────────────────────────────────────────
+  // Полоса «сделай это» показывается ТОЛЬКО когда есть что делать,
+  // и ровно одна за раз: список из трёх напоминаний на экране профиля
+  // читается как список ошибок, а не как подсказка. Порядок — по цене
+  // невыполнения: неопубликованный заклад не виден покупателю вовсе.
+  const nudge: { text: string; action: string; run: () => void } | null =
+    tenantDraft && canSettings
+      ? { text: t('profile.nudge.draft'), action: t('profile.nudge.draft.action'),
+          run: () => router.push('/app/settings') }
+      : !phone
+        ? { text: t('profile.nudge.phone'), action: t('profile.nudge.phone.action'),
+            run: () => { setFullName(name); setPhoneVal(phone); setPerson(true) } }
+        : !avatar
+          ? { text: t('profile.nudge.photo'), action: t('profile.nudge.photo.action'),
+              run: () => fileRef.current?.click() }
+          : null
+
+  const hasStats = bookingsToday != null && bookingsWeek != null
 
   async function changePassword(e: React.FormEvent) {
     e.preventDefault()
@@ -253,77 +367,118 @@ export function ProfileClient({
       <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_392px] lg:items-start lg:gap-5">
       <div className="flex flex-col gap-4">
 
-      {/* ── Кто вошёл ────────────────────────────────────────── */}
-      <section className="card rise-1 flex items-center gap-4">
-        {/* Размер аватара — классами, а не inline-стилем: в хендоффе
-            карточка человека несёт 66px, и на телефоне такой кружок
-            съедает четверть ширины. Inline-стиль перебил бы `lg:`. */}
-        <span className="avatarbtn h-14 w-14 shrink-0 text-[22px] lg:h-[66px] lg:w-[66px] lg:text-2xl">
-          {initial || <IconUser size={24} />}
-        </span>
-        <div className="min-w-0">
-          {/* Имя человека, почта и название заклада — данные, не строки. */}
-          <p className="display t-xl truncate lg:text-[21px]">{name || t('common.noName')}</p>
-          <p className="t-sm truncate" style={{ color: 'var(--color-muted)' }}>{email}</p>
-          <p className="mt-1 flex flex-wrap items-center gap-2">
+      {/* ── Кто я ────────────────────────────────────────────────
+          Разложено по эталону, переданному владельцем 25.08.2026:
+          крупное КРУГЛОЕ фото, под ним имя и метка, затем ряд плиток
+          с числами, затем полоса «сделай это» с кнопкой, затем чистый
+          список строк. Порядок именно такой — сверху то, с чем сюда
+          заходят, снизу механика (правило 1 прохода экрана).
+
+          Что взято НЕ дословно и почему: в эталоне три плитки-счётчика
+          «публикации / подписчики / подписки». Таких величин в продукте
+          нет, и рисовать их пустыми хуже, чем не рисовать вовсе, —
+          это уже названо на «Сьогодні» про «Акції» и рейтинг. Плитки
+          здесь показывают ЗАПИСИ и только тогда, когда карточка мастера
+          привязана к учётной записи, то есть когда «мои записи» —
+          осмысленная величина. */}
+      <section className="hero rise-1">
+        {/* На телефоне столбиком по центру — как в эталоне. На широком
+            экране фото уходит влево, а имя встаёт рядом: центрованная
+            колонка посреди карточки в 1100px читается как пустая
+            страница с человеком в середине. */}
+        <div className="flex flex-col items-center text-center lg:flex-row lg:gap-5 lg:text-left">
+        <div className="relative shrink-0">
+          {/* Фото — 96px. `img`, а не `next/image`: адрес приходит из
+              хранилища с меткой времени после замены, и оптимизатор
+              Next кешировал бы прошлое фото по тому же ключу. */}
+          <span className="profile-photo">
+            {avatarSrc
+              // eslint-disable-next-line @next/next/no-img-element
+              ? <img src={avatarSrc} alt="" width={96} height={96} />
+              : <span className="profile-photo-letter">{initial || <IconUser size={34} />}</span>}
+          </span>
+          <button type="button" className="profile-photo-edit"
+                  disabled={busy === 'avatar'}
+                  aria-label={avatar ? t('profile.photo.change') : t('profile.photo.add')}
+                  onClick={() => fileRef.current?.click()}>
+            <IconPlus size={16} />
+          </button>
+        </div>
+        {/* Поле выбора файла живёт ОДНО на экран: и кнопка на фото,
+            и полоса «Додайте фото» жмут его же. Второй `input`
+            разошёлся бы с первым по списку принимаемых типов. */}
+        <input ref={fileRef} type="file" accept="image/*" hidden onChange={pickAvatar} />
+
+        <div className="min-w-0 lg:flex-1">
+          <p className="display t-xl mt-3 max-w-full truncate lg:mt-0">{name || t('common.noName')}</p>
+          <p className="mt-1 flex flex-wrap items-center justify-center gap-2 lg:justify-start">
             <span className="badge-accent">{roleLabel(t, role)}</span>
             {tenantName && <span className="badge">{tenantName}</span>}
             {tenantDraft && <span className="badge-warn">{t('profile.badge.draft')}</span>}
           </p>
+          {joinedAt && (
+            <p className="t-xs mt-2" style={{ color: 'var(--color-faint)' }}>
+              {t('profile.joined', { date: t.date(joinedAt) })}
+            </p>
+          )}
         </div>
+        </div>
+
+        {hasStats && (
+          <div className="mt-4 grid w-full grid-cols-2 gap-2">
+            {/* Плитка ведёт в записи: число на экране обязано иметь
+                выход, иначе оно читается как нажимаемое и не работает
+                (проверка 2). */}
+            <Link href="/app/bookings" className="stat-tile items-center text-center">
+              <span className="stat-tile-value">{t.number(bookingsToday ?? 0)}</span>
+              <span className="stat-tile-label">{t('profile.stats.today')}</span>
+            </Link>
+            <Link href="/app/bookings?view=week" className="stat-tile items-center text-center">
+              <span className="stat-tile-value">{t.number(bookingsWeek ?? 0)}</span>
+              <span className="stat-tile-label">{t('profile.stats.week')}</span>
+            </Link>
+          </div>
+        )}
+
+        <div className="mt-3 w-full border-t pt-1 text-left"
+             style={{ borderColor: 'var(--color-border)' }}>
+          <Quiet label={t('profile.account.email')} value={email} />
+          <Quiet label={t('profile.account.phone')} value={phone || '—'} />
+        </div>
+
+        <button type="button" className="btn-secondary mt-3 w-full"
+                onClick={() => { setFullName(name); setPhoneVal(phone); setPerson(true) }}>
+          {t('profile.edit')}
+        </button>
       </section>
 
-      {/* ── Данные ───────────────────────────────────────────── */}
-      <section className="card rise-2">
-        <h2 className="t-sm mb-1" style={{ color: 'var(--color-faint)' }}>
-          {t('profile.account.title')}
-        </h2>
-        {/* Имя и телефон нажимаемы: открывают шторку «Особисті дані».
-            Почта — нет: она меняется только процедурой GoTrue (строка
-            «Змінити пошту» ниже), прямую правку отбивает сторож 0116. */}
-        <Row label={t('profile.account.name')} value={name || '—'}
-             onClick={() => { setFullName(name); setPhoneVal(phone); setPerson(true) }} />
-        <Row label={t('profile.account.phone')} value={phone || '—'}
-             onClick={() => { setFullName(name); setPhoneVal(phone); setPerson(true) }} />
-        <Row label={t('profile.account.email')} value={email} />
-        <Row label={t('common.role')} value={roleLabel(t, role)} />
-        <p className="field-hint mt-2">{t('profile.account.hint')}</p>
-      </section>
+      {/* ── Чего не хватает ──────────────────────────────────────
+          Из эталона: полоса с текстом и кнопкой прямо под шапкой.
+          У нас она не рекламная, а рабочая — говорит ровно то, чего
+          не хватает ИМЕННО ЗДЕСЬ, и исчезает, когда всё на месте.
+          Одна за раз: три подсказки подряд читаются как список
+          ошибок (проверка 3 — пустое состояние ОДНО). */}
+      {nudge && (
+        <section className="nudge rise-1">
+          <span aria-hidden className="nudge-icon"><IconAlert size={18} /></span>
+          <span className="t-sm min-w-0 flex-1">{nudge.text}</span>
+          <button type="button" className="btn-secondary shrink-0" onClick={nudge.run}>
+            {nudge.action}
+          </button>
+        </section>
+      )}
 
-      {/* ── Безопасность ─────────────────────────────────────────
-          Значок-якорь у каждой строки, как в макете CRESKO: там
-          у каждого пункта свой кружок со значком, а не голый текст
-          с шевроном. Один и тот же `.list-anchor`, что и у остальных
-          списков кабинета, — не заводим для профиля свой вид строки. */}
+      {/* ── Что здесь можно сделать ───────────────────────────────
+          Один вид строки на все три действия (`ActionRow`), а не три
+          похожие разметки: копии уже расходились в этом проекте, и
+          расходятся они не оформлением. */}
       <section className="card rise-2 !p-0">
-        <button type="button" onClick={() => setPass(true)}
-                className="row w-full px-5 text-left" style={{ minHeight: 'var(--tap-min)' }}>
-          <span className="flex min-w-0 items-center gap-3">
-            <span className="list-anchor"><IconLock size={18} /></span>
-            <span className="min-w-0">
-              <span className="t-md block">{t('profile.password.title')}</span>
-              <span className="t-xs block truncate" style={{ color: 'var(--color-faint)' }}>
-                {t('profile.password.desc')}
-              </span>
-            </span>
-          </span>
-          <span aria-hidden style={{ color: 'var(--color-faint)' }}>›</span>
-        </button>
-
-        <button type="button" onClick={() => setMail(true)}
-                className="row w-full px-5 text-left" style={{ minHeight: 'var(--tap-min)' }}>
-          <span className="flex min-w-0 items-center gap-3">
-            <span className="list-anchor"><IconMail size={18} /></span>
-            <span className="min-w-0">
-              <span className="t-md block">{t('profile.email.title')}</span>
-              <span className="t-xs block truncate" style={{ color: 'var(--color-faint)' }}>
-                {t('profile.email.desc')}
-              </span>
-            </span>
-          </span>
-          <span aria-hidden style={{ color: 'var(--color-faint)' }}>›</span>
-        </button>
-
+        <ActionRow icon={<IconLock size={18} />}
+                   title={t('profile.password.title')} desc={t('profile.password.desc')}
+                   onClick={() => setPass(true)} />
+        <ActionRow icon={<IconMail size={18} />}
+                   title={t('profile.email.title')} desc={t('profile.email.desc')}
+                   onClick={() => setMail(true)} />
         {/* Без `settings.read` страница разворачивает на `/app`. Ссылка,
             ведущая в редирект, читается как поломка — прячем целиком:
             пункт, который ничего не открывает, хуже отсутствующего.
@@ -334,63 +489,78 @@ export function ProfileClient({
             то есть дверь в один и тот же экран лежала на виду дважды.
             На телефоне сайдбара нет — там строка остаётся. */}
         {canSettings && (
-          <Link href="/app/settings" className="row px-5 lg:hidden"
-                style={{ minHeight: 'var(--tap-min)' }}>
-            <span className="flex min-w-0 items-center gap-3">
-              <span className="list-anchor"><IconGear size={18} /></span>
-              <span className="min-w-0">
-                <span className="t-md block">{t('profile.settings.title')}</span>
-                <span className="t-xs block truncate" style={{ color: 'var(--color-faint)' }}>
-                  {t('profile.settings.desc')}
-                </span>
-              </span>
-            </span>
-            <span aria-hidden style={{ color: 'var(--color-faint)' }}>›</span>
-          </Link>
+          <ActionRow href="/app/settings" className="lg:hidden"
+                     icon={<IconGear size={18} />}
+                     title={t('profile.settings.title')} desc={t('profile.settings.desc')} />
         )}
       </section>
 
+      {/* «Прибрати фото» — строкой здесь, а не крестиком на самом фото:
+          действие редкое, и место рядом с частым («змінити») ему
+          не положено. Появляется только когда фото есть. */}
+      {avatar && (
+        <button type="button" onClick={() => void dropAvatar()}
+                className="btn-ghost self-start" disabled={busy === 'avatar'}>
+          {t('profile.photo.remove')}
+        </button>
+      )}
+
       </div>
 
-      {/* ── Правая колонка: вид, размер текста и выход ──────────────── */}
+      {/* ── Правая колонка: вид и выход ─────────────────────────────── */}
       <div className="flex flex-col gap-4">
 
-      {/* ── Вид ──────────────────────────────────────────────── */}
-      <section className="card rise-3 flex items-center justify-between gap-3">
-        <span>
-          <span className="t-md block">{t('profile.theme.title')}</span>
-          <span className="t-xs block" style={{ color: 'var(--color-faint)' }}>
-            {t('profile.theme.desc')}
-          </span>
-        </span>
-        <ThemeToggle />
-      </section>
+      {/* ── Вигляд ───────────────────────────────────────────────
+          Три настройки одного рода («как мне это видно») лежат ОДНОЙ
+          карточкой и одинаковыми строками `.setting-row` — теми же,
+          что под аватаром. Было три карточки трёх разных форм подряд,
+          и соседние настройки читались как разные разделы.
 
-      {/* Размер текста — отдельной карточкой, а не в строку с темой:
-          ползунку нужна вся ширина, в строке он ужимается до огрызка. */}
+          Дублем шторки под аватаром это не стало и не станет: набор
+          здесь тот же по решению владельца (тема и выход — 15.08.2026,
+          размер текста «под аватаром И на экране профиля» — 18.08.2026).
+          Одинаковая раскладка — это и есть то, что делает два входа
+          одним местом, а не двумя разными настройками. */}
       <section className="card rise-3">
-        <TextSize />
+        <h2 className="eyebrow mb-1">{t('profile.view.title')}</h2>
+        <div className="setting-row">
+          <span className="setting-label">{t('theme.aria')}</span>
+          <ThemeToggle />
+        </div>
+        <div className="setting-row">
+          <span className="setting-label">{t('app.lang.aria')}</span>
+          <LangSwitch />
+        </div>
+        <div className="mt-1 border-t pt-3" style={{ borderColor: 'var(--color-border)' }}>
+          <TextSize />
+        </div>
       </section>
 
-      {/* ── Выход и удаление ───────────────────────────────────
-          На широком экране — карточка «Дії з акаунтом» (§17): три голые
-          кнопки на пустом фоне колонки 392px висели в воздухе и не
-          читались как один блок. На телефоне карточки нет намеренно:
-          там это последнее на экране, и рамка вокруг выхода делает
-          его похожим на ещё один раздел настроек. */}
+      {/* ── Выход ────────────────────────────────────────────────
+          Выход — ОДНА кнопка. «На всіх пристроях» и «Видалити акаунт»
+          ушли в свёрнутое: это действия раз в жизни, а стояли они тем
+          же весом, что ежедневный выход, и вдобавок голыми ссылками
+          на пустом фоне — так выглядит незаконченный экран, а не блок.
+
+          На широком экране карточка (§17 хендоффа): три кнопки на
+          пустой колонке 392px висели в воздухе. */}
       <section className="flex flex-col gap-2 rise-3 lg:rounded-2xl lg:border lg:border-[var(--color-border)] lg:bg-[var(--color-surface)] lg:p-4">
         <button type="button" onClick={() => void signOut()}
                 className="btn-secondary flex items-center justify-center gap-2">
           <IconExit size={18} /> {t('profile.signOut')}
         </button>
-        <button type="button" onClick={() => void signOutEverywhere()}
-                className="btn-ghost">
-          {t('profile.signOutAll')}
-        </button>
-        <button type="button" onClick={() => setKill(true)} className="btn-ghost"
-                style={{ color: 'var(--color-danger)' }}>
-          {t('profile.delete.open')}
-        </button>
+        <Fold title={t('profile.more')} open={more} onToggle={() => setMore((v) => !v)}>
+          <div className="flex flex-col gap-2">
+            <button type="button" onClick={() => void signOutEverywhere()}
+                    className="btn-ghost">
+              {t('profile.signOutAll')}
+            </button>
+            <button type="button" onClick={() => setKill(true)} className="btn-ghost"
+                    style={{ color: 'var(--color-danger)' }}>
+              {t('profile.delete.open')}
+            </button>
+          </div>
+        </Fold>
       </section>
 
       </div>
