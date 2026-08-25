@@ -61,6 +61,13 @@ type ScanHit = {
 type ContainerHit = {
   id: string; material: string; code: string; status: string
   use_by: string | null; days_left: number | null; expired: boolean
+  /**
+   * Засіб, якому належить банка. Функція `scan_container` віддає його
+   * з 0071, але тип клієнта про це не знав — і результат сканування
+   * не міг ПОСЛАТИ нікуди: ані на картку засоба, ані на розлив.
+   * Через це в скані не було головної дії ТЗ 3.2 над відкритою банкою.
+   */
+  material_id: string | null
 }
 /** Строка журнала для правой рейки CRESKO Web (последние движения). */
 type Movement = {
@@ -1143,6 +1150,23 @@ export function InventoryClient({
             </button>
           </div>
 
+          {/* ── ДІЇ НАД ВІДСКАНОВАНОЮ БАНКОЮ (ТЗ 3.2) ──────────────
+              Порядок — за частотою, а не за важливістю: майстер підходить
+              із банкою в руці, і перше, що він робить із ЗАПЕЧАТАНОЮ, —
+              відкриває, а з ВІДКРИТОЮ — відливає в дозатор.
+
+              ⚠️ РОЗЛИВУ ТУТ НЕ БУЛО ВЗАГАЛІ, і це був розрив просто
+              в центрі ТЗ 3.2. Причина технічна і не видна на екрані:
+              `scan_container` віддає `material_id` з 0071, але тип
+              результату в цьому файлі про нього не знав — тобто послати
+              скан на розлив було нікуди. Сканування залишалось довідкою
+              рівно там, де воно мало бути початком роботи.
+
+              Розлив веде на екран контролю з наміром і КОДОМ САМОЇ
+              БАНКИ (`?do=decant&c=…`): форма відкривається над тією
+              ємністю, яку щойно піднесли до камери, а не над «єдиною
+              відкритою». Наліпку на новий дозатор екран покаже одразу
+              після розливу — там вона й друкується. */}
           {scan.container && (
             <div className="mt-3 flex flex-wrap gap-2">
               {scan.container.status === 'sealed' && (
@@ -1153,6 +1177,13 @@ export function InventoryClient({
               )}
               {scan.container.status === 'opened' && (
                 <>
+                  {scan.container.material_id && (
+                    <Link className="btn-primary"
+                          href={`/app/inventory/materials/${scan.container.material_id}/pao`
+                            + `?do=decant&c=${scan.container.id}`}>
+                      {t('inventory.material.act.decant')}
+                    </Link>
+                  )}
                   <button className="btn-secondary" disabled={busy === scan.container.id}
                           onClick={() => void finishContainer(scan.container!.id, scan.container!.code)}>
                     {t('inventory.container.finished')}
@@ -1162,6 +1193,16 @@ export function InventoryClient({
                     {t('inventory.container.dispose')}
                   </button>
                 </>
+              )}
+              {/* Картка засоба — з будь-якого статусу: там паспорт,
+                  партія, документи і нотифікація. Дія над банкою вище,
+                  довідка про засіб тут; до 25.08.2026 скан не вів
+                  ні туди, ні туди. */}
+              {scan.container.material_id && (
+                <Link className="btn-ghost"
+                      href={`/app/inventory/materials/${scan.container.material_id}`}>
+                  {t('inventory.scan.item.open')}
+                </Link>
               )}
             </div>
           )}
