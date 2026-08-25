@@ -452,7 +452,7 @@ html.dark [data-brand] {
     transition: background var(--dur-fast), transform var(--dur-fast) var(--ease-out-soft), box-shadow var(--dur-fast);
   }
   .btn-primary:hover { background: var(--color-accent-hover); box-shadow: var(--shadow-card); }
-  .btn-primary:active { transform: scale(0.98); }
+  .btn-primary:active { filter: brightness(0.94); }
   /* Выключенная кнопка становится НЕЙТРАЛЬНОЙ, а не полупрозрачным
      акцентом. Прозрачность работала, пока акцент был бледно-голубым;
      на насыщенном кобальте она даёт белый текст на светло-синем —
@@ -475,7 +475,7 @@ html.dark [data-brand] {
     transition: border-color var(--dur-fast), background var(--dur-fast), transform var(--dur-fast);
   }
   .btn-secondary:hover { border-color: var(--color-accent); }
-  .btn-secondary:active { transform: scale(0.98); }
+  .btn-secondary:active { background: var(--color-surface-2); }
   .btn-secondary:disabled { opacity: 0.45; pointer-events: none; }
 
   .btn-ghost {
@@ -489,7 +489,7 @@ html.dark [data-brand] {
     transition: color var(--dur-fast), background var(--dur-fast);
   }
   .btn-ghost:hover { color: var(--color-text); background: var(--color-surface-2); }
-  .btn-ghost:active { background: var(--color-surface-2); transform: scale(0.98); }
+  .btn-ghost:active { background: var(--color-surface-2); }
   .btn-ghost:disabled { opacity: 0.4; pointer-events: none; }
 
   .btn-danger {
@@ -500,7 +500,7 @@ html.dark [data-brand] {
     transition: filter var(--dur-fast), transform var(--dur-fast);
   }
   .btn-danger:hover { filter: brightness(0.97); }
-  .btn-danger:active { transform: scale(0.98); filter: brightness(0.94); }
+  .btn-danger:active { filter: brightness(0.94); }
   .btn-danger:disabled { opacity: 0.4; pointer-events: none; }
 
   /* Состояние загрузки для btn-primary/btn-secondary/btn-danger:
@@ -536,7 +536,7 @@ html.dark [data-brand] {
     transition: color var(--dur-fast), background var(--dur-fast);
   }
   .btn-icon:hover { color: var(--color-text); background: var(--color-surface-2); }
-  .btn-icon:active { background: var(--color-surface-2); transform: scale(0.94); }
+  .btn-icon:active { background: var(--color-surface-2); }
   .btn-icon:disabled { opacity: 0.35; pointer-events: none; }
 
   /* Карточки */
@@ -742,7 +742,7 @@ html.dark [data-brand] {
     display: grid; place-items: center; font-size: 20px;
     transition: background var(--dur-fast), transform var(--dur-fast);
   }
-  .quick-action:active .quick-action-circle { transform: scale(0.94); background: var(--color-border); }
+  .quick-action:active .quick-action-circle { background: var(--color-border); }
 
   /* Состояния */
   .empty {
@@ -922,7 +922,7 @@ html.dark [data-brand] {
     color: var(--color-text);
     border-color: var(--color-border-strong);
   }
-  .iconbtn:active, .avatarbtn:active { transform: scale(0.94); }
+  .iconbtn:active, .avatarbtn:active { background: var(--color-surface-2); }
 
   /* Аватар — буква имени. Акцентная заливка, чтобы он читался как
      «это про меня», а не как ещё одна кнопка. */
@@ -1291,7 +1291,7 @@ html.dark [data-brand] {
     font-weight: 600;
     transition: border-color var(--dur-fast), transform var(--dur-fast);
   }
-  .quick-tile:active { transform: scale(0.97); }
+  .quick-tile:active { background: var(--color-surface-2); }
   .quick-tile-icon {
     width: 32px; height: 32px;
     border-radius: var(--radius-plate);
@@ -1358,7 +1358,7 @@ html.dark [data-brand] {
     min-height: var(--tap-min);
     transition: border-color var(--dur-fast), transform var(--dur-fast);
   }
-  .list-card:active { transform: scale(0.99); }
+  .list-card:active { background: var(--color-surface-2); }
   /* Название в карточке списка занимает ДВЕ строки, а не обрезается
      многоточием. У засобів имена длинные и различаются концом
      («Absolut Repair Mask» против «Absolut Repair Shampoo»), и обрезка
@@ -1646,7 +1646,7 @@ html.dark [data-brand] {
   .swipe-action[data-tone='rose']   { background: var(--tone-rose-soft);    color: var(--tone-rose); }
   .swipe-action[data-tone='violet'] { background: var(--tone-violet-soft);  color: var(--tone-violet); }
   .swipe-action[data-tone='emerald']{ background: var(--tone-emerald-soft); color: var(--tone-emerald); }
-  .swipe-action:active { transform: scale(0.96); }
+  .swipe-action:active { filter: brightness(0.92); }
   .swipe-face {
     position: relative;
     background: var(--color-surface);
@@ -1682,7 +1682,7 @@ html.dark [data-brand] {
     box-shadow: var(--shadow-lift);
     animation: fab-in var(--dur-base) var(--ease-out-soft) both;
   }
-  .fab-item:active { transform: scale(0.97); }
+  .fab-item:active { filter: brightness(0.96); }
   /* Значок в пункте стоса — МОНОХРОМНЫЙ. Первая версия красила каждый
      пункт в свой тон (синий, зелёный, оранжевый, фиолетовый), и это
      прямое нарушение постоянного ограничения системы: цвет — только
@@ -1770,7 +1770,7 @@ html.dark [data-brand] {
     font-size: var(--text-sm);
   }
   .fab:hover, .fab-wide:hover { background: var(--color-accent-hover); }
-  .fab:active, .fab-wide:active { transform: scale(0.95); }
+  .fab:active, .fab-wide:active { filter: brightness(0.94); }
 
   /* Надзаголовок секции: капслок, разрядка, ПРИГЛУШЁННЫЙ.
      Акцентным он был до сверки с прототипом (19.08.2026, снимок
@@ -2301,27 +2301,24 @@ html[data-native] .appshell {
    клавиатура. Прячем на время набора. */
 html[data-native] body:has(input:focus, textarea:focus) .bottomnav { display: none; }
 
-/* Отклик нажатия. Кнопка обязана проседать под пальцем: без этого
-   нажатие ощущается как промах, и человек жмёт второй раз. Только
-   в обёртке и только на сенсорном экране — у мыши есть :hover. */
-@media (hover: none) {
-  html[data-native] button:active,
-  html[data-native] a:active,
-  html[data-native] [role='button']:active {
-    transform: scale(0.975);
-    transition: transform var(--dur-instant) var(--ease-out-soft);
-  }
-  /* Полосу вкладок не давим целиком — давим только сам пункт. */
-  html[data-native] .bottomnav:active { transform: none; }
-  /* Затемнение шторки — кнопка на ВЕСЬ экран (закрытие по тапу мимо),
-     и общий отклик давил весь фон: по краям вспыхивали светлые полосы.
-     Затемнению отклик не положен — оно не действие, а выход. */
-  html[data-native] .sheet-backdrop:active { transform: none; }
-  /* `.card-flat:active` здесь СТОЯЛ и давил ЛЮБУЮ серую карточку —
-     блок «Залишок» в форме позиции читался нажимаемым, хотя нажимать
-     в нём нечего (скрин владельца 19.08.2026). Отклик — признак
-     действия; карточка без действия остаётся неподвижной. Не возвращать. */
-}
+/* ── ЗУМА ПРИ НАЖАТИИ БОЛЬШЕ НЕТ ─────────────────────────────────
+   Решение владельца 25.08.2026: «не надо анимацию зума и отклика
+   тактильного это не удобно». Здесь стояло правило, ужимавшее ЛЮБУЮ
+   кнопку и ссылку в обёртке (`transform: scale(0.975)`), а рядом —
+   двенадцать таких же `:active` у отдельных классов. Удалены все,
+   и вибрация (`lib/haptic.ts`) вместе с ними: правило 8, «выключено
+   значит удалено».
+
+   Отклик на нажатие при этом ОСТАЛСЯ — он обязателен по правилу 6
+   («ответ на нажатие и загрузка данных — разные сроки»). Просто он
+   теперь цветом, а не размером: фон элемента темнеет на касание.
+   Цвет не двигает соседей и не заставляет глаз пересчитывать
+   раскладку, а именно движение владелец и назвал неудобным.
+
+   Не возвращать `transform: scale()` в `:active` ни точечно, ни
+   «только для этой кнопки» — жалоба была ровно про то, что интерфейс
+   дёргается под пальцем, и одна дёргающаяся кнопка заметнее всех
+   спокойных. */
 
 /* Размер кнопки в шапке — бургер на корневом экране, «назад»
    на карточке (в одном слоте, взаимоисключающе). `display` здесь

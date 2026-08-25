@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { haptic } from '@/lib/haptic'
 
 // Повадки, которых человек не замечает, пока их нет, и замечает сразу,
 // когда их нет. Собраны в одном месте, а не размазаны по экранам —
@@ -130,7 +129,7 @@ export function NativeFeel() {
       }
       bar.style.transform = `translateY(${dist - 44}px)`
       bar.style.opacity = String(Math.min(1, dist / THRESHOLD))
-      if (!armed && dist > THRESHOLD) { armed = true; haptic.tap() }
+      if (!armed && dist > THRESHOLD) armed = true
       if (armed) bar.classList.add('ready'); else bar.classList.remove('ready')
     }
 
@@ -143,7 +142,6 @@ export function NativeFeel() {
         // `transform` держал его смещение, и без сброса он остался бы
         // болтаться посреди экрана на всё время обновления.
         if (bar) { bar.style.transform = 'translateY(0)'; bar.style.opacity = '1' }
-        haptic.select()
         startTransition(() => router.refresh())
         bar = null
         return
