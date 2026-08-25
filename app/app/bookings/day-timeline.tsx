@@ -4,11 +4,12 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useT } from '@/lib/i18n/client'
 import { localeOf } from '@/lib/i18n/format'
-import { IconBack, IconChevronRight, IconUser } from '@/components/icons'
+import { IconBack, IconCalendar, IconChevronRight, IconUser } from '@/components/icons'
 import { eventTone, isVoid, statusLabel, type B } from './status'
 import { dayOf, shiftDay } from './week'
 import { dayHref, dayLabel } from './month'
 import { BookingSheet } from './booking-sheet'
+import { NewBookingButton } from './new-booking'
 
 // ── Таймлайн дня (хендофф CRESKO, раздел D «Записи», вид «День») ────────────
 //
@@ -21,7 +22,13 @@ import { BookingSheet } from './booking-sheet'
 //
 // Что это даёт взамен: СВОБОДНЫЙ ЧАС виден как отдельная строка. Ради
 // неё вид и существует — «куда я могу поставить клиента» на неделе
-// не читается вовсе, а здесь это единственная пунктирная плашка.
+// не читается вовсе, а здесь это тонкая черта между записями.
+//
+// ⚠️ Именно ЧЕРТА, а не плашка (бриф владельца 20.08.2026, П3.2):
+// свободный промежуток и запись — величины разного веса, и пока они
+// выглядели одинаково, день из двух записей читался как день из восьми
+// событий. День БЕЗ записей вовсе не рисует ни одной черты: там стоит
+// одно пустое состояние с кнопкой, а не двенадцать одинаковых строк.
 const HOUR_MIN = 8   // границы дня по умолчанию: салон работает с 8
 const HOUR_MAX = 20  // до 20, и уже этого сетка не сужает никогда
 const GUTTER = 42    // колонка часов слева, README дословно
@@ -32,10 +39,13 @@ const GUTTER = 42    // колонка часов слева, README досло�
 // — 45 хв). Пустая плашка, обещающая невозможное, хуже её отсутствия.
 const MIN_FREE = 15
 
-export function DayTimeline({ bookings, day }: {
+export function DayTimeline({ bookings, day, tenantId, canWrite }: {
   bookings: B[]
   /** Показанный день, `ГГГГ-ММ-ДД`. Живёт в адресе — разбор в `page.tsx`. */
   day: string
+  tenantId: string
+  /** `orders.write` — то же право, которое проверяет сам `create_booking`. */
+  canWrite: boolean
 }) {
   const t = useT()
   const [open, setOpen] = useState<B | null>(null)
@@ -172,10 +182,40 @@ export function DayTimeline({ bookings, day }: {
       {/* Число записей акцентом — из README. Оно отвечает на вопрос,
           с которым мастер открывает день, до того как он прочитает
           хоть одну строку. */}
-      <p className="tabular" style={{ fontSize: 13, fontWeight: 650, color: 'var(--color-accent-ink)' }}>
-        {t.plural('bookings.day.count', count)}
-      </p>
+      {/* На пустом дне счётчика нет: «0 записів» прямо над карточкой
+          «На цей день записів немає» говорит то же самое вторым разом. */}
+      {!(ready && count === 0) && (
+        <p className="tabular" style={{ fontSize: 13, fontWeight: 650, color: 'var(--color-accent-ink)' }}>
+          {t.plural('bookings.day.count', count)}
+        </p>
+      )}
 
+      {/* ── ПУСТОЙ ДЕНЬ — ОДНО СОСТОЯНИЕ, А НЕ ДВЕНАДЦАТЬ ПУСТЫХ ПЛАШЕК ──
+          Бриф владельца 20.08.2026, П3.1. Раньше день без записей рисовал
+          двенадцать одинаковых пунктирных строк «Вільний час» — с восьми
+          до восьми, — и это занимало весь экран, ничего не сообщая:
+          «свободно всё» видно и без перечисления часов.
+
+          Кнопка здесь — ТОТ ЖЕ `NewBookingButton`, что и в шапке, а не
+          второй вход в действие: экземпляр один на компонент, форма одна,
+          и появляется он ровно тогда, когда на экране больше ничего нет.
+          Это тот же приём, что у пустого склада и пустых финансов.
+
+          `ready` в условии обязателен: до гидратации записей нет ни у
+          одного дня (часы браузера ещё неизвестны), и без него ПОЛНЫЙ
+          день на первом кадре показал бы «записів немає». */}
+      {ready && count === 0 ? (
+        <div className="card">
+          <div className="empty">
+            <span className="empty-icon"><IconCalendar size={24} /></span>
+            <p className="empty-title">{t('bookings.day.empty')}</p>
+            <p className="empty-desc">{t('bookings.day.emptyHint')}</p>
+            {canWrite && (
+              <NewBookingButton tenantId={tenantId} className="btn-primary" />
+            )}
+          </div>
+        </div>
+      ) : (
       <div className="flex flex-col gap-2">
         {hours.map((h) => {
           const list = byHour.get(h) ?? []
@@ -204,9 +244,15 @@ export function DayTimeline({ bookings, day }: {
 
           return (
             <div key={h} className="flex items-start gap-2">
+              {/* Отступ сверху равняет номер часа с ПЕРВЫМ содержимым
+                  строки, а не с фиксированной высотой: у карточки записи
+                  своя внутренняя рамка в 10px, у тонкой черты свободного
+                  окна — 2px, и одно число на оба случая оставляло номер
+                  часа висеть ниже черты, которую он подписывает. */}
               <span className="tabular shrink-0"
                     style={{
-                      width: GUTTER, textAlign: 'right', paddingTop: 10,
+                      width: GUTTER, textAlign: 'right',
+                      paddingTop: items[0]?.free ? 2 : 10,
                       fontSize: 12, fontWeight: 600, color: 'var(--color-faint)',
                     }}>
                 {hourLabel(h)}
@@ -233,17 +279,32 @@ export function DayTimeline({ bookings, day }: {
                   if (it.free) {
                     const [s, e] = it.free
                     return (
+                      // ── СВОБОДНОЕ ОКНО — ТОНКИЙ РАЗДЕЛИТЕЛЬ ──────────
+                      //
+                      // Бриф владельца 20.08.2026, П3.2: свободный
+                      // промежуток не должен весить столько же, сколько
+                      // запись. Плашка 44px с рамкой и заливкой давала
+                      // ровно это — отсутствие клиента выглядело так же
+                      // весомо, как клиент, и день из двух записей
+                      // читался как день из восьми событий.
+                      //
+                      // Теперь это черта с подписью времени: величина
+                      // та же (настоящие границы окна, а не круглый час),
+                      // веса нет. Заливки и рамки нет вовсе — отсутствие
+                      // объекта не рисуется объектом.
                       <span key={`f${s}`} style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        gap: 8, minHeight: 'var(--tap-min)', padding: '10px 12px',
-                        borderRadius: 'var(--radius-control)',
-                        border: '1px dashed var(--color-border-strong)',
-                        background: 'var(--color-surface-2)',
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        padding: '2px 2px',
                       }}>
-                        <span className="tabular" style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-muted)' }}>
+                        <span className="tabular" style={{
+                          fontSize: 11, fontWeight: 600, color: 'var(--color-faint)',
+                        }}>
                           {atMin(s)} – {atMin(e)}
                         </span>
-                        <span style={{ fontSize: 12, color: 'var(--color-faint)' }}>
+                        <span aria-hidden style={{
+                          flex: 1, height: 1, background: 'var(--color-border)',
+                        }} />
+                        <span style={{ fontSize: 11, color: 'var(--color-faint)' }}>
                           {t('bookings.day.free')}
                         </span>
                       </span>
@@ -312,6 +373,7 @@ export function DayTimeline({ bookings, day }: {
           )
         })}
       </div>
+      )}
 
       {/* Точки статуса, как в списке дня, здесь нет: состояние записи
           в плашке несут и тон заливки, и бейдж словом, а третий показ

@@ -2693,6 +2693,7 @@
   "bookings.day.count.few": "{n} записи",
   "bookings.day.count.many": "{n} записів",
   "bookings.day.empty": "На цей день записів немає",
+  "bookings.day.emptyHint": "Весь день вільний. Поставте клієнта — або перегляньте сусідній день стрілками вгорі.",
   "bookings.day.free": "Вільний час",
   "bookings.calendar.dot.aria": "є записи",
   "catalog.materials": "Витратники: {n}",
