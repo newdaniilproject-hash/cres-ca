@@ -3,6 +3,7 @@
 import { useEffect } from 'react'
 import { useToast } from '@/components/toast'
 import { useT } from '@/lib/i18n/client'
+import { list } from '@/lib/offline/queue'
 
 // Service worker и предложение обновиться.
 //
@@ -59,31 +60,112 @@ export function PwaProvider() {
     return () => screen.orientation?.removeEventListener?.('change', lock)
   }, [])
 
+  // ── НОВАЯ ВЕРСИЯ ПОДХВАТЫВАЕТСЯ САМА ────────────────────────────────
+  //
+  // Требование владельца 25.08.2026: «чтобы любое изменение было
+  // мгновенное и не требовало дополнительно обновлять страницу или
+  // перезаходить в приложение».
+  //
+  // Половину этого продукт уже умел: оболочка тихо перезапрашивает
+  // СОДЕРЖИМОЕ при возврате в приложение (`components/app-shell.tsx`).
+  // Но содержимое — это данные, а не КОД. Бандл остаётся тот, что приехал
+  // при открытии, и выкаченная новая версия человеку не видна, пока он
+  // не закроет приложение начисто. Ровно это и произошло сегодня.
+  //
+  // Прежний путь через `updatefound` service worker'а сработать НЕ МОГ:
+  // `public/sw.js` — статический файл, байт в байт одинаковый во всех
+  // сборках, а браузер сравнивает именно файл воркера. Механизм стоял
+  // и был мёртв по построению. Разбор — в шапке `app/api/version/route.ts`.
+  //
+  // Теперь сравниваются две строки: вшитая в работающий бандл
+  // (`NEXT_PUBLIC_BUILD_ID`) и та, что отдаёт сервер прямо сейчас.
+  //
+  // ── КОГДА ПЕРЕЗАГРУЖАЕМ МОЛЧА, А КОГДА СПРАШИВАЕМ ───────────────────
+  //
+  // Молча — только когда терять нечего: человек вернулся в приложение,
+  // на экране нет открытой шторки, он ничего не набирает, и в очереди
+  // офлайна пусто. Тогда он видит просто новую версию, и это ровно та
+  // бесшовность, которую просили.
+  //
+  // Во всех остальных случаях — предложение с кнопкой. Перезагрузить
+  // страницу под пальцем мастера, который заполняет журнал, значит стереть
+  // ему введённое; «мгновенно» такой ценой не покупается.
+  useEffect(() => {
+    const mine = process.env.NEXT_PUBLIC_BUILD_ID ?? 'dev'
+    // В разработке обе стороны дают `dev` — сравнивать нечего.
+    if (mine === 'dev') return
+
+    let asked = false
+
+    // Занято ли чем-то, что нельзя терять. Проверяем РАЗМЕТКУ, а не свой
+    // флаг: слоёв уже несколько (шторка, стос действий, сканер), они
+    // открываются из разных мест, и первый забытый флаг вернул бы ошибку
+    // молча — тот же довод, что в `components/native-feel.tsx`.
+    const busy = () => {
+      if (document.querySelector('.sheet-layer, .fab-scrim, [role="dialog"]')) return true
+      const el = document.activeElement as HTMLElement | null
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) {
+        return true
+      }
+      return false
+    }
+
+    const offer = () => {
+      if (asked) return
+      asked = true
+      toast.push({
+        kind: 'info',
+        text: t('pwa.update.text'),
+        detail: t('pwa.update.detail'),
+        timeout: 0,
+        action: {
+          label: t('pwa.update.action'),
+          run: () => window.location.reload(),
+        },
+      })
+    }
+
+    const check = async () => {
+      if (document.visibilityState !== 'visible') return
+      try {
+        const res = await fetch('/api/version', { cache: 'no-store' })
+        if (!res.ok) return
+        const { id } = (await res.json()) as { id?: string }
+        if (!id || id === mine) return
+        // Незакрытая очередь офлайна — это несохранённая работа мастера.
+        // Перезагрузка её не потеряет (очередь в IndexedDB), но досылка
+        // прервётся на середине, а это хуже, чем подождать.
+        const pending = await list().catch(() => [])
+        if (busy() || pending.length > 0) { offer(); return }
+        window.location.reload()
+      } catch {
+        // Нет сети — нет и новой версии. Молчим: это не поломка.
+      }
+    }
+
+    // Возврат в приложение — главный момент проверки: человек только что
+    // не работал, и именно тогда подмена безболезненна.
+    const onVis = () => { if (document.visibilityState === 'visible') void check() }
+    document.addEventListener('visibilitychange', onVis)
+    // И раз в четверть часа для тех, кто держит приложение открытым весь
+    // день, не сворачивая. Чаще незачем: выкат — редкое событие, а лишний
+    // запрос с телефона мастера стоит трафика.
+    const timer = setInterval(() => void check(), 15 * 60_000)
+    return () => {
+      document.removeEventListener('visibilitychange', onVis)
+      clearInterval(timer)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return
+    // Регистрируем ради запасного экрана «немає мережі» — и только.
+    // Слушателя `updatefound` здесь БОЛЬШЕ НЕТ: он не мог сработать
+    // (см. выше), а мёртвый обработчик рядом с работающим заставляет
+    // следующего читателя гадать, какой из двух действует.
     const onLoad = () => {
-      navigator.serviceWorker.register('/sw.js').then((reg) => {
-        // Появилась новая сборка — предлагаем перезагрузиться, а не
-        // подсовываем её молча посреди работы.
-        reg.addEventListener('updatefound', () => {
-          const sw = reg.installing
-          if (!sw) return
-          sw.addEventListener('statechange', () => {
-            if (sw.state === 'installed' && navigator.serviceWorker.controller) {
-              toast.push({
-                kind: 'info',
-                text: t('pwa.update.text'),
-                detail: t('pwa.update.detail'),
-                timeout: 0,
-                action: {
-                  label: t('pwa.update.action'),
-                  run: () => { sw.postMessage('skip-waiting'); window.location.reload() },
-                },
-              })
-            }
-          })
-        })
-      }).catch(() => {
+      navigator.serviceWorker.register('/sw.js').catch(() => {
         // Регистрация падает на http и в приватном режиме — это не ошибка
         // приложения, и пугать ею мастера не нужно.
       })
@@ -91,7 +173,6 @@ export function PwaProvider() {
     if (document.readyState === 'complete') onLoad()
     else window.addEventListener('load', onLoad)
     return () => window.removeEventListener('load', onLoad)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return null
