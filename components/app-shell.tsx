@@ -5,7 +5,6 @@ import { afterSignOut } from '@/lib/where'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, createContext, useContext, useEffect, useRef, useState, useTransition } from 'react'
 import { ThemeToggle } from '@/components/theme'
-import { TextSize } from '@/components/text-size'
 import { LangSwitch } from '@/components/lang-switch'
 import { NotifyBell } from '@/components/notify-bell'
 import { GlobalSearch } from '@/components/global-search'
@@ -17,7 +16,7 @@ import type { T } from '@/lib/i18n/translate'
 import type { TenantModule } from '@/lib/tenant'
 import {
   IconBack, IconBag, IconBox, IconCalendar, IconCheck, IconDoc,
-  IconChevronRight, IconExit, IconGear, IconHome, IconMoney, IconScan, IconScissors,
+  IconChevronRight, IconExit, IconGear, IconGrid, IconHome, IconMoney, IconScan, IconScissors,
   IconUser, IconUsers,
 } from '@/components/icons'
 
@@ -722,9 +721,12 @@ function AppShellInner({
               </Link>
             ))}
           </nav>
-          {/* Тема и язык — две настройки одного рода, поэтому стоят рядом
-              и здесь, и в шторке под аватаром. Разносить их по разным
-              местам значит заставить искать вторую там, где нашлась первая. */}
+          {/* Тема и язык — две настройки одного рода и стоят рядом.
+              Это ДЕСКТОПНЫЙ подвал сайдбара: нижней панели там нет,
+              и «Профіль» — обычный пункт списка, а не вкладка под
+              большим пальцем. На телефоне обе живут на экране профиля
+              (решение владельца 25.08.2026), и второго их показа
+              в шторке разделов больше нет. */}
           <div className="mt-8 flex flex-col gap-1 border-t pt-4"
                style={{ borderColor: 'var(--color-border)' }}>
             <div className="setting-row">
@@ -823,9 +825,25 @@ function AppShellInner({
               </Link>
             )}
 
+            {/* ── ЗДЕСЬ БОЛЬШЕ НЕ ЛИЦО, А ЗНАЧОК МЕНЮ ─────────────────
+                Решение владельца 25.08.2026 («и вверху фото профиля,
+                и внизу — не многовато?»). ОТМЕНЯЕТ ту часть решения
+                15.08.2026, которая отправляла под аватар тему, язык,
+                размер текста и выход.
+
+                Дело было не в том, что фото стояло дважды, а в том, что
+                два ОДИНАКОВЫХ лица вели в РАЗНЫЕ места: здесь меню
+                разделов, внизу — экран профиля. Человек жмёт своё лицо
+                и получает то одно, то другое.
+
+                Теперь у каждого знака одно значение: этот открывает
+                РАЗДЕЛЫ, которых нет в нижней панели, и больше ничего.
+                Всё личное — тема, язык, размер текста, выход — живёт
+                на экране «Профіль», куда ведёт фото внизу. Ничего
+                не потеряно: там оно уже было. */}
             <button type="button" onClick={() => setMenu(true)}
-                    aria-label={t('app.chrome.avatar.aria')} className="avatarbtn shrink-0">
-              <Avatar url={avatarUrl} initial={initial} />
+                    aria-label={t('app.chrome.menu.aria')} className="iconbtn shrink-0">
+              <IconGrid size={20} />
             </button>
           </div>
 
@@ -882,45 +900,16 @@ function AppShellInner({
         </nav>
       )}
 
-      {/* ── Под аватаром: остальные разделы, тема, выход ─────── */}
-      <Sheet open={menu} onClose={() => setMenu(false)}>
-        {/* Шапка шторки по хендоффу: аватар 52px, имя 16px/700, под ним
-            роль и заведение 12px `muted`. Заголовка «Меню» здесь больше
-            нет — человек и так знает, что нажал на свой аватар, а строка
-            занимала место, которое в макете отдано имени.
+      {/* ── Разделы, которых нет в нижней панели ────────────────
+          Шторка стала ЧИСТЫМ МЕНЮ. Шапка с лицом, именем и ролью
+          отсюда убрана, и вместе с ней тема, язык, размер текста
+          и выход — всё это лежит на экране «Профіль», и лежало там
+          и раньше. То есть удалён ВТОРОЙ показ, а не функция.
 
-            Бейджа «PRO» из макета НЕТ намеренно: тарифов в продукте не
-            существует (ни `plans`, ни `subscriptions`), и плашка уровня
-            подписки была бы утверждением, которого база не подтверждает.
-            Появится биллинг — появится и она. */}
-        <div className="mb-3 flex items-center gap-3">
-          <span aria-hidden className="flex shrink-0 items-center justify-center overflow-hidden"
-                style={{
-                  width: 52, height: 52, borderRadius: 999,
-                  background: 'var(--color-accent-soft)',
-                  color: 'var(--color-accent-ink)',
-                  fontSize: 19, fontWeight: 700,
-                }}>
-            {/* `img`, а не `next/image`: адрес приходит из хранилища
-                с меткой версии после замены фото, и оптимизатор Next
-                отдал бы прошлое фото по тому же ключу. */}
-            {avatarUrl
-              // eslint-disable-next-line @next/next/no-img-element
-              ? <img src={avatarUrl} alt="" width={52} height={52}
-                     style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              : (userName || shopName || '·').trim().charAt(0).toUpperCase()}
-          </span>
-          <span className="min-w-0">
-            <span className="block truncate" style={{ fontSize: 16, fontWeight: 700 }}>
-              {userName || shopName || t('app.chrome.menu.title')}
-            </span>
-            <span className="block truncate"
-                  style={{ fontSize: 12, color: 'var(--color-muted)' }}>
-              {[roleLabel, shopName].filter(Boolean).join(' · ')}
-            </span>
-          </span>
-        </div>
-
+          Почему это не «спрятали настройки подальше»: до профиля одно
+          нажатие по нижней панели, ровно как раньше до шторки. Зато
+          «я» и «разделы» перестали быть одной кнопкой. */}
+      <Sheet open={menu} onClose={() => setMenu(false)} title={t('app.chrome.menu.title')}>
         <div className="flex flex-col">
           {menuItems.map((s) => (
             <Link key={s.href + s.label} href={s.href} className="menu-row"
@@ -941,40 +930,6 @@ function AppShellInner({
               </span>
             </Link>
           ))}
-        </div>
-        <div className="mt-4 border-t pt-3" style={{ borderColor: 'var(--color-border)' }}>
-          {/* Тема, язык и размер текста — здесь же, под аватаром: решение
-              владельца 15.08.2026 отправило сюда всё, что не разделы.
-
-              Три настройки одного рода («как мне это видно») стоят ОДНИМ
-              списком строк «подпись — управление», а не вперемешку
-              пилюлями и ползунком: разные раскладки у соседних настроек
-              читаются как разные разделы. Вид переключателей минимальный
-              по решению владельца 19.08.2026 — разбор в globals.css,
-              блок `.seg`. */}
-          <div className="flex flex-col gap-1">
-            <div className="setting-row">
-              <span className="setting-label">{t('theme.aria')}</span>
-              <ThemeToggle />
-            </div>
-            <div className="setting-row">
-              <span className="setting-label">{t('app.lang.aria')}</span>
-              <LangSwitch />
-            </div>
-          </div>
-          {/* Ползунком, а не тремя кнопками: шаг в 5% кнопками не выберешь. */}
-          <div className="mt-1 border-t pt-3" style={{ borderColor: 'var(--color-border)' }}>
-            <TextSize />
-          </div>
-          {/* Выход — `danger`, как в хендоффе. Приглушённым он читался
-              как обычный пункт списка, а это единственное действие
-              шторки, которое нельзя нажать по ошибке. */}
-          <button type="button" onClick={() => void signOut()}
-                  className="drawer-item mt-1 w-full text-left"
-                  style={{ color: 'var(--color-danger)' }}>
-            <span aria-hidden className="flex w-6 justify-center"><IconExit /></span>
-            {t('app.chrome.signOut')}
-          </button>
         </div>
       </Sheet>
     </div>
