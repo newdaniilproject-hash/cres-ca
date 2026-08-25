@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/toast'
 import { useT } from '@/lib/i18n/client'
-import { haptic } from '@/lib/haptic'
 
 // Нативный слой: то, что оживает только внутри приложения из магазина.
 // В обычном браузере весь файл — тишина, ни одного лишнего запроса.
@@ -127,42 +126,21 @@ export function NativeProvider() {
     return () => { if (bound) window.removeEventListener('popstate', bound) }
   }, [])
 
-  // ── Отклик на касание ──────────────────────────────────────────
-  // Один обработчик на всё приложение вместо onClick в каждой кнопке.
-  // Причина не в лени: расставленный руками отклик обязательно где-то
-  // забудут, и половина интерфейса будет отзываться, а половина нет —
-  // это заметнее, чем полное его отсутствие.
+  // ── ТАКТИЛЬНОГО ОТКЛИКА ЗДЕСЬ БОЛЬШЕ НЕТ ───────────────────────
   //
-  // touchstart, а не click: палец должен получить ответ в момент
-  // касания, до того как отработает переход. Разница в 100–200 мс
-  // и есть та самая «отзывчивость нативного».
-  useEffect(() => {
-    // Мост здесь трогают и nativeish(), и haptic.* внутри обработчика.
-    try { if (!nativeish()) return } catch { return }
-
-    const onTouch = (e: TouchEvent) => {
-      // Цель события названа `target`, а не `t`: `t` — переводчик.
-      const target = e.target as HTMLElement | null
-      const el = target?.closest?.(
-        'button, a, [role="button"], label, summary, .bottomnav-item, .sidebar-item, .chip, .chip-active',
-      ) as HTMLElement | null
-      if (!el) return
-      if (el.hasAttribute('disabled') || el.getAttribute('aria-disabled') === 'true') return
-      // Поля ввода отзываться не должны: набор текста — это не нажатие.
-      if (el.closest('input, textarea, select')) return
-      // Переключатели и вкладки — «выбор», у него свой, более сухой отклик.
-      const isChoice =
-        el.getAttribute('role') === 'tab' ||
-        el.classList.contains('bottomnav-item') ||
-        el.classList.contains('chip') ||
-        el.classList.contains('chip-active') ||
-        el.tagName === 'LABEL'
-      if (isChoice) haptic.select(); else haptic.tap()
-    }
-
-    document.addEventListener('touchstart', onTouch, { passive: true })
-    return () => document.removeEventListener('touchstart', onTouch)
-  }, [])
+  // Решение владельца 25.08.2026: «не надо анимацию зума и отклика
+  // тактильного это не удобно». Обработчик `touchstart` на всё
+  // приложение и `lib/haptic.ts` удалены целиком в том же коммите —
+  // правило 8, «выключено значит удалено»: закомментированный отклик
+  // через месяц вернули бы «на пробу», и жалоба повторилась бы.
+  //
+  // Причина не косметическая и совпадает с ограничением из брифа:
+  // мастер работает в спешке между клиентами, и дрожание телефона
+  // на каждом касании читается как помеха, а не как подтверждение.
+  //
+  // Если когда-нибудь вернут — возвращать ДОЗИРОВАННО, на завершение
+  // действия (успех/ошибка), а не на каждое касание: именно «на каждое»
+  // и было названо неудобным.
   const [locked, setLocked] = useState(false)
   const [offerBio, setOfferBio] = useState(false)
   // Показывать текст и кнопки на экране замка только после отказа:

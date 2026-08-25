@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Sheet } from '@/components/sheet'
 import { useT } from '@/lib/i18n/client'
-import { haptic } from '@/lib/haptic'
 
 // ── Сканер кода. Один на весь продукт ───────────────────────────────────────
 //
@@ -168,7 +167,6 @@ export function Scanner({ open, onClose, onResult, onManual }: Props) {
         const text = result.getText()
         if (!text) return
         alive = false
-        haptic.success()
         stopAll()
         cbRef.current.onResult(text)
         cbRef.current.onClose()

@@ -30,7 +30,7 @@ import { THEME_BAR as BAR, THEME_KEY as KEY, type Choice } from '@/lib/theme-scr
 // нашей страницы, и их цвет обязан идти за темой. Иначе после переключения
 // в тёмную человек видит чёрные часы на чёрном.
 //
-// Два пути, как и у откликов (`lib/haptic.ts`), и по той же причине:
+// Два пути, и причина та же, что у клавиатуры (`keyboard-fit.tsx`):
 //   iOS     — мост Capacitor, `window.Capacitor.Plugins.StatusBar`;
 //   Android — свой `window.AndroidStatusBar` из MainActivity: при удалённом
 //             server.url моста Capacitor на Android НЕТ (грабли DaKi).

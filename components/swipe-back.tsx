@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect } from 'react'
-import { haptic } from '@/lib/haptic'
 
 // ── Свайп назад с ПРЕДЫДУЩИМ экраном под пальцем ────────────────────────────
 //
@@ -203,7 +202,7 @@ export function SwipeBack() {
       if (mx <= 0) { dx = 0; paint(0); return }
       dx = mx
       const need = window.innerWidth / 3
-      if (!armed && dx > need) { armed = true; haptic.tap() }
+      if (!armed && dx > need) armed = true
       paint(dx > need ? need + (dx - need) * 0.4 : dx)
       if (e.cancelable) e.preventDefault()
     }
