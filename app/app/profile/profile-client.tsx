@@ -129,6 +129,7 @@ export function ProfileClient({
   const [person, setPerson] = useState(false)
   const [kill, setKill] = useState(false)
   const [more, setMore] = useState(false)
+  const [photoSheet, setPhotoSheet] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
 
   const [password, setPassword] = useState('')
@@ -397,10 +398,21 @@ export function ProfileClient({
               ? <img src={avatarSrc} alt="" width={96} height={96} />
               : <span className="profile-photo-letter">{initial || <IconUser size={34} />}</span>}
           </span>
+          {/* Нет фото — ОДНО действие, и кнопка сразу открывает выбор
+              файла: «меню» из одного пункта это лишнее нажатие на пустом
+              месте (то же правило, что у плавающей кнопки склада).
+              Фото есть — действий два, «змінити» и «прибрати», и они
+              лежат ЗДЕСЬ, у самого фото.
+
+              Отзыв владельца 25.08.2026: «а как удалить фото, сменить?».
+              «Прибрати фото» стояло голой строкой НИЖЕ списка действий,
+              через полэкрана от самого фото, — то есть найти его можно
+              было только случайно. Действие живёт там, где лежит вещь,
+              над которой оно совершается. */}
           <button type="button" className="profile-photo-edit"
                   disabled={busy === 'avatar'}
                   aria-label={avatar ? t('profile.photo.change') : t('profile.photo.add')}
-                  onClick={() => fileRef.current?.click()}>
+                  onClick={() => (avatar ? setPhotoSheet(true) : fileRef.current?.click())}>
             <IconPlus size={16} />
           </button>
         </div>
@@ -495,16 +507,6 @@ export function ProfileClient({
         )}
       </section>
 
-      {/* «Прибрати фото» — строкой здесь, а не крестиком на самом фото:
-          действие редкое, и место рядом с частым («змінити») ему
-          не положено. Появляется только когда фото есть. */}
-      {avatar && (
-        <button type="button" onClick={() => void dropAvatar()}
-                className="btn-ghost self-start" disabled={busy === 'avatar'}>
-          {t('profile.photo.remove')}
-        </button>
-      )}
-
       </div>
 
       {/* ── Правая колонка: вид и выход ─────────────────────────────── */}
@@ -565,6 +567,24 @@ export function ProfileClient({
 
       </div>
       </div>
+
+      {/* ── Фото: змінити або прибрати ───────────────────────── */}
+      <Sheet open={photoSheet} onClose={() => setPhotoSheet(false)}
+             title={t('profile.photo.sheet.title')}>
+        <div className="flex flex-col gap-2">
+          <button type="button" className="btn-secondary"
+                  disabled={busy === 'avatar'}
+                  onClick={() => { setPhotoSheet(false); fileRef.current?.click() }}>
+            {t('profile.photo.change')}
+          </button>
+          <button type="button" className="btn-ghost"
+                  style={{ color: 'var(--color-danger)' }}
+                  disabled={busy === 'avatar'}
+                  onClick={() => { setPhotoSheet(false); void dropAvatar() }}>
+            {t('profile.photo.remove')}
+          </button>
+        </div>
+      </Sheet>
 
       {/* ── Пароль ───────────────────────────────────────────── */}
       <Sheet open={pass} onClose={() => setPass(false)} title={t('profile.pass.sheet.title')}>
