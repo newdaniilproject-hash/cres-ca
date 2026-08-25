@@ -59,7 +59,7 @@ export default async function AppLayout({
   const [{ data: tenant }, { data: profile }, registry, { data: brand }] = await Promise.all([
     supabase.from('tenants').select('name').eq('id', m.tenantId).maybeSingle(),
     userId
-      ? supabase.from('profiles').select('theme, full_name').eq('id', userId).maybeSingle()
+      ? supabase.from('profiles').select('theme, full_name, avatar_url').eq('id', userId).maybeSingle()
       : Promise.resolve({ data: null }),
     listModules(),
     // Колір бренду закладу (0123). Тим же одним походом, що й імʼя закладу:
@@ -69,6 +69,19 @@ export default async function AppLayout({
       .eq('tenant_id', m.tenantId).maybeSingle(),
   ])
   const theme = (profile?.theme === 'dark' ? 'dark' : 'light') as Choice
+
+  // Своё фото (0130) — В ОБОЛОЧКУ, а не только на экран профиля.
+  // Отзыв владельца 25.08.2026: «фото обновилось но не везде». Аватар
+  // в шапке и в шторке под ним рисовал первую букву имени, потому что
+  // `avatar_url` в этот запрос не входил вовсе.
+  //
+  // Адрес собирается ЗДЕСЬ, на сервере, и приезжает готовой строкой:
+  // оболочка клиентская, и заставить её строить его самой значило бы
+  // завести в ней ещё одного клиента Supabase ради склейки строки.
+  // Лишнего запроса это не стоит — колонка едет тем же `select`.
+  const avatarUrl = profile?.avatar_url
+    ? supabase.storage.from('media').getPublicUrl(profile.avatar_url).data.publicUrl
+    : ''
 
   const lang = await getLang()
 
@@ -91,7 +104,7 @@ export default async function AppLayout({
         : {})}>
         <AppShell modules={m.modules} registry={registry}
                   perms={m.perms} tenantId={m.tenantId} shopName={tenant?.name ?? ''}
-                  userName={profile?.full_name ?? ''} role={m.role}>
+                  userName={profile?.full_name ?? ''} avatarUrl={avatarUrl} role={m.role}>
           {children}
         </AppShell>
       </div>

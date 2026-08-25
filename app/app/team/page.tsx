@@ -94,7 +94,16 @@ export default async function TeamPage() {
         myUserId={auth?.session?.user?.id ?? null}
         myRole={m.role}
         canWrite={can(m, 'team.write')}
-        members={members ?? []}
+        // Шлях фото приходить із `team_overview` (0132) як шлях, а не
+        // адреса: домен проекту міняється, шлях — ні. Адресу збирає
+        // сервер тут, а не клієнт: інакше екран команди заводив би
+        // свого клієнта Supabase заради склейки рядка.
+        members={((members ?? []) as { avatar_url: string | null }[]).map((row) => ({
+          ...row,
+          avatar_url: row.avatar_url
+            ? supabase.storage.from('media').getPublicUrl(row.avatar_url).data.publicUrl
+            : null,
+        })) as never}
         invites={invites ?? []}
         sessions={sessions ?? []}
         templates={templates ?? []}
