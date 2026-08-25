@@ -1305,6 +1305,35 @@ html.dark [data-brand] {
   .quick-tile-icon[data-tone='emerald'] { background: var(--tone-emerald-soft); color: var(--tone-emerald); }
   .quick-tile-icon[data-tone='violet']  { background: var(--tone-violet-soft);  color: var(--tone-violet); }
 
+  /* ── Плашка счётчика рядом с подписью ────────────────────────
+     Заведена 25.08.2026 вместо точки-разделителя. Владелец: «мне не
+     нравится, что ты используешь точки в качестве разделения».
+
+     Дело не только во вкусе. Точка склеивала в одну строку две разные
+     величины — переводимое СЛОВО и считаемое ЧИСЛО («Ємності · 3»,
+     «Реєстр · 12 позицій», «2 · 1 560,00 ₴»). Читателю приходится
+     разбирать, что из этого подпись, а что данные; в списке из трёх
+     таких строк подряд точки сливаются в рябь. Плашка отделяет число
+     формой, а не знаком препинания, и работает в любом языке —
+     точка-разделитель в этой роли есть не во всех типографиках.
+
+     Где число НЕ надо оформлять плашкой: когда рядом стоит второе
+     число (сумма). Тогда они расходятся по разным концам строки
+     или по разным строкам — этим занимается разметка, не этот класс. */
+  .count-pill {
+    @apply inline-flex items-center justify-center;
+    min-width: 20px;
+    height: 20px;
+    margin-left: var(--space-2);
+    padding-inline: 6px;
+    border-radius: 999px;
+    background: color-mix(in srgb, currentColor 12%, transparent);
+    font-size: calc(10px * var(--type-scale));
+    line-height: 1;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
   /* ── Заголовок секции с действием справа ─────────────────────
      «РЕЄСТР · 6 ПОЗИЦІЙ            Всі» — надзаголовок слева,
      ссылка справа. Отдельным классом, потому что встречается
@@ -1585,24 +1614,39 @@ html.dark [data-brand] {
     overflow: hidden;
     touch-action: pan-y;
   }
+  /* Действия — ОТДЕЛЬНЫЕ ПЛИТКИ с зазором и тем же скруглением, что
+     у строки. Первая версия была сплошной полосой прямоугольных
+     блоков вплотную к скруглённой карточке, и владелец назвал это
+     точно: «грани самой строки закруглённые, а кнопок нет —
+     рассинхрон в дизайне». Плитка с тем же радиусом читается как
+     часть той же системы, а не как приклеенный к ней прямоугольник.
+
+     Заливка МЯГКАЯ, а не сплошной насыщенный тон. Два залитых
+     прямоугольника (зелёный и красный) рядом со спокойным списком
+     кричали громче всего на экране, включая то, ради чего экран
+     существует, — красную метку «Прострочено». Цвет здесь несёт
+     смысл действия, а не громкость: он в значке и подписи. */
   .swipe-actions {
     @apply absolute inset-y-0 right-0 flex items-stretch;
-    gap: 2px;
+    gap: var(--space-2);
+    padding-left: var(--space-2);
   }
   .swipe-action {
     @apply flex flex-col items-center justify-center gap-1;
-    width: 72px;
+    width: 68px;
+    border-radius: var(--radius-card);
     font-size: calc(10px * var(--type-scale));
     line-height: calc(13px * var(--type-scale));
     font-weight: 600;
-    color: var(--color-accent-text);
-    background: var(--color-muted);
+    color: var(--color-muted);
+    background: var(--color-surface-2);
+    transition: transform var(--dur-fast);
   }
-  .swipe-action[data-tone='amber']  { background: var(--tone-amber); }
-  .swipe-action[data-tone='rose']   { background: var(--tone-rose); }
-  .swipe-action[data-tone='violet'] { background: var(--tone-violet); }
-  .swipe-action[data-tone='emerald']{ background: var(--tone-emerald); }
-  .swipe-action:active { filter: brightness(0.92); }
+  .swipe-action[data-tone='amber']  { background: var(--tone-amber-soft);   color: var(--tone-amber); }
+  .swipe-action[data-tone='rose']   { background: var(--tone-rose-soft);    color: var(--tone-rose); }
+  .swipe-action[data-tone='violet'] { background: var(--tone-violet-soft);  color: var(--tone-violet); }
+  .swipe-action[data-tone='emerald']{ background: var(--tone-emerald-soft); color: var(--tone-emerald); }
+  .swipe-action:active { transform: scale(0.96); }
   .swipe-face {
     position: relative;
     background: var(--color-surface);
@@ -1639,18 +1683,28 @@ html.dark [data-brand] {
     animation: fab-in var(--dur-base) var(--ease-out-soft) both;
   }
   .fab-item:active { transform: scale(0.97); }
+  /* Значок в пункте стоса — МОНОХРОМНЫЙ. Первая версия красила каждый
+     пункт в свой тон (синий, зелёный, оранжевый, фиолетовый), и это
+     прямое нарушение постоянного ограничения системы: цвет — только
+     для состояния, никогда на обычных строках. Пять разноцветных
+     кружков в столбик — это ёлка, а не набор действий; отличает
+     их подпись, а не оттенок.
+
+     Исключение ровно одно и оно осмысленно: пункт, заводящий новую
+     запись, набран акцентом — это главное действие вкладки, то самое,
+     что на широком экране стоит отдельной кнопкой в хедере. */
   .fab-item-icon {
     width: 28px; height: 28px;
     border-radius: 999px;
     display: grid; place-items: center;
     flex-shrink: 0;
-    background: var(--tone-blue-soft);
-    color: var(--tone-blue);
+    background: var(--color-surface-2);
+    color: var(--color-muted);
   }
-  .fab-item-icon[data-tone='amber']   { background: var(--tone-amber-soft);   color: var(--tone-amber); }
-  .fab-item-icon[data-tone='rose']    { background: var(--tone-rose-soft);    color: var(--tone-rose); }
-  .fab-item-icon[data-tone='emerald'] { background: var(--tone-emerald-soft); color: var(--tone-emerald); }
-  .fab-item-icon[data-tone='violet']  { background: var(--tone-violet-soft);  color: var(--tone-violet); }
+  .fab-item-icon[data-tone='accent'] {
+    background: var(--color-accent-soft);
+    color: var(--color-accent-ink);
+  }
   @keyframes fab-in {
     from { opacity: 0; transform: translateY(10px) scale(0.96); }
     to   { opacity: 1; transform: none; }

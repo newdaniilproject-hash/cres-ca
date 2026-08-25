@@ -222,7 +222,7 @@
   "inventory.hero.positions": "Позицій у реєстрі",
   "inventory.hero.units": "{n} од.",
   "inventory.hero.noCost": "Собівартість у картках не вказана",
-  "inventory.hero.details": "Розбивка запасу",
+  "inventory.hero.details": "Огляд складу",
   "inventory.group.attention": "Потребує уваги",
   "inventory.group.uncategorized": "Без категорії",
   "inventory.quick.title": "Швидкі дії",

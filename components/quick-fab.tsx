@@ -40,7 +40,13 @@ export type QuickAction = {
   key: string
   label: string
   icon: React.ComponentType<{ size?: number }>
-  tone?: 'blue' | 'emerald' | 'amber' | 'violet' | 'rose'
+  /**
+   * Только `accent`, и только у ГЛАВНОГО действия вкладки.
+   * Цвет в этом продукте означает состояние; раскрасить пять пунктов
+   * стоса в пять тонов значит сказать цветом то, чего он не значит
+   * (постоянное ограничение системы из брифа владельца).
+   */
+  tone?: 'accent'
   href?: string
   onClick?: () => void
   /** Печать наклеек открывается новой вкладкой — там лист на принтер. */
@@ -95,7 +101,7 @@ export function QuickFab({ actions }: { actions: QuickAction[] }) {
             const last = i === actions.length - 1
             const inner = (
               <>
-                <span aria-hidden className="fab-item-icon" data-tone={a.tone ?? 'blue'}>
+                <span aria-hidden className="fab-item-icon" data-tone={a.tone}>
                   <a.icon size={16} />
                 </span>
                 {a.label}
