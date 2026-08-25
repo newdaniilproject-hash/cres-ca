@@ -275,7 +275,7 @@ workflows:
           /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes array" App/Info.plist 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes:0 string remote-notification" App/Info.plist 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Print :UIBackgroundModes" App/Info.plist
-          # ── ТОЛЬКО ВЕРТИКАЛЬНО ──────────────────────────────────────
+          # ── ТОЛЬКО ВЕРТИКАЛЬНО НА ТЕЛЕФОНЕ ──────────────────────────
           # Решение владельца 25.08.2026: «удали возможность поворота
           # экрана, наше приложение только вертикальное на телефоне».
           #
@@ -284,16 +284,44 @@ workflows:
           # существующего массива молча ничего не делает — landscape остался
           # бы на месте, а лог выглядел бы успешным.
           #
-          # Ключ для iPad (`~ipad`) задаётся тем же одним значением
-          # намеренно: приложение вертикальное, а не «вертикальное
-          # на телефоне и как получится на планшете».
+          # ⚠️ У iPAD ОСТАЮТСЯ ВСЕ ЧЕТЫРЕ, И ЭТО НЕ НЕБРЕЖНОСТЬ.
+          # Первая версия ставила `~ipad` в один Portrait — «раз вертикально,
+          # то везде». App Store Connect отбил загрузку целиком:
+          #
+          #   ITMS-90474: The “UIInterfaceOrientationPortrait” orientations
+          #   were provided … but you need to include all of the … four
+          #   orientations to support iPad multitasking.
+          #
+          # Универсальное приложение ОБЯЗАНО поддерживать многозадачность
+          # iPad, а она требует все четыре. Обойти это раньше позволял
+          # `UIRequiresFullScreen`, но в SDK iOS 26 (здесь Xcode 26.x) его
+          # больше нет. Остаются ровно два честных пути: дать iPad четыре
+          # ориентации — или сделать приложение ТОЛЬКО для iPhone
+          # (`TARGETED_DEVICE_FAMILY = 1`), и тогда ключа `~ipad` не нужно
+          # вовсе. Выбран первый: он ничего не отнимает у уже собранного
+          # и не трогает состав устройств.
+          #
+          # Требование владельца при этом выполнено полностью: `~ipad`
+          # действует ТОЛЬКО на iPad, а телефон читает ключ без суффикса —
+          # и там по-прежнему один Portrait.
+          #
+          # Не «чинить» это обратно в один Portrait: сборка снова соберётся,
+          # снова дойдёт до публикации и снова упадёт — уже после четырёх
+          # минут ожидания.
           /usr/libexec/PlistBuddy -c "Delete :UISupportedInterfaceOrientations" App/Info.plist 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations array" App/Info.plist
           /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations:0 string UIInterfaceOrientationPortrait" App/Info.plist
           /usr/libexec/PlistBuddy -c "Delete :UISupportedInterfaceOrientations~ipad" App/Info.plist 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations~ipad array" App/Info.plist
           /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations~ipad:0 string UIInterfaceOrientationPortrait" App/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations~ipad:1 string UIInterfaceOrientationPortraitUpsideDown" App/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations~ipad:2 string UIInterfaceOrientationLandscapeLeft" App/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :UISupportedInterfaceOrientations~ipad:3 string UIInterfaceOrientationLandscapeRight" App/Info.plist
+          # Печатаем ОБА ключа: телефонный обязан остаться одной строкой,
+          # планшетный — четырьмя. Один `Print` показывал только первый,
+          # и промах в `~ipad` был не виден в журнале сборки вовсе.
           /usr/libexec/PlistBuddy -c "Print :UISupportedInterfaceOrientations" App/Info.plist
+          /usr/libexec/PlistBuddy -c "Print :UISupportedInterfaceOrientations~ipad" App/Info.plist
 
       - name: Глубокие ссылки — схема cresca://
         script: |
