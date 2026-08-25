@@ -304,6 +304,13 @@ export function AppShell(props: {
    * вложенные вызовы AppShell не режут меню, которое собрал layout.
    */
   perms?: string[]
+  /**
+   * Идентификатор заведения. Нужен ровно одному месту оболочки —
+   * очистке очереди уведомлений в колоколе (0125): функция базы
+   * принимает его параметром. Не передан — кнопки очистки нет,
+   * остальное работает как прежде.
+   */
+  tenantId?: string
   /** Имя заведения — заголовок экрана «Сьогодні». */
   shopName?: string
   /** Имя человека — первая строка шапки шторки профиля (хендофф). */
@@ -331,11 +338,12 @@ export function AppShell(props: {
 }
 
 function AppShellInner({
-  modules, registry, perms, shopName = '', userName = '', role = '', action, children,
+  modules, registry, perms, tenantId, shopName = '', userName = '', role = '', action, children,
 }: {
   modules?: TenantModule[]
   registry?: NavModule[]
   perms?: string[]
+  tenantId?: string
   shopName?: string
   userName?: string
   role?: string
@@ -494,6 +502,52 @@ function AppShellInner({
   //     стоил бы БЕЗ всего этого кеша — и смысл пропадает);
   //   • при возвращении в приложение обновляем всегда: телефон мог
   //     пролежать в кармане час, и три минуты окна давно вышли.
+  // ── ВКЛАДКИ ГРЕЮТСЯ ПОСТОЯННО, А НЕ ОДИН РАЗ ─────────────────────────
+  //
+  // Отзыв владельца 25.08.2026: «всё равно много прогрузки между
+  // страницами, даже когда я уже пользуюсь приложением какое-то время».
+  // Последние три слова и есть диагноз. `prefetch` у ссылки срабатывает
+  // ОДИН РАЗ при её появлении; ответ живёт `staleTimes.static`, то есть
+  // три минуты, и больше не обновляется. Через три минуты работы панель
+  // снова холодная — каждое нажатие опять идёт в Ирландию, хотя человек
+  // ничего не менял. Отсюда и ощущение «сначала быстро, потом опять
+  // грузится».
+  //
+  // Next 16 даёт для этого ровно то, что нужно: `router.prefetch(href,
+  // { onInvalidate })` зовёт обратный вызов В МОМЕНТ, когда запись
+  // протухла. Значит греть по таймеру не надо и угадывать срок не надо —
+  // цикл сам себя перезапускает тогда, когда это перестало быть лишним.
+  //
+  // Греются ТОЛЬКО четыре вкладки панели, и это то же решение, что
+  // и у `prefetch` на них: они всегда на экране и между ними прыгают
+  // всю смену. Девять пунктов под аватаром так греть нельзя — это
+  // девять серверных отрисовок каждые три минуты у каждого открытого
+  // приложения ради экранов, которые открывают раз в день.
+  //
+  // `kind` обязателен по типу, а само перечисление Next наружу не
+  // экспортирует. Берём его тип ИЗ САМОГО РОУТЕРА, а не глубоким
+  // импортом из `next/dist/...`: внутренние пути меняются между
+  // версиями молча, а сигнатура метода — нет.
+  const tabHrefs = tabs.map((x) => x.href).join('\n')
+  useEffect(() => {
+    type PrefetchOpts = NonNullable<Parameters<typeof router.prefetch>[1]>
+    // ПОЛНЫЙ ответ, а не до ближайшего `loading.tsx`. Умолчание тянет
+    // скелетон — то есть заранее приезжает картинка загрузки, а данные
+    // всё равно едут в момент нажатия. Это ровно то же решение, что
+    // у `prefetch` на самих ссылках панели.
+    const full = 'full' as PrefetchOpts['kind']
+    const hrefs = tabHrefs ? tabHrefs.split('\n') : []
+    let stopped = false
+    for (const href of hrefs) {
+      const warm = () => {
+        if (stopped) return
+        router.prefetch(href, { kind: full, onInvalidate: warm })
+      }
+      warm()
+    }
+    return () => { stopped = true }
+  }, [tabHrefs, router])
+
   const seen = useRef(new Map<string, number>())
   const [, startRefresh] = useTransition()
   useEffect(() => {
@@ -567,7 +621,7 @@ function AppShellInner({
           <GlobalSearch modules={modules} perms={perms} />
         </div>
         <div className="flex items-center gap-2 pr-7">
-          <NotifyBell tenantPerms={perms ?? []} />
+          <NotifyBell tenantPerms={perms ?? []} tenantId={tenantId} />
           <button type="button" onClick={() => setDrop((v) => !v)}
                   className="flex items-center gap-2.5 rounded-xl px-2 py-1.5"
                   aria-expanded={drop} aria-label={t('app.chrome.avatar.aria')}>
@@ -684,13 +738,27 @@ function AppShellInner({
                 <IconBack />
               </Link>
             ) : (
+              // ⚠️ ПОЛНЫЙ упреждающий запрос — по той же причине, что
+              // у вкладок панели, и он тут ПОТЕРЯЛСЯ 19.08.2026. Тогда
+              // «Записи» сняли с нижней панели («календарь можно убрать
+              // раз он в хедере»), и вместе с вкладкой ушёл её `prefetch`:
+              // единственный вход в экран, куда мастер заходит десятки
+              // раз за смену, стал обычной ссылкой, то есть снова начал
+              // платить полный круг до Ирландии на каждое нажатие.
+              //
+              // Это ровно тот случай, ради которого правило и записано:
+              // мгновенность — ОТСУТСТВИЕ запроса, а не быстрый запрос
+              // (CLAUDE.md, правило 6). Значков в шапке пять, полный
+              // упреждающий просит один — тот, что ведёт в раздел;
+              // остальные открывают шторки и никуда не ходят.
               <Link href="/app/bookings" aria-label={t('app.chrome.calendar.aria')}
+                    prefetch
                     className="iconbtn shrink-0">
                 <IconCalendar />
               </Link>
             )}
 
-            <NotifyBell tenantPerms={perms ?? []} />
+            <NotifyBell tenantPerms={perms ?? []} tenantId={tenantId} />
 
             {/* ── ПОИСК СТРОКОЙ ПОСЕРЕДИНЕ ─────────────────────────
                 Строка — приглашение, значок молчит (отзыв владельца

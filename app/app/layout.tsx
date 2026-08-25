@@ -90,7 +90,7 @@ export default async function AppLayout({
         ? { 'data-brand': '', style: { '--brand': brand.brand_color } as React.CSSProperties }
         : {})}>
         <AppShell modules={m.modules} registry={registry}
-                  perms={m.perms} shopName={tenant?.name ?? ''}
+                  perms={m.perms} tenantId={m.tenantId} shopName={tenant?.name ?? ''}
                   userName={profile?.full_name ?? ''} role={m.role}>
           {children}
         </AppShell>
