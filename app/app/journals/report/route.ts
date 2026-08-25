@@ -111,9 +111,26 @@ export async function GET(request: Request) {
     supabase.from('tenants')
       .select('name, legal_name, tax_id, city, address, contact_phone')
       .eq('id', m.tenantId).single(),
+    // ⚠️ `notification_confirmed_at` І ПОРЯДОК «НЕПІДТВЕРДЖЕНІ ЗВЕРХУ».
+    //
+    // Міграція 0107 додала і те, і те — але у функцію `compliance_report()`,
+    // якої НЕ ВИКЛИКАЄ жоден файл застосунку. Документ збирає цей роут,
+    // і він брав лише `notification_code` та сортував за назвою. Тобто
+    // вечір роботи пішов у код, що не виконується, а в документі, який
+    // несуть на перевірку, стан підтвердження не друкувався взагалі.
+    // Знайдено аудитом 25.08.2026.
+    //
+    // Код нотифікації — це СЛОВА ПОСТАЧАЛЬНИКА, а підтвердження — це
+    // ДОКУМЕНТ (0106). Різниця між ними і є те, що перевірка дивиться
+    // першим; друкувати самий код означало відповідати не на те питання.
     supabase.from('compliance_materials')
-      .select('id, name, brand, country_of_origin, inci, notification_code, pao_months, unit, is_cosmetic')
-      .eq('tenant_id', m.tenantId).eq('is_active', true).order('name'),
+      .select('id, name, brand, country_of_origin, inci, notification_code, notification_confirmed_at, pao_months, unit, is_cosmetic')
+      .eq('tenant_id', m.tenantId).eq('is_active', true)
+      // Непідтверджені зверху: документ читають згори вниз, і те, до чого
+      // будуть питання, має стояти першим, а не бути знайденим на третій
+      // сторінці. `nullsFirst` — саме той порядок, бо null тут і означає
+      // «не підтверджено».
+      .order('notification_confirmed_at', { nullsFirst: true }).order('name'),
     supabase.from('compliance_batches')
       .select('id, batch_number, expiry_date, received_at, material_name')
       .eq('tenant_id', m.tenantId).order('expiry_date'),
@@ -168,16 +185,21 @@ export async function GET(request: Request) {
     // `current_stock` в реестре появляется ТОЛЬКО по `stock.read`:
     // в `compliance_materials` этой колонки нет намеренно.
     //
-    // Оговорка, которую нельзя терять. Колонка «Залишок» в самой вёрстке
-    // (`lib/report/sanitation-report.ts`) безусловная, а этот файл ею
-    // не владеет. Поэтому здесь остаток НЕ подменяется нулём: ноль
-    // в документе для проверки читался бы как «засобу немає на складі»,
-    // то есть отчёт врал бы молча — худший вид дефекта в этом проекте.
-    // Значение просто отсутствует, и ячейка видна глазу как испорченная,
-    // пока вёрстка не научится прятать колонку без `stock.read`.
+    // ⚠️ ЗДЕСЬ СТОЯЛА УСТАРЕВШАЯ ОГОВОРКА: «колонка "Залишок" в самой
+    // вёрстке безусловная … ячейка видна глазу как испорченная, пока
+    // вёрстка не научится прятать колонку». Вёрстка научилась —
+    // `showStock` в `lib/report/sanitation-report.ts` делает колонку
+    // условной. Комментарий описывал уже починенный дефект и посылал
+    // следующего читателя чинить то, чего нет (найдено аудитом
+    // 25.08.2026). Не возвращать.
+    //
+    // Что остаётся в силе и почему: остаток НЕ подменяется нулём.
+    // Ноль в документе для проверки читался бы как «засобу немає
+    // на складі», то есть отчёт соврал бы молча.
     materials: (materials.data ?? []).map((r) => ({
       name: r.name, brand: r.brand, country_of_origin: r.country_of_origin,
       inci: r.inci, notification_code: r.notification_code,
+      notification_confirmed_at: r.notification_confirmed_at,
       pao_months: r.pao_months, unit: r.unit, is_cosmetic: r.is_cosmetic,
       current_stock: stockOf.get(r.id),
     })) as unknown as ReportData['materials'],

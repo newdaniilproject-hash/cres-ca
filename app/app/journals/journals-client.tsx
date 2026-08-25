@@ -11,7 +11,8 @@ import type { T } from '@/lib/i18n/translate'
 import { dbErrorText } from '@/lib/errors/db'
 import { Sheet } from '@/components/sheet'
 import {
-  IconBack, IconBeaker, IconCheck, IconChevronRight, IconClipboard, IconDoc, IconList,
+  IconBack, IconBeaker, IconCheck, IconChevronRight, IconClipboard, IconDoc,
+  IconLayers, IconList,
   IconPlus, IconRepeat, IconScissors,
 } from '@/components/icons'
 
@@ -783,6 +784,15 @@ export function JournalsClient({
               на `/app/journals`, и без этой ссылки раздел недостижим
               вовсе (аудит 19.08.2026). Это ЕДИНСТВЕННЫЙ вход, а не
               второй — потому он здесь, а не «заодно». */}
+          {/* Той самий випадок, що й техкарти, і знайдений тим самим
+              способом (аудит ТЗ 25.08.2026): `/app/documents` існував
+              без жодного посилання. Для інспектора це ГОЛОВНИЙ екран —
+              реєстр косметики без комерції, — і без цього рядка ТЗ 2
+              не виконується: «відкриває реєстр косметики, нотифікації
+              МОЗ». Обидві розкладки ведуть в одне місце. */}
+          <Link href="/app/documents" className="btn-secondary">
+            {t('journals.links.documents')}
+          </Link>
           <Link href="/app/techcards" className="btn-secondary">
             {t('journals.links.techcards')}
           </Link>
@@ -892,6 +902,39 @@ export function JournalsClient({
               </span>
             </Link>
           ))}
+
+          {/* ── РЕЄСТР КОСМЕТИКИ І ДОКУМЕНТИ ────────────────────────────
+              Знайдено аудитом ТЗ 25.08.2026: екран `/app/documents`
+              існував і був НІ З ЧИМ НЕ ЗВʼЯЗАНИЙ — жодного посилання
+              в усьому застосунку, і рядка в реєстрі модулів у нього
+              теж немає.
+
+              Ціна цього — порушення ТЗ 2 дослівно: «Інспектор …
+              відкриває реєстр косметики, НОТИФІКАЦІЇ МОЗ, журнали
+              дезінфекції та статуси придатності». Інспектор доходив
+              рівно до журналів: `/app/inventory` розвертає його
+              (там `stock.read`, якого в нього немає і не повинно бути
+              — 0035 закрив йому комерцію свідомо), а реєстр без
+              комерції жив саме тут, за адресою, яку ніхто не давав.
+              Єдиним способом показати перевіряючому склад косметики
+              лишався ПАПІР — у paperless-системі.
+
+              Відкривати йому `/app/inventory` не можна і не потрібно:
+              там ціни, постачальники й рухи. `/app/documents` читає
+              `compliance_materials` — той самий реєстр без комерції,
+              заради якого ці представлення й написані. */}
+          <Link href="/app/documents" className="list-card">
+            {/* Значок свій, а не `IconDoc` від «Дій» і не планшет від
+                прибирання: плашка тут — розпізнавальний знак рядка,
+                і повтор читався б як ще один журнал. */}
+            <span className="stat-tile-icon shrink-0" data-tone="blue">
+              <IconLayers size={18} />
+            </span>
+            <span className="t-md min-w-0 flex-1">{t('journals.links.documents')}</span>
+            <span aria-hidden className="shrink-0" style={{ color: 'var(--color-faint)' }}>
+              <IconChevronRight size={18} />
+            </span>
+          </Link>
 
           {/* Техкарти — экран ТОГО ЖЕ модуля соответствия, но своего
               пункта в навигации у него нет: реестр модулей ведёт на

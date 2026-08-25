@@ -57,7 +57,10 @@ export type ReportData = {
   days: number
   materials: Array<{
     name: string; brand: string | null; country_of_origin: string | null
-    inci: string | null; notification_code: string | null; pao_months: number | null
+    inci: string | null; notification_code: string | null
+    /** Коли підтверджено ДОКУМЕНТОМ (0106). null — лише слова постачальника. */
+    notification_confirmed_at: string | null
+    pao_months: number | null
     unit: string
     /**
      * Остаток — СКЛАДСКОЕ сведение, а не санитарное: его отдаёт `materials`
@@ -198,12 +201,23 @@ export function reportHtml(x: ReportData): string {
       n: '1', title: 'Реєстр косметичних засобів і матеріалів',
       note: 'Відповідно до Технічного регламенту на косметичну продукцію (постанова КМУ № 65).',
       body: table(
-        ['Назва', 'Бренд', 'Країна', 'Код нотифікації МОЗ', 'PAO, міс',
+        ['Назва', 'Бренд', 'Країна', 'Код нотифікації МОЗ', 'Підтверджено', 'PAO, міс',
          ...(showStock ? ['Залишок'] : [])],
         x.materials.map((m) => [
           esc(m.name) + (m.is_cosmetic ? ' <span class="tag">косметика</span>' : ''),
           or(m.brand), or(m.country_of_origin),
           m.notification_code ? esc(m.notification_code) : '<span class="warn">не вказано</span>',
+          // КОД — це слова постачальника, ПІДТВЕРДЖЕННЯ — документ (0106).
+          // Різниця між ними і є те, що перевірка дивиться першим, і саме
+          // її документ мовчав: 0107 додала цю колонку у функцію, яку ніхто
+          // не викликає. Прочерк ставиться лише некосметиці — у неї
+          // нотифікації не буває, і «не підтверджено» на шампуні для рук
+          // читалось би як порушення там, де його немає.
+          !m.is_cosmetic
+            ? '—'
+            : m.notification_confirmed_at
+              ? esc(dt(m.notification_confirmed_at))
+              : '<span class="warn">не підтверджено</span>',
           m.pao_months != null ? String(m.pao_months) : '—',
           // Ноль вместо отсутствующего остатка не подставляется нигде:
           // см. объяснение у поля `current_stock`.
