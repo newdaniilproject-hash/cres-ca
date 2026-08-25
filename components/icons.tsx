@@ -272,6 +272,19 @@ export function IconArrows({ size = 22, className }: P) {
   )
 }
 
+/** Стрелка по кругу — «повторити останнє». Не то же, что `IconArrows`:
+ *  та про движение между местами, эта про повтор того же действия. */
+export function IconRepeat({ size = 20, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M4.5 12a7.5 7.5 0 0 1 12.8-5.3L20 9.5" />
+      <path d="M20 4.5v5h-5" />
+      <path d="M19.5 12a7.5 7.5 0 0 1-12.8 5.3L4 14.5" />
+      <path d="M4 19.5v-5h5" />
+    </svg>
+  )
+}
+
 /** Планшет с зажимом — инвентаризация. */
 export function IconClipboard({ size = 22, className }: P) {
   return (

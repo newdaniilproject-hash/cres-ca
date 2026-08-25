@@ -12,7 +12,7 @@ import { dbErrorText } from '@/lib/errors/db'
 import { Sheet } from '@/components/sheet'
 import {
   IconBack, IconBeaker, IconCheck, IconChevronRight, IconClipboard, IconDoc, IconList,
-  IconPlus, IconScissors,
+  IconPlus, IconRepeat, IconScissors,
 } from '@/components/icons'
 
 // Дата и время записи журнала — «16 серп., 14:05». Это НАБОР ОПЦИЙ,
@@ -588,6 +588,47 @@ export function JournalsClient({
 
   // Что открывает кнопка «Додати запис» этого журнала. У аудита такой
   // кнопки нет вовсе: его строки пишет триггер, руками туда не пишут.
+  // ── Есть ли что повторять ────────────────────────────────────────────
+  //
+  // Только у двух журналов из трёх: у прибирання повторять нечего —
+  // там и так одна кнопка «Виконано» на пункт чек-листа.
+  //
+  // Списки приходят отсортированными по убыванию времени (`page.tsx`),
+  // поэтому последняя запись — нулевая. Второй сортировки здесь нет
+  // намеренно: она разошлась бы с первой в день, когда порядок в запросе
+  // поменяют, и кнопка молча начала бы подставлять старое.
+  const lastSolution = solutions[0] ?? null
+  const lastCycle = cycles[0] ?? null
+  const repeatable = canWrite && (
+    (tab === 'solutions' && lastSolution !== null)
+    || (tab === 'sterilization' && lastCycle !== null))
+
+  function repeatLast() {
+    if (tab === 'solutions' && lastSolution) {
+      // Назва засобу, концентрація і об'єм — дані орендаря, переносятся
+      // как есть. Срок годности раствора считается от МОМЕНТА записи,
+      // поэтому переносится не дата, а число часов, на которое его
+      // готовят: подставленная старая дата означала бы просроченный
+      // раствор в момент создания.
+      setAgent(lastSolution.agent_name)
+      setConc(lastSolution.concentration)
+      setVol(String(lastSolution.volume))
+      setHours(String(Math.max(1, Math.round(
+        (new Date(lastSolution.expires_at).getTime()
+          - new Date(lastSolution.prepared_at).getTime()) / 36e5))))
+      return
+    }
+    if (tab === 'sterilization' && lastCycle) {
+      setDevice(lastCycle.device)
+      setTemp(String(lastCycle.temperature_c))
+      setMins(String(lastCycle.duration_minutes))
+      // Индикатор НЕ переносится: это результат конкретного цикла,
+      // и подставлять его прошлым значением значит подсказать ответ
+      // на вопрос проверки. Мастер смотрит цвет и отмечает сам.
+      setIndicator(false)
+    }
+  }
+
   const addForm = tab === 'cleaning' ? taskForm
     : tab === 'solutions' ? solutionForm
       : tab === 'sterilization' ? cycleForm : null
@@ -837,13 +878,48 @@ export function JournalsClient({
           чек-листа — настройка заклада, её трогают раз в жизни, и кричать
           громче отметки «Виконано» она не имеет права (CLAUDE.md: акцент —
           дефицитный ресурс). */}
+      {/* ── «ПОВТОРИТИ ОСТАННЄ» ──────────────────────────────────
+          Отзыв владельца 25.08.2026 дословно: «это должно занимать пару
+          секунд, иначе это делать не будут». Он прав, и это не придирка
+          к оформлению: журнал, который дорого заполнять, заполняют
+          задним числом перед проверкой — то есть он перестаёт быть
+          доказательством и становится сочинением.
+
+          Из трёх журналов ТЗ 3.3 быстрым был один: прибирання — одна
+          кнопка «Відмітити». Дезрозчини и стерилізація требовали по
+          четыре поля НАБРАТЬ, хотя изо дня в день там одно и то же:
+          тот же засіб, та же концентрация, та же сухожаровая шкаф,
+          та же температура и время.
+
+          Поэтому кнопка подставляет прошлую запись и ОТКРЫВАЕТ ФОРМУ,
+          а не отправляет сразу. Разница принципиальная: санитарный
+          журнал неизменяем (0014 — нет политик UPDATE и DELETE плюс
+          триггер), и запись, созданная промахом пальца, останется
+          в нём навсегда. Два нажатия и ноль набора — это и есть
+          «пара секунд», а один слепой тап — это риск испортить
+          доказательство.
+
+          У стерилизации при этом переносится ВСЁ, кроме индикатора:
+          прибор, температура и время повторяются, а результат цвета
+          индикатора — единственное, что мастер обязан посмотреть
+          и отметить сам. Подставлять его прошлым значением значило бы
+          подсказать ответ на вопрос проверки. */}
       {chosen !== null && addForm !== null && (
-        <button type="button"
-                className={`${tab === 'cleaning' ? 'btn-secondary' : 'btn-primary'} rise-1 lg:hidden`}
-                onClick={() => { setErr(''); setAdding(true) }}>
-          <IconPlus size={18} />
-          {addTitle}
-        </button>
+        <div className="rise-1 flex flex-col gap-2 lg:hidden">
+          {repeatable && (
+            <button type="button" className="btn-primary"
+                    onClick={() => { setErr(''); repeatLast(); setAdding(true) }}>
+              <IconRepeat size={18} />
+              {t('journals.repeatLast')}
+            </button>
+          )}
+          <button type="button"
+                  className={tab === 'cleaning' || repeatable ? 'btn-secondary' : 'btn-primary'}
+                  onClick={() => { setErr(''); setAdding(true) }}>
+            <IconPlus size={18} />
+            {addTitle}
+          </button>
+        </div>
       )}
 
       {err && <p className="field-error rise">{err}</p>}
@@ -1084,10 +1160,15 @@ export function JournalsClient({
                       // название засоба переносом на 390px, а различают
                       // засоби по имени, а не по проценту.
                       title={s.agent_name}
+                      // Концентрація і виконавець — дві РІЗНІ величини,
+                      // і розділяє їх зазор, а не крапка: те саме правило,
+                      // яким владелец зняв крапки-роздільники зі складу
+                      // 25.08.2026. Правило не про один екран.
                       meta={(
-                        <>
-                          {s.concentration}{' · '}<Performer name={s.performer} />
-                        </>
+                        <span className="flex flex-wrap items-baseline gap-x-3">
+                          <span>{s.concentration}</span>
+                          <Performer name={s.performer} />
+                        </span>
                       )}
                       badge={(
                         <span className={active ? 'badge-success' : 'badge'}>
@@ -1139,11 +1220,9 @@ export function JournalsClient({
                 {/* Назва пристрою — данные записи журнала. */}
                 <span className="truncate font-semibold"
                       style={{ color: 'var(--color-text)' }}>{c.device}</span>
-                <span className="tabular">
-                  {t('journals.cycle.line', {
-                    temp: t.number(c.temperature_c),
-                    mins: t.number(c.duration_minutes),
-                  })}
+                <span className="tabular flex flex-wrap items-baseline gap-x-2">
+                  <span>{t('journals.cycle.temp', { temp: t.number(c.temperature_c) })}</span>
+                  <span>{t('journals.cycle.mins', { mins: t.number(c.duration_minutes) })}</span>
                 </span>
                 <span className="tabular">{t.dateTime(c.performed_at, AT)}</span>
                 <span className="truncate"><Performer name={c.performer} /></span>
@@ -1196,13 +1275,11 @@ export function JournalsClient({
                     // Назва пристрою — данные записи журнала.
                     title={c.device}
                     meta={(
-                      <>
-                        {t('journals.cycle.line', {
-                          temp: t.number(c.temperature_c),
-                          mins: t.number(c.duration_minutes),
-                        })}
-                        {' · '}<Performer name={c.performer} />
-                      </>
+                      <span className="flex flex-wrap items-baseline gap-x-3">
+                        <span>{t('journals.cycle.temp', { temp: t.number(c.temperature_c) })}</span>
+                        <span>{t('journals.cycle.mins', { mins: t.number(c.duration_minutes) })}</span>
+                        <Performer name={c.performer} />
+                      </span>
                     )}
                     badge={(
                       <span className={c.indicator_ok ? 'badge-success' : 'badge-danger'}>

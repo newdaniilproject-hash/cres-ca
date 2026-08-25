@@ -209,6 +209,12 @@ function teamErrorText(t: T, raw: string): string {
 
 export function TeamClient(props: {
   tenantId: string; myUserId: string | null; myRole: string
+  /**
+   * Модулі, які заклад придбав. Читається рівно в одному місці —
+   * `assignableRoles` нижче, — щоб не пропонувати роль, вся суть якої
+   * у вимкненому модулі.
+   */
+  modules: string[]
   canWrite: boolean
   members: Member[]; invites: Invite[]; sessions: Session[]
   templates: Template[]
@@ -303,10 +309,40 @@ export function TeamClient(props: {
   }
 
   const myRank = rank(props.myRole)
-  // Роль, вышестоящую за собственную, база всё равно не пустит
-  // (`role_rank` в create_invitation, сторож в 0081). Список сокращаем
-  // здесь, чтобы человек не выбирал то, что гарантированно откажут.
-  const assignableRoles = ROLE_ORDER.filter((r) => rank(r) <= myRank && r !== 'owner')
+
+  // ── ЧОМУ РОЛЕЙ СІМ, А ТЗ НАЗИВАЄ ТРИ ─────────────────────────────────
+  //
+  // Питання власника 25.08.2026. Відповідь: ТЗ описує САЛОН, а ролі
+  // живуть у ПЛАТФОРМІ, і платформа ширша за салон — тими самими
+  // `role_grants` користуються магазин одягу, автозапчастини і майстер
+  // манікюру. Три ролі ТЗ покриті повністю: Адміністратор — `owner`
+  // і `admin`, Майстер — `operator`, Інспектор — `inspector`. Решта
+  // чотири існують для інших видів закладу: `manager` — замовлення
+  // і каталог, `accountant` — фінанси, `viewer` — тільки читання.
+  //
+  // Прибрати їх із бази не можна: це зламало б сусідні заклади. Але
+  // ПОКАЗУВАТИ салону роль, вся суть якої у вимкненому модулі, — це
+  // пропонувати вибір, який нічого не дасть: права такої ролі все одно
+  // відсіче `hasModule` на кожному екрані. Тому список запрошення
+  // фільтрується модулями, і салон бачить рівно ті ролі, які в нього
+  // працюють.
+  //
+  // Роль без вимог у карті проходить завжди — це `admin`, `operator`
+  // і `viewer`, вони не прив'язані до жодного модуля.
+  const ROLE_NEEDS_MODULE: Record<string, string> = {
+    manager: 'orders',
+    accountant: 'finance',
+    inspector: 'compliance',
+  }
+
+  // Роль, вищу за власну, база все одно не пустить (`role_rank`
+  // у create_invitation, сторож у 0081). Список скорочуємо тут, щоб
+  // людина не обирала те, що гарантовано відмовлять.
+  const assignableRoles = ROLE_ORDER.filter((r) => {
+    if (rank(r) > myRank || r === 'owner') return false
+    const need = ROLE_NEEDS_MODULE[r]
+    return !need || props.modules.includes(need)
+  })
 
   // Приглашение проверяется НА МОМЕНТ ПРИЁМА (0081, п. 5): роль, чей
   // набор прав шире моего, отказывает не мне сейчас, а приглашённому
