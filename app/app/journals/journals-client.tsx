@@ -36,6 +36,17 @@ const DAY: Intl.DateTimeFormatOptions = {
   day: '2-digit', month: '2-digit', year: 'numeric',
 }
 
+// Один ли это календарный день. Сравнение в МЕСТНОМ поясе браузера,
+// а не по строке ISO: строка приходит в UTC, и раствор, приготовленный
+// в 23:00 по Киеву, лежит в ней вчерашним днём.
+function sameLocalDay(a: string, b: string): boolean {
+  const x = new Date(a)
+  const y = new Date(b)
+  return x.getFullYear() === y.getFullYear()
+    && x.getMonth() === y.getMonth()
+    && x.getDate() === y.getDate()
+}
+
 // `performer` — имя исполнителя или null. Null значит «имя не достаётся»
 // (человека вывели из состава команды, оговорка 0083), а НЕ «исполнителя
 // нет»: сами колонки `prepared_by` / `performed_by` объявлены `not null`.
@@ -629,6 +640,11 @@ export function JournalsClient({
     }
   }
 
+  // Сколько пунктов чек-листа отмечено сегодня. Считается по тому же
+  // признаку, что рисует строку, — включая отметки, ушедшие в офлайн-
+  // очередь: иначе строка говорила бы «виконано», а счётчик над ней нет.
+  const doneCount = tasks.filter((x) => x.doneToday || offDone.has(x.id)).length
+
   const addForm = tab === 'cleaning' ? taskForm
     : tab === 'solutions' ? solutionForm
       : tab === 'sterilization' ? cycleForm : null
@@ -904,7 +920,15 @@ export function JournalsClient({
           индикатора — единственное, что мастер обязан посмотреть
           и отметить сам. Подставлять его прошлым значением значило бы
           подсказать ответ на вопрос проверки. */}
-      {chosen !== null && addForm !== null && (
+      {/* ⚠️ ПРИБИРАННЯ ЗДЕСЬ НЕТ, и это не пропуск. У остальных журналов
+          вход в действие — «додати запис», и его место сверху. У чек-листа
+          действие мастера — отметить пункт, оно уже в каждой строке, а эта
+          кнопка заводит НОВЫЙ ПУНКТ, то есть правит справочник заведения
+          (право `compliance.write`, не `compliance.journal.write`).
+          Настройка, которую трогают раз в жизни, стояла выше работы,
+          которую делают после каждого клиента, — и была первым, что
+          мастер видел, открыв журнал. Она переехала ПОД список. */}
+      {chosen !== null && addForm !== null && tab !== 'cleaning' && (
         <div className="rise-1 flex flex-col gap-2 lg:hidden">
           {repeatable && (
             <button type="button" className="btn-primary"
@@ -914,7 +938,7 @@ export function JournalsClient({
             </button>
           )}
           <button type="button"
-                  className={tab === 'cleaning' || repeatable ? 'btn-secondary' : 'btn-primary'}
+                  className={repeatable ? 'btn-secondary' : 'btn-primary'}
                   onClick={() => { setErr(''); setAdding(true) }}>
             <IconPlus size={18} />
             {addTitle}
@@ -926,6 +950,39 @@ export function JournalsClient({
 
       {tab === 'cleaning' && (
         <section className={`flex flex-col gap-4 ${chosen === null ? 'hidden lg:flex' : ''}`}>
+          {/* ── ОТВЕТ НА ВОПРОС, С КОТОРЫМ ОТКРЫВАЮТ ЧЕК-ЛИСТ ────────────
+              «Сколько мне ещё осталось». До 25.08.2026 его на экране
+              не было вовсе: семь одинаковых строк, и сосчитать
+              невыполненные можно было только глазами по каждой.
+
+              Считается по ТОМУ ЖЕ признаку, что рисует строку, включая
+              отметки, отправленные офлайн (`offDone`), — иначе мастер
+              без сети видел бы «виконано» на строке и старое число
+              в заголовке. */}
+          {tasks.length > 0 && (
+            <div className="card rise-1 lg:hidden">
+              <p className="eyebrow">{t('journals.cleaning.today')}</p>
+              <p className="hero-value tabular">
+                {t('journals.cleaning.progress', {
+                  done: t.number(doneCount), total: t.number(tasks.length),
+                })}
+              </p>
+              <div className="hero-bar mt-3">
+                <span style={{
+                  width: `${Math.round((doneCount / tasks.length) * 100)}%`,
+                  background: 'var(--color-success)',
+                }} />
+              </div>
+              <p className="field-hint mt-2">
+                {doneCount === tasks.length
+                  ? t('journals.cleaning.progress.allDone')
+                  : t('journals.cleaning.progress.left', {
+                    n: t.number(tasks.length - doneCount),
+                  })}
+              </p>
+            </div>
+          )}
+
           <div className="card rise-1 !p-0 lg:hidden">
             {tasks.length === 0 ? (
               <div className="empty">
@@ -933,29 +990,44 @@ export function JournalsClient({
                   ? t('journals.cleaning.empty.manage')
                   : t('journals.cleaning.empty.read')}
               </div>
-            ) : tasks.map((task) => (
+            ) : tasks.map((task) => {
               // Параметр назван `task`, а не `t`: `t` — переводчик.
               // Название пункта чек-листа и его расписание — данные заклада,
               // они не переводятся.
-              <div key={task.id} className="row px-5">
+              const done = task.doneToday || offDone.has(task.id)
+              return (
+              // Выполненное ПРИГЛУШЕНО, а не спрятано и не переставлено
+              // вниз. Спрятать нельзя — журнал обязан показывать, что
+              // сделано; переставить нельзя — порядок пунктов задаёт
+              // заведение (`position`), и прыгающая при отметке строка
+              // сбивает палец на следующей. Тот же приём, что у нулевого
+              // остатка на складе: вес говорит «сюда смотреть не надо».
+              <div key={task.id} className="row px-5"
+                   style={done ? { opacity: 0.6 } : undefined}>
                 {/* Пункт чек-листа ОТКРЫВАЕТСЯ — это журнал, а не список
                     состояний на сегодня. Кнопкой, а не ссылкой: история
                     приезжает шторкой и своего адреса не имеет. */}
                 <button type="button" className="min-w-0 flex-1 text-left"
                         onClick={() => void openHistory(task)}>
                   <p className="t-md">{task.name}</p>
-                  {task.doneToday && task.doneAt ? (
-                    // Только час: отметка всегда СЕГОДНЯШНЯЯ (запрос
-                    // `entries` обрезан текущим днём), и дата рядом
-                    // с бейджем «сьогодні ✓» повторяла его словом.
-                    <p className="t-xs prose-muted">
-                      {t.dateTime(task.doneAt, TIME)} · <Performer name={task.donePerformer} />
-                    </p>
-                  ) : task.schedule ? (
+                  {/* Расписание показывается ВСЕГДА, а не только у
+                      неотмеченного. Оно отвечает на «как часто это надо
+                      делать» — вопрос, который не исчезает оттого, что
+                      сегодня пункт уже отмечен; а пропадающая строка
+                      к тому же дёргала высоту при каждой отметке. */}
+                  {task.schedule && (
                     <p className="t-xs prose-muted">{task.schedule}</p>
-                  ) : null}
+                  )}
+                  {/* Час и исполнитель — отдельной строкой, без точки
+                      между ними (решение владельца 25.08.2026). */}
+                  {task.doneToday && task.doneAt && (
+                    <p className="t-xs prose-muted">
+                      {t.dateTime(task.doneAt, TIME)}{' — '}
+                      <Performer name={task.donePerformer} />
+                    </p>
+                  )}
                 </button>
-                {task.doneToday || offDone.has(task.id) ? (
+                {done ? (
                   <span className="badge-success">{t('journals.cleaning.doneToday')}</span>
                 ) : canWrite ? (
                   <button className="btn-secondary t-sm" disabled={busy === task.id}
@@ -966,8 +1038,19 @@ export function JournalsClient({
                   <span className="badge">{t('journals.cleaning.notMarked')}</span>
                 )}
               </div>
-            ))}
+              )
+            })}
           </div>
+
+          {/* Заведение нового пункта чек-листа — ПОД списком: это правка
+              справочника заведения, а не работа мастера (см. выше). */}
+          {chosen !== null && canManage && (
+            <button type="button" className="btn-secondary rise-1 lg:hidden"
+                    onClick={() => { setErr(''); setAdding(true) }}>
+              <IconPlus size={18} />
+              {addTitle}
+            </button>
+          )}
 
           {/* ── CRESKO Web: чек-лист таблицей (только lg) ──────────
               Те же самые `tasks` и те же два действия, что у карточек
@@ -1170,11 +1253,40 @@ export function JournalsClient({
                           <Performer name={s.performer} />
                         </span>
                       )}
+                      // ── ЧАС, ДО ЯКОГО РОЗЧИН ПРИДАТНИЙ, — У РЯДКУ ────
+                      //
+                      // ТЗ 3.3 називає «термін придатності робочого
+                      // розчину» серед обов'язкових полів, і саме він —
+                      // питання, з яким майстер відкриває цей журнал:
+                      // «цим ще можна працювати?». Досі рядок казав
+                      // тільки «придатний», а година лежала в картці,
+                      // тобто за ще одним натисканням — і це на журналі,
+                      // який дивляться між клієнтами стоячи.
+                      //
+                      // У простроченого години немає навмисно: «непридатний»
+                      // — вичерпна відповідь, а година минулого дня поруч
+                      // із нею читається як пропозиція ще встигнути.
                       badge={(
-                        <span className={active ? 'badge-success' : 'badge'}>
-                          {active
-                            ? t('journals.solution.valid')
-                            : t('journals.solution.expired')}
+                        <span className="shrink-0 text-right">
+                          <span className={`${active ? 'badge-success' : 'badge'} block`}>
+                            {active
+                              ? t('journals.solution.valid')
+                              : t('journals.solution.expired')}
+                          </span>
+                          {active && (
+                            <span className="tabular t-xs mt-1 block prose-muted">
+                              {t('journals.solution.untilShort', {
+                                // День дописывается, если срок НЕ сегодня.
+                                // Голое «до 06:00» у раствора, который
+                                // держат сутки, читается как «шесть утра
+                                // уже прошло» — то есть ровно наоборот.
+                                time: t.dateTime(
+                                  s.expires_at,
+                                  sameLocalDay(s.expires_at, s.prepared_at) ? TIME : AT,
+                                ),
+                              })}
+                            </span>
+                          )}
                         </span>
                       )}
                       onOpen={() => setEntry({
