@@ -93,10 +93,6 @@ export default async function TeamPage() {
         tenantId={m.tenantId}
         myUserId={auth?.session?.user?.id ?? null}
         myRole={m.role}
-        // Набір модулів закладу. Потрібен рівно для одного: сховати
-        // при запрошенні ролі, вся суть яких — у вимкненому модулі
-        // (розбір у `team-client.tsx`, `assignableRoles`).
-        modules={m.modules}
         canWrite={can(m, 'team.write')}
         members={members ?? []}
         invites={invites ?? []}
