@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
 import { useConfirm } from '@/components/confirm'
 import { dbErrorText } from '@/lib/errors/db'
-import { IconClose } from '@/components/icons'
+import { IconTrash } from '@/components/icons'
 import type { RefItem } from './material-form'
 
 // Справочники поставщиков и мест хранения. Заводятся отсюда, а не
@@ -117,8 +117,12 @@ export function RefsForm({
     router.refresh()
   }
 
-  // Строка справочника: имя + кнопка деактивации. Именно строками, а не
+  // Строка справочника: имя + кнопка удаления. Именно строками, а не
   // бейджами: у кнопки обязана быть зона нажатия 44px, в бейдж она не влезает.
+  //
+  // Значок — корзина, а не крестик. Крестик читается как «закрыть» или
+  // «снять выбор»; здесь же строка исчезает из справочника, а иногда
+  // и из базы (0134). Значок обязан обещать ровно то, что произойдёт.
   function refRow(kind: 'supplier' | 'location', item: RefItem) {
     return (
       <div key={item.id} className="row px-4">
@@ -127,7 +131,7 @@ export function RefsForm({
                 aria-label={t('inventory.refs.deactivate.action')}
                 disabled={busy === item.id}
                 onClick={() => void deactivate(kind, item)}>
-          <IconClose size={18} />
+          <IconTrash size={18} />
         </button>
       </div>
     )
