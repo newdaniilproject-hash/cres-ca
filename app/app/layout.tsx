@@ -14,6 +14,11 @@ import { listModules } from '@/lib/modules'
 import { themeServerScript, type Choice } from '@/lib/theme-script'
 import { getLang } from '@/lib/i18n/server'
 import { LangProvider } from '@/lib/i18n/client'
+// Живі дані (0133). Стоїть ОДИН раз на весь кабінет, а не на екранах:
+// база тримає один лічильник на заклад, і будь-яка зміна будь-де його
+// підіймає. Новому екрану для миттєвості не треба нічого дописувати —
+// розбір у шапці `components/live.tsx`.
+import { Live } from '@/components/live'
 
 export const dynamic = 'force-dynamic'
 
@@ -92,6 +97,7 @@ export default async function AppLayout({
           и переключившийся на телефоне увидел бы на вебе белую вспышку
           и перекраску. Разбор — `components/theme.tsx`. */}
       <script dangerouslySetInnerHTML={{ __html: themeServerScript(theme) }} />
+      <Live tenantId={m.tenantId} />
       {/* Бренд закладу (0123) — РОЗМІТКОЮ, а не скриптом і не ефектом.
           Значення приходить із сервера разом зі сторінкою, тому кадру
           з кобальтовим акцентом перед перефарбуванням не існує в принципі:
