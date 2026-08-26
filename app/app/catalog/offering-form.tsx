@@ -9,6 +9,7 @@ import type { T } from '@/lib/i18n/translate'
 import { MEDIA_EXT_BY_MIME, MEDIA_MAX_BYTES } from '@/lib/upload/guard'
 import { verifyUploaded } from '@/lib/upload/client'
 import { dbErrorText } from '@/lib/errors/db'
+import { RemoveEntity } from '@/components/remove-entity'
 
 export type CategoryRow = { id: string; name: string; kind: 'product' | 'service' }
 export type LocationRow = { id: string; name: string }
@@ -606,6 +607,16 @@ export function OfferingForm({
                       onClick={() => void changeStatus('archived')}>
                 {t('catalog.form.archive')}
               </button>
+            )}
+            {/* «Архівувати» і «Видалити» тут поруч навмисно, і це НЕ два
+                входи в одну дію. Архів — «прибрати з очей, потім поверну»:
+                позиція лишається цілою зі своєю ціною, описом і фото.
+                Видалення — «цього не мало бути»: якщо за позицією ще
+                нічого не стоїть, від неї не лишиться нічого. Що саме
+                вийде, вирішує база (0134), і людині вона про це каже. */}
+            {offeringId && (
+              <RemoveEntity kind="offering" id={offeringId} name={title}
+                            onDone={() => router.replace('/app/catalog')} />
             )}
           </div>
         )}

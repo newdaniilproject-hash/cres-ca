@@ -87,9 +87,19 @@ export function RefsForm({
     router.refresh()
   }
 
-  // Деактивация, а не удаление: на строку справочника ссылаются партии,
-  // приёмки и карточки засобов — удаление порвало бы историю. is_active =
-  // false убирает запись из выбора в формах, история остаётся целой.
+  // Прибрати рядок довідника — через `remove_entity` (0134), а не
+  // прямим `update is_active = false`, як було до 26.08.2026.
+  //
+  // Різниця не в акуратності, а в результаті для людини. Прямий UPDATE
+  // ЗАВЖДИ лише ховав рядок: помилково заведений постачальник, на якого
+  // ніколи нічого не посилалось, лишався в базі назавжди. Тепер база
+  // сама дивиться, чи є за ним історія: немає — стирає, є — прибирає
+  // з очей. Це те саме одне натискання, але чесне.
+  //
+  // Другий довід — той самий, що всюди в цьому проекті: правило
+  // «прибрати можна лише те, за чим нічого не стоїть» тепер живе
+  // в ОДНОМУ місці. Прямий UPDATE поруч із функцією був би другим
+  // шляхом до тієї ж дії, і розійшлися б вони мовчки.
   async function deactivate(kind: 'supplier' | 'location', item: RefItem) {
     const ok = await confirm({
       title: t('inventory.refs.deactivate.title'),
@@ -99,9 +109,9 @@ export function RefsForm({
     })
     if (!ok) return
     setBusy(item.id); setErr('')
-    const { error } = await supabase
-      .from(kind === 'supplier' ? 'suppliers' : 'storage_locations')
-      .update({ is_active: false }).eq('id', item.id)
+    const { error } = await supabase.rpc('remove_entity', {
+      p_kind: kind, p_id: item.id,
+    })
     setBusy(null)
     if (error) { setErr(dbErrorText(t, error)); return }
     router.refresh()

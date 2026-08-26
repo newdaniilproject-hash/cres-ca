@@ -377,6 +377,17 @@ export function IconPlus({ size = 20, className }: P) {
   )
 }
 
+/** Корзина — прибрати запис (0134). Один значок на все виды: людина
+    натискає «видалити», а що станеться насправді — стирання чи архів —
+    вирішує база, і різними значками цього не показати. */
+export function IconTrash({ size = 20, className }: P) {
+  return (
+    <svg {...base(size)} className={className}>
+      <path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13M10 11v6M14 11v6" />
+    </svg>
+  )
+}
+
 /** Минус — свернуть. */
 export function IconMinus({ size = 20, className }: P) {
   return (

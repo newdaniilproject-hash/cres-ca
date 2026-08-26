@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Sheet } from '@/components/sheet'
+import { RemoveEntity } from '@/components/remove-entity'
 import { useToast } from '@/components/toast'
 import { useT } from '@/lib/i18n/client'
 import { IconChevronRight, IconClose, IconPlus, IconUsers } from '@/components/icons'
@@ -652,6 +653,21 @@ export function CustomersClient({
                   понимать, что звёздочки поставили ему намеренно, иначе
                   он пойдёт искать телефон в обход. */}
               <p className="field-hint mt-3">{t('customers.card.hint')}</p>
+
+              {/* Прибрати клієнта. Що станеться, вирішує база (0134):
+                  у клієнта без замовлень рядок стирається повністю,
+                  у клієнта з історією стираються КОНТАКТИ, а замовлення
+                  й записи лишаються — первинний облік не видаляється
+                  ніколи. Обіцяти тут «зараз зітремо» не можна: людина
+                  прийшла б за виконанням «права на забуття» і отримала
+                  б не те, що їй сказали. */}
+              {canWrite && (
+                <div className="mt-4 border-t pt-3"
+                     style={{ borderColor: 'var(--color-border)' }}>
+                  <RemoveEntity kind="customer" id={card.id} name={card.name}
+                                onDone={() => { closeCard(); router.refresh() }} />
+                </div>
+              )}
             </aside>
           )}
         </div>
@@ -694,6 +710,13 @@ export function CustomersClient({
                 понимать, что звёздочки поставили ему намеренно, иначе
                 он пойдёт искать телефон в обход. */}
             <p className="field-hint">{t('customers.card.hint')}</p>
+            {canWrite && (
+              <div className="mt-1 border-t pt-3"
+                   style={{ borderColor: 'var(--color-border)' }}>
+                <RemoveEntity kind="customer" id={card.id} name={card.name}
+                              onDone={() => { closeCard(); router.refresh() }} />
+              </div>
+            )}
           </div>
         )}
       </Sheet>

@@ -16,6 +16,7 @@ import {
   IconPlus, IconRepeat, IconScissors,
 } from '@/components/icons'
 import { ReportLink } from '@/components/report-link'
+import { RemoveEntity } from '@/components/remove-entity'
 
 // Дата и время записи журнала — «16 серп., 14:05». Это НАБОР ОПЦИЙ,
 // а не своя `fmt`: форматирует по-прежнему `t.dateTime`, то есть язык
@@ -1676,6 +1677,24 @@ export function JournalsClient({
               ))}
             </div>
           </>
+        )}
+
+        {/* Прибрати пункт чек-листа. ЗДЕСЬ, а не строкой таблицы:
+            в таблице пришлось бы заводить шестую колонку ради действия,
+            которое делают раз в год, — и она отняла бы ширину у времени
+            и исполнителя, ради которых журнал и читают.
+
+            Отметки при этом никуда не денутся: `cleaning_entries`
+            привязаны к пункту, и база сама не даст стереть пункт,
+            за которым есть история, — она уберёт его из чек-листа
+            и скажет об этом (0134). Сам журнал остаётся неизменяемым. */}
+        {canManage && history && (
+          <div className="mt-4 border-t pt-3"
+               style={{ borderColor: 'var(--color-border)' }}>
+            <RemoveEntity kind="cleaning_task" id={history.task.id}
+                          name={history.task.name}
+                          onDone={() => { setHistory(null); router.refresh() }} />
+          </div>
         )}
       </Sheet>
 

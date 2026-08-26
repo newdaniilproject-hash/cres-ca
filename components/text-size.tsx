@@ -72,9 +72,14 @@ export function TextSize({ className = '' }: { className?: string }) {
             перевода и читается мгновенно: маленькая «А» слева,
             большая справа. */}
         <span aria-hidden style={{ fontSize: 13, color: 'var(--color-faint)' }}>А</span>
+        {/* `--fill` считает КОМПОНЕНТ и отдаёт дорожке: величину знает
+            только он, а второй расчёт в CSS разошёлся бы с ним на первой
+            же правке границ. Сам вид дорожки — в `.range` (globals.css):
+            `accent-color` красит лишь заполненную часть, а остаток Chrome
+            оставляет светлым и на тёмной теме. */}
         <input
           type="range"
-          className="flex-1"
+          className="range flex-1"
           min={MIN}
           max={MAX}
           step={STEP}
@@ -82,7 +87,9 @@ export function TextSize({ className = '' }: { className?: string }) {
           onChange={(e) => pick(parseFloat(e.target.value))}
           aria-label={t('textsize.aria')}
           aria-valuetext={`${Math.round(value * 100)}%`}
-          style={{ accentColor: 'var(--color-accent)', minHeight: 'var(--tap-min)' }}
+          style={{
+            '--fill': `${((value - MIN) / (MAX - MIN)) * 100}%`,
+          } as React.CSSProperties}
         />
         <span aria-hidden style={{ fontSize: 22, color: 'var(--color-faint)' }}>А</span>
       </div>

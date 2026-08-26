@@ -58,10 +58,15 @@ export default async function CustomersPage({
   // Счётчики — тремя запросами БЕЗ строк (`head: true`), как на экране
   // заказов, и по той же причине: выдача обрезана сотней, и посчитанное
   // из неё «усього 100» у базы в тысячу человек — враньё в плитке.
+  // `is_active` — 0134. Прибраний клієнт зникає зі списку і з лічильників
+  // разом: список без нього, а лічильник із ним — це два різні числа
+  // на одному екрані, і людина побачить «усього 12» над одинадцятьма
+  // рядками. Фільтр тому стоїть в ОБОХ місцях, а не в одному.
   const countOf = (kind: Filter) => {
     let q = supabase.from('customers')
       .select('id', { count: 'exact', head: true })
       .eq('tenant_id', m.tenantId)
+      .eq('is_active', true)
     if (kind === 'month') q = q.gte('last_order_at', monthStart)
     if (kind === 'idle') q = q.eq('orders_count', 0)
     return q
@@ -70,6 +75,7 @@ export default async function CustomersPage({
   let list = supabase.from('customers')
     .select('id, name, orders_count, total_spent, last_order_at, tags')
     .eq('tenant_id', m.tenantId)
+    .eq('is_active', true)
   if (active === 'month') list = list.gte('last_order_at', monthStart)
   if (active === 'idle') list = list.eq('orders_count', 0)
 

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Sheet } from '@/components/sheet'
 import { Fold } from '@/components/fold'
+import { RemoveEntity } from '@/components/remove-entity'
 import { useToast } from '@/components/toast'
 import { useT } from '@/lib/i18n/client'
 import { MaterialForm, type MaterialInit, type RefItem } from '../../material-form'
@@ -1182,6 +1183,22 @@ export function MaterialCard({
                 ))}
               </div>
             )}
+          </Fold>
+        )}
+        {/* ── Прибрати засіб ────────────────────────────────────
+            Стоїть ОСТАННІМ і за дверима: дію роблять раз у житті
+            запису, а вагою вона тут єдина небезпечна. Той самий довід,
+            через який «видалити акаунт» пішов у згорнуте на «Профілі».
+
+            Що саме станеться — стирання чи прибирання з реєстру —
+            вирішує база (0134). Тут навмисно НЕ рахується, чи є
+            в засоба рухи й ємності: це був би другий опис звʼязків
+            поруч зі схемою, і розійшовся б він мовчки. */}
+        {canWrite && (
+          <Fold title={t('inventory.material.danger.title')}
+                open={fold === 'danger'} onToggle={() => toggleFold('danger')}>
+            <RemoveEntity kind="material" id={material.id} name={material.name}
+                          onDone={() => router.replace('/app/inventory')} />
           </Fold>
         )}
       </div>

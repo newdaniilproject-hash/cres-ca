@@ -414,10 +414,22 @@ export function FinanceClient({
     router.refresh()
   }
 
+  // Сховати / повернути категорію.
+  //
+  // Ховаємо через `remove_entity` (0134), а не прямим UPDATE: категорія,
+  // якою жодного разу не скористались, стирається зовсім, а не лишається
+  // в базі назавжди «схованою». Помилково заведену «Витрати1» інакше
+  // не прибрати нічим. Категорія з проводками при цьому тільки ховається —
+  // на неї дивляться `finance_records`, і рішення про це приймає база.
+  //
+  // Повернення лишається прямим UPDATE: воно нічого не стирає, а функція
+  // повернення робила б рівно те саме зайвим кроком.
   async function toggleCategory(c: FinanceCategory) {
     setBusy(c.id); setErr('')
-    const { error: updateError } = await supabase.from('finance_categories')
-      .update({ is_active: !c.isActive }).eq('id', c.id)
+    const { error: updateError } = c.isActive
+      ? await supabase.rpc('remove_entity', { p_kind: 'finance_category', p_id: c.id })
+      : await supabase.from('finance_categories')
+          .update({ is_active: true }).eq('id', c.id)
     setBusy(null)
     if (updateError) { setErr(dbErrorText(t, updateError)); return }
     router.refresh()

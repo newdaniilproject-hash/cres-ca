@@ -4,8 +4,6 @@ import Link from 'next/link'
 import { afterSignOut } from '@/lib/where'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, createContext, useContext, useEffect, useRef, useState, useTransition } from 'react'
-import { ThemeToggle } from '@/components/theme'
-import { LangSwitch } from '@/components/lang-switch'
 import { NotifyBell } from '@/components/notify-bell'
 import { GlobalSearch } from '@/components/global-search'
 import { Sheet } from '@/components/sheet'
@@ -721,37 +719,21 @@ function AppShellInner({
               </Link>
             ))}
           </nav>
-          {/* Тема и язык — две настройки одного рода и стоят рядом.
-              Это ДЕСКТОПНЫЙ подвал сайдбара: нижней панели там нет,
-              и «Профіль» — обычный пункт списка, а не вкладка под
-              большим пальцем. На телефоне обе живут на экране профиля
-              (решение владельца 25.08.2026), и второго их показа
-              в шторке разделов больше нет. */}
-          <div className="mt-8 flex flex-col gap-1 border-t pt-4"
-               style={{ borderColor: 'var(--color-border)' }}>
-            <div className="setting-row setting-row--stacked">
-              <span className="setting-label">{t('theme.aria')}</span>
-              <ThemeToggle />
-              {/* ⚠️ ЗДЕСЬ ЭТОТ ПЕРЕКЛЮЧАТЕЛЬ НИЧЕГО НЕ КРАСИТ, и молчать
-                  об этом нельзя. Десктопный кабинет рисуется светлым
-                  языком CRESKO Web ВСЕГДА — решение владельца 19.08.2026,
-                  выражено блоком «CRESKO WEB» в globals.css. Выбор темы
-                  действует на телефоне (<1024px), в обёртке и на витрине.
+          {/* ── ТЕМЫ И ЯЗЫКА В САЙДБАРЕ БОЛЬШЕ НЕТ ──────────────────
+              Решение владельца 26.08.2026: «смену темы и языка помести
+              в настройки, а не в сайдбар». Удалено, а не спрятано под
+              флаг (правило 8).
 
-                  Найдено рендером 25.08.2026: человек жмёт «Темна»,
-                  плашка переезжает, страница остаётся светлой — ровно то,
-                  что в этом проекте уже названо сломанной навигацией
-                  («кнопка, которая ничего не открывает»). Снять сам
-                  переключатель нельзя: тогда тему телефона неоткуда
-                  задать тому, кто работает за столом. Поэтому строка
-                  словами, а не молчание. */}
-              <span className="setting-note">{t('theme.webNote')}</span>
-            </div>
-            <div className="setting-row setting-row--stacked">
-              <span className="setting-label">{t('app.lang.aria')}</span>
-              <LangSwitch />
-            </div>
-          </div>
+              Обе настройки живут на экране «Профіль» — там же, где
+              размер текста, — и жили там всё это время. То есть здесь
+              был ВТОРОЙ показ тех же двух переключателей, а на телефоне
+              такой же второй показ уже сняли 25.08.2026 из шторки под
+              аватаром. Путь на десктопе не удлинился: «Профіль» —
+              обычный пункт этого же сайдбара.
+
+              Заодно исчезла и строка-оговорка про то, что переключатель
+              темы здесь ничего не красит: тёмная тема на десктопе
+              теперь настоящая (globals.css, блок «CRESKO WEB»). */}
         </aside>
 
         <main className="webmain min-w-0 flex-1">
