@@ -729,11 +729,25 @@ function AppShellInner({
               в шторке разделов больше нет. */}
           <div className="mt-8 flex flex-col gap-1 border-t pt-4"
                style={{ borderColor: 'var(--color-border)' }}>
-            <div className="setting-row">
+            <div className="setting-row setting-row--stacked">
               <span className="setting-label">{t('theme.aria')}</span>
               <ThemeToggle />
+              {/* ⚠️ ЗДЕСЬ ЭТОТ ПЕРЕКЛЮЧАТЕЛЬ НИЧЕГО НЕ КРАСИТ, и молчать
+                  об этом нельзя. Десктопный кабинет рисуется светлым
+                  языком CRESKO Web ВСЕГДА — решение владельца 19.08.2026,
+                  выражено блоком «CRESKO WEB» в globals.css. Выбор темы
+                  действует на телефоне (<1024px), в обёртке и на витрине.
+
+                  Найдено рендером 25.08.2026: человек жмёт «Темна»,
+                  плашка переезжает, страница остаётся светлой — ровно то,
+                  что в этом проекте уже названо сломанной навигацией
+                  («кнопка, которая ничего не открывает»). Снять сам
+                  переключатель нельзя: тогда тему телефона неоткуда
+                  задать тому, кто работает за столом. Поэтому строка
+                  словами, а не молчание. */}
+              <span className="setting-note">{t('theme.webNote')}</span>
             </div>
-            <div className="setting-row">
+            <div className="setting-row setting-row--stacked">
               <span className="setting-label">{t('app.lang.aria')}</span>
               <LangSwitch />
             </div>

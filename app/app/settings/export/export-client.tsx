@@ -106,12 +106,20 @@ export function ExportClient({
               <p className="t-md">{t(`export.section.${s}`)}</p>
               <p className="t-xs truncate prose-muted">{t(`export.sectionDesc.${s}`)}</p>
             </div>
+            {/* Оба формата — ОДИНАКОВЫМИ кнопками, и это не вкусовая правка.
+                JSON стоял `btn-ghost`: серый текст без рамки рядом
+                с обведённой кнопкой CSV. Два равных действия («забрать
+                этот раздел вот таким файлом») выглядели как «кнопка
+                и что-то отключённое», а у «Санітарних журналів», где CSV
+                не бывает вовсе, в строке оставалась дыра и одна серая
+                надпись — читалось как сломанная строка, а не как
+                «здесь только JSON». Найдено рендером 25.08.2026. */}
             <div className="flex shrink-0 items-center gap-2">
               {CSV_ABLE.includes(s) && (
                 <button className="btn-secondary t-sm" disabled={busy !== null}
                         onClick={() => void one(s, 'csv')}>CSV</button>
               )}
-              <button className="btn-ghost t-sm" disabled={busy !== null}
+              <button className="btn-secondary t-sm" disabled={busy !== null}
                       onClick={() => void one(s, 'json')}>JSON</button>
             </div>
           </div>

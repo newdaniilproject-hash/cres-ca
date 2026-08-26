@@ -2180,6 +2180,7 @@
   "textsize.reset": "Звичайний розмір",
   "theme.light": "Світла",
   "theme.dark": "Темна",
+  "theme.webNote": "Діє на телефоні та в застосунку. Кабінет на великому екрані завжди світлий.",
   "legal.back.aria": "Назад",
   "legal.version": "Редакція від {version}",
   "public.chrome.brand": "Маркет",

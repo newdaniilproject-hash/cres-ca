@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
 import type { T } from '@/lib/i18n/translate'
 import { dbErrorText } from '@/lib/errors/db'
+import { abs } from '@/lib/site'
 import {
   IconGear, IconBag, IconDoc, IconUsers, IconDownload, IconLock,
   IconBell, IconChevronRight, IconClose, IconLayers, IconAlert,
@@ -151,7 +152,21 @@ export function SettingsClient({
     window.location.href = '/'
   }
 
-  const publicUrl = `${typeof location !== 'undefined' ? location.origin : ''}/t/${shop.slug}`
+  // Адреса вітрини — З КАНОНІЧНОГО `lib/site.ts`, а не з `location.origin`.
+  //
+  // Тут стояло `typeof location !== 'undefined' ? location.origin : ''`,
+  // і це дефект із двома різними наслідками:
+  //
+  //   1. Сервер малював `/t/<slug>`, клієнт — `https://…/t/<slug>`,
+  //      тобто гідратація падала з розбіжністю тексту. React у цьому разі
+  //      перемальовує все піддерево заново; знайдено рендером 25.08.2026,
+  //      бо ні `next build`, ні `tsc` таке не бачать.
+  //   2. Гірше: людина копіює той адрес, на якому стоїть САМА. З прев'ю-
+  //      складання Vercel вона поклала б у шапку Instagram посилання на
+  //      тимчасовий домен, з `www.` — версію з `www`. Посилання ж це те,
+  //      за яким рахується «продавець привів сам»: помилка в ньому коштує
+  //      не косметики, а комісії.
+  const publicUrl = abs(`/t/${shop.slug}`)
   // Адрес для шапки Instagram. Метка `?from=ig` — это НЕ украшение
   // и не аналитика «для интереса»: переход по ней помечает заказ или
   // запись как «продавец привёл сам» (0105, КОНСПЕКТЫ М24), а с таких
