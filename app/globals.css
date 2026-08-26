@@ -3574,6 +3574,7 @@ body.kb-open .m-actionbar {
   font-weight: 600;
   color: var(--web-text-secondary, var(--color-muted));
   margin-bottom: 2px;
+  transition: background var(--dur-fast), color var(--dur-fast);
 }
 .webside-item:hover { background: var(--web-hover-soft, var(--color-surface-2)); }
 .webside-item[data-active='true'] {
@@ -3614,6 +3615,7 @@ body.kb-open .m-actionbar {
   font-weight: 600;
   color: var(--web-text-body, var(--color-text));
   text-align: left;
+  transition: background var(--dur-fast), color var(--dur-fast);
 }
 .webdrop-item:hover { background: var(--web-hover-row, var(--color-surface-2)); }
 .webdrop-item[data-tone='danger'] { color: var(--color-danger); }
@@ -3652,6 +3654,9 @@ body.kb-open .m-actionbar {
   border: 1px solid var(--color-border);
   border-radius: 16px;
   padding: 20px;
+  /* Граница карточки меняется по ВЫБОРУ (обраний журнал, обрана секція
+     налаштувань) — без перехода это скачок цвета в кадр. */
+  transition: border-color var(--dur-fast), background var(--dur-fast);
 }
 /* Нижняя кнопка-ссылка карточки — через пунктирный разделитель. */
 .webcard-link {
@@ -3704,6 +3709,7 @@ body.kb-open .m-actionbar {
   color: var(--color-muted);
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
+  transition: color var(--dur-fast), border-color var(--dur-fast);
 }
 .wtab:hover { color: var(--web-text-body, var(--color-text)); }
 .wtab[data-active='true'] {
@@ -3737,6 +3743,7 @@ body.kb-open .m-actionbar {
   color: var(--web-text-secondary, var(--color-text));
   text-align: left;
   width: 100%;
+  transition: background var(--dur-fast);
 }
 .wtable-row:last-of-type { border-bottom: 0; }
 .wtable-row:hover { background: var(--web-hover-row, var(--color-surface-2)); }
@@ -3762,6 +3769,7 @@ body.kb-open .m-actionbar {
   color: #ffffff;
   font-size: 14px;
   font-weight: 650;
+  transition: background var(--dur-fast);
 }
 .btn-blue:hover { background: var(--web-blue-action-hover, #1D4FD8); }
 
@@ -3800,7 +3808,7 @@ body.kb-open .m-actionbar {
   border: 1px solid var(--color-border);
   border-radius: 16px;
   padding: 20px;
-  animation: panelIn 0.26s var(--ease-out-soft);
+  animation: panelIn var(--dur-base) var(--ease-out-soft);
 }
 
 }

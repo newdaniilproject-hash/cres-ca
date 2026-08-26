@@ -21,7 +21,7 @@
 //
 // Запуск: node scripts/check-tokens.mjs
 
-import { readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
@@ -302,6 +302,120 @@ for (const block of bare.matchAll(/\{([^{}]*)\}/g)) {
   })
 }
 
+// ── СТОРОЖ 5: у кожної теми має бути ПАРА ─────────────────────────────────
+//
+// Правило проекту сказано давно і прямо: «правка кольору в одній темі
+// без парної правки у другій — помилка приймання, а не дрібниця:
+// половина людей побачить рівно те, що не доробили». Правило було,
+// перевірки не було ЖОДНОЇ.
+//
+// Ціна пропуску не косметична і не однакова для всіх. Токен, оголошений
+// у світлій і забутий у темній, не «стає сірим» — він успадковує
+// СВІТЛЕ значення, тобто дає світлу пляму на темній сторінці. Побачить
+// її тільки той, хто ввімкнув темну тему, тобто не той, хто цю правку
+// робив.
+//
+// Палітр дві, і обидві повні пари:
+//   • телефон — `@theme` (світла) ↔ `html.dark`;
+//   • десктопний веб (CRESKO Web) — `body:has([data-webapp])` ↔
+//     `html.dark body:has([data-webapp])`.
+//
+// Перевіряються КОЛЬОРОВІ токени і тіні. Геометрія (радіуси, відступи,
+// шкала кеглів) свідомо поза перевіркою: вона одна на обидві теми,
+// і вимагати для неї пари означало б дублювати однакові числа.
+const COLORISH = /^--(color|tone|shadow|web)-/
+
+// Тіло блоку за його заголовком: від `{` до парної `}`, з урахуванням
+// вкладених дужок. Проста вибірка «до першої }» тут не годиться —
+// у `@theme` є вкладені правила.
+function bodyOf(marker) {
+  const i = bare.indexOf(marker)
+  if (i < 0) return null
+  const j = bare.indexOf('{', i)
+  let depth = 0
+  for (let k = j; k < bare.length; k += 1) {
+    if (bare[k] === '{') depth += 1
+    else if (bare[k] === '}') {
+      depth -= 1
+      if (depth === 0) return bare.slice(j + 1, k)
+    }
+  }
+  return null
+}
+
+const declsOf = (body) => new Set(
+  [...body.matchAll(/(--[a-z0-9-]+)\s*:/g)]
+    .map((m) => m[1])
+    .filter((n) => COLORISH.test(n)),
+)
+
+const PALETTES = [
+  ['телефон', '@theme', 'html.dark {'],
+  ['веб', 'body:has([data-webapp]) {', 'html.dark body:has([data-webapp]) {'],
+]
+for (const [name, lightMarker, darkMarker] of PALETTES) {
+  const lightBody = bodyOf(lightMarker)
+  const darkBody = bodyOf(darkMarker)
+  if (lightBody === null || darkBody === null) {
+    problems.push(`палітра «${name}»: не знайдено блок теми в globals.css`)
+    continue
+  }
+  const l = declsOf(lightBody)
+  const d = declsOf(darkBody)
+  for (const n of [...l].sort()) {
+    if (!d.has(n)) {
+      problems.push(
+        `палітра «${name}»: ${n} є у світлій темі і ВІДСУТНІЙ у темній — `
+        + 'він успадкує світле значення і дасть світлу пляму на темній сторінці',
+      )
+    }
+  }
+  for (const n of [...d].sort()) {
+    if (!l.has(n)) {
+      problems.push(
+        `палітра «${name}»: ${n} є у темній темі і ВІДСУТНІЙ у світлій — `
+        + 'значення нізвідки взятись не може, отже правило мертве',
+      )
+    }
+  }
+}
+
+// ── СТОРОЖ 6: у кожного екрана кабінету має бути стан завантаження ────────
+//
+// Правило 6 проекту: «ОТВЕТ на нажатие и ЗАГРУЗКА данных — разные сроки,
+// и первый не имеет права ждать второго… Экран вне бюджета не принимается
+// так же, как экран без состояния загрузки».
+//
+// Сторінки кабінету — `force-dynamic` і ходять у базу в Ірландію. Без
+// `loading.tsx` натискання відповідає ПОРОЖНЕЧЕЮ, поки їде відповідь,
+// і людина читає це як кнопку, що не спрацювала. Найгірше — на екранах,
+// куди заходять щодня.
+//
+// Перевірку не замінити оком: новий екран заводять папкою з `page.tsx`,
+// і забутий скелетон нічого не ламає — просто робить перехід «липким».
+// Знайдено 26.08.2026: без стану завантаження стояли ДЕВʼЯТЬ екранів,
+// серед них Клієнти, Фінанси, Замовлення і Налаштування.
+{
+  const appDir = join(root, 'app', 'app')
+  const check = (dir, label) => {
+    if (existsSync(join(dir, 'page.tsx')) && !existsSync(join(dir, 'loading.tsx'))) {
+      problems.push(
+        `${label}: є page.tsx, але немає loading.tsx — `
+        + 'натискання на цей екран відповідає порожнечею, поки їде запит',
+      )
+    }
+  }
+  const walk = (dir, label) => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      if (!e.isDirectory()) continue
+      check(join(dir, e.name), `${label}/${e.name}`)
+      walk(join(dir, e.name), `${label}/${e.name}`)
+    }
+  }
+  check(appDir, 'app/app')
+  walk(appDir, 'app/app')
+}
+
 if (problems.length > 0) {
   console.error('РОЗХОДЖЕННЯ токенів (globals.css ↔ lib/design/tokens.ts):')
   for (const p of problems) console.error('  •', p)
@@ -309,4 +423,8 @@ if (problems.length > 0) {
   process.exit(1)
 }
 
-console.log(`Токени зійшлися: ${PAIRS.length} світлих, ${DARK_PAIRS.length} темних, ${RADII.length} радіусів.`)
+console.log(
+  `Токени зійшлися: ${PAIRS.length} світлих, ${DARK_PAIRS.length} темних, `
+  + `${RADII.length} радіусів; обидві палітри мають пару в темній темі, `
+  + 'у кожного екрана кабінету є стан завантаження.',
+)
