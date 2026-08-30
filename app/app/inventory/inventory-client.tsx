@@ -223,12 +223,11 @@ export function InventoryClient({
   const [flag, setFlag] = useState<Flag>('all')
   // Формы раскрываются шторкой снизу, а не блоком на странице: на телефоне
   // раздвигающийся блок уводит список вниз, и мастер теряет место, где был.
-  const [adding, setAdding] = useState<'material' | 'container' | 'refs' | 'move' | null>(null)
+  const [adding, setAdding] = useState<'material' | 'container' | 'refs' | null>(null)
   const [manual, setManual] = useState(false)
   const [code, setCode] = useState('')
   const [scan, setScan] = useState<{ item?: ScanHit; container?: ContainerHit; miss?: string } | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
-  const [moveBusy, setMoveBusy] = useState(false)
   const [camera, setCamera] = useState(initialScan)
   const inputRef = useRef<HTMLInputElement>(null)
   // Разбивка запаса — ВЕРХНЕЙ шторкой. Снизу открывается то, что человек
@@ -255,11 +254,6 @@ export function InventoryClient({
   // тогда список начинается со свёрнутых категорий, и это верно:
   // сообщать нечего.
   const [openGroup, setOpenGroup] = useState<string | null>('attention')
-  // Засіб, выбранный свайпом по строке: шторка переноса открывается уже
-  // с ним. Иначе смысл жеста теряется — человек только что указал
-  // пальцем на позицию, а форма спрашивает её заново.
-  const [moveItem, setMoveItem] = useState<string>('')
-
   // ── Счётчики. Считаются по тем же порогам, что и рассылка, ──
   // иначе экран и письмо разойдутся: тут зелено, а письмо уже пришло.
   // Набор счётчиков — из README: Позицій · Дійсні · Закінч. · Прострочені.
@@ -587,27 +581,6 @@ export function InventoryClient({
     return true
   }
 
-  // Перемещение — функцией `relocate_stock` (0113), а не правкой
-  // `location_id`: функция пишет след в журнал движений («кто, когда,
-  // откуда и куда»), прямой UPDATE переносит банку молча.
-  async function doRelocate(materialId: string, locationId: string, note: string) {
-    setMoveBusy(true)
-    const { error } = await supabase.rpc('relocate_stock', {
-      p_material_id: materialId,
-      p_location_id: locationId || null,
-      p_note: note.trim() || null,
-    })
-    setMoveBusy(false)
-    if (error) {
-      // Отказ базы — обезличенной подписью, не сырым текстом Postgres (М25).
-      toast.error(t('inventory.material.relocate.error'), dbErrorText(t, error))
-      return
-    }
-    setAdding(null)
-    toast.success(t('inventory.material.relocate.done'))
-    router.refresh()
-  }
-
   async function openContainer(id: string, containerCode: string) {
     const ok = await setContainerStatus(id, containerCode, 'opened', t('inventory.container.open'))
     if (!ok) return
@@ -758,12 +731,13 @@ export function InventoryClient({
       onClick: () => setAdding('material') },
     { key: 'container', label: t('inventory.action.addContainer'), icon: IconQr,
       onClick: () => setAdding('container') },
-    { key: 'move', label: t('inventory.quick.move'), icon: IconArrows,
-      onClick: () => { setMoveItem(''); setAdding('move') } },
     { key: 'writeOff', label: t('inventory.movements.action.writeOff'), icon: IconMinus,
       href: '/app/inventory/movements?new=1' },
-    { key: 'receipt', label: t('inventory.quick.receipts'), icon: IconInbox,
-      href: '/app/inventory/receipts?new=1' },
+    // Приход ведёт в ту же форму движений, что и списание, — тем же
+    // приёмом `?new=1`, только с типом. Отдельного экрана у него больше
+    // нет: документ приёмки снят решением владельца 30.08.2026.
+    { key: 'receipt', label: t('inventory.movements.action.receipt'), icon: IconInbox,
+      href: '/app/inventory/movements?new=1&type=receipt' },
   ]
 
   // ── Действия по свайпу строки ────────────────────────────────────────
@@ -785,8 +759,12 @@ export function InventoryClient({
       return [
         { key: 'off', label: t('inventory.movements.action.writeOff'), icon: IconMinus, tone: 'amber',
           onSelect: () => router.push(`/app/inventory/movements?new=1&item=${row.m.id}`) },
-        { key: 'move', label: t('inventory.quick.move'), icon: IconArrows, tone: 'violet',
-          onSelect: () => { setMoveItem(row.m.id); setAdding('move') } },
+        // Перемещение отсюда снято 30.08.2026 решением владельца
+        // («перемещение пока не надо»). Функция `relocate_stock` (0113)
+        // в базе осталась — сужающая миграция идёт отдельным шагом,
+        // а на бою уже лежат transfer-движения, ссылающиеся на неё.
+        { key: 'receipt', label: t('inventory.movements.action.receipt'), icon: IconInbox, tone: 'emerald',
+          onSelect: () => router.push(`/app/inventory/movements?new=1&type=receipt&item=${row.m.id}`) },
       ]
     }
     if (row.kind === 'container') {
@@ -813,7 +791,6 @@ export function InventoryClient({
   // только когда есть что печатать: пустой список печати — это лист
   // бумаги, потраченный впустую.
   const more: { href: string; label: string; icon: typeof IconBox; blank?: boolean }[] = [
-    { href: '/app/inventory/receipts', label: t('inventory.quick.receipts'), icon: IconInbox },
     { href: '/app/inventory/movements', label: t('inventory.quick.movements'), icon: IconArrows },
     { href: '/app/inventory/counts', label: t('inventory.quick.counts'), icon: IconClipboard },
     { href: '/app/inventory/reorder', label: t('inventory.links.reorder'), icon: IconLow },
@@ -1051,11 +1028,11 @@ export function InventoryClient({
             ? <Link href={fab.href} className="btn-secondary">{fab.label}</Link>
             : <button type="button" className="btn-secondary" onClick={fab.onClick}>{fab.label}</button>}
           {/* Синяя кнопка — ЕДИНСТВЕННАЯ в кабинете (README: btn-blue живёт
-              только тут и в модалке приймання). `?new=1` открывает форму
-              нового документа сразу — тем же приёмом, каким `?scan=1`
-              открывает камеру здесь. */}
-          <Link href="/app/inventory/receipts?new=1" className="btn-blue">
-            {t('app.screen.inventory.receipts.title')}
+              только у приймання). Документа приёмки больше нет, но само
+              действие осталось и стало проще: та же форма движений,
+              открытая сразу на приходе. */}
+          <Link href="/app/inventory/movements?new=1&type=receipt" className="btn-blue">
+            {t('inventory.movements.action.receipt')}
           </Link>
         </div>
       </div>
@@ -1987,30 +1964,6 @@ export function InventoryClient({
         />
       </Sheet>
 
-      {/* ── Переміщення ──────────────────────────────────────────
-          Четвёртое быстрое действие README. Перенос делает функция
-          `relocate_stock` (0113) — та же, что зовёт карточка засоба:
-          она пишет след в журнал движений парой transfer-строк, а
-          прямой UPDATE `location_id` перенёс бы банку молча. Отличие
-          от карточки одно — здесь сначала спрашивается, ЧТО переносим:
-          на карточку человек уже пришёл с выбранным засобом, а сюда
-          с ряда действий. Поэтому форма здесь, а не импортом: у той
-          нет и не должно быть выбора позиции.
-          Ёмкости и товары в списке отсутствуют намеренно — место
-          хранения есть только у засоба. */}
-      <Sheet
-        open={adding === 'move'}
-        onClose={() => setAdding(null)}
-        title={t('inventory.material.relocate.sheet')}
-      >
-        <MoveForm
-          key={moveItem || 'blank'}
-          initialMaterialId={moveItem}
-          materials={materials} locations={locations} busy={moveBusy}
-          onSave={(materialId, locationId, note) => void doRelocate(materialId, locationId, note)}
-        />
-      </Sheet>
-
       {/* ── Огляд складу: шторка СВЕРХУ ──────────────────────────
           То, что человек СМОТРИТ и КУДА уходит, а не то, что делает:
           снизу открываются формы с кнопкой сохранения под большим
@@ -2207,75 +2160,5 @@ export function InventoryClient({
                onResult={(v) => { setCode(v); void lookup(v) }} />
 
     </div>
-  )
-}
-
-// ── Форма переміщення ───────────────────────────────────────────────────────
-//
-// Своё состояние держит сама форма, а не экран: поля живут ровно столько,
-// сколько открыта шторка, и подниматься в родителя им незачем — иначе
-// закрытая шторка продолжала бы помнить наполовину заполненный перенос.
-// `initialMaterialId` приходит от свайпа по строке: человек уже указал
-// пальцем на позицию, и спрашивать её второй раз значит отменить смысл
-// жеста. Родитель монтирует форму заново (`key`), поэтому значение
-// читается один раз при создании состояния — эффект синхронизации
-// здесь был бы третьим местом, где живёт «что переносим».
-function MoveForm({
-  materials, locations, busy, onSave, initialMaterialId = '',
-}: {
-  materials: Material[]
-  locations: RefItem[]
-  busy: boolean
-  initialMaterialId?: string
-  onSave: (materialId: string, locationId: string, note: string) => void
-}) {
-  const t = useT()
-  const [materialId, setMaterialId] = useState(initialMaterialId)
-  const [locationId, setLocationId] = useState('')
-  const [note, setNote] = useState('')
-
-  // Без мест хранения переносить не во что, и пустой список выбора
-  // читается как поломка. Отправляем туда, где место заводится.
-  if (locations.length === 0 || materials.length === 0) {
-    return <p className="t-sm prose-muted">{t('inventory.move.empty')}</p>
-  }
-
-  return (
-    <form className="grid gap-3"
-          onSubmit={(e) => { e.preventDefault(); onSave(materialId, locationId, note) }}>
-      <div>
-        <label className="field-label" htmlFor="move-item">
-          {t('inventory.move.item.label')}
-        </label>
-        <select id="move-item" className="select" value={materialId} required
-                onChange={(e) => setMaterialId(e.target.value)}>
-          <option value="">{t('inventory.move.item.placeholder')}</option>
-          {/* Имена засобів — данные арендатора, не переводятся. */}
-          {materials.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-        </select>
-      </div>
-      <div>
-        <label className="field-label" htmlFor="move-to">
-          {t('inventory.material.relocate.to.label')}
-        </label>
-        <select id="move-to" className="select" value={locationId}
-                onChange={(e) => setLocationId(e.target.value)}>
-          <option value="">{t('inventory.material.relocate.none')}</option>
-          {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-        </select>
-      </div>
-      <div>
-        <label className="field-label" htmlFor="move-note">
-          {t('inventory.material.relocate.note.label')}
-        </label>
-        <input id="move-note" className="input" value={note}
-               placeholder={t('inventory.material.relocate.note.placeholder')}
-               onChange={(e) => setNote(e.target.value)} />
-      </div>
-      <p className="field-hint">{t('inventory.material.relocate.hint')}</p>
-      <button type="submit" className="btn-primary" disabled={busy || !materialId}>
-        {busy ? t('common.saving') : t('inventory.material.relocate.submit')}
-      </button>
-    </form>
   )
 }
