@@ -426,6 +426,13 @@ export function FinanceClient({
   const formCategories = categories.filter((c) => c.kind === kind && c.isActive)
   const balance = income - expense
 
+  // Величины столбиков карточки-героя (телефон). Максимум считается по
+  // ряду, а не берётся от суммы периода: столбики показывают ФОРМУ
+  // периода, и день с максимумом обязан упираться в потолок — иначе
+  // у салона с ровным доходом весь ряд прижат к полу и не читается.
+  const maxDay = series.reduce((m, s) => (s.value > m ? s.value : m), 0)
+  const hasIncome = maxDay > 0
+
   // Дельта к прошлому периоду. `null` — когда сравнивать не с чем: подпись
   // «+100 %» у заведения, которое в прошлом месяце не работало вовсе, —
   // это не рост, а деление на ноль в человеческом виде. Меньше процента
@@ -560,9 +567,6 @@ export function FinanceClient({
           ))}
         </div>
       </div>
-      <p className="tabular t-xs rise -mt-2 prose-muted lg:hidden">
-        {day(t, from)} — {day(t, to)}
-      </p>
 
       <div className="wtabs hidden lg:flex">
         {VIEWS.map((v) => (
@@ -596,22 +600,93 @@ export function FinanceClient({
                 tone="violet" icon={<IconList size={20} />} trend="flat" />
       </section>
 
-      {/* README, розділ G: «Метрики доходів/витрат». Плитками, а не тремя
-          карточками с кеглем 24: на телефоне те занимали три экрана в высоту
-          ради трёх чисел. Цвет несёт смысл и здесь: доход зелёным, расход
-          красным, итог акцентом — и красным, когда он ушёл в минус. */}
-      <section className="rise-1 grid grid-cols-3 gap-2 lg:hidden">
-        <div className="metric" data-tone="emerald">
-          <span className="metric-value tabular">{t.money(income)}</span>
-          <span className="metric-label">{t('finance.total.income')}</span>
+      {/* ── Картка-герой фінансів (телефон) ───────────────────────────
+          Пересобрано 30.08.2026. Было: ряд из трёх равных плиток —
+          доход, расход, итог. Три числа одного веса не отвечают на
+          вопрос, с которым в финансы заходят с телефона («сколько
+          вышло за период»): человек читал все три и складывал глазами,
+          какое из них главное.
+
+          Теперь ярусы по убыванию важности, тот же приём, что уже
+          стоит на складе (`.hero` с вартістю запасу):
+
+            1. ИТОГ крупно — ответ на вопрос экрана, читается без
+               нажатий и без сравнения соседей;
+            2. дельта к прошлому периоду строкой под ним — величина
+               `dBalance` считалась ЗДЕСЬ ЖЕ и до этого дня показывалась
+               ТОЛЬКО на широком экране: с телефона её не было вовсе,
+               хотя сервер её присылал;
+            3. столбики по дням (`series`) — та же беда: динамика жила
+               в `IncomeChart` под `lg:grid`, и владелец с телефона
+               форму месяца не видел никогда;
+            4. доход и расход — двумя плитками, а не тремя: итог уехал
+               наверх, и оставлять его третьим значило показать одно
+               число дважды.
+
+          Итог красный, когда ушёл в минус, — это единственное место,
+          где цвет здесь несёт состояние, а не украшает. */}
+      <section className="hero rise-1 lg:hidden">
+        <p className="eyebrow">{t('finance.web.metric.profit')}</p>
+        <p className="hero-value mt-1"
+           style={balance < 0 ? { color: 'var(--color-danger)' } : undefined}>
+          {t.money(balance)}
+        </p>
+        {/* Дельты нет, когда сравнивать не с чем (`delta` выше отдаёт
+            null): пустая строка честнее выдуманного «+0 %». */}
+        {dBalance && (
+          <p className="t-sm mt-1 font-semibold"
+             style={{ color: dBalance.up ? 'var(--color-success)' : 'var(--color-danger)' }}>
+            {dBalance.text}
+          </p>
+        )}
+
+        {/* Столбики рисуем, только когда есть чему подниматься. Ряд
+            из одних подложек — это не «график с нулями», а обещание
+            показать динамику, которой нет; вместо него та же строка,
+            что и на широком экране. */}
+        <div className="mt-4">
+          {hasIncome ? (
+            <div className="spark" role="img" aria-label={t('finance.web.chart.title')}>
+              {series.map((s, i) => {
+                const empty = s.value <= 0
+                return (
+                  <span key={s.day} className="spark-bar" data-empty={empty}
+                        style={{
+                          // Пол в 8% — иначе день с малой суммой рисуется
+                          // ниже подложки пустого дня, и «мало» читается
+                          // как «ничего». Пустой день — ровно 2px.
+                          height: empty ? 2 : `${Math.max(8, (s.value / maxDay) * 100)}%`,
+                          // Задержка — от первого дня к последнему, как
+                          // читают ряд. Величина вычисляемая, поэтому
+                          // разметкой: тот же приём, что в `quick-fab`.
+                          animationDelay: `${Math.min(i * 12, 240)}ms`,
+                        }} />
+                )
+              })}
+            </div>
+          ) : (
+            <p className="t-sm prose-muted">{t('finance.web.chart.empty')}</p>
+          )}
+          {/* Диапазон стоит ЗДЕСЬ и в обеих ветках, а не только под
+              столбиками: он приехал сюда отдельной строкой из-под полосы
+              периода, и показывать его дважды на одном экране незачем.
+              Чипы выше называют период словом («Місяць»), эта строка —
+              числами; без неё «Місяць» в последний день августа
+              не отличить от «30 днів». */}
+          <p className="tabular t-xs mt-2 prose-muted">
+            {day(t, from)} — {day(t, to)}
+          </p>
         </div>
-        <div className="metric" data-tone="rose">
-          <span className="metric-value tabular">{t.money(expense)}</span>
-          <span className="metric-label">{t('finance.total.expense')}</span>
-        </div>
-        <div className="metric" data-tone={balance < 0 ? 'rose' : 'blue'}>
-          <span className="metric-value tabular">{t.money(balance)}</span>
-          <span className="metric-label">{t('finance.total.balance')}</span>
+
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <div className="metric" data-tone="emerald">
+            <span className="metric-value tabular">{t.money(income)}</span>
+            <span className="metric-label">{t('finance.total.income')}</span>
+          </div>
+          <div className="metric" data-tone="rose">
+            <span className="metric-value tabular">{t.money(expense)}</span>
+            <span className="metric-label">{t('finance.total.expense')}</span>
+          </div>
         </div>
       </section>
 
