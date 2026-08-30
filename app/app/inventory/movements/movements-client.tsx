@@ -127,7 +127,19 @@ export function MovementsClient({
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
-  const [type, setType] = useState<'write_off' | 'return'>('write_off')
+  // ⚠️ ТРЕТИЙ ТИП — ПРИХОД (30.08.2026). Решение владельца: «приемка
+  // документа не надо». До этого дня единственным способом УВЕЛИЧИТЬ
+  // остаток был документ приёмки: завести, набить строки, провести.
+  // Для салона это обряд не по размеру — банка приезжает одна, накладной
+  // нет, мастер стоит над коробкой с телефоном.
+  //
+  // Приход зовёт НЕ `record_stock_movement`, а `receive_stock` (0133),
+  // и это не украшение: вместе с документом ушёл бы средневзвешенный
+  // пересчёт себестоимости, на котором стоят «Вартість запасу», маржа
+  // позиции и P&L. Формула переехала в функцию целиком.
+  const [type, setType] = useState<'write_off' | 'return' | 'receipt'>('write_off')
+  // Цена — только у прихода: она и есть то, ради чего он идёт функцией.
+  const [cost, setCost] = useState('')
   const [kind, setKind] = useState<'material' | 'goods'>('material')
   const [itemId, setItemId] = useState('')
   const [qty, setQty] = useState('')
@@ -159,6 +171,9 @@ export function MovementsClient({
     if (canWrite) {
       setOpen(true)
       setErr('')
+      // Тип приезжает адресом с экрана склада: «Надходження» в стосе
+      // и свайп по строке ведут сюда с уже выбранным видом движения.
+      if (sp.get('type') === 'receipt') setType('receipt')
       const wantKind = sp.get('kind') === 'goods' ? 'goods' : 'material'
       const wantItem = sp.get('item') ?? ''
       const pool = wantKind === 'goods' ? variants : materials
@@ -223,21 +238,39 @@ export function MovementsClient({
     // прибавляет это число к остатку, поэтому знак ставим здесь и явно.
     const amount = Math.abs(Number(qty))
     const signed = type === 'write_off' ? -amount : amount
-    const label = `${type === 'write_off'
-      ? t('inventory.movements.action.writeOff')
-      : t('inventory.movements.action.return')} · ${
+    const label = `${type === 'receipt'
+      ? t('inventory.movements.action.receipt')
+      : type === 'write_off'
+        ? t('inventory.movements.action.writeOff')
+        : t('inventory.movements.action.return')} · ${
       options.find((o) => o.id === itemId)?.name ?? ''}`
 
     try {
-      const { error: rpcError } = await supabase.rpc('record_stock_movement', {
-        p_tenant_id: tenantId,
-        p_movement_type: type,
-        p_quantity: signed,
-        ...(kind === 'goods' ? { p_variant_id: itemId } : { p_material_id: itemId }),
-        p_reference_type: 'manual',
-        p_note: note.trim(),
-        p_idempotency_key: opKey.current,
-      })
+      const { error: rpcError } = type === 'receipt'
+        // Приход — своей функцией: она пересчитывает себестоимость ДО
+        // движения (формуле нужен остаток до прихода) и только потом
+        // пишет журнал. Знак здесь не ставится вовсе — функция принимает
+        // положительное и отказывает нулю и минусу сама.
+        ? await supabase.rpc('receive_stock', {
+            p_tenant_id: tenantId,
+            p_quantity: amount,
+            ...(kind === 'goods' ? { p_variant_id: itemId } : { p_material_id: itemId }),
+            // Пустая цена уходит как null, а НЕ как ноль: «не знаю» и «ноль»
+            // — разные утверждения, и второе размыло бы себестоимость
+            // вникуда (оговорка 1 из 0112).
+            p_unit_cost: cost.trim() ? Number(cost) : null,
+            p_note: note.trim() || null,
+            p_idempotency_key: opKey.current,
+          })
+        : await supabase.rpc('record_stock_movement', {
+            p_tenant_id: tenantId,
+            p_movement_type: type,
+            p_quantity: signed,
+            ...(kind === 'goods' ? { p_variant_id: itemId } : { p_material_id: itemId }),
+            p_reference_type: 'manual',
+            p_note: note.trim(),
+            p_idempotency_key: opKey.current,
+          })
       if (rpcError) throw new Error(rpcError.message)
     } catch (e) {
       setBusy(false)
@@ -246,7 +279,15 @@ export function MovementsClient({
       // Ключ идемпотентности УЖЕ сгенерирован выше и уходит в очередь
       // тем же самым: если база успела записать движение, а ответ
       // не доехал, досылка ничего не спишет второй раз.
-      if (isNetworkError(e)) {
+      // ⚠️ ПРИХОД В ОЧЕРЕДЬ НЕ КЛАДЁТСЯ, и это решение, а не пробел.
+      // Досылка умеет ровно те виды, что перечислены в `lib/offline/queue.ts`,
+      // и `receive_stock` среди них нет: она правит ЕЩЁ И себестоимость,
+      // то есть досылать её надо своим обработчиком, а не как движение.
+      // Положить приход в очередь под видом `stock.movement` значило бы
+      // досылать его мимо формулы — остаток бы вырос, а цена осталась
+      // вчерашней, и разошлись бы они молча. Правило из CLAUDE.md ровно
+      // об этом: в очередь уходит только то, что умеет досылаться целиком.
+      if (isNetworkError(e) && type !== 'receipt') {
         await enqueue(label, {
           kind: 'stock.movement',
           tenantId,
@@ -259,7 +300,7 @@ export function MovementsClient({
           referenceType: 'manual',
         })
         opKey.current = ''
-        setItemId(''); setQty(''); setNote('')
+        setItemId(''); setQty(''); setNote(''); setCost('')
         setOpen(false)
         toast.info(t('inventory.offline.saved'), t('inventory.movements.offline.desc'))
         return
@@ -272,7 +313,7 @@ export function MovementsClient({
 
     setBusy(false)
     opKey.current = ''
-    setItemId(''); setQty(''); setNote('')
+    setItemId(''); setQty(''); setNote(''); setCost('')
     // Списание — разовое действие, а не серия, поэтому шторка закрывается:
     // результат виден первой строкой журнала, и это лучший «успех».
     setOpen(false)
@@ -359,11 +400,14 @@ export function MovementsClient({
             </p>
             <div className="empty-actions">
               {active === 'all' ? (
-                // Первое движение рождается приёмкой, а не этим экраном, —
-                // поэтому единственная кнопка пустого журнала ведёт туда.
-                <Link href="/app/inventory/receipts" className="btn-primary">
+                // Первое движение рождается ПРИХОДОМ, и с 30.08.2026 он
+                // живёт в этой же форме, а не отдельным документом. Кнопка
+                // пустого состояния открывает её сразу с нужным типом —
+                // второго входа в то же действие не заводим.
+                <button type="button" className="btn-primary"
+                        onClick={() => { setType('receipt'); setErr(''); setOpen(true) }}>
                   {t('inventory.movements.empty.cta')}
-                </Link>
+                </button>
               ) : (
                 <button type="button" className="btn-secondary" onClick={() => go('all')}>
                   {t('inventory.filter.reset')}
@@ -387,12 +431,10 @@ export function MovementsClient({
                   : ''}
               </p>
               {mv.note && <p className="t-xs mt-0.5 truncate prose-muted">{mv.note}</p>}
-              {mv.receiptId && (
-                <Link href={`/app/inventory/receipts/${mv.receiptId}`}
-                      className="t-xs mt-1 inline-block underline">
-                  {t('inventory.movements.openReceipt')}
-                </Link>
-              )}
+              {/* Ссылки на документ приёмки здесь больше нет: экран снят
+                  30.08.2026, и ссылка вела бы в 404. Сами движения старых
+                  документов остаются в журнале как есть — они и есть факт,
+                  а документ был лишь способом их завести. */}
               {mv.countId && !mv.receiptId && (
                 <p className="t-xs mt-0.5 prose-muted">{t('inventory.movements.byCount')}</p>
               )}
@@ -424,17 +466,32 @@ export function MovementsClient({
           вместе с содержимым (`.sheet-foot` + dvh). */}
       <Sheet open={open && canWrite} onClose={() => setOpen(false)}
              title={t('inventory.movements.form.title')}
+             /* Причина обязательна у списания и возврата и НЕ обязательна
+                у прихода. Разница не в строгости, а в смысле: списание без
+                причины через полгода не объяснит ни бухгалтер, ни проверка,
+                а у прихода причина одна и та же всегда — «привезли»,
+                и требовать её значило бы заставлять человека печатать
+                очевидное на каждой банке. */
              footer={
                <button form="movement-form" className="btn-primary w-full"
-                       disabled={busy || !itemId || !qty || !note.trim()}>
-                 {type === 'write_off'
-                   ? t('inventory.movements.form.submit.writeOff')
-                   : t('inventory.movements.form.submit.return')}
+                       disabled={busy || !itemId || !qty
+                                 || (type !== 'receipt' && !note.trim())}>
+                 {type === 'receipt'
+                   ? t('inventory.movements.form.submit.receipt')
+                   : type === 'write_off'
+                     ? t('inventory.movements.form.submit.writeOff')
+                     : t('inventory.movements.form.submit.return')}
                </button>
              }>
         {/* id связывает кнопку футера с формой: футер лежит вне <form>. */}
         <form id="movement-form" onSubmit={submit} className="grid gap-3">
           <div className="flex flex-wrap gap-2">
+            {/* Приход ПЕРВЫМ: на складе он идёт раньше остального —
+                сначала завезли, потом расходуют. */}
+            <button type="button" className={type === 'receipt' ? 'chip-active' : 'chip'}
+                    onClick={() => setType('receipt')}>
+              {t('inventory.movements.action.receipt')}
+            </button>
             <button type="button" className={type === 'write_off' ? 'chip-active' : 'chip'}
                     onClick={() => setType('write_off')}>
               {t('inventory.movements.action.writeOff')}
@@ -481,14 +538,37 @@ export function MovementsClient({
                    value={qty} onChange={(e) => setQty(e.target.value)} />
           </div>
 
+          {/* Цена — только у прихода. У списания её нет намеренно: списание
+              уходит ПО СЕБЕСТОИМОСТИ, которая уже посчитана приходами,
+              и второе поле цены здесь означало бы, что её можно назначить
+              задним числом. */}
+          {type === 'receipt' && (
+            <div>
+              <label className="field-label">{t('inventory.movements.form.cost.label')}</label>
+              <input type="number" className="input" min="0" step="any"
+                     value={cost} onChange={(e) => setCost(e.target.value)} />
+              <p className="field-hint">{t('inventory.movements.form.cost.hint')}</p>
+            </div>
+          )}
+
           <div>
-            <label className="field-label">{t('inventory.movements.form.reason.label')}</label>
-            <input required className="input"
-                   placeholder={type === 'write_off'
-                     ? t('inventory.movements.form.reason.writeOff.placeholder')
-                     : t('inventory.movements.form.reason.return.placeholder')}
+            <label className="field-label">
+              {type === 'receipt'
+                ? t('inventory.movements.form.source.label')
+                : t('inventory.movements.form.reason.label')}
+            </label>
+            <input required={type !== 'receipt'} className="input"
+                   placeholder={type === 'receipt'
+                     ? t('inventory.movements.form.source.placeholder')
+                     : type === 'write_off'
+                       ? t('inventory.movements.form.reason.writeOff.placeholder')
+                       : t('inventory.movements.form.reason.return.placeholder')}
                    value={note} onChange={(e) => setNote(e.target.value)} />
-            <p className="field-hint">{t('inventory.movements.form.reason.hint')}</p>
+            <p className="field-hint">
+              {type === 'receipt'
+                ? t('inventory.movements.form.source.hint')
+                : t('inventory.movements.form.reason.hint')}
+            </p>
           </div>
 
           {err && <p className="field-error">{err}</p>}

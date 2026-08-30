@@ -96,8 +96,6 @@ export function MaterialCard({
   const [edit, setEdit] = useState(false)
   const [batchEdit, setBatchEdit] = useState<Batch | 'new' | null>(null)
   const [busy, setBusy] = useState(false)
-  const [relocate, setRelocate] = useState(false)
-  const [relocBusy, setRelocBusy] = useState(false)
   // Вкладка широкого экрана. На телефоне её нет вовсе: там секции лежат
   // одна под другой, и переключатель прятал бы половину карточки за
   // лишним нажатием.
@@ -222,32 +220,6 @@ export function MaterialCard({
     router.refresh()
   }
 
-  // Перемещение — функцией relocate_stock (0113), а не правкой location_id:
-  // функция пишет след в журнал движений («кто, когда, откуда и куда»),
-  // прямой UPDATE переносит банку молча. Форма правки места в карточке
-  // остаётся для заведения; осознанный перенос — только отсюда.
-  async function doRelocate(locationId: string, note: string) {
-    if ((locationId || null) === (material.locationId ?? null)) {
-      toast.error(t('inventory.material.relocate.error'),
-        t('inventory.material.relocate.same'))
-      return
-    }
-    setRelocBusy(true)
-    const { error } = await supabase.rpc('relocate_stock', {
-      p_material_id: material.id,
-      p_location_id: locationId || null,
-      p_note: note.trim() || null,
-    })
-    setRelocBusy(false)
-    if (error) {
-      toast.error(t('inventory.material.relocate.error'), dbErrorText(t, error))
-      return
-    }
-    setRelocate(false)
-    toast.success(t('inventory.material.relocate.done'))
-    router.refresh()
-  }
-
   return (
     <div className="flex flex-col gap-4 lg:gap-5">
 
@@ -329,23 +301,16 @@ export function MaterialCard({
                   {!canWrite && <span className="badge">{t('inventory.material.badge.readonly')}</span>}
                 </div>
               </div>
-              {/* Действия карточки — те же две, что и на телефоне.
-                  «Перемістити» стоит здесь, а не отдельной карточкой
-                  справа: место зберігання уже названо в стат-ряду ниже,
-                  и карточка с тем же значением была бы вторым его
-                  показом на одном экране. */}
+              {/* «Перемістити» отсюда снято 30.08.2026 решением владельца
+                  («перемещение пока не надо»). Место хранения по-прежнему
+                  видно в секции «Зберігання» и задаётся при правке карточки;
+                  ушёл только отдельный перенос со следом в журнале. */}
               {canWrite && (
                 <div className="flex shrink-0 gap-2">
                   <button type="button" className="btn-secondary"
                           onClick={() => setEdit(true)}>
                     {t('inventory.material.edit')}
                   </button>
-                  {stock !== null && (
-                    <button type="button" className="btn-secondary"
-                            onClick={() => setRelocate(true)}>
-                      {t('inventory.material.relocate.action')}
-                    </button>
-                  )}
                 </div>
               )}
             </div>
@@ -1152,14 +1117,6 @@ export function MaterialCard({
               // рядка власник «лагодить» цифру руками і ламає середньозважену.
               <p className="field-hint mt-1">{t('inventory.material.cost.hint')}</p>
             )}
-            {canWrite && (
-              // Перенос місця — ТІЛЬКИ кнопкою: вона зве relocate_stock (0113)
-              // і лишає слід у журналі рухів, чого мовчазний селект не робить.
-              <button type="button" className="btn-secondary mt-2"
-                      onClick={() => setRelocate(true)}>
-                {t('inventory.material.relocate.action')}
-              </button>
-            )}
           </Fold>
         )}
 
@@ -1195,26 +1152,6 @@ export function MaterialCard({
         />
       </Sheet>
 
-      {/* ── Перемещение в другое место хранения ──────────────── */}
-      <Sheet open={relocate} onClose={() => setRelocate(false)}
-             title={t('inventory.material.relocate.sheet')}
-             footer={
-               // Кнопка в подвале шторки; форма связана атрибутом form —
-               // подвал живёт вне <form>, и без него submit не дошёл бы.
-               <button form="relocate-form" className="btn-primary w-full"
-                       disabled={relocBusy}>
-                 {relocBusy ? t('common.saving') : t('inventory.material.relocate.submit')}
-               </button>
-             }>
-        {relocate && (
-          <RelocateForm
-            current={locations.find((l) => l.id === material.locationId) ?? null}
-            locations={locations}
-            onSave={(loc, note) => void doRelocate(loc, note)}
-          />
-        )}
-      </Sheet>
-
       {/* ── Правка партии ────────────────────────────────────── */}
       <Sheet open={batchEdit !== null} onClose={() => setBatchEdit(null)}
              title={batchEdit === 'new'
@@ -1232,48 +1169,6 @@ export function MaterialCard({
         )}
       </Sheet>
     </div>
-  )
-}
-
-// Перемещение — отдельная маленькая форма: текущее место текстом,
-// новое — списком, заметка по желанию. «Без місця» — тоже перенос
-// (снять с полки), поэтому пустой пункт в списке законен.
-function RelocateForm({
-  current, locations, onSave,
-}: {
-  current: RefItem | null
-  locations: RefItem[]
-  onSave: (locationId: string, note: string) => void
-}) {
-  const t = useT()
-  const [locationId, setLocationId] = useState(current?.id ?? '')
-  const [note, setNote] = useState('')
-
-  return (
-    <form id="relocate-form" className="grid gap-3"
-          onSubmit={(e) => { e.preventDefault(); onSave(locationId, note) }}>
-      <div className="card-flat">
-        <p className="t-sm" style={{ color: 'var(--color-muted)' }}>
-          {t('inventory.material.relocate.current')}
-        </p>
-        <p className="t-md">{current?.name ?? t('inventory.material.relocate.none')}</p>
-      </div>
-      <div>
-        <label className="field-label">{t('inventory.material.relocate.to.label')}</label>
-        <select className="select" value={locationId}
-                onChange={(e) => setLocationId(e.target.value)}>
-          <option value="">{t('inventory.material.relocate.none')}</option>
-          {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-        </select>
-      </div>
-      <div>
-        <label className="field-label">{t('inventory.material.relocate.note.label')}</label>
-        <input className="input" maxLength={100}
-               placeholder={t('inventory.material.relocate.note.placeholder')}
-               value={note} onChange={(e) => setNote(e.target.value)} />
-      </div>
-      <p className="field-hint">{t('inventory.material.relocate.hint')}</p>
-    </form>
   )
 }
 
