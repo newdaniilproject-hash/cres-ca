@@ -105,7 +105,11 @@ type Item = {
 
 /** Пункты, которые не являются модулями, — они в коде и это решение. */
 const FIXED_TOP: Item[] = [
-  { href: '/app', label: 'app.nav.today', caption: 'app.nav.today.desc', icon: IconHome, exact: true },
+  // Адрес сводки — `/app/today`, а НЕ `/app`. Вход в кабинет открывается
+  // складом (решение владельца 30.08.2026), и `/app` стал роутером без
+  // собственной разметки: пункт меню, ведущий туда, увозил бы человека
+  // со «Сьогодні» на склад — то есть не открывался бы никогда.
+  { href: '/app/today', label: 'app.nav.today', caption: 'app.nav.today.desc', icon: IconHome, exact: true },
 ]
 const FIXED_BOTTOM: Item[] = [
   { href: '/app/team', label: 'app.nav.team', caption: 'app.nav.team.desc', icon: IconUsers, perm: 'team.read' },
@@ -218,7 +222,7 @@ function matches(pattern: string, pathname: string): boolean {
 // Отдельного списка «а вот этих адресов нет» не заводим: он устареет на
 // первом же экране, который добавят, а этот список — нет.
 const screenExists = (path: string) =>
-  path === '/app'
+  path === '/app' || path === '/app/today'
   || HEADINGS.some(([p]) => p === path || (p.includes('*') && matches(p, path)))
 
 // Адрес «назад».
@@ -246,7 +250,9 @@ function backOf(pathname: string, openable: (href: string) => boolean): string {
     if (screenExists(parent) && openable(parent)) return parent
   }
   // «Сьогодні» открыт любому, кто вошёл: у пункта нет ни модуля, ни права.
-  return '/app'
+  // Именно `/app/today`, а не `/app`: второй — роутер, он увёл бы стрелку
+  // «назад» на склад, которого у этого человека может не быть вовсе.
+  return '/app/today'
 }
 
 /** Заголовок, подпись и адрес «назад» — из адреса, а не из страницы. */
@@ -256,7 +262,7 @@ function headingOf(
   /** Адреса корней разделов — из реестра плюс пункты кода. */
   roots: string[],
 ) {
-  if (pathname === '/app') {
+  if (pathname === '/app/today') {
     // Имя заведения не переводится: это данные арендатора, а не строка
     // интерфейса. Запасное «Кабінет» — строка, и оно из словаря.
     return {
@@ -453,7 +459,7 @@ function AppShellInner({
   // 19.08.2026). Сравнение точное, а не по префиксу: «Склад» подписан
   // в панели, а «Приймання» внутри склада — нет, и оно обязано
   // назваться в шапке.
-  const inNav = tabs.some((i) => i.href === pathname) || pathname === '/app'
+  const inNav = tabs.some((i) => i.href === pathname) || pathname === '/app/today'
 
   // Смена экрана закрывает меню: навигация произошла — мебель обязана
   // уйти с дороги сама.
@@ -607,7 +613,7 @@ function AppShellInner({
   // разделы становятся в конец, а не выпадают: пункт, который есть
   // у человека по правам, обязан остаться достижимым.
   const webOrder = (items: Item[]): Item[] => {
-    const rank = ['/app', '/app/bookings', '/app/customers', '/app/catalog',
+    const rank = ['/app/today', '/app/bookings', '/app/customers', '/app/catalog',
       '/app/techcards', '/app/inventory', '/app/journals', '/app/documents',
       '/app/finance', '/app/team', '/app/settings']
     return [...items].sort((a, b) => {
