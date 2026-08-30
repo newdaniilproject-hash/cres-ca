@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Sheet } from '@/components/sheet'
 import { useToast } from '@/components/toast'
 import { useT } from '@/lib/i18n/client'
-import { IconChevronRight, IconClose, IconPlus, IconUsers } from '@/components/icons'
+import { IconBag, IconChevronRight, IconClose, IconMail, IconPlus, IconUsers } from '@/components/icons'
 import { NewCustomerSheet } from './new-customer'
 
 // ── Клиенты: карточка и выгрузка ───────────────────────────────────────────
@@ -361,7 +361,13 @@ export function CustomersClient({
       {customers.length === 0 ? (
         <section className="card rise-1">
           <div className="empty">
-            <span className="empty-icon"><IconUsers size={24} /></span>
+            {/* Веер: человек, письмо, телефон — из чего состоит карточка
+                клиента. Один серый квадрат говорил только «тут нічого немає». */}
+            <span aria-hidden className="empty-icons">
+              <span><IconUsers size={22} /></span>
+              <span><IconMail size={22} /></span>
+              <span><IconBag size={22} /></span>
+            </span>
             <p className="empty-title">{t('customers.empty')}</p>
             <p className="empty-desc">{t('customers.list.desc')}</p>
           </div>

@@ -236,8 +236,8 @@
   "inventory.link.movements": "Журнал рухів",
   "inventory.link.allReceipts": "Усі приймання",
   "inventory.collapse": "Згорнути",
-  "inventory.common.choose": "— оберіть —",
-  "inventory.common.notSet": "— не вказано —",
+  "inventory.common.choose": "Оберіть зі списку",
+  "inventory.common.notSet": "Не вказано",
   "inventory.common.close": "Закрити",
   "inventory.kind.material": "витратний засіб",
   "inventory.kind.goods": "товар",
@@ -404,7 +404,7 @@
   "inventory.containerForm.tab.batch": "Нова партія",
   "inventory.containerForm.material.label": "Засіб",
   "inventory.containerForm.batch.label": "Партія",
-  "inventory.containerForm.batch.none": "— без партії —",
+  "inventory.containerForm.batch.none": "Без партії",
   "inventory.containerForm.batch.option": "{number} · до {date}",
   "inventory.containerForm.batch.hint": "Партій для цього засобу ще немає — заведіть її на сусідній вкладці, щоб система знала заводський термін придатності.",
   "inventory.containerForm.code.label": "Код на наліпці",
@@ -1513,7 +1513,7 @@
   "team.view.access.forever": "безстроково",
   "team.view.joined": "у команді з {date}",
   "team.tplApply.label": "Застосувати шаблон",
-  "team.tplApply.none": "— обрати —",
+  "team.tplApply.none": "Оберіть шаблон",
   "team.tplApply.hint": "Шаблон перезаписує роль, додаткові права й стелю знижки.",
   "team.perms.label": "Додаткові права",
   "team.perms.hint": "Роль уже дає свій набір. Тут — відхилення від нього: галочка, що збігається з роллю, окремо не зберігається, і зміна ролі змінить доступ.",
@@ -2715,5 +2715,8 @@
   "settings.public.block.about": "не заповнено опис закладу",
   "settings.public.block.suspended": "заклад призупинено — напишіть у підтримку",
   "profile.photo.sheet.title": "Фото профілю",
-  "app.chrome.menu.aria": "Розділи кабінету"
+  "app.chrome.menu.aria": "Розділи кабінету",
+  "inventory.common.chooseMaterial": "Оберіть засіб",
+  "inventory.common.chooseUnit": "Одиниця",
+  "inventory.common.chooseSupplier": "Постачальник"
 }

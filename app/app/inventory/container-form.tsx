@@ -190,7 +190,7 @@ export function ContainerForm({
             <label className="field-label">{t('inventory.containerForm.material.label')}</label>
             <select required className="select" value={material}
                     onChange={(e) => pickMaterial(e.target.value)}>
-              <option value="">{t('inventory.common.choose')}</option>
+              <option value="">{t('inventory.common.chooseMaterial')}</option>
               {materials.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
           </div>
@@ -235,7 +235,7 @@ export function ContainerForm({
           <div>
             <label className="field-label">{t('inventory.containerForm.unit.label')}</label>
             <select className="select" value={unit} onChange={(e) => setUnit(e.target.value)}>
-              <option value="">—</option>
+              <option value="">{t('inventory.common.chooseUnit')}</option>
               {unitOptions.map((u) => <option key={u} value={u}>{u}</option>)}
             </select>
           </div>
@@ -279,7 +279,7 @@ export function ContainerForm({
             <label className="field-label">{t('inventory.containerForm.material.label')}</label>
             <select required className="select" value={bMaterial}
                     onChange={(e) => setBMaterial(e.target.value)}>
-              <option value="">{t('inventory.common.choose')}</option>
+              <option value="">{t('inventory.common.chooseMaterial')}</option>
               {materials.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
           </div>
@@ -311,7 +311,7 @@ export function ContainerForm({
           <div>
             <label className="field-label">{t('inventory.batchForm.supplier.label')}</label>
             <select className="select" value={bSupplier} onChange={(e) => setBSupplier(e.target.value)}>
-              <option value="">{t('inventory.common.notSet')}</option>
+              <option value="">{t('inventory.common.chooseSupplier')}</option>
               {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>

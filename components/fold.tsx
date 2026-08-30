@@ -1,6 +1,6 @@
 'use client'
 
-import { useId } from 'react'
+import { useId, useLayoutEffect, useRef } from 'react'
 import { IconChevronRight } from '@/components/icons'
 
 // ── Сворачиваемая секция экрана ─────────────────────────────────────────────
@@ -47,10 +47,80 @@ export function Fold({
   // на расхождение разметки, а связка молча рвётся.
   const id = useId()
 
+  // ── РАСКРЫТАЯ СЕКЦИЯ ВСТАЁТ ПОД ШАПКУ ────────────────────────────────
+  //
+  // Отзыв владельца 30.08.2026: «аккордеон в складе открывается вверх,
+  // а не вниз». Вверх он не открывался — уезжала СТРАНИЦА.
+  //
+  // Правило одной открытой означает, что нажатие на нижнюю секцию
+  // схлопывает верхнюю. Из потока пропадают сотни пикселей ВЫШЕ точки
+  // нажатия; всё, что ниже, скачком поднимается, и человек видит верх
+  // страницы вместо секции, которую только что открыл.
+  //
+  // ⚠️ ПЕРВАЯ ПОПЫТКА БЫЛА НЕВЕРНОЙ, и это видно только рендером.
+  // Она запоминала положение заголовка до перерисовки и возвращала
+  // прокрутку на разницу. Замер показал, почему так нельзя: пока
+  // содержимое верхней секции размонтировано, документ КОРОЧЕ окна,
+  // браузер обрезает `scrollY` до нуля — и «вернуть назад» уже нечего,
+  // `scrollBy(-600)` не делает ничего.
+  //
+  // Правильная цель другая: не сохранить положение, а ПОКАЗАТЬ то, что
+  // раскрыли. Заголовок ставится туда, где он и живёт прилипшим, —
+  // под шапку, — и содержимое раскрывается под ним. Это и есть
+  // «открывается вниз» словами владельца.
+  //
+  // Отступ берётся из вычисленного `top` самого заголовка: он липкий,
+  // и его `top` — это и есть высота шапки. Второго числа здесь не
+  // заводим: оно разъехалось бы с `--apphead-h` при первой правке.
+  //
+  // `useLayoutEffect`, а не `useEffect`: правка прокрутки обязана лечь
+  // до отрисовки кадра, иначе человек увидит скачок и его откат.
+  const headRef = useRef<HTMLButtonElement>(null)
+  const justOpened = useRef(false)
+
+  function toggle() {
+    justOpened.current = !open
+    onToggle()
+  }
+
+  // Прокрутка к заголовку. Вынесена функцией, потому что зовётся ДВАЖДЫ
+  // и по разным поводам — разбор ниже.
+  function anchorHead() {
+    const el = headRef.current
+    if (!el) return
+    const stickyTop = parseFloat(getComputedStyle(el).top) || 0
+    const target = window.scrollY + el.getBoundingClientRect().top - stickyTop
+    if (Math.abs(target - window.scrollY) > 1) {
+      // ⚠️ `instant`, А НЕ УМОЛЧАНИЕ. У документа стоит
+      // `scroll-behavior: smooth`, и плавная прокрутка здесь не доезжает:
+      // она стартует в тот же кадр, в который перестраивается документ,
+      // и гибнет на обрезке позиции.
+      window.scrollTo({ top: Math.max(0, target), behavior: 'instant' })
+    }
+  }
+
+  // ⚠️ ДВА ЗАХОДА, И ВТОРОЙ ОБЯЗАТЕЛЕН. Найдено рендером 30.08.2026.
+  //
+  // В кадре, когда React только смонтировал содержимое, раскрытая секция
+  // имеет ВЫСОТУ НОЛЬ: анимация `fold-in` стартует с `grid-template-rows:
+  // 0fr`. Документ в этот момент короче, чем будет, браузер зажимает
+  // прокрутку по своей текущей высоте — и `scrollTo` к заголовку, который
+  // стоит ниже этой высоты, молча обрезается в ноль. Именно так выглядел
+  // дефект «открывается вверх» после первой попытки его починить.
+  //
+  // Поэтому: первый заход в layout-эффекте (он один и нужен, когда
+  // анимации нет — `prefers-reduced-motion`), второй — по её завершению,
+  // когда высота уже настоящая.
+  useLayoutEffect(() => {
+    if (!justOpened.current) return
+    justOpened.current = false
+    anchorHead()
+  })
+
   return (
     <div className="flex flex-col gap-2">
-      <button type="button" className="group-head" id={`${id}-head`}
-              aria-expanded={open} aria-controls={`${id}-body`} onClick={onToggle}>
+      <button ref={headRef} type="button" className="group-head" id={`${id}-head`}
+              aria-expanded={open} aria-controls={`${id}-body`} onClick={toggle}>
         {tone === 'alert' && (
           <span aria-hidden className="hero-dot" style={{ background: 'var(--tone-rose)' }} />
         )}
@@ -87,9 +157,14 @@ export function Fold({
              Атрибута `hidden` тут мало: `display:flex` из класса
              перебивает `display:none` таблицы браузера, и блок остаётся
              в потоке. Поэтому у закрытой секции класса нет вовсе. */}
+      {/* Две обёртки, а не одна, и это цена анимации: внешняя — сетка,
+          которая едет от `0fr` к `1fr`, внутренняя несёт саму раскладку
+          и обрезку на время проезда. Совместить их нельзя — строка
+          сетки анимируется только у РОДИТЕЛЯ содержимого. */}
       <div id={`${id}-body`} role="region" aria-labelledby={`${id}-head`}
-           hidden={!open} className={open ? 'flex flex-col gap-2' : undefined}>
-        {open && children}
+           onAnimationEnd={(e) => { if (e.target === e.currentTarget) anchorHead() }}
+           hidden={!open} className={open ? 'fold-body' : undefined}>
+        {open && <div className="fold-inner flex flex-col gap-2">{children}</div>}
       </div>
     </div>
   )
