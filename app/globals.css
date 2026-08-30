@@ -570,22 +570,48 @@ html.dark [data-brand] {
   }
 
   /* Поля */
-  .field-label { @apply block text-sm font-medium mb-1.5; }
+  /* Подпись поля. Мельче значения и приглушена: она НАЗЫВАЕТ поле,
+     а читают в нём значение. Пока подпись шла тем же кеглем и весом,
+     что и текст внутри, глаз не понимал, где имя, а где ответ. */
+  .field-label {
+    @apply block mb-1.5;
+    font-size: calc(13px * var(--type-scale));
+    font-weight: 600;
+    color: var(--color-muted);
+  }
   .field-hint  { @apply mt-1.5 text-xs; color: var(--color-muted); }
   .field-error { @apply mt-1.5 text-xs; color: var(--color-danger); }
 
   /* Размер шрифта не ниже 16px: iOS сам зумит страницу на любом
      поле мельче — и обратно уже не отъезжает. */
+  /* ── ПОЛЕ ЗАЛИТОЕ, А НЕ ОБВЕДЁННОЕ (решение владельца 30.08.2026) ──
+     Было: белое поле с рамкой `--color-border-strong` на белой же
+     поверхности карточки и шторки. На 390px эта рамка почти не видна,
+     и поле читалось как пустое место — «не нравится визуал форм».
+
+     Стало: заливка второй поверхностью, рамка прозрачная. Поле видно
+     ФОРМОЙ, а не контуром, и не зависит от того, на чём оно лежит.
+     Рамка не удалена, а сделана прозрачной намеренно: она держит
+     геометрию, поэтому при фокусе и ошибке ничего не «прыгает»
+     на пиксель.
+
+     На фокусе поле СВЕТЛЕЕТ и получает акцентную рамку: активное
+     поле становится белым островом среди серых — так видно, где
+     стоит курсор, даже боковым зрением. */
   .input, .select {
     @apply w-full px-3.5 text-base sm:text-sm border outline-none;
     height: var(--h-input);
     border-radius: var(--radius-control);
-    border-color: var(--color-border-strong);
-    background: var(--color-surface);
+    border-color: transparent;
+    background: var(--color-surface-2);
     color: var(--color-text);
-    transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
+    transition: border-color var(--dur-fast), background var(--dur-fast), box-shadow var(--dur-fast);
   }
-  .input:focus, .select:focus { border-color: var(--color-accent); box-shadow: 0 0 0 3px var(--color-accent-soft); }
+  .input:focus, .select:focus {
+    border-color: var(--color-accent);
+    background: var(--color-surface);
+    box-shadow: 0 0 0 3px var(--color-accent-soft);
+  }
   .input::placeholder { color: var(--color-faint); }
 
   /* ── ПОЛ В 16px ДЛЯ ПОЛЕЙ НА ТЕЛЕФОНЕ ────────────────────────
@@ -640,15 +666,30 @@ html.dark [data-brand] {
   .textarea {
     @apply w-full min-h-24 p-3.5 text-base sm:text-sm border outline-none resize-y;
     border-radius: var(--radius-control);
-    border-color: var(--color-border-strong);
-    background: var(--color-surface);
+    border-color: transparent;
+    background: var(--color-surface-2);
     color: var(--color-text);
-    transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
+    transition: border-color var(--dur-fast), background var(--dur-fast), box-shadow var(--dur-fast);
   }
-  .textarea:focus { border-color: var(--color-accent); box-shadow: 0 0 0 3px var(--color-accent-soft); }
+  .textarea:focus {
+    border-color: var(--color-accent);
+    background: var(--color-surface);
+    box-shadow: 0 0 0 3px var(--color-accent-soft);
+  }
 
+  /* ⚠️ ЗАЛИВКОЙ ВЫКЛЮЧЕННОЕ ПОЛЕ БОЛЬШЕ НЕ ОТЛИЧИТЬ: она стала
+     обычным видом поля (решение 30.08.2026). Отличает пунктирная
+     рамка и приглушённый текст — форма, а не цвет. Тот же приём,
+     что у `:read-only` ниже, и это одно правило на два состояния,
+     а не два разных языка для «сюда писать нельзя». */
   .input:disabled, .select:disabled, .textarea:disabled {
-    opacity: 0.5; background: var(--color-surface-2); cursor: not-allowed;
+    /* Без `opacity`: она гасит и рамку, ради которой правило написано,
+       и пунктир переставал читаться (видно только рендером). Гасим
+       ТЕКСТ, а границу наоборот показываем. */
+    border-style: dashed;
+    border-color: var(--color-border-strong);
+    color: var(--color-faint);
+    cursor: not-allowed;
   }
   /* ⚠️ СЕЛЕКТОР ЭЛЕМЕНТНЫЙ, и это починка 20.08.2026. `:read-only`
      по спецификации совпадает с ЛЮБЫМ нередактируемым элементом, а не
@@ -658,8 +699,20 @@ html.dark [data-brand] {
      поверхностью с пунктирной границей, и `.input:focus` не срабатывал
      вовсе. Единственное обязательное поле анкеты регистрации стояло
      серым среди белых. */
-  input.input:read-only, select.select:read-only, textarea.textarea:read-only {
-    background: var(--color-surface-2); border-style: dashed;
+  /* ⚠️ SELECT ОТСЮДА УБРАН 30.08.2026, и это не вкусовая правка.
+     `<select>` соответствует `:read-only` ВСЕГДА: по спецификации
+     `:read-write` относится только к тому, что редактируется ТЕКСТОМ
+     (поле ввода, textarea, contenteditable). Список текстом не правят,
+     значит он read-only по определению — и каждый выпадающий список
+     в кабинете рисовался ВЫКЛЮЧЕННЫМ: приглушённым и пунктиром.
+     Владелец назвал это прямо: «почему миллилитры серые, всё
+     остальное белое».
+     Нередактируемый список — это `:disabled`, и он уже обработан
+     строкой выше. Здесь остаются только те два элемента, у которых
+     `:read-only` действительно означает «смотреть можно, писать нет». */
+  input.input:read-only, textarea.textarea:read-only {
+    border-style: dashed;
+    color: var(--color-muted);
   }
   /* Специфичность поднята составным селектором (.input.input-error), а не
      !important: у прошлого проекта источников правды по цвету стало
