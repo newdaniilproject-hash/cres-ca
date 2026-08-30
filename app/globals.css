@@ -755,6 +755,46 @@ html.dark [data-brand] {
     background: var(--color-surface-2); color: var(--color-faint);
   }
   .empty[data-tone="danger"] .empty-icon { background: var(--color-danger-soft); color: var(--color-danger); }
+
+  /* ── Веер из трёх значков ────────────────────────────────────
+     Взято из присланного владельцем образца (21st.dev, empty-state)
+     и переписано на токены 30.08.2026. Три плашки внахлёст, боковые
+     отклонены и приподняты.
+
+     Зачем это вообще, кроме вида: пустой экран — единственное место,
+     где человек НЕ ЗНАЕТ, что делать дальше, и один серый квадрат
+     сообщает ему только «тут ничего нет». Три значка называют, ЧТО
+     здесь будет лежать, когда появится: у клиентов — человек, письмо,
+     телефон; в каталоге — коробка, ножницы, ценник.
+
+     Три и только три. Образец предусматривал и один значок, но у нас
+     для этого уже есть `.empty-icon`, и второй способ показать одну
+     вещь — это второй источник правды о пустом состоянии. Здесь ровно
+     тот случай, когда веер оправдан: значки РАЗНЫЕ и вместе описывают
+     раздел, а три одинаковых были бы узором ради узора.
+
+     Наклон и сдвиг ФИКСИРОВАННЫЕ, без hover-раскрытия из образца:
+     на телефоне наведения нет вовсе, а анимация «при появлении» —
+     ровно то, что бриф владельца запрещает (мастер работает в спешке).
+     Средняя плашка стоит выше по слою — иначе боковые накрыли бы её
+     тенями с двух сторон. */
+  .empty-icons {
+    display: flex;
+    justify-content: center;
+    isolation: isolate;
+  }
+  .empty-icons > * {
+    width: 48px; height: 48px;
+    display: grid; place-items: center;
+    border-radius: var(--radius-card);
+    background: var(--color-surface);
+    color: var(--color-faint);
+    border: 1px solid var(--color-border);
+    box-shadow: var(--shadow-card);
+  }
+  .empty-icons > *:first-child  { transform: translate(10px, 6px) rotate(-6deg); }
+  .empty-icons > *:nth-child(2) { z-index: 1; }
+  .empty-icons > *:last-child   { transform: translate(-10px, 6px) rotate(6deg); }
   .empty-title { color: var(--color-text); font-size: var(--text-lg); font-weight: 650; }
   .empty-desc { max-width: 320px; }
   .empty-actions { display: flex; gap: var(--space-3); margin-top: var(--space-1); }

@@ -6,9 +6,13 @@ import { createClient } from '@/lib/supabase/client'
 import { useT } from '@/lib/i18n/client'
 import type { T } from '@/lib/i18n/translate'
 import { Sheet } from '@/components/sheet'
+import { SwipeRow, type SwipeAction } from '@/components/swipe-row'
+import { useToast } from '@/components/toast'
+import { useRouter } from 'next/navigation'
+import { dbErrorText } from '@/lib/errors/db'
 import { TechCardsClient, type TechCardsData } from '../techcards/techcards-client'
 import {
-  IconBox, IconCheck, IconChevronRight, IconClock, IconFilter, IconGrid, IconTag,
+  IconBox, IconCheck, IconChevronRight, IconClock, IconClose, IconFilter, IconGrid, IconTag,
 } from '@/components/icons'
 
 export type CatalogItem = {
@@ -59,7 +63,11 @@ type Status = (typeof STATUSES)[number]
 const statusLabel = (t: T, s: string): string =>
   ((STATUSES as readonly string[]).includes(s) ? t(`catalog.status.${s as Status}`) : s)
 
-type Filter = 'all' | 'product' | 'service' | 'draft'
+// К виду позиции (товар/послуга) добавлены СОСТОЯНИЯ: разбивка
+// карточки-героя фильтрует ими же, а не заводит вторую ось. Иначе
+// «Опубліковано 8» в герое и вкладка «Чернетки» отвечали бы на один
+// вопрос двумя разными механизмами.
+type Filter = 'all' | 'product' | 'service' | 'draft' | 'active' | 'hidden'
 
 // Порядок списка. Из макета: кнопка «Фільтри» открывает шторку
 // сортировки — не второй фильтр, а именно порядок.
@@ -258,6 +266,12 @@ export function CatalogClient({
 }) {
   const t = useT()
   const supabase = useMemo(() => createClient(), [])
+  const toast = useToast()
+  const router = useRouter()
+  // Какая строка сейчас пишется. Одна на весь список: свайп открывает
+  // ровно одну строку за раз, и второго одновременного действия здесь
+  // быть не может.
+  const [busy, setBusy] = useState<string | null>(null)
   const [filter, setFilter] = useState<Filter>('all')
   const [sort, setSort] = useState<Sort>('recent')
   const [sortOpen, setSortOpen] = useState(false)
@@ -273,6 +287,8 @@ export function CatalogClient({
   const shown = useMemo(() => {
     const list = items.filter((i) => {
       if (filter === 'draft' && i.status !== 'draft') return false
+      if (filter === 'active' && i.status !== 'active') return false
+      if (filter === 'hidden' && i.status !== 'hidden' && i.status !== 'archived') return false
       if ((filter === 'product' || filter === 'service') && i.kind !== filter) return false
       return true
     })
@@ -299,6 +315,10 @@ export function CatalogClient({
     service: items.filter((i) => i.kind === 'service').length,
     active: items.filter((i) => i.status === 'active').length,
     draft: items.filter((i) => i.status === 'draft').length,
+    // Скрытые и архивные — одной величиной «не видно покупцеві»: для
+    // продавца это один ответ, а два соседних числа по одному-двум
+    // экземплярам заняли бы полосу и ничего не добавили.
+    hidden: items.filter((i) => i.status === 'hidden' || i.status === 'archived').length,
     // «Без матеріалів» — послуги с ПУСТОЙ рецептурой. Именно `=== 0`,
     // а не «нет величины»: у товара рецептуры не бывает вовсе (`null`),
     // и считать его недоделанной услугой нельзя.
@@ -306,6 +326,46 @@ export function CatalogClient({
   }), [items])
 
   const cover = (path: string) => supabase.storage.from('media').getPublicUrl(path).data.publicUrl
+
+  // ── Публикация со СВАЙПА по строке ───────────────────────────────────
+  //
+  // Заведено 30.08.2026. До этого дня единственный способ опубликовать
+  // позицию или снять её — зайти в карточку, найти кнопку, вернуться;
+  // а «опублікувати» — самое частое действие в разделе, где каталог
+  // салона это два десятка услуг.
+  //
+  // Тот же `status` и то же поле `published_at`, что ставит карточка
+  // (`offering-form.tsx`, `changeStatus`): дата публикации — то, по чему
+  // витрина сортирует новинки, и проставляется она в момент, когда
+  // позиция стала видимой. Второго способа менять состояние в продукте
+  // нет и заводить его нельзя — разошлись бы датой.
+  //
+  // Архивации здесь НЕТ намеренно: она необратима в один жест, а свайп
+  // — движение быстрое и случайное. Архив живёт в карточке, где рядом
+  // видно, что именно архивируют.
+  async function setStatus(item: CatalogItem, next: 'active' | 'draft') {
+    setBusy(item.id)
+    const patch: Record<string, unknown> = { status: next }
+    if (next === 'active') patch.published_at = new Date().toISOString()
+    const { error: e } = await supabase.from('offerings').update(patch).eq('id', item.id)
+    setBusy(null)
+    if (e) { toast.error(t('catalog.status.error'), dbErrorText(t, e)); return }
+    toast.success(next === 'active'
+      ? t('catalog.status.published')
+      : t('catalog.status.unpublished'), item.title)
+    router.refresh()
+  }
+
+  // Действия по свайпу. Без права записи их нет вовсе — пустой массив
+  // отключает жест целиком, а не показывает кнопку, которая откажет.
+  function swipeFor(item: CatalogItem): SwipeAction[] {
+    if (!canWrite) return []
+    return item.status === 'active'
+      ? [{ key: 'hide', label: t('catalog.action.unpublish'), icon: IconClose, tone: 'amber',
+           onSelect: () => void setStatus(item, 'draft') }]
+      : [{ key: 'publish', label: t('catalog.action.publish'), icon: IconCheck, tone: 'emerald',
+           onSelect: () => void setStatus(item, 'active') }]
+  }
 
   // Сетки веб-версии: §4 — послуги по три в ряд, §11 — товари по четыре.
   // Делим уже ОТФИЛЬТРОВАННЫЙ список, а не исходный: фильтр «Чернетки»
@@ -458,24 +518,94 @@ export function CatalogClient({
           рецептурой. Она отвечает на вопрос учёта: со склада не спишется
           ничего, когда такую запись переведут в «Виконано». Для салона
           это и есть смысл раздела. */}
+      {/* ── Картка-герой (телефон), 30.08.2026 ────────────────────
+          Заменила ряд из четырёх равных плиток (Активні · Без матеріалів ·
+          Послуги · Товари). Тем же приёмом, что уже стоит на складе
+          и в финансах, и по той же причине: четыре числа одного веса
+          не отвечают на вопрос, с которым сюда заходят, — человек читал
+          все четыре и решал, какое из них главное.
+
+          Вопрос этого экрана один: ЧТО ВИДИТ ПОКУПЕЦЬ. Ответ стоит
+          крупно — «опубліковано N з M», — и под ним полоса долей
+          и разбивка, которая ФИЛЬТРУЕТ (проверка 2: число на экране
+          обязано иметь выход; прежние плитки не нажимались вовсе).
+
+          Плитки «Послуги» и «Товари» сюда не переехали намеренно: эти
+          два числа стоят во вкладках фильтра выше — там они и нажимаются.
+          «Без матеріалів» осталась отдельной строкой ниже: это не
+          состояние публикации, а предупреждение учёта, и мешать его
+          с долями одного целого нельзя.
+
+          У заведения без модуля витрины полоса не рисуется: «опубліковано»
+          там ничего не значит — покупатель не видит каталога вовсе. */}
       {items.length > 0 && tab === 'offerings' && (
-        <section className="rise grid grid-cols-4 gap-2 lg:hidden">
-          <div className="metric" data-tone="emerald">
-            <span className="metric-value">{t.number(counts.active)}</span>
-            <span className="metric-label">{t('catalog.stats.active')}</span>
+        <section className="hero rise lg:hidden">
+          <p className="eyebrow">{hasStorefront
+            ? t('catalog.hero.published')
+            : t('catalog.hero.total')}</p>
+          <p className="hero-value mt-1">
+            {hasStorefront
+              ? t('catalog.hero.value', {
+                  n: t.number(counts.active), total: t.number(items.length),
+                })
+              : t.number(items.length)}
+          </p>
+
+          {hasStorefront && (
+            <div className="hero-bar mt-4" aria-hidden>
+              {([
+                [counts.active, 'var(--tone-emerald)'],
+                [counts.draft, 'var(--tone-amber)'],
+                [counts.hidden, 'var(--color-faint)'],
+              ] as [number, string][]).map(([n, color], i) => (
+                n > 0 ? (
+                  <span key={i} style={{
+                    width: `${(n / items.length) * 100}%`, background: color,
+                  }} />
+                ) : null
+              ))}
+            </div>
+          )}
+
+          <div className="mt-2 grid grid-cols-3 gap-1">
+            {([
+              // ⚠️ ПОДПИСИ КОРОТКИЕ, и это проверено рендером (390px):
+              // «Опубліковано» в колонку шириной 130px не влезает и
+              // обрывается на «Опубліко…». Берём подписи фильтров —
+              // «Активні» и «Чернетки», — те же слова, что во вкладках
+              // выше, то есть ещё и одно имя у одной величины.
+              ['active', counts.active, t('catalog.stats.active'), 'emerald'],
+              ['draft', counts.draft, t('catalog.filter.drafts'), 'amber'],
+              ['hidden', counts.hidden, t('catalog.hero.hidden'), undefined],
+            ] as [Filter, number, string, string | undefined][]).map(([key, n, label, tone]) => (
+              // Плитка с нулём не нажимается: фильтр, дающий пустой
+              // список, — обещание показать то, чего нет (то же правило,
+              // что у метрик журнала движений).
+              <button key={key} type="button" className="hero-stat" data-tone={tone}
+                      disabled={n === 0}
+                      aria-pressed={filter === key}
+                      onClick={() => setFilter(filter === key ? 'all' : key)}>
+                <span aria-hidden className="hero-dot" />
+                <span className="min-w-0">
+                  <span className="tabular block font-bold">{t.number(n)}</span>
+                  <span className="block truncate"
+                        style={{ fontSize: 12, color: 'var(--color-muted)' }}>
+                    {label}
+                  </span>
+                </span>
+              </button>
+            ))}
           </div>
-          <div className="metric">
-            <span className="metric-value">{t.number(counts.noMaterials)}</span>
-            <span className="metric-label">{t('catalog.stats.noMaterials')}</span>
-          </div>
-          <div className="metric">
-            <span className="metric-value">{t.number(counts.service)}</span>
-            <span className="metric-label">{t('catalog.stats.services')}</span>
-          </div>
-          <div className="metric">
-            <span className="metric-value">{t.number(counts.product)}</span>
-            <span className="metric-label">{t('catalog.stats.products')}</span>
-          </div>
+
+          {/* Предупреждение учёта — строкой, а не плиткой: у него нет доли
+              в целом, и ставить его четвёртым в ряд из трёх долей значило
+              бы сказать, что это тоже состояние публикации. Показывается,
+              только когда есть о чём предупреждать. */}
+          {counts.noMaterials > 0 && (
+            <p className="t-sm mt-3" style={{ color: 'var(--color-muted)' }}>
+              {t('catalog.hero.noMaterials', { n: t.number(counts.noMaterials) })}
+            </p>
+          )}
         </section>
       )}
 
@@ -505,8 +635,14 @@ export function CatalogClient({
           расстоянии экрана друг от друга. */}
       {tab === 'offerings' && (
         <div className="flex items-center justify-between gap-2 lg:hidden">
-          <span className="t-sm truncate" style={{ color: 'var(--color-muted)' }}>
-            {filterLabel} · {t(`catalog.sort.${sort}`)}
+          {/* Два выбора — ДВУМЯ бейджами, а не одной строкой через точку.
+              Решение владельца 25.08.2026: на 390px строка переносится,
+              и точка встаёт в начало второй строки, читаясь как маркер
+              списка. Здесь их ровно два и они короткие — это тот случай,
+              для которого правило и называет бейджи. */}
+          <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+            <span className="badge">{filterLabel}</span>
+            <span className="badge">{t(`catalog.sort.${sort}`)}</span>
           </span>
           <button type="button" onClick={() => setSortOpen(true)}
                   className="btn-secondary t-sm flex shrink-0 items-center gap-2">
@@ -527,6 +663,17 @@ export function CatalogClient({
         // вкладок не существует, и блок остаётся как был.
         <div className={`card rise-1 ${tab === 'tech' ? 'hidden lg:block' : ''}`}>
           <div className="empty">
+            {/* Веер из трёх значков вместо одного квадрата (30.08.2026,
+                образец 21st.dev на наших токенах). Значки РАЗНЫЕ и вместе
+                называют, что здесь будет лежать: услуга со временем, товар
+                и ценник. Один серый квадрат сообщал только «тут нічого
+                немає» — а пустой экран это единственное место, где человек
+                не знает, что делать дальше. */}
+            <span aria-hidden className="empty-icons">
+              <span><IconClock size={22} /></span>
+              <span><IconBox size={22} /></span>
+              <span><IconTag size={22} /></span>
+            </span>
             {items.length === 0 ? (
               // Пустой каталог без права записи — не задача этого человека:
               // предлагать ему «завести первую позицию» значит послать
@@ -613,7 +760,8 @@ export function CatalogClient({
             одной колонкой сверху вниз. */}
         <div className={`flex-col gap-2 lg:hidden ${tab === 'tech' ? 'hidden' : 'flex'}`}>
           {shown.map((i) => (
-            <Link key={i.id} href={`/app/catalog/${i.id}`} className="list-card !items-start">
+            <SwipeRow key={i.id} actions={swipeFor(i)}>
+            <Link href={`/app/catalog/${i.id}`} className="list-card !items-start">
               {i.cover ? (
                 // next/image здесь не нужен: это миниатюра с CDN,
                 // размеры оригинала мы не храним.
@@ -704,6 +852,7 @@ export function CatalogClient({
                 <IconChevronRight size={18} />
               </span>
             </Link>
+            </SwipeRow>
           ))}
         </div>
         </>
