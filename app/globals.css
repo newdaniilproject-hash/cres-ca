@@ -1811,6 +1811,49 @@ html.dark [data-brand] {
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
   }
+  /* ── Раскрытие секции ────────────────────────────────────────
+     Отзыв владельца 30.08.2026: «и без анимации». Секция появлялась
+     скачком, и вместе с прыжком прокрутки это читалось как сбой.
+
+     Приём — сетка с `grid-template-rows` от `0fr` к `1fr`. Он
+     единственный, который анимирует высоту, ЗАРАНЕЕ ЕЙ НЕ ИЗВЕСТНУЮ:
+     `height: auto` не анимируется вовсе, а считать высоту скриптом
+     значит мерить содержимое на каждое нажатие и промахиваться на
+     картинках, которые ещё не загрузились.
+
+     Анимируется только РАСКРЫТИЕ. Закрытие мгновенное, и это не
+     полумера: содержимое размонтируется (см. `components/fold.tsx`),
+     а анимировать уход того, чего в дереве уже нет, нечем. Обратный
+     ход потребовал бы держать в DOM все закрытые секции со всеми их
+     строками — плата, которой мы не хотим ради полусекунды.
+
+     `overflow: hidden` живёт на ВНУТРЕННЕЙ обёртке и только во время
+     анимации (`fill-mode` не `forwards`): иначе он обрезал бы то, что
+     обязано вылезать за границы, — тени карточек и полосу действий
+     свайпа. */
+  .fold-body { animation: fold-in var(--dur-base) var(--ease-out-soft); }
+  @keyframes fold-in {
+    from { grid-template-rows: 0fr; opacity: 0; }
+    to   { grid-template-rows: 1fr; opacity: 1; }
+  }
+  .fold-body {
+    display: grid;
+    grid-template-rows: 1fr;
+  }
+  .fold-body > .fold-inner { min-height: 0; }
+  /* Обрезка нужна ровно на время проезда: без неё содержимое
+     не «выезжает», а стоит на месте, пока строка сетки растёт. */
+  .fold-body > .fold-inner { animation: fold-clip var(--dur-base) step-end; }
+  @keyframes fold-clip { from { overflow: hidden; } to { overflow: hidden; } }
+
+  /* Уважаем системную настройку: кому анимации мешают — тому их нет.
+     Это не то же, что «тяжёлых микроанимаций не заводим»: там речь
+     про отклик на каждое действие, здесь — про понятность того,
+     откуда взялось содержимое. */
+  @media (prefers-reduced-motion: reduce) {
+    .fold-body, .fold-body > .fold-inner { animation: none; }
+  }
+
   .group-head-title {
     @apply min-w-0 flex-1 truncate font-bold uppercase;
     font-size: var(--text-xs);

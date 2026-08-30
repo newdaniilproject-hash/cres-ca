@@ -271,7 +271,7 @@ export function MaterialForm({
 
       <div>
         <label className="field-label">{t('inventory.material.threshold.label')}</label>
-        <input type="number" min="0" step="any" className="input"
+        <input type="number" min="0" step="any" className="input" placeholder="0"
                value={threshold} onChange={(e) => setThreshold(e.target.value)} />
         <p className="field-hint">{t('inventory.material.threshold.hint')}</p>
       </div>

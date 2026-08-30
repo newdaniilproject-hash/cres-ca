@@ -1009,7 +1009,12 @@ export function FinanceClient({
       {shown.length === 0 ? (
         <section className="card rise-2">
           <div className="empty">
-            <span className="empty-icon"><IconMoney size={24} /></span>
+            {/* Приход, расход и итог — три величины этого экрана. */}
+            <span aria-hidden className="empty-icons">
+              <span><IconPlus size={22} /></span>
+              <span><IconMoney size={22} /></span>
+              <span><IconMinus size={22} /></span>
+            </span>
             <p className="empty-title">
               {records.length === 0 ? t('finance.empty') : t('finance.web.table.empty')}
             </p>
@@ -1256,7 +1261,7 @@ export function FinanceClient({
               {t('finance.form.amount.label')}
             </label>
             <input id="fin-amount" required type="number" step="0.01" min="0.01"
-                   className="input" value={amount}
+                   className="input" placeholder="1 200,00" value={amount}
                    onChange={(e) => setAmount(e.target.value)} />
           </div>
           <div>

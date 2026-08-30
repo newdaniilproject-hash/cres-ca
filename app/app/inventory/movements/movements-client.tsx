@@ -532,7 +532,12 @@ export function MovementsClient({
             </label>
             {/* Вводиться завжди додатне число: знак ставить не людина,
                 а тип руху — так помилитися в ньому неможливо. */}
+            {/* Плейсхолдер — ПРИМЕР значения, а не название поля: имя
+                уже стоит подписью сверху, и повторять его в поле значит
+                сказать одно и то же дважды. Пример показывает формат —
+                штуки у товара, дроби у засоба. */}
             <input required type="number" className="input"
+                   placeholder={kind === 'goods' ? '1' : '0,5'}
                    min={kind === 'goods' ? '1' : '0.001'}
                    step={kind === 'goods' ? '1' : 'any'}
                    value={qty} onChange={(e) => setQty(e.target.value)} />
@@ -546,6 +551,7 @@ export function MovementsClient({
             <div>
               <label className="field-label">{t('inventory.movements.form.cost.label')}</label>
               <input type="number" className="input" min="0" step="any"
+                     placeholder="120,00"
                      value={cost} onChange={(e) => setCost(e.target.value)} />
               <p className="field-hint">{t('inventory.movements.form.cost.hint')}</p>
             </div>

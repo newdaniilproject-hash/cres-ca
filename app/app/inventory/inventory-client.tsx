@@ -11,6 +11,7 @@ import { movementLabel } from './movements/movements-client'
 import { Sheet } from '@/components/sheet'
 import { QuickFab, type QuickAction } from '@/components/quick-fab'
 import { SwipeRow, type SwipeAction } from '@/components/swipe-row'
+import { Fold } from '@/components/fold'
 import { enqueue, isNetworkError } from '@/lib/offline/queue'
 import { useToast } from '@/components/toast'
 import { useT } from '@/lib/i18n/client'
@@ -1408,7 +1409,12 @@ export function InventoryClient({
       {visible === 0 ? (
         <section className="card rise">
           <div className="empty">
-            <span className="empty-icon"><IconBox size={24} /></span>
+            {/* Коробка, банка с QR и срок — из чего состоит склад салона. */}
+            <span aria-hidden className="empty-icons">
+              <span><IconBox size={22} /></span>
+              <span><IconQr size={22} /></span>
+              <span><IconClock size={22} /></span>
+            </span>
             <p className="empty-title">
               {emptyTenant ? t('inventory.empty.title') : t('inventory.empty.filteredTitle')}
             </p>
@@ -1490,35 +1496,35 @@ export function InventoryClient({
               // состояния (`buildGroups`, ветка `flat`). У неё нет
               // подзаголовка, значит нечем и раскрывать: она видна всегда.
               const shown = g.title === '' || openGroup === g.key
+              // ⚠️ ОБЩИЙ `Fold`, А НЕ СВОЯ РАЗМЕТКА (30.08.2026).
+              // До этого дня здесь лежала ВТОРАЯ копия того же узора —
+              // липкий подзаголовок, счётчик, стрелка, — при том что
+              // компонент `components/fold.tsx` вынесли из этого самого
+              // экрана ещё 25.08 и подключили в трёх других местах.
+              //
+              // Копия успела разойтись с оригиналом ровно так, как
+              // правило и предсказывает: доступность (`aria-controls`,
+              // `role="region"`) досталась только компоненту, а прыжок
+              // прокрутки при переключении групп и отсутствие анимации
+              // остались здесь — их владелец и назвал.
+              //
+              // Безымянная группа (список под наложенным фильтром)
+              // раскрывать нечем: у неё нет подзаголовка, и она рисуется
+              // просто строками.
+              if (!g.title) {
+                return (
+                  <div key={g.key} className="flex flex-col gap-2">
+                    {g.rows.map(renderRow)}
+                  </div>
+                )
+              }
               return (
-                <div key={g.key} className="flex flex-col gap-2">
-                  {g.title && (
-                    <button type="button" className="group-head" aria-expanded={shown}
-                            onClick={() => setOpenGroup(shown ? null : g.key)}>
-                      {g.pinned && (
-                        <span aria-hidden className="hero-dot"
-                              style={{ background: 'var(--tone-rose)' }} />
-                      )}
-                      {/* Имя категории — данные арендатора. */}
-                      <span className="group-head-title">{g.title}</span>
-                      {/* ⚠️ СУММЫ ЗДЕСЬ БОЛЬШЕ НЕТ. Стояли гривны без
-                          подписи, и владелец спросил прямо: «почему там
-                          вообще написаны суммы в гривнах, что это такое».
-                          Вопрос справедливый — число без названия величины
-                          это ребус, а не сведение. Та же сумма никуда
-                          не делась: она в разбивке запаса («Топ категорії
-                          за вартістю»), где у неё есть заголовок.
-                          В подзаголовке остаётся ровно то, что нужно для
-                          решения «разворачивать или нет», — сколько
-                          позиций внутри. */}
-                      <span className="count-pill shrink-0" style={{ color: 'var(--color-muted)' }}>
-                        {t.number(g.rows.length)}
-                      </span>
-                      <span className="group-caret"><IconChevronRight size={16} /></span>
-                    </button>
-                  )}
-                  {shown && g.rows.map(renderRow)}
-                </div>
+                <Fold key={g.key} title={g.title} count={g.rows.length}
+                      tone={g.pinned ? 'alert' : undefined}
+                      open={shown}
+                      onToggle={() => setOpenGroup(shown ? null : g.key)}>
+                  {g.rows.map(renderRow)}
+                </Fold>
               )
             })}
           </div>
