@@ -1,76 +1,27 @@
 import { createClient } from '@/lib/supabase/server'
+import {
+  isStaffFromToken, parseMemberships, userIdFromToken,
+  type Membership,
+} from '@/shared/access'
 
 // Модули — что арендатор купил и видит. Не путать с правами: право
 // отвечает «что этому человеку можно», модуль — «что этот бизнес взял».
-// Владелец с полными правами всё равно не увидит каталог, если заведение
-// подключило только склад. См. supabase/migrations/0020_modules.sql.
+// См. supabase/migrations/0020_modules.sql.
 //
-// ⚠️ СПИСОК МОДУЛЕЙ ЖИВЁТ В БАЗЕ (`public.modules`, миграция 0110), а не
-// здесь. Тип ниже — подсказка редактору, а не источник правды: известные
-// коды подставляются автодополнением, но принимается ЛЮБАЯ строка, потому
-// что новый модуль заводится строкой реестра и выката кода не требует.
+// ⚠️ РАЗБОР ТОКЕНА ЗДЕСЬ БОЛЬШЕ НЕ ЖИВЁТ. Он переехал в `shared/access.ts`,
+// потому что ровно тот же разбор делает мобильное приложение, а две копии
+// проверки прав — это гарантированное расхождение: одно приложение
+// покажет раздел, который база не отдаст, второе спрячет оплаченный.
+// Здесь остаётся только то, что специфично для ВЕБА: получение сессии
+// серверным клиентом на куках.
 //
 // Что отсюда УДАЛЕНО 19.08.2026 и не возвращать:
 //   • `DEFAULT_MODULES` — копия умолчания из миграции. Умолчание считает
 //     триггер `tenants_default_modules` из реестра (`is_default`);
 //   • `MODULE_LABELS` — подписи, захардкоженные по-украински мимо словаря.
 //     Подпись лежит в `modules.title` и читается через `lib/modules.ts`.
-// Обе копии были ровно тем местом, где список расходился молча.
-export type KnownModule =
-  | 'inventory' | 'compliance' | 'bookings' | 'catalog'
-  | 'orders' | 'finance' | 'customers' | 'storefront' | 'marketing'
-
-/**
- * Код модуля. Известные подсказываются, но допустима любая строка:
- * реестр в базе может знать модуль, о котором этот файл ещё не слышал.
- */
-export type TenantModule = KnownModule | (string & {})
-
-export type Membership = {
-  tenantId: string
-  role: string
-  perms: string[]
-  /**
-   * Действующий набор модулей. При отсутствии клейма в токене — умолчание,
-   * а не пустой массив; признак подмены — `modulesFromToken`.
-   */
-  modules: TenantModule[]
-  /**
-   * Модули приехали из токена (true) или взяты из умолчания, потому что
-   * клейма в токене нет (false). Второе означает устаревший токен, а не
-   * заведение без модулей, и лечится повторным входом.
-   */
-  modulesFromToken: boolean
-}
-
-// Членства, права и модули читаются из JWT — ни одного запроса к базе
-// (правило 3). Разворачивает их хук при выдаче токена.
-//
-// ГРАБЛИ, из-за которых кабинет НИКОГДА не видел заведений и гонял
-// человека по кругу «създай заклад → створи ещё раз» до лимита в три
-// черновика: данные читались из session.user.app_metadata. Хук кладёт
-// членства ВНУТРЬ самого access token — в его полезную нагрузку.
-// А session.user — это запись из базы (raw_app_meta_data), какой она
-// была при входе: provider, providers и всё. Хук её не трогает вовсе.
-//
-// Единственное место, где членства существуют, — сам JWT. Поэтому
-// расшифровываем его полезную нагрузку руками. Подписи не проверяем
-// сознательно: токен уже проверен Supabase на каждом запросе к базе,
-// здесь мы только читаем то, что в нём написано, для раскладки меню.
-// Граница доверия — RLS, а не эта функция.
-function jwtPayload(accessToken: string): Record<string, unknown> {
-  try {
-    const part = accessToken.split('.')[1] ?? ''
-    // base64url: у Node есть родная раскодировка, atob — запасной путь
-    // на случай клиентского вызова.
-    const json = typeof Buffer !== 'undefined'
-      ? Buffer.from(part, 'base64url').toString('utf8')
-      : atob(part.replace(/-/g, '+').replace(/_/g, '/'))
-    return JSON.parse(json) as Record<string, unknown>
-  } catch {
-    return {}
-  }
-}
+export type { KnownModule, Membership, TenantModule } from '@/shared/access'
+export { can, hasModule } from '@/shared/access'
 
 /**
  * Идентификатор вошедшего — из УЖЕ РАЗОБРАННОГО токена, без сети.
@@ -98,93 +49,14 @@ export async function currentUserId(): Promise<string | null> {
   const supabase = await createClient()
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) return null
-  const sub = jwtPayload(session.access_token).sub
-  return typeof sub === 'string' ? sub : null
+  return userIdFromToken(session.access_token)
 }
 
 export async function getMemberships(): Promise<Membership[]> {
   const supabase = await createClient()
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) return []
-  const meta = (jwtPayload(session.access_token).app_metadata ?? {}) as {
-    memberships?: Record<string, string>
-    perms?: Record<string, string[]>
-    modules?: Record<string, TenantModule[]>
-  }
-  return Object.entries(meta.memberships ?? {}).map(([tenantId, role]) => {
-    // «Модулей нет» и «клейма нет» — РАЗНЫЕ вещи, и раньше обе давали
-    // пустой массив. Отличить их можно точно, и вот чем.
-    //
-    // Хук (0020, переопределён в 0051) собирает `modules` тем же запросом
-    // и по тому же набору заведений, что и `memberships`: join tenants
-    // с tenant_members по этому пользователю. Колонка `tenants.modules`
-    // объявлена `not null`. Значит:
-    //
-    //   ключ есть → в нём массив, пусть даже пустой. Пустой массив —
-    //               честный ответ базы «заведение не купило ничего»;
-    //   ключа нет → членство в токене есть, а модулей рядом с ним нет.
-    //               Хук такого не выдаёт НИКОГДА. Это токен, выданный
-    //               до 0020, либо снятый при выключенном хуке — то есть
-    //               сломан токен, а не набор модулей заведения.
-    //
-    // Что делаем во втором случае: подставляем умолчание (0064, 0065),
-    // а не пустоту и не «всё разрешено».
-    //
-    // Почему не пустота. Пустой набор при жёсткой проверке на страницах
-    // запирает владельца сразу ВЕЗДЕ, а починить это он не может: кабинет
-    // за тем же токеном. Отказ во всём из-за протухшего токена — худший
-    // из возможных исходов, он неотличим от «продукт не работает».
-    //
-    // Почему не «всё разрешено». Тогда устаревший токен становился бы
-    // способом открыть неоплаченный раздел, а проверка — необязательной.
-    // Умолчание — это ровно то, что база и так отдаёт КАЖДОМУ заведению,
-    // заведённому после 15.08.2026: ни одной двери сверх того, что купил
-    // самый обычный клиент. `finance` и `marketing` в него не входят
-    // и остаются закрытыми — они вне оплаченной области.
-    //
-    // Почему это безопасно и без второй проверки: граница доверия — RLS.
-    // Даже если набор подставлен ошибочно, данные отдаёт база по правам
-    // человека, а не этот массив; он решает только, рисовать ли экран.
-    //
-    // Признак подмены уезжает в `modulesFromToken`, чтобы экран отказа
-    // мог посоветовать повторный вход вместо «зверніться до підтримки».
-    const claim = meta.modules?.[tenantId]
-    const fromToken = Array.isArray(claim)
-    return {
-      tenantId,
-      role,
-      perms: meta.perms?.[tenantId] ?? [],
-      // Токен без клейма модулей — устаревший токен, а не заведение без
-      // модулей. Подставлять сюда список нельзя: копии умолчания в коде
-      // больше нет и заводить её снова незачем (0110). Пустой массив
-      // при этом честен: `modulesFromToken: false` говорит экрану отказа,
-      // что дело в токене, и тот предлагает повторный вход. Показать
-      // при этом лишний раздел хуже, чем показать понятный отказ.
-      modules: fromToken ? claim : [],
-      modulesFromToken: fromToken,
-    }
-  })
-}
-
-export function can(m: Membership | undefined, permission: string): boolean {
-  if (!m) return false
-  return m.perms.includes('*') || m.perms.includes(permission)
-}
-
-// Проверка второй оси доступа. Зовётся на СЕРВЕРЕ, на каждой странице
-// своего раздела, рядом с can(): меню прячет пункт, но прямой адрес
-// его открывал, и владелец нового заведения видел экран модуля,
-// которого у него нет.
-//
-// Отказ рисуется экраном `<ModuleOff>`, а НЕ redirect('/app'). Причина
-// та же, по которой в app-shell.tsx завели фильтр по правам: молчаливый
-// возврат на главную человек читает как «у меня что-то сломалось»,
-// а не как «мне сюда нельзя». Плюс redirect здесь опаснее, чем
-// в проверке прав: раздел может быть закрыт из-за протухшего токена,
-// и тогда экран обязан сказать, что делать.
-export function hasModule(m: Membership | undefined, module: TenantModule): boolean {
-  if (!m) return false
-  return m.modules.includes(module)
+  return parseMemberships(session.access_token)
 }
 
 // Первый магазин пользователя — рабочий контекст кабинета.
@@ -215,8 +87,5 @@ export async function isPlatformStaff(): Promise<boolean> {
   const supabase = await createClient()
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) return false
-  const meta = (jwtPayload(session.access_token).app_metadata ?? {}) as {
-    is_staff?: boolean
-  }
-  return meta.is_staff === true
+  return isStaffFromToken(session.access_token)
 }
