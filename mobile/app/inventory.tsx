@@ -30,7 +30,7 @@ import {
 import { t } from '../lib/i18n'
 import { useSession } from '../lib/session'
 import { supabase } from '../lib/supabase'
-import { RADIUS, TAP_MIN, TYPE, WEIGHT, usePalette } from '../lib/theme'
+import { INPUT_SIZE, PRESS_DIM, RADIUS, TAP_MIN, TEXT, usePalette } from '../lib/theme'
 
 type Filter = 'all' | 'low' | 'expired'
 
@@ -121,21 +121,22 @@ function InventoryList({ tenantId }: { tenantId: string }) {
       }
       ListHeaderComponent={
         <View style={{ gap: 12, marginBottom: 4 }}>
-          <Text style={{ color: c.text, fontSize: TYPE.h2, fontWeight: WEIGHT.head }}>
+          <Text style={{ color: c.text, ...TEXT['3xl'] }}>
             {t('app.screen.inventory.title')}
           </Text>
 
           {error ? (
             <Pressable
               onPress={load}
-              style={{
+              style={({ pressed }) => ({
                 minHeight: TAP_MIN, justifyContent: 'center', paddingHorizontal: 14,
-                borderRadius: RADIUS.card, backgroundColor: c.surface,
+                borderRadius: RADIUS.card,
+                backgroundColor: pressed ? c.surface2 : c.surface,
                 borderWidth: 1, borderColor: c.danger,
-              }}
+              })}
             >
-              <Text style={{ color: c.danger, fontSize: TYPE.base }}>{t('mobile.loadError')}</Text>
-              <Text style={{ color: c.muted, fontSize: TYPE.sub }}>{t('mobile.retry')}</Text>
+              <Text style={{ color: c.danger, ...TEXT.md }}>{t('mobile.loadError')}</Text>
+              <Text style={{ color: c.muted, ...TEXT.base }}>{t('mobile.retry')}</Text>
             </Pressable>
           ) : (
             <Hero
@@ -150,11 +151,11 @@ function InventoryList({ tenantId }: { tenantId: string }) {
       ListEmptyComponent={
         error ? null : (
           <View style={{ paddingVertical: 32, gap: 6 }}>
-            <Text style={{ color: c.text, fontSize: TYPE.big, fontWeight: WEIGHT.head }}>
+            <Text style={{ color: c.text, ...TEXT.xl }}>
               {filter === 'all' ? t('inventory.empty.title') : t('inventory.empty.filtered')}
             </Text>
             {filter === 'all' ? (
-              <Text style={{ color: c.muted, fontSize: TYPE.base }}>{t('inventory.empty.desc')}</Text>
+              <Text style={{ color: c.muted, ...TEXT.md }}>{t('inventory.empty.desc')}</Text>
             ) : null}
           </View>
         )
@@ -185,8 +186,8 @@ function Hero({
       }}
     >
       <View style={{ gap: 2 }}>
-        <Text style={{ color: c.muted, fontSize: TYPE.sub }}>{t('inventory.hero.value')}</Text>
-        <Text style={{ color: c.text, fontSize: TYPE.h1, fontWeight: WEIGHT.head }}>
+        <Text style={{ color: c.muted, ...TEXT.base }}>{t('inventory.hero.value')}</Text>
+        <Text style={{ color: c.text, ...TEXT['4xl'] }}>
           {value === null ? t('inventory.hero.noCost') : t.money(value)}
         </Text>
       </View>
@@ -218,7 +219,11 @@ function Counter({
   return (
     <Pressable
       onPress={onPress}
-      style={{
+      // Нажатый и ВЫБРАННЫЙ — разные состояния, и путать их нельзя:
+      // выбранный держит фон постоянно, нажатый гаснет на мгновение.
+      // Без второго счётчик-фильтр отзывается только сменой списка,
+      // то есть после запроса — а это уже не отклик, а результат.
+      style={({ pressed }) => ({
         flex: 1,
         minHeight: TAP_MIN,
         borderRadius: RADIUS.plate,
@@ -227,12 +232,13 @@ function Counter({
         backgroundColor: active ? c.surface2 : 'transparent',
         borderWidth: 1,
         borderColor: active ? c.borderStrong : c.border,
-      }}
+        opacity: pressed ? PRESS_DIM : 1,
+      })}
     >
-      <Text style={{ color: tone && n > 0 ? tone : c.text, fontSize: TYPE.h3, fontWeight: WEIGHT.head }}>
+      <Text style={{ color: tone && n > 0 ? tone : c.text, ...TEXT['2xl'] }}>
         {n}
       </Text>
-      <Text style={{ color: c.muted, fontSize: TYPE.tiny }} numberOfLines={2}>{label}</Text>
+      <Text style={{ color: c.muted, ...TEXT.xs }} numberOfLines={2}>{label}</Text>
     </Pressable>
   )
 }
@@ -257,27 +263,27 @@ function MaterialCard({ m }: { m: MaterialRow }) {
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
         <View style={{ flex: 1, gap: 2 }}>
-          <Text style={{ color: c.text, fontSize: TYPE.body, fontWeight: WEIGHT.strong }} numberOfLines={1}>
+          <Text style={{ color: c.text, ...TEXT.lg }} numberOfLines={1}>
             {m.name}
           </Text>
           {/* Величины разделяются СТРОКАМИ, а не точками: на 390px
               подпись переносится, и точка встаёт в начало второй строки,
               читаясь как маркер списка (решение владельца 25.08.2026). */}
           {m.brand ? (
-            <Text style={{ color: c.muted, fontSize: TYPE.sub }} numberOfLines={1}>{m.brand}</Text>
+            <Text style={{ color: c.muted, ...TEXT.base }} numberOfLines={1}>{m.brand}</Text>
           ) : null}
         </View>
 
         <View style={{ alignItems: 'flex-end', gap: 2 }}>
-          <Text style={{ color: low ? c.warn : c.text, fontSize: TYPE.big, fontWeight: WEIGHT.head }}>
+          <Text style={{ color: low ? c.warn : c.text, ...TEXT.xl }}>
             {t.number(stock)}
           </Text>
-          <Text style={{ color: c.faint, fontSize: TYPE.tiny }}>{m.unit}</Text>
+          <Text style={{ color: c.faint, ...TEXT.xs }}>{m.unit}</Text>
         </View>
       </View>
 
       {low ? (
-        <Text style={{ color: c.warn, fontSize: TYPE.small, marginTop: 8 }}>
+        <Text style={{ color: c.warn, ...TEXT.sm, marginTop: 8 }}>
           {t('inventory.stats.low')}
         </Text>
       ) : null}
@@ -291,23 +297,24 @@ function Gate({ title, desc, m }: { title: string; desc: string; m: Membership |
   return (
     <Centered>
       <View style={{ gap: 8, padding: 24 }}>
-        <Text style={{ color: c.text, fontSize: TYPE.h3, fontWeight: WEIGHT.head }}>{title}</Text>
-        <Text style={{ color: c.muted, fontSize: TYPE.base }}>{desc}</Text>
+        <Text style={{ color: c.text, ...TEXT['2xl'] }}>{title}</Text>
+        <Text style={{ color: c.muted, ...TEXT.md }}>{desc}</Text>
         {/* Токен без клейма модулей — это устаревший токен, а не заведение
             без модулей, и лечится он повторным входом. Отличать эти два
             случая умеет `modulesFromToken`; молчать о втором значит
             оставить человека с «мне сюда нельзя» навсегда. */}
         {m && !m.modulesFromToken ? (
-          <Text style={{ color: c.faint, fontSize: TYPE.sub }}>{t('mobile.gate.stale')}</Text>
+          <Text style={{ color: c.faint, ...TEXT.base }}>{t('mobile.gate.stale')}</Text>
         ) : null}
         <Pressable
           onPress={() => supabase.auth.signOut()}
-          style={{
+          style={({ pressed }) => ({
             minHeight: TAP_MIN, marginTop: 12, alignItems: 'center', justifyContent: 'center',
             borderRadius: RADIUS.control, borderWidth: 1, borderColor: c.border,
-          }}
+            backgroundColor: pressed ? c.surface2 : 'transparent',
+          })}
         >
-          <Text style={{ color: c.text, fontSize: TYPE.base }}>{t('mobile.signOut')}</Text>
+          <Text style={{ color: c.text, ...TEXT.md }}>{t('mobile.signOut')}</Text>
         </Pressable>
       </View>
     </Centered>

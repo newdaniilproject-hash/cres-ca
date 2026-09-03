@@ -17,7 +17,7 @@ import { authErrorText } from '../../lib/auth-errors'
 import { t } from '../lib/i18n'
 import { useSession } from '../lib/session'
 import { supabase } from '../lib/supabase'
-import { RADIUS, TAP_MIN, TYPE, WEIGHT, usePalette } from '../lib/theme'
+import { INPUT_SIZE, PRESS_DIM, RADIUS, TAP_MIN, TEXT, usePalette } from '../lib/theme'
 
 export default function LoginScreen() {
   const { c } = usePalette()
@@ -72,10 +72,10 @@ export default function LoginScreen() {
         }}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={{ color: c.text, fontSize: TYPE.h1, fontWeight: WEIGHT.head, marginBottom: 6 }}>
+        <Text style={{ color: c.text, ...TEXT['4xl'], marginBottom: 6 }}>
           CRES-CA
         </Text>
-        <Text style={{ color: c.muted, fontSize: TYPE.lead, marginBottom: 24 }}>
+        <Text style={{ color: c.muted, ...TEXT.lg, marginBottom: 24 }}>
           {t('auth.brand.tagline')}
         </Text>
 
@@ -89,7 +89,7 @@ export default function LoginScreen() {
             gap: 12,
           }}
         >
-          <Text style={{ color: c.text, fontSize: TYPE.big, fontWeight: WEIGHT.head }}>
+          <Text style={{ color: c.text, ...TEXT.xl }}>
             {t('auth.login.subtitle')}
           </Text>
 
@@ -107,13 +107,16 @@ export default function LoginScreen() {
           />
 
           {error ? (
-            <Text style={{ color: c.danger, fontSize: TYPE.sub }}>{error}</Text>
+            <Text style={{ color: c.danger, ...TEXT.base }}>{error}</Text>
           ) : null}
 
           <Pressable
             onPress={submit}
             disabled={!canSubmit}
-            style={{
+            // Отклик В ТОТ ЖЕ КАДР, по нажатию, а не по отпусканию
+            // (правило 6). Тоном, а не масштабом: анимация зума
+            // запрещена решением владельца 25.08.2026.
+            style={({ pressed }) => ({
               minHeight: TAP_MIN,
               alignItems: 'center',
               justifyContent: 'center',
@@ -122,24 +125,21 @@ export default function LoginScreen() {
               // на насыщенном кобальте прозрачность даёт белый текст
               // на светло-синем (CLAUDE.md, «Внешний вид»).
               backgroundColor: canSubmit ? c.accent : c.surface2,
-            }}
+              opacity: pressed && canSubmit ? PRESS_DIM : 1,
+            })}
           >
             {busy ? (
               <ActivityIndicator color={canSubmit ? c.accentText : c.muted} />
             ) : (
               <Text
-                style={{
-                  color: canSubmit ? c.accentText : c.faint,
-                  fontSize: TYPE.body,
-                  fontWeight: WEIGHT.head,
-                }}
+                style={{ ...TEXT.lg, color: canSubmit ? c.accentText : c.faint }}
               >
                 {t('auth.login.submit')}
               </Text>
             )}
           </Pressable>
 
-          <Text style={{ color: c.faint, fontSize: TYPE.small, textAlign: 'center' }}>
+          <Text style={{ color: c.faint, ...TEXT.sm, textAlign: 'center' }}>
             {t('mobile.login.hint')}
           </Text>
         </View>
@@ -160,7 +160,7 @@ function Field({
   const { c } = usePalette()
   return (
     <View style={{ gap: 6 }}>
-      <Text style={{ color: c.muted, fontSize: TYPE.sub }}>{label}</Text>
+      <Text style={{ color: c.muted, ...TEXT.base }}>{label}</Text>
       <TextInput
         value={value}
         onChangeText={onChange}
@@ -179,7 +179,7 @@ function Field({
           paddingHorizontal: 12,
           // 16 — пол, а не вкус: поле мельче iOS зумит на фокусе
           // и обратно не отъезжает. Ограничение системы старше макета.
-          fontSize: TYPE.body,
+          fontSize: INPUT_SIZE,
         }}
       />
     </View>
