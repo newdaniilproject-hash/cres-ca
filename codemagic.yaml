@@ -1,17 +1,20 @@
 # Сборка мобильного приложения «Маркет» в облаке Codemagic.
 # Mac не нужен: iOS собирается на их mac_mini_m2.
 #
-# ДВА СТЕКА В ОДНОМ ФАЙЛЕ, и это намеренно (решение 11.08.2026):
+# ЗДЕСЬ ТОЛЬКО ОБЁРТКА CAPACITOR (решение 11.08.2026):
 #
 #   ios-testflight, android-apk   — ОБЁРТКА Capacitor, теги ios-v*,
-#                                   android-v*, play-v*. Основное
+#   android-play                    android-v*, play-v*. Основное
 #                                   приложение для магазинов. Веб-вью
 #                                   открывает боевой сайт, JS внутри нет.
-#   flutter-ios-testflight        — Flutter, тег flutter-v*. Параллельный
-#                                   трек, список 8 плана. НЕ УДАЛЯТЬ:
-#                                   переезд идёт по критерию, не по дате.
 #
 # Правка 05.08.2026 удалила процесс под Capacitor целиком — отменено.
+#
+# ⚠️ ПРОЦЕССА FLUTTER БОЛЬШЕ НЕТ (03.09.2026, ADR 0008). Параллельный
+# нативный трек переписан на Expo, и собирается он НЕ здесь: у Expo своя
+# сборка (EAS), а держать пустой процесс «на будущее» запрещает правило 8
+# — выключено значит удалено, история живёт в git. Процесс под Expo
+# заводится тогда, когда приложение дойдёт до публикации, а не раньше.
 #
 # ⚠️ ВЕРСИИ CAPACITOR ЗДЕСЬ НЕ СЛУЧАЙНЫ: линия 6.2, node 20, `cap add ios`
 # без флагов. Это не «старьё, которое надо обновить», а СОЗНАТЕЛЬНОЕ
@@ -26,147 +29,11 @@
 #
 # Запуск: git tag ios-v1 && git push --tags
 #
-# Flutter-приложение живёт в mobile/ — отсюда working_directory в его
-# процессе. Обёртка собирается из корня. Веб в корне ни одним из этих
-# процессов не собирается: его собирает Vercel сам.
+# Обёртка собирается из корня. Веб в корне ни одним из этих процессов
+# не собирается: его собирает Vercel сам. Нативное приложение в mobile/
+# (Expo) — тоже не отсюда, см. предупреждение выше.
 
 workflows:
-  flutter-ios-testflight:
-    name: Маркет → TestFlight (Flutter, параллельный трек)
-    instance_type: mac_mini_m2
-    max_build_duration: 60
-    working_directory: mobile
-
-    integrations:
-      app_store_connect: cresca-app-store-connect
-
-    environment:
-      # environment.ios_signing НЕ используем сознательно. У Flutter папка
-      # ios/ в репозитории есть, и соблазн велик — но автоподпись Codemagic
-      # берёт профиль до того, как отработает pod install, и на проектах
-      # с подами падает с «No matching profiles found». Подписываем скриптом,
-      # порядок под контролем.
-      groups:
-        - ios_signing
-      vars:
-        BUNDLE_ID: com.cresca.app
-      # Версия прибита гвоздём и совпадает с машиной разработки
-      # (C:\src\flutter, 3.44.8). «stable» здесь — это способ однажды
-      # обнаружить, что локально собирается, а в облаке нет.
-      flutter: 3.44.8
-      xcode: latest
-      cocoapods: default
-
-    triggering:
-      events: [tag]
-      tag_patterns:
-        - pattern: 'flutter-v*'
-          include: true
-
-    scripts:
-      - name: Зависимости Flutter
-        script: flutter pub get
-
-      - name: Анализ и тесты
-        script: |
-          # Ловим ошибку здесь, а не через десять минут на этапе сборки.
-          # build_runner здесь НЕ запускается сознательно: local_db.g.dart
-          # лежит в git. Иначе кодогенерация становится частью сборки,
-          # и расхождение схемы с генератором вылезет только в облаке.
-          flutter analyze
-          flutter test
-
-      - name: Code signing через App Store Connect API
-        script: |
-          set -ex
-          keychain initialize
-          # ПОСТОЯННЫЙ ключ подписи из переменной окружения. Без него каждая
-          # сборка плодит новый distribution-сертификат и упирается в лимит
-          # Apple — DaKi на этом потерял две сборки.
-          if [ -z "$CM_CERTIFICATE_PRIVATE_KEY" ]; then
-            echo "❌ CM_CERTIFICATE_PRIVATE_KEY не задан. Сгенерировать:"
-            echo "   openssl genrsa 2048 → PEM в Codemagic → группа ios_signing (secure)."
-            exit 1
-          fi
-          printf '%s' "$CM_CERTIFICATE_PRIVATE_KEY" > /tmp/cert_key.pem
-          app-store-connect fetch-signing-files "$BUNDLE_ID" \
-            --type IOS_APP_STORE --certificate-key=@file:/tmp/cert_key.pem --create
-          keychain add-certificates
-          # Прописывает профили в проект И создаёт export_options.plist,
-          # который ниже забирает flutter build ipa.
-          xcode-project use-profiles
-
-      - name: Info.plist — камера и шифрование
-        script: |
-          PLIST=ios/Runner/Info.plist
-          # Без purpose-строки приложение падает в момент запроса камеры
-          # и не проходит ревью. Сканер QR — основной экран склада.
-          /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string 'Камера потрібна для сканування QR-кодів на ємностях і товарах.'" "$PLIST" 2>/dev/null || true
-          # Снимает вопрос Missing Compliance в TestFlight: используем
-          # только стандартный HTTPS.
-          /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$PLIST" 2>/dev/null || true
-          # Face ID и схему cresca:// сюда добавим, КОГДА появятся модули
-          # биометрии и входа через провайдера. Заранее — мёртвый код
-          # в конфиге, правило 8.
-
-      - name: Сборка IPA
-        script: |
-          # ── НОМЕР СБОРКИ: СЕКУНДЫ ЭПОХИ ───────────────────────────────
-          #
-          # Отказ 18.08.2026: публикация в TestFlight упала с
-          # ENTITY_ERROR.ATTRIBUTE.INVALID.DUPLICATE —
-          # «The bundle version must be higher than the previously
-          # uploaded version: 101», previousBundleVersion = 101.
-          # Счётчик Codemagic был на пятёрке: приложение в Codemagic
-          # заводили заново, счётчик начался с нуля, а в App Store
-          # Connect уже лежала сотня с лишним. Сборка собралась,
-          # упала ТОЛЬКО отправка.
-          #
-          # Почему не `app-store-connect get-latest-app-store-build-number`:
-          # для билда «в проверке» он возвращает 1 и ломает публикацию
-          # тем же дубликатом (урок DaKi). Спрашивать Apple о номере —
-          # значит зависеть от его настроения.
-          #
-          # Секунды эпохи не зависят ни от счётчика, ни от Apple: число
-          # монотонно растёт само по себе и заведомо больше любого
-          # прошлого. Помещается в UInt32 (предел CFBundleVersion)
-          # до 2106 года.
-          BN="$(date +%s)"
-          flutter build ipa --release \
-            --build-number="$BN" \
-            --export-options-plist=/Users/builder/export_options.plist
-
-    artifacts:
-      - build/ios/ipa/*.ipa
-      - /tmp/xcodebuild_logs/*.log
-
-    publishing:
-      app_store_connect:
-        auth: integration
-        submit_to_testflight: true
-        # beta_groups не указываем: внутренние тестировщики получают сборку
-        # автоматически, а назначить внутреннюю группу через API нельзя
-        # (урок DaKi). Внешняя бета не опубликуется, пока в App Store Connect
-        # не заполнена форма TestFlight → Test Information: Feedback Email,
-        # имя, фамилия, телефон, почта. Сборка при этом собирается и доступна
-        # внутренним — это НЕ ошибка пайплайна.
-
-# Android-сборки ДЛЯ FLUTTER сознательно не описаны: пока приложение
-# проверяется на Android локально (flutter run, телефон по USB или
-# эмулятор), CI ему не нужен. Когда дойдёт до раздачи APK — добавляется
-# рядом: flutter build apk --debug, артефакт
-# build/app/outputs/flutter-apk/*.apk, триггер по тегу flutter-android-v*.
-# Процессы android-apk и android-play ниже — это ОБЁРТКА, не Flutter.
-#
-# ─────────────────────────────────────────────────────────────────────
-# Ниже — обёртка Capacitor. ТЕГИ РАЗВЕДЕНЫ, чтобы один тег не запускал
-# два стека сразу и не слал письмо о падении того, который никто
-# не просил:
-#   ios-v*      → обёртка в TestFlight   (основное приложение)
-#   android-v*  → обёртка, APK на телефон
-#   play-v*     → обёртка, Google Play
-#   flutter-v*  → Flutter                (параллельный трек)
-# ─────────────────────────────────────────────────────────────────────
   ios-testflight:
     name: Маркет → TestFlight
     instance_type: mac_mini_m2

@@ -302,6 +302,48 @@ for (const block of bare.matchAll(/\{([^{}]*)\}/g)) {
   })
 }
 
+// ── Третій споживач: нативна оболонка мобільного застосунку ─────────────────
+//
+// `mobile/app.json` — це конфігурація ЗБІРКИ, і кольори в ній лежать
+// рядками: заставка і тло адаптивної іконки малюються операційною системою
+// ще до того, як завантажиться будь-який JS. Ні змінні CSS, ні імпорт
+// з `tokens.ts` там неможливі в принципі — тільки літерал.
+//
+// Тобто це рівно той самий випадок, що печатка й листи: значення вимушено
+// існує двічі. А раз двічі — над ним обовʼязково стоїть сторож, інакше
+// зміна теми дає застосунок, який блимає старим тлом на запуску, і помічає
+// це не розробник, а людина з телефоном.
+const APP_JSON = 'mobile/app.json'
+// `objectOf` віддає Map, а не обʼєкт — значення береться через `get`.
+const LIGHT_BG = tsLight.get('bg')
+try {
+  const app = JSON.parse(readFileSync(join(root, APP_JSON), 'utf8'))
+  const expo = app.expo ?? {}
+  // Обидві точки, де колір потрапляє в нативну збірку. Список закритий
+  // навмисно: зʼявиться третя — сторож про неї не дізнається сам,
+  // і додати її сюди обовʼязково тим же комітом.
+  const spots = [
+    ['android.adaptiveIcon.backgroundColor', expo.android?.adaptiveIcon?.backgroundColor],
+    [
+      'plugins[expo-splash-screen].backgroundColor',
+      (expo.plugins ?? []).find((p) => Array.isArray(p) && p[0] === 'expo-splash-screen')?.[1]?.backgroundColor,
+    ],
+  ]
+  for (const [where, value] of spots) {
+    if (value === undefined) {
+      problems.push(`${APP_JSON}: не знайдено ${where} — сторож нативних кольорів осліп`)
+      continue
+    }
+    if (String(value).toLowerCase() !== LIGHT_BG.toLowerCase()) {
+      problems.push(
+        `${APP_JSON}: ${where} = ${value}, а світле тло в lib/design/tokens.ts = ${LIGHT_BG}`,
+      )
+    }
+  }
+} catch (e) {
+  problems.push(`${APP_JSON}: не читається (${e.message})`)
+}
+
 if (problems.length > 0) {
   console.error('РОЗХОДЖЕННЯ токенів (globals.css ↔ lib/design/tokens.ts):')
   for (const p of problems) console.error('  •', p)

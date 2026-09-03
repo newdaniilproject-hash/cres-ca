@@ -2718,5 +2718,16 @@
   "app.chrome.menu.aria": "Розділи кабінету",
   "inventory.common.chooseMaterial": "Оберіть засіб",
   "inventory.common.chooseUnit": "Одиниця",
-  "inventory.common.chooseSupplier": "Постачальник"
+  "inventory.common.chooseSupplier": "Постачальник",
+  "mobile.login.email": "Пошта",
+  "mobile.login.hint": "Той самий акаунт, що й у кабінеті на сайті.",
+  "mobile.gate.right.title": "Немає доступу до складу",
+  "mobile.gate.right.desc": "Розділ відкриває право «Дивитись залишки». Його видає власник у розділі «Команда».",
+  "mobile.gate.module.title": "Розділ не підключено",
+  "mobile.gate.module.desc": "«Склад» — окремий модуль. У наборі, підключеному вашому закладу, його немає.",
+  "mobile.gate.stale": "Якщо доступ змінили щойно — вийдіть і зайдіть знову: набір оновлюється разом із токеном.",
+  "mobile.signOut": "Вийти",
+  "mobile.retry": "Спробувати ще раз",
+  "mobile.loadError": "Не вдалося отримати дані складу",
+  "mobile.containers.open": "Відкриті банки"
 }
