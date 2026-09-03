@@ -7,55 +7,56 @@
 // и currentColor, поэтому иконка красится тем же цветом, что и подпись,
 // и одинакова в светлой и тёмной теме.
 
+import { ICON_GRID, ICON_SHAPES, ICON_STROKE } from '@/shared/icon-paths'
+
 type P = { size?: number; className?: string }
 
 const base = (size: number) => ({
-  width: size, height: size, viewBox: '0 0 24 24',
-  fill: 'none', stroke: 'currentColor', strokeWidth: 1.75,
+  width: size, height: size, viewBox: `0 0 ${ICON_GRID} ${ICON_GRID}`,
+  fill: 'none', stroke: 'currentColor', strokeWidth: ICON_STROKE,
   strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const,
   'aria-hidden': true,
 })
 
-/** Коробка — склад. */
-export function IconBox({ size = 22, className }: P) {
+// ── Значки, геометрия которых лежит в общем слое ────────────────────────────
+//
+// На эти имена ссылается реестр модулей (`public.modules.icon`), и ровно
+// их же рисует мобильное приложение. Числа — в `shared/icon-paths.ts`;
+// разъехаться веб и телефон физически не могут, потому что читают один
+// файл. Остальные значки ниже остались разметкой: телефон их не рисует,
+// и переносить «заодно» незачем.
+function Shaped({ name, size = 22, className }: P & { name: string }) {
   return (
     <svg {...base(size)} className={className}>
-      <path d="M21 8l-9-5-9 5 9 5 9-5z" />
-      <path d="M3 8v8l9 5 9-5V8" />
-      <path d="M12 13v8" />
+      {(ICON_SHAPES[name] ?? []).map((sh, i) =>
+        sh.k === 'path'
+          ? <path key={i} d={sh.d} />
+          : sh.k === 'circle'
+            ? <circle key={i} cx={sh.cx} cy={sh.cy} r={sh.r} />
+            : <rect key={i} x={sh.x} y={sh.y} width={sh.w} height={sh.h} rx={sh.rx} />,
+      )}
     </svg>
   )
+}
+
+/** Коробка — склад. */
+export function IconBox(p: P) {
+  return <Shaped name="IconBox" {...p} />
 }
 
 /** Календарь — записи. */
-export function IconCalendar({ size = 22, className }: P) {
-  return (
-    <svg {...base(size)} className={className}>
-      <rect x="3" y="5" width="18" height="16" rx="2.5" />
-      <path d="M3 10h18M8 3v4M16 3v4" />
-    </svg>
-  )
+export function IconCalendar(p: P) {
+  return <Shaped name="IconCalendar" {...p} />
 }
 
 /** Ножницы — услуги. */
-export function IconScissors({ size = 22, className }: P) {
-  return (
-    <svg {...base(size)} className={className}>
-      <circle cx="6" cy="6" r="2.6" />
-      <circle cx="6" cy="18" r="2.6" />
-      <path d="M8.1 7.9L20 20M20 4L8.1 16.1" />
-    </svg>
-  )
+export function IconScissors(p: P) {
+  return <Shaped name="IconScissors" {...p} />
 }
 
 /** Человек — профиль. */
-export function IconUser({ size = 22, className }: P) {
-  return (
-    <svg {...base(size)} className={className}>
-      <circle cx="12" cy="8" r="3.6" />
-      <path d="M4.5 20c1.4-3.4 4.2-5 7.5-5s6.1 1.6 7.5 5" />
-    </svg>
-  )
+export function IconUser(p: P) {
+  return <Shaped name="IconUser" {...p} />
 }
 
 /** Лупа — поиск. */
@@ -89,13 +90,8 @@ export function IconHome({ size = 22, className }: P) {
 }
 
 /** Галочка в круге — журналы. */
-export function IconCheck({ size = 22, className }: P) {
-  return (
-    <svg {...base(size)} className={className}>
-      <circle cx="12" cy="12" r="8.5" />
-      <path d="M8.5 12.3l2.4 2.4 4.6-4.9" />
-    </svg>
-  )
+export function IconCheck(p: P) {
+  return <Shaped name="IconCheck" {...p} />
 }
 
 /** Лист — документы и техкарты. */
@@ -121,44 +117,23 @@ export function IconGrid({ size = 22, className }: P) {
 }
 
 /** Пакет — заказы. */
-export function IconBag({ size = 22, className }: P) {
-  return (
-    <svg {...base(size)} className={className}>
-      <path d="M5 8h14l-1 12H6L5 8z" />
-      <path d="M9 8V6.5a3 3 0 016 0V8" />
-    </svg>
-  )
+export function IconBag(p: P) {
+  return <Shaped name="IconBag" {...p} />
 }
 
 /** Два человека — клиенты. */
-export function IconUsers({ size = 22, className }: P) {
-  return (
-    <svg {...base(size)} className={className}>
-      <circle cx="9.5" cy="8" r="3.2" />
-      <path d="M3.5 19c1.2-2.9 3.5-4.3 6-4.3s4.8 1.4 6 4.3" />
-      <path d="M16 5.2a3.2 3.2 0 010 5.6M17.5 14.9c1.5.6 2.7 1.9 3.4 3.6" />
-    </svg>
-  )
+export function IconUsers(p: P) {
+  return <Shaped name="IconUsers" {...p} />
 }
 
 /** Купюра — финансы. */
-export function IconMoney({ size = 22, className }: P) {
-  return (
-    <svg {...base(size)} className={className}>
-      <rect x="3" y="6" width="18" height="12" rx="2.5" />
-      <circle cx="12" cy="12" r="2.6" />
-    </svg>
-  )
+export function IconMoney(p: P) {
+  return <Shaped name="IconMoney" {...p} />
 }
 
 /** Шестерня — магазин и настройки. */
-export function IconGear({ size = 22, className }: P) {
-  return (
-    <svg {...base(size)} className={className}>
-      <circle cx="12" cy="12" r="3.2" />
-      <path d="M12 3.5v2.2M12 18.3v2.2M20.5 12h-2.2M5.7 12H3.5M18 6l-1.6 1.6M7.6 16.4L6 18M18 18l-1.6-1.6M7.6 7.6L6 6" />
-    </svg>
-  )
+export function IconGear(p: P) {
+  return <Shaped name="IconGear" {...p} />
 }
 
 /** Стрелка назад. */

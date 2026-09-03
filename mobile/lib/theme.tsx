@@ -16,8 +16,14 @@
 // значения, что переопределены в `.dark`). Всё, что она не называет,
 // берётся из светлой — ровно так же, как в CSS работает каскад.
 
+import {
+  createContext, useCallback, useContext, useEffect, useMemo, useState,
+  type ReactNode,
+} from 'react'
 import { useColorScheme } from 'react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { DARK, LIGHT, RADIUS } from '../../lib/design/tokens'
+import { supabase } from './supabase'
 
 // Ключи берём у светлой палитры, а тип значения расширяем до строки:
 // `LIGHT` объявлена `as const`, и без этого её тип — не «цвет», а сам
@@ -40,9 +46,106 @@ const DARK_FULL: Palette = {
   accentInk: '#93b4fb',
 }
 
-export function usePalette(): { c: Palette; dark: boolean } {
-  const dark = useColorScheme() === 'dark'
-  return { c: dark ? DARK_FULL : LIGHT, dark }
+export type ThemeMode = 'light' | 'dark'
+
+// ── ТЕМА ХРАНИТСЯ В БАЗЕ, А НЕ НА УСТРОЙСТВЕ ────────────────────────────────
+//
+// Требование владельца 19.08.2026: «чтобы синхронизировалась между вебом
+// и мобом и запоминалась». Колонка `profiles.theme` (миграция 0109) —
+// то же место, откуда её читает веб.
+//
+// Хранилищем на устройстве это невыразимо в принципе: у приложения свой
+// склад, у браузера свой, и переключение в одном не видно в другом.
+// Поэтому здесь ТРИ уровня, и каждый закрывает свой провал:
+//
+//   1. `AsyncStorage` — КЕШ ради первого кадра. Запрос к базе занимает
+//      сотни миллисекунд, и всё это время экран должен быть уже нужного
+//      цвета: белая вспышка при запуске тёмного приложения читается как
+//      дефект. Ровно та же роль, что у `localStorage` в вебе.
+//   2. `profiles.theme` — ИСТОЧНИК ПРАВДЫ. Приезжает следом и правит
+//      кеш, если человек переключил тему на другом устройстве.
+//   3. системная тема — запасной путь для того, кто ещё не выбирал.
+//
+// ⚠️ Системную тему продукт НЕ слушает после выбора (CLAUDE.md,
+// «Внешний вид»): тема — выбор человека, а не операционной системы.
+// Здесь она берётся только пока выбора нет.
+const ThemeCtx = createContext<{
+  c: Palette
+  dark: boolean
+  mode: ThemeMode
+  setMode: (m: ThemeMode) => void
+} | null>(null)
+
+const CACHE_KEY = 'cresca.theme'
+
+export function ThemeProvider({ children }: { children: ReactNode }) {
+  const system = useColorScheme()
+  const [stored, setStored] = useState<ThemeMode | null>(null)
+
+  // 1. Кеш — синхронно насколько это возможно в RN, то есть в первом
+  //    же эффекте. До ответа рисуем системной темой.
+  useEffect(() => {
+    let alive = true
+    AsyncStorage.getItem(CACHE_KEY)
+      .then((v) => { if (alive && (v === 'light' || v === 'dark')) setStored(v) })
+      .catch(() => { /* приватный режим, повреждённый склад — не беда */ })
+    return () => { alive = false }
+  }, [])
+
+  // 2. База. Перечитывается при каждой смене сессии: вход другого
+  //    человека на том же телефоне обязан принести ЕГО тему, а не
+  //    оставить предыдущую.
+  useEffect(() => {
+    let alive = true
+
+    const pull = async (userId: string | undefined) => {
+      if (!userId) return
+      const { data } = await supabase
+        .from('profiles').select('theme').eq('id', userId).maybeSingle()
+      const v = (data as { theme?: string } | null)?.theme
+      if (!alive || (v !== 'light' && v !== 'dark')) return
+      setStored(v)
+      AsyncStorage.setItem(CACHE_KEY, v).catch(() => {})
+    }
+
+    supabase.auth.getSession().then(({ data }) => pull(data.session?.user.id))
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
+      void pull(session?.user.id)
+    })
+    return () => { alive = false; sub.subscription.unsubscribe() }
+  }, [])
+
+  const mode: ThemeMode = stored ?? (system === 'dark' ? 'dark' : 'light')
+
+  const setMode = useCallback((m: ThemeMode) => {
+    // Экран красится СРАЗУ, не дожидаясь базы: правило 6 — ответ
+    // на нажатие не имеет права ждать сети. Запись догоняет молча,
+    // а не удавшаяся запись оставляет выбор хотя бы на устройстве.
+    setStored(m)
+    AsyncStorage.setItem(CACHE_KEY, m).catch(() => {})
+    supabase.auth.getSession().then(({ data }) => {
+      const id = data.session?.user.id
+      if (id) void supabase.from('profiles').update({ theme: m }).eq('id', id)
+    })
+  }, [])
+
+  const value = useMemo(() => ({
+    c: mode === 'dark' ? DARK_FULL : LIGHT,
+    dark: mode === 'dark',
+    mode,
+    setMode,
+  }), [mode, setMode])
+
+  return <ThemeCtx.Provider value={value}>{children}</ThemeCtx.Provider>
+}
+
+export function usePalette() {
+  const v = useContext(ThemeCtx)
+  // Провайдер стоит в корневой раскладке и покрывает всё дерево.
+  // Отсутствие контекста означает, что компонент рисуют вне приложения —
+  // молча подставлять светлую палитру нельзя, это спрячет ошибку сборки.
+  if (!v) throw new Error('usePalette вне ThemeProvider')
+  return v
 }
 
 export { RADIUS }

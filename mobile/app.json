@@ -8,19 +8,27 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "primaryColor": "#2563eb",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.cresca.app"
+      "bundleIdentifier": "com.cresca.app",
+      "buildNumber": "1",
+      "infoPlist": {
+        "CFBundleDisplayName": "CRES-CA",
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.cresca.app",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#f4f5f7",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": []
     },
     "plugins": [
       "expo-router",
