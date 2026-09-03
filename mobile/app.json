@@ -11,7 +11,7 @@
     "primaryColor": "#2563eb",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.cresca.app",
+      "bundleIdentifier": "com.cresca.native",
       "buildNumber": "1",
       "infoPlist": {
         "CFBundleDisplayName": "CRES-CA",
@@ -19,7 +19,7 @@
       }
     },
     "android": {
-      "package": "com.cresca.app",
+      "package": "com.cresca.native",
       "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#f4f5f7",

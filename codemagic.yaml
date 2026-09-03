@@ -1,20 +1,29 @@
 # Сборка мобильного приложения «Маркет» в облаке Codemagic.
 # Mac не нужен: iOS собирается на их mac_mini_m2.
 #
-# ЗДЕСЬ ТОЛЬКО ОБЁРТКА CAPACITOR (решение 11.08.2026):
+# ДВА ПРИЛОЖЕНИЯ, И ЭТО ВРЕМЕННО (ADR 0009, решение владельца 03.09.2026):
 #
 #   ios-testflight, android-apk   — ОБЁРТКА Capacitor, теги ios-v*,
-#   android-play                    android-v*, play-v*. Основное
-#                                   приложение для магазинов. Веб-вью
-#                                   открывает боевой сайт, JS внутри нет.
+#   android-play                    android-v*, play-v*. `com.cresca.app`.
+#                                   Веб-вью открывает боевой сайт, JS
+#                                   внутри нет. Работает сегодня.
+#   expo-ios-testflight           — НАТИВНОЕ приложение (Expo) в mobile/,
+#                                   тег app-v*. `com.cresca.native`.
+#                                   То, что заменит обёртку.
+#
+# ⚠️ ИДЕНТИФИКАТОРЫ РАЗНЫЕ НАМЕРЕННО. Совпади они — сборка нативного
+# заняла бы место обёртки в TestFlight, и работающее приложение исчезло
+# бы у всех, у кого оно стоит. Разводятся они ровно до дня, когда
+# нативное примут в оба стора: тогда обёртка и все три её процесса
+# удаляются одним коммитом (правило 8), а идентификатор при желании
+# переносится отдельным шагом.
 #
 # Правка 05.08.2026 удалила процесс под Capacitor целиком — отменено.
 #
-# ⚠️ ПРОЦЕССА FLUTTER БОЛЬШЕ НЕТ (03.09.2026, ADR 0008). Параллельный
-# нативный трек переписан на Expo, и собирается он НЕ здесь: у Expo своя
-# сборка (EAS), а держать пустой процесс «на будущее» запрещает правило 8
-# — выключено значит удалено, история живёт в git. Процесс под Expo
-# заводится тогда, когда приложение дойдёт до публикации, а не раньше.
+# ⚠️ ПРОЦЕССА FLUTTER БОЛЬШЕ НЕТ (03.09.2026, ADR 0008): трек переписан
+# на Expo. Собирается он здесь же, а не в EAS — учётная запись Codemagic
+# и ключи Apple уже настроены, и заводить вторую сборочную службу ради
+# одного приложения незачем.
 #
 # ⚠️ ВЕРСИИ CAPACITOR ЗДЕСЬ НЕ СЛУЧАЙНЫ: линия 6.2, node 20, `cap add ios`
 # без флагов. Это не «старьё, которое надо обновить», а СОЗНАТЕЛЬНОЕ
@@ -393,6 +402,129 @@ workflows:
     artifacts:
       - android/app/build/outputs/**/*.aab
     publishing:
+      email:
+        recipients: [daniilpadalko97@gmail.com]
+        notify: { success: true, failure: true }
+
+  # ── НАТИВНОЕ ПРИЛОЖЕНИЕ (Expo) → TestFlight ───────────────────────────────
+  #
+  # Отдельный процесс, а не правка того, что выше: обёртка и нативное
+  # приложение — РАЗНЫЕ приложения с разными идентификаторами, и собираются
+  # они по-разному. Обёртка синхронизируется `cap sync`, здесь — `expo
+  # prebuild`, который генерирует папку `ios/` из `app.json`.
+  #
+  # ⚠️ ИДЕНТИФИКАТОР ДРУГОЙ, И ЭТО ГЛАВНОЕ. У обёртки `com.cresca.app`,
+  # здесь `com.cresca.native`. Совпади они — новая сборка заняла бы место
+  # обёртки в TestFlight, то есть работающее приложение исчезло бы у всех,
+  # у кого оно стоит. Пока нативное не принято в сторах, они живут
+  # параллельно (ADR 0009).
+  #
+  # ⚠️ ПАПКИ `ios/` В РЕПОЗИТОРИИ НЕТ И НЕ ДОЛЖНО БЫТЬ. Её создаёт
+  # `expo prebuild` на каждой сборке из `app.json` — это и есть способ
+  # Expo держать нативную часть (continuous native generation). Закоммитить
+  # её значит завести второй источник правды об иконках, версии и правах:
+  # правку в `app.json` тогда пришлось бы дублировать руками в Xcode-проекте.
+  #
+  # Что нужно ОДИН раз до первой сборки, кодом это не делается:
+  #   1. App Store Connect → Мои приложения → «+» → новое приложение
+  #      с идентификатором `com.cresca.native`. Без записи приложения
+  #      выгрузка в TestFlight отвечает «app not found».
+  #   2. Больше ничего: сертификат и профиль создаст сама сборка через
+  #      интеграцию `cresca-app-store-connect` и постоянный ключ
+  #      `CM_CERTIFICATE_PRIVATE_KEY` из группы `ios_signing` — те же,
+  #      что у обёртки.
+  #
+  # Запуск: git tag app-v1 && git push --tags
+  expo-ios-testflight:
+    name: CRES-CA (нативное) → TestFlight
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    integrations:
+      app_store_connect: cresca-app-store-connect
+    environment:
+      # `ios_signing` — ради постоянного CM_CERTIFICATE_PRIVATE_KEY.
+      # Группа `push` не нужна: пушей в нативном приложении пока нет,
+      # а лишняя группа в сборке — это лишний секрет в окружении.
+      groups:
+        - ios_signing
+      vars:
+        WORKDIR: mobile
+      node: 22
+      xcode: latest
+      cocoapods: default
+    triggering:
+      events: [tag]
+      tag_patterns:
+        - pattern: 'app-v*'
+          include: true
+    scripts:
+      - name: Зависимости
+        # `npm ci`, а не `install`: ставит ровно то, что в package-lock.json.
+        # Флаг совместимости пиров лежит в `mobile/.npmrc` и потому здесь
+        # не повторяется — иначе он жил бы в двух местах и разошёлся.
+        script: cd "$WORKDIR" && npm ci
+
+      - name: Генерация iOS-проекта из app.json
+        script: |
+          cd "$WORKDIR"
+          npx expo prebuild --platform ios --clean --no-install
+
+      - name: CocoaPods
+        script: cd "$WORKDIR/ios" && pod install
+
+      - name: Подпись через App Store Connect API
+        script: |
+          set -ex
+          cd "$WORKDIR"
+          # Идентификатор читается ИЗ app.json, а не задаётся здесь второй
+          # раз: разойдись эти две записи — сборка подписалась бы одним
+          # приложением, а собралась другим, и ошибка приехала бы аж
+          # при выгрузке.
+          BUNDLE_ID="$(node -p "require('./app.json').expo.ios.bundleIdentifier")"
+          echo "Идентификатор: $BUNDLE_ID"
+          keychain initialize
+          # ПОСТОЯННЫЙ ключ подписи. Без него каждая сборка плодит новый
+          # distribution-сертификат и упирается в лимит Apple (урок DaKi).
+          if [ -z "$CM_CERTIFICATE_PRIVATE_KEY" ]; then
+            echo "❌ CM_CERTIFICATE_PRIVATE_KEY не задан — группа ios_signing"
+            exit 1
+          fi
+          printf '%s' "$CM_CERTIFICATE_PRIVATE_KEY" > /tmp/cert_key.pem
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE --certificate-key=@file:/tmp/cert_key.pem --create
+          keychain add-certificates
+          cd ios && xcode-project use-profiles
+
+      - name: Номер сборки = секунды эпохи
+        script: |
+          cd "$WORKDIR/ios"
+          # Та же причина, что у обёртки: счётчик Codemagic может оказаться
+          # НИЖЕ уже выгруженного номера, а Apple требует строго растущий.
+          agvtool new-version -all "$(date +%s)"
+
+      - name: Сборка .ipa
+        script: |
+          cd "$WORKDIR"
+          # Имя схемы НЕ пишем строкой: `expo prebuild` образует его из
+          # `expo.name`, и переименование приложения тихо сломало бы сборку.
+          # Берём имя у .xcodeproj, а НЕ у .xcworkspace: workspace
+          # появляется только после `pod install`, и проверить эту строку
+          # без запуска CocoaPods было бы нельзя. Проект есть сразу после
+          # prebuild — на нём и проверено (имя схемы: CRESCA).
+          SCHEME="$(basename ios/*.xcodeproj .xcodeproj)"
+          echo "Схема: $SCHEME"
+          xcode-project build-ipa \
+            --workspace "ios/$SCHEME.xcworkspace" \
+            --scheme "$SCHEME"
+    artifacts:
+      - mobile/build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        # beta_groups не указываем: внутренним тестировщикам билды раздаются
+        # автоматически, а назначить внутреннюю группу через API нельзя.
       email:
         recipients: [daniilpadalko97@gmail.com]
         notify: { success: true, failure: true }
